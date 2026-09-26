@@ -1,0 +1,20 @@
+# Normalize line endings: store as LF in the repo and check out as LF on every
+# platform. Prevents CRLF/LF churn and sync-tool conflicts across machines.
+* text=auto eol=lf
+
+# Binary assets – never touch their bytes.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.heic  binary
+*.heif  binary
+*.gif   binary
+*.ico   binary
+*.bin   binary
+*.onnx  binary
+*.ttf   binary
+*.otf   binary
+*.pdf   binary
+
+# Scripts must stay LF regardless of platform.
+*.sh    text eol=lf
