@@ -1,23 +1,24 @@
-//! The viewer window: keyboard model, drawing, drag & drop.
+//! The window: state, keyboard and mouse model, layout. Drawing lives in `ui/`.
 
 use std::collections::HashMap;
-use std::f32::consts::{FRAC_PI_2, PI};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use eframe::egui::{
-    self, Align, Align2, Color32, CursorIcon, FontId, Key, Layout, Pos2, Rect, RichText, Sense,
-    Shape, Stroke, StrokeKind, UiBuilder, Vec2, ViewportCommand, pos2, vec2,
+    self, CursorIcon, Key, PointerButton, Rect, Sense, Vec2, ViewportCommand, pos2, vec2,
 };
 
+use crate::analysis::{Analyzer, ScoreBoard, sharpness};
+use crate::db::Db;
 use crate::library::{self, Library};
 use crate::loader::{LoadedImage, Loader, Lookup};
+use crate::paths;
 use crate::rating::RatingWriter;
 use crate::theme::{self, tokens};
+use crate::thumbs::Thumbs;
+use crate::ui::{bars, filmstrip, viewer};
+use crate::view::{self, BLURRY_PERCENTILE, RatingFilter, SortKey, ViewOptions};
 
-const BAR_HEIGHT: f32 = 40.0;
-const STAR_SIZE: f32 = 18.0;
-const STAR_GAP: f32 = 6.0;
 /// Decode size until the monitor size is known (Wayland never reports it).
 const FALLBACK_TARGET: [u32; 2] = [2560, 1440];
 const STAR_KEYS: [(Key, Option<u8>); 6] = [
@@ -28,20 +29,39 @@ const STAR_KEYS: [(Key, Option<u8>); 6] = [
     (Key::Num4, Some(4)),
     (Key::Num5, Some(5)),
 ];
+/// Zoom step for `+`/`-`.
+const ZOOM_STEP: f32 = 1.25;
 
 pub struct CernoApp {
+    db: Arc<Db>,
+    thumbs: Arc<Thumbs>,
+    board: Arc<ScoreBoard>,
     loader: Loader,
+    analyzer: Analyzer,
     writer: RatingWriter,
+
     dir: Option<PathBuf>,
-    paths: Arc<Vec<PathBuf>>,
+    /// Every photo of the folder, in name order.
+    all: Arc<Vec<PathBuf>>,
+    all_index: HashMap<PathBuf, usize>,
+    /// What is shown, after sorting and filtering.
+    view: Arc<Vec<PathBuf>>,
     current: usize,
-    /// Ratings given in this session; they win over the value read from the file, whose write
-    /// may still be pending.
+    options: ViewOptions,
+    /// Score board version the view was built from.
+    view_version: u64,
+    /// Sorted sharpness values of the folder, for percentiles (board version, values).
+    sharpness_sorted: (u64, Vec<f32>),
+
+    /// Ratings given in this session; they win over the value read from the file, whose
+    /// write may still be pending.
     session_ratings: HashMap<PathBuf, Option<u8>>,
     /// Opened on the first frame, once the decode size is known.
     pending_open: Option<PathBuf>,
     target: Option<[u32; 2]>,
-    show_info: bool,
+    zoom: viewer::Zoom,
+    show_chrome: bool,
+    show_filmstrip: bool,
     notice: Option<String>,
 }
 
@@ -53,7 +73,11 @@ struct KeyInput {
     rating: Option<Option<u8>>,
     toggle_fullscreen: bool,
     escape: bool,
-    toggle_info: bool,
+    toggle_chrome: bool,
+    toggle_filmstrip: bool,
+    toggle_zoom: bool,
+    zoom_in: bool,
+    zoom_out: bool,
     open: bool,
     is_fullscreen: bool,
 }
@@ -61,17 +85,60 @@ struct KeyInput {
 impl CernoApp {
     pub fn new(cc: &eframe::CreationContext<'_>, start_path: Option<PathBuf>) -> Self {
         theme::apply(&cc.egui_ctx);
+        let ctx = cc.egui_ctx.clone();
+
+        let mut notice = None;
+        let db = paths::database_path()
+            .and_then(|path| Db::open(&path))
+            .unwrap_or_else(|err| {
+                log::error!("index database: {err:#}");
+                notice = Some(format!("Scores are not saved this session: {err:#}"));
+                Db::open_in_memory().expect("in-memory SQLite")
+            });
+        let db = Arc::new(db);
+        let thumbs = Arc::new(Thumbs::new(ctx.clone(), Arc::clone(&db)));
+        let board = Arc::new(ScoreBoard::default());
+
+        let options = ViewOptions {
+            sort: db
+                .setting("sort")
+                .and_then(|s| SortKey::from_id(&s))
+                .unwrap_or(SortKey::Name),
+            filter: db
+                .setting("filter")
+                .and_then(|s| RatingFilter::from_id(&s))
+                .unwrap_or(RatingFilter::All),
+            hide_blurry: db.setting("hide_blurry").as_deref() == Some("1"),
+        };
+        let show_filmstrip = db.setting("filmstrip").as_deref() != Some("0");
+
         Self {
-            loader: Loader::new(cc.egui_ctx.clone(), FALLBACK_TARGET),
-            writer: RatingWriter::new(cc.egui_ctx.clone()),
+            loader: Loader::new(ctx.clone(), FALLBACK_TARGET, Arc::clone(&thumbs)),
+            analyzer: Analyzer::new(
+                ctx.clone(),
+                Arc::clone(&db),
+                Arc::clone(&board),
+                Arc::clone(&thumbs),
+            ),
+            writer: RatingWriter::new(ctx, Arc::clone(&db)),
+            db,
+            thumbs,
+            board,
             dir: None,
-            paths: Arc::new(Vec::new()),
+            all: Arc::new(Vec::new()),
+            all_index: HashMap::new(),
+            view: Arc::new(Vec::new()),
             current: 0,
+            options,
+            view_version: 0,
+            sharpness_sorted: (u64::MAX, Vec::new()),
             session_ratings: HashMap::new(),
             pending_open: start_path,
             target: None,
-            show_info: true,
-            notice: None,
+            zoom: viewer::Zoom::default(),
+            show_chrome: true,
+            show_filmstrip,
+            notice,
         }
     }
 
@@ -97,20 +164,67 @@ impl CernoApp {
     }
 
     fn open(&mut self, ctx: &egui::Context, path: &Path) {
-        match Library::open(path) {
-            Ok((library, index)) => {
-                self.notice = library
-                    .paths
-                    .is_empty()
-                    .then(|| format!("No JPEG or HEIC files in {}", library.dir.display()));
-                self.paths = Arc::clone(&library.paths);
-                self.current = index;
-                self.dir = Some(library.dir);
-                self.loader.set_library(Arc::clone(&self.paths), index);
-                self.update_title(ctx);
+        let (library, index) = match Library::open(path) {
+            Ok(opened) => opened,
+            Err(err) => {
+                self.notice = Some(format!("Cannot open {}: {err}", path.display()));
+                return;
             }
-            Err(err) => self.notice = Some(format!("Cannot open {}: {err}", path.display())),
-        }
+        };
+        self.notice = library
+            .paths
+            .is_empty()
+            .then(|| format!("No JPEG or HEIC files in {}", library.dir.display()));
+        self.all_index = library
+            .paths
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (p.clone(), i))
+            .collect();
+        // A photo that was opened directly stays selected; a folder starts at the top of the
+        // (possibly sorted) view.
+        let start = path
+            .is_file()
+            .then(|| library.paths.get(index).cloned())
+            .flatten();
+        self.all = Arc::clone(&library.paths);
+        self.dir = Some(library.dir);
+        self.thumbs.clear();
+        self.analyzer.preload(&self.all);
+        self.analyzer.set_library(Arc::clone(&self.all), index);
+        self.view = Arc::new(Vec::new());
+        self.rebuild_view(ctx, start);
+    }
+
+    /// Re-applies sorting and filtering, staying on `keep` (or the current photo) if it is
+    /// still shown.
+    fn rebuild_view(&mut self, ctx: &egui::Context, keep: Option<PathBuf>) {
+        let keep = keep.or_else(|| self.view.get(self.current).cloned());
+        let board = Arc::clone(&self.board);
+        let view = view::build(
+            &self.all,
+            self.options,
+            |p| board.get(p),
+            &self.session_ratings,
+        );
+        self.current = keep
+            .and_then(|k| view.iter().position(|p| *p == k))
+            .unwrap_or(0);
+        self.view = Arc::new(view);
+        self.view_version = self.board.version();
+        self.loader
+            .set_library(Arc::clone(&self.view), self.current);
+        self.sync_analyzer();
+        self.update_title(ctx);
+    }
+
+    fn save_options(&self) {
+        self.db.put_setting("sort", self.options.sort.id());
+        self.db.put_setting("filter", &self.options.filter.id());
+        self.db.put_setting(
+            "hide_blurry",
+            if self.options.hide_blurry { "1" } else { "0" },
+        );
     }
 
     fn pick_folder(&mut self, ctx: &egui::Context) {
@@ -123,20 +237,54 @@ impl CernoApp {
         }
     }
 
+    fn confirm_model_download(&self) {
+        let answer = rfd::MessageDialog::new()
+            .set_title("Enable aesthetics scoring")
+            .set_description(format!(
+                "Cerno needs the CLIP ViT-L/14 image model to score aesthetics.\n\n\
+                 Download it now from Hugging Face (Xenova/clip-vit-large-patch14, {:.1} GB)? \
+                 It is stored in Cerno's data folder and only downloaded once.",
+                crate::analysis::aesthetic::MODEL_BYTES as f64 / 1e9
+            ))
+            .set_buttons(rfd::MessageButtons::YesNo)
+            .show();
+        if answer == rfd::MessageDialogResult::Yes {
+            self.analyzer.download_model();
+        }
+    }
+
     fn go_to(&mut self, ctx: &egui::Context, index: usize) {
-        let Some(last) = self.paths.len().checked_sub(1) else {
+        let Some(last) = self.view.len().checked_sub(1) else {
             return;
         };
         let index = index.min(last);
         if index != self.current {
             self.current = index;
             self.loader.set_current(index);
+            self.sync_analyzer();
             self.update_title(ctx);
+            let (view, current) = (Arc::clone(&self.view), self.current);
+            self.thumbs.retain(|p| {
+                view.iter()
+                    .position(|q| q == p)
+                    .is_some_and(|i| i.abs_diff(current) < 150)
+            });
+        }
+    }
+
+    /// Tells the analysis where the user is (in full-folder terms) and pauses it briefly.
+    fn sync_analyzer(&self) {
+        if let Some(index) = self
+            .view
+            .get(self.current)
+            .and_then(|p| self.all_index.get(p))
+        {
+            self.analyzer.set_current(*index);
         }
     }
 
     fn update_title(&self, ctx: &egui::Context) {
-        let title = match self.paths.get(self.current) {
+        let title = match self.view.get(self.current) {
             Some(path) => format!("{} – Cerno", library::file_name_lossy(path)),
             None => "Cerno".to_owned(),
         };
@@ -144,50 +292,65 @@ impl CernoApp {
     }
 
     fn set_rating(&mut self, stars: Option<u8>) {
-        let Some(path) = self.paths.get(self.current).cloned() else {
+        let Some(path) = self.view.get(self.current).cloned() else {
             return;
         };
         self.session_ratings.insert(path.clone(), stars);
         self.writer.set(path, stars);
     }
 
-    fn rating_of(&self, index: usize, image: Option<&LoadedImage>) -> Option<u8> {
-        match self
-            .paths
-            .get(index)
-            .and_then(|p| self.session_ratings.get(p))
-        {
-            Some(stars) => *stars,
-            None => image.and_then(|i| i.rating.stars),
+    fn rating_of(&self, path: &Path, image: Option<&LoadedImage>) -> Option<u8> {
+        if let Some(stars) = self.session_ratings.get(path) {
+            return *stars;
         }
+        image
+            .map(|i| i.rating.stars)
+            .or_else(|| self.board.get(path).map(|k| k.rating))
+            .flatten()
     }
 
-    fn handle_input(&mut self, ctx: &egui::Context) {
+    fn sharpness_percentile(&mut self, path: &Path) -> Option<f32> {
+        let version = self.board.version();
+        if self.sharpness_sorted.0 != version {
+            self.sharpness_sorted = (version, self.board.sorted_sharpness(&self.all));
+        }
+        let value = self.board.get(path)?.scores.sharpness?;
+        Some(sharpness::percentile(value, &self.sharpness_sorted.1))
+    }
+
+    fn handle_keys(&mut self, ctx: &egui::Context, frame: Option<viewer::Frame>) {
         if let Some(path) =
             ctx.input(|i| i.raw.dropped_files.first().map(|f| f.path().to_path_buf()))
         {
             self.open(ctx, &path);
         }
 
-        let keys = ctx.input(|i| KeyInput {
-            next: [Key::ArrowRight, Key::Space, Key::PageDown]
-                .iter()
-                .any(|k| i.key_pressed(*k)),
-            prev: [Key::ArrowLeft, Key::Backspace, Key::PageUp]
-                .iter()
-                .any(|k| i.key_pressed(*k)),
-            first: i.key_pressed(Key::Home),
-            last: i.key_pressed(Key::End),
-            rating: STAR_KEYS
-                .iter()
-                .find(|(k, _)| i.key_pressed(*k))
-                .map(|(_, stars)| *stars),
-            toggle_fullscreen: i.key_pressed(Key::F11)
-                || (i.key_pressed(Key::F) && i.modifiers.is_none()),
-            escape: i.key_pressed(Key::Escape),
-            toggle_info: i.key_pressed(Key::I) && i.modifiers.is_none(),
-            open: i.modifiers.command && i.key_pressed(Key::O),
-            is_fullscreen: i.viewport().fullscreen.unwrap_or(false),
+        let keys = ctx.input(|i| {
+            let plain = i.modifiers.is_none();
+            KeyInput {
+                next: [Key::ArrowRight, Key::Space, Key::PageDown]
+                    .iter()
+                    .any(|k| i.key_pressed(*k)),
+                prev: [Key::ArrowLeft, Key::Backspace, Key::PageUp]
+                    .iter()
+                    .any(|k| i.key_pressed(*k)),
+                first: i.key_pressed(Key::Home),
+                last: i.key_pressed(Key::End),
+                rating: STAR_KEYS
+                    .iter()
+                    .find(|(k, _)| plain && i.key_pressed(*k))
+                    .map(|(_, stars)| *stars),
+                toggle_fullscreen: i.key_pressed(Key::F11) || (plain && i.key_pressed(Key::F)),
+                escape: i.key_pressed(Key::Escape),
+                toggle_chrome: plain && i.key_pressed(Key::I),
+                toggle_filmstrip: plain && i.key_pressed(Key::T),
+                toggle_zoom: plain && i.key_pressed(Key::Z),
+                zoom_in: !i.modifiers.command
+                    && (i.key_pressed(Key::Plus) || i.key_pressed(Key::Equals)),
+                zoom_out: !i.modifiers.command && i.key_pressed(Key::Minus),
+                open: i.modifiers.command && i.key_pressed(Key::O),
+                is_fullscreen: i.viewport().fullscreen.unwrap_or(false),
+            }
         });
 
         if keys.open {
@@ -208,14 +371,34 @@ impl CernoApp {
         if let Some(stars) = keys.rating {
             self.set_rating(stars);
         }
-        if keys.toggle_info {
-            self.show_info = !self.show_info;
+        if keys.toggle_chrome {
+            self.show_chrome = !self.show_chrome;
+        }
+        if keys.toggle_filmstrip {
+            self.show_filmstrip = !self.show_filmstrip;
+            self.db
+                .put_setting("filmstrip", if self.show_filmstrip { "1" } else { "0" });
+        }
+        if let Some(frame) = frame {
+            let pointer = ctx.pointer_hover_pos().filter(|p| frame.area.contains(*p));
+            let anchor = pointer.unwrap_or(frame.area.center());
+            if keys.toggle_zoom {
+                self.zoom.toggle(&frame, pointer);
+            }
+            if keys.zoom_in {
+                self.zoom.zoom_by(&frame, ZOOM_STEP, anchor);
+            }
+            if keys.zoom_out {
+                self.zoom.zoom_by(&frame, 1.0 / ZOOM_STEP, anchor);
+            }
         }
         if keys.toggle_fullscreen {
             ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!keys.is_fullscreen));
         }
         if keys.escape {
-            if keys.is_fullscreen {
+            if self.zoom.is_zoomed() {
+                self.zoom.scale = None;
+            } else if keys.is_fullscreen {
                 ctx.send_viewport_cmd(ViewportCommand::Fullscreen(false));
             } else {
                 self.notice = None;
@@ -223,276 +406,212 @@ impl CernoApp {
         }
     }
 
-    fn draw_empty_state(&mut self, ui: &mut egui::Ui, rect: Rect) {
-        let content = Rect::from_center_size(rect.center(), vec2(460.0, 190.0));
-        let mut open_clicked = false;
-        ui.scope_builder(
-            UiBuilder::new()
-                .max_rect(content)
-                .layout(Layout::top_down(Align::Center)),
-            |ui| {
-                ui.label(RichText::new("Cerno").size(22.0).color(tokens::TEXT));
-                ui.add_space(6.0);
-                ui.label(
-                    RichText::new("Drop a folder or photo here, or press Ctrl+O.")
-                        .color(tokens::MUTED),
-                );
-                ui.add_space(18.0);
-                open_clicked = ui.add(theme::primary_button("Open folder")).clicked();
-                ui.add_space(18.0);
-                ui.label(
-                    RichText::new(
-                        "← → browse   ·   1–5 rate   ·   0 clear   ·   F11 fullscreen   ·   I info",
-                    )
-                    .size(11.0)
-                    .color(tokens::MUTED),
-                );
-            },
-        );
-        if open_clicked {
-            let ctx = ui.ctx().clone();
-            self.pick_folder(&ctx);
+    /// Mouse on the photo: double-click toggles 100 %, wheel zooms, drag pans.
+    fn handle_mouse(&mut self, ui: &egui::Ui, frame: &viewer::Frame) {
+        let response = ui.interact(frame.area, ui.id().with("photo"), Sense::click_and_drag());
+        if response.double_clicked() {
+            self.zoom.toggle(frame, response.interact_pointer_pos());
         }
-    }
-
-    /// Bottom bar: file name and position, stars (clickable), size and load time. Returns the
-    /// rating the user clicked, if any.
-    fn draw_info_bar(
-        &self,
-        ui: &egui::Ui,
-        rect: Rect,
-        image: Option<&LoadedImage>,
-    ) -> Option<Option<u8>> {
-        let bar = Rect::from_min_max(pos2(rect.min.x, rect.max.y - BAR_HEIGHT), rect.max);
-        let painter = ui.painter();
-        painter.rect_filled(bar, 0.0, tokens::SURFACE);
-        painter.hline(
-            bar.x_range(),
-            bar.top() + 0.5,
-            Stroke::new(1.0, tokens::LINE),
-        );
-        let y = bar.center().y;
-
-        let stars_width = 5.0 * STAR_SIZE + 4.0 * STAR_GAP;
-        let stars_left = bar.center().x - stars_width / 2.0;
-
-        // Left: name and position, clipped so a long name never runs into the stars.
-        let left = painter.with_clip_rect(Rect::from_min_max(
-            bar.min,
-            pos2(stars_left - 16.0, bar.max.y),
-        ));
-        let name = self
-            .paths
-            .get(self.current)
-            .map(|p| library::file_name_lossy(p))
-            .unwrap_or_default();
-        let name_rect = left.text(
-            pos2(bar.left() + 12.0, y),
-            Align2::LEFT_CENTER,
-            name,
-            FontId::proportional(13.0),
-            tokens::TEXT,
-        );
-        left.text(
-            pos2(name_rect.right() + 10.0, y),
-            Align2::LEFT_CENTER,
-            format!("{} / {}", self.current + 1, self.paths.len()),
-            FontId::proportional(12.0),
-            tokens::MUTED,
-        );
-
-        // Right: image facts and writer state.
-        let mut facts = Vec::new();
-        if let Some(image) = image {
-            let [w, h] = image.original_size;
-            facts.push(format!("{w} × {h}"));
-            facts.push(format!("{} ms", image.load_ms));
-        }
-        if self.writer.status().pending > 0 {
-            facts.push("Saving…".to_owned());
-        }
-        let right = painter.with_clip_rect(Rect::from_min_max(
-            pos2(stars_left + stars_width + 16.0, bar.min.y),
-            bar.max,
-        ));
-        right.text(
-            pos2(bar.right() - 12.0, y),
-            Align2::RIGHT_CENTER,
-            facts.join("   ·   "),
-            FontId::proportional(12.0),
-            tokens::MUTED,
-        );
-
-        // Center: stars.
-        let rating = self.rating_of(self.current, image);
-        let mut clicked = None;
-        for n in 1..=5u8 {
-            let x = stars_left + f32::from(n - 1) * (STAR_SIZE + STAR_GAP);
-            let star = Rect::from_min_size(pos2(x, y - STAR_SIZE / 2.0), Vec2::splat(STAR_SIZE));
-            let response = ui
-                .interact(
-                    star.expand(STAR_GAP / 2.0),
-                    ui.id().with(("star", n)),
-                    Sense::click(),
-                )
-                .on_hover_cursor(CursorIcon::PointingHand);
-            let filled = rating.is_some_and(|r| n <= r);
-            let color = if filled || response.hovered() {
-                tokens::ACCENT
-            } else {
-                tokens::MUTED
-            };
-            paint_star(painter, star.center(), STAR_SIZE / 2.0, filled, color);
-            if response.clicked() {
-                // Clicking the current rating again clears it.
-                clicked = Some(if rating == Some(n) { None } else { Some(n) });
+        if response.hovered() {
+            let scroll = ui.input(|i| i.smooth_scroll_delta.y);
+            if scroll != 0.0
+                && let Some(pos) = response.hover_pos()
+            {
+                self.zoom.zoom_by(frame, (scroll / 200.0).exp(), pos);
             }
-            response.on_hover_text(format!("{n} – key {n}"));
         }
-        clicked
-    }
-
-    fn draw_notices(&self, ui: &egui::Ui, rect: Rect) {
-        let writer_error = self.writer.status().last_error;
-        let (text, is_error) = match (writer_error, &self.notice) {
-            (Some(err), _) => (format!("Rating not saved – {err}"), true),
-            (None, Some(notice)) => (notice.clone(), false),
-            (None, None) => return,
-        };
-        let painter = ui.painter();
-        let galley = painter.layout(
-            text,
-            FontId::proportional(13.0),
-            tokens::TEXT,
-            (rect.width() - 64.0).max(120.0),
-        );
-        let size = galley.size() + vec2(24.0, 14.0);
-        let pill = Rect::from_min_size(
-            pos2(rect.center().x - size.x / 2.0, rect.top() + 12.0),
-            size,
-        );
-        let (fill, border) = if is_error {
-            (tokens::STATUS_ERROR_BG, tokens::STATUS_ERROR)
-        } else {
-            (tokens::SURFACE, tokens::LINE)
-        };
-        painter.rect_filled(pill, 6.0, fill);
-        painter.rect_stroke(pill, 6.0, Stroke::new(1.0, border), StrokeKind::Inside);
-        painter.galley(pill.min + vec2(12.0, 7.0), galley, tokens::TEXT);
-    }
-
-    fn draw_drop_hint(ui: &egui::Ui, rect: Rect) {
-        if ui.ctx().input(|i| i.raw.hovered_files.is_empty()) {
-            return;
+        if self.zoom.is_zoomed() {
+            if response.dragged_by(PointerButton::Primary) {
+                self.zoom.pan(frame, response.drag_delta());
+                ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+            } else if response.hovered() {
+                ui.ctx().set_cursor_icon(CursorIcon::Grab);
+            }
         }
-        let painter = ui.painter();
-        painter.rect_filled(rect, 0.0, Color32::from_black_alpha(150));
-        painter.rect_stroke(
-            rect.shrink(10.0),
-            8.0,
-            Stroke::new(2.0, tokens::ACCENT),
-            StrokeKind::Inside,
-        );
-        painter.text(
-            rect.center(),
-            Align2::CENTER_CENTER,
-            "Drop to open",
-            FontId::proportional(18.0),
-            tokens::TEXT,
-        );
     }
 }
 
 impl eframe::App for CernoApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
-        let rect = ui.max_rect();
-        self.update_target(&ctx, rect.size());
+        let window = ui.max_rect();
+        self.update_target(&ctx, window.size());
         if let Some(path) = self.pending_open.take() {
             self.open(&ctx, &path);
         }
-        self.handle_input(&ctx);
 
-        ui.painter().rect_filled(rect, 0.0, tokens::CANVAS);
-        if self.paths.is_empty() {
-            self.draw_empty_state(ui, rect);
+        // Layout: toolbar | photo | filmstrip | info bar.
+        let chrome = self.show_chrome && !self.all.is_empty();
+        let mut area = window;
+        let toolbar_rect = chrome.then(|| {
+            let r = Rect::from_min_size(window.min, vec2(window.width(), bars::TOOLBAR_HEIGHT));
+            area.min.y = r.max.y;
+            r
+        });
+        let info_rect = (chrome && !self.view.is_empty()).then(|| {
+            let r = Rect::from_min_max(
+                pos2(window.min.x, window.max.y - bars::INFO_HEIGHT),
+                window.max,
+            );
+            area.max.y = r.min.y;
+            r
+        });
+        let strip_rect = (info_rect.is_some() && self.show_filmstrip).then(|| {
+            let r = Rect::from_min_max(
+                pos2(window.min.x, area.max.y - filmstrip::HEIGHT),
+                pos2(window.max.x, area.max.y),
+            );
+            area.max.y = r.min.y;
+            r
+        });
+
+        let lookup = self.loader.get(self.current);
+        let image = match &lookup {
+            Lookup::Ready(image) => Some(Arc::clone(image)),
+            _ => None,
+        };
+        let frame = image.as_ref().map(|image| viewer::Frame {
+            area,
+            image_size: image.original_size,
+            pixels_per_point: ctx.pixels_per_point(),
+        });
+        self.handle_keys(&ctx, frame);
+        // Navigation may have changed the current photo; re-read it.
+        let lookup = self.loader.get(self.current);
+        let image = match &lookup {
+            Lookup::Ready(image) => Some(Arc::clone(image)),
+            _ => None,
+        };
+        let frame = image.as_ref().map(|image| viewer::Frame {
+            area,
+            image_size: image.original_size,
+            pixels_per_point: ctx.pixels_per_point(),
+        });
+
+        ui.painter().rect_filled(window, 0.0, tokens::CANVAS);
+        if self.all.is_empty() {
+            if bars::empty_state(ui, window) {
+                self.pick_folder(&ctx);
+            }
+        } else if self.view.is_empty() {
+            bars::centred_message(ui, area, "No photos match the filter", tokens::MUTED);
         } else {
-            let lookup = self.loader.get(self.current);
-            let image = match &lookup {
-                Lookup::Ready(image) => Some(image.as_ref()),
-                _ => None,
+            match (&lookup, &image, frame) {
+                (_, Some(image), Some(frame)) => {
+                    self.handle_mouse(ui, &frame);
+                    let full = self.loader.full(self.current);
+                    let needs_full =
+                        viewer::draw(ui.painter(), &frame, &self.zoom, image, full.as_deref());
+                    if needs_full && full.is_none() {
+                        self.loader.request_full(self.current);
+                    }
+                }
+                (Lookup::Failed(message), _, _) => bars::centred_message(
+                    ui,
+                    area,
+                    &format!("Cannot show this image\n{message}"),
+                    tokens::STATUS_ERROR,
+                ),
+                _ => bars::centred_message(ui, area, "Loading…", tokens::MUTED),
+            }
+        }
+
+        if let Some(rect) = strip_rect {
+            let view = Arc::clone(&self.view);
+            let blurry_cutoff = {
+                // Percentiles need `&mut self`; compute them for the visible cells up front.
+                let version = self.board.version();
+                if self.sharpness_sorted.0 != version {
+                    self.sharpness_sorted = (version, self.board.sorted_sharpness(&self.all));
+                }
+                self.sharpness_sorted.1.clone()
             };
-            let image_area = if self.show_info {
-                Rect::from_min_max(rect.min, pos2(rect.max.x, rect.max.y - BAR_HEIGHT))
-            } else {
-                rect
+            let clicked = filmstrip::draw(ui, rect, &view, self.current, &self.thumbs, |i| {
+                let path = &view[i];
+                let known = self.board.get(path);
+                let blurry = known
+                    .and_then(|k| k.scores.sharpness)
+                    .map(|s| sharpness::percentile(s, &blurry_cutoff))
+                    .filter(|p| *p < BLURRY_PERCENTILE)
+                    .map(|p| {
+                        format!(
+                            "Probably blurry: sharper than only {:.0} % of this folder",
+                            p * 100.0
+                        )
+                    });
+                let rating = match self.session_ratings.get(path) {
+                    Some(stars) => *stars,
+                    None => known.and_then(|k| k.rating),
+                };
+                filmstrip::CellInfo { rating, blurry }
+            });
+            if let Some(index) = clicked {
+                self.go_to(&ctx, index);
+            }
+        }
+
+        if let Some(rect) = info_rect
+            && let Some(path) = self.view.get(self.current).cloned()
+        {
+            let percentile = self.sharpness_percentile(&path);
+            let bar = bars::InfoBar {
+                name: &library::file_name_lossy(&path),
+                position: (self.current + 1, self.view.len()),
+                image: image.as_deref(),
+                rating: self.rating_of(&path, image.as_deref()),
+                scores: self.board.get(&path).map(|k| k.scores),
+                sharpness_percentile: percentile,
+                saving: self.writer.status().pending > 0,
             };
-            draw_image(ui.painter(), image_area, &lookup, ctx.pixels_per_point());
-            if self.show_info
-                && let Some(stars) = self.draw_info_bar(ui, rect, image)
-            {
+            if let Some(stars) = bars::info_bar(ui, rect, &bar) {
                 self.set_rating(stars);
             }
         }
-        self.draw_notices(ui, rect);
-        Self::draw_drop_hint(ui, rect);
+
+        if let Some(rect) = toolbar_rect {
+            let status = self.analyzer.status();
+            let folder = self
+                .dir
+                .as_ref()
+                .and_then(|d| d.file_name())
+                .map(|n| n.to_string_lossy().into_owned());
+            let info = bars::ToolbarInfo {
+                folder: folder.as_deref(),
+                shown: self.view.len(),
+                total: self.all.len(),
+                stale: self.options.depends_on_scores()
+                    && self.board.version() != self.view_version,
+                status: &status,
+            };
+            let mut options = self.options;
+            let out = bars::toolbar(ui, rect, &mut options, &info);
+            if out.options_changed {
+                self.options = options;
+                self.save_options();
+                self.rebuild_view(&ctx, None);
+            }
+            if out.refresh {
+                self.rebuild_view(&ctx, None);
+            }
+            if out.open {
+                self.pick_folder(&ctx);
+            }
+            if out.download_model {
+                self.confirm_model_download();
+            }
+        }
+
+        let writer_error = self
+            .writer
+            .status()
+            .last_error
+            .map(|e| format!("Rating not saved – {e}"));
+        bars::notices(ui, area, writer_error.as_deref(), self.notice.as_deref());
+        bars::drop_hint(ui, window);
     }
 
     fn on_exit(&mut self) {
         // A rating given right before closing must still reach the file.
         self.writer.shutdown();
     }
-}
-
-/// Fits the image into `area`, never enlarging it beyond its decoded size.
-fn draw_image(painter: &egui::Painter, area: Rect, lookup: &Lookup, pixels_per_point: f32) {
-    match lookup {
-        Lookup::Ready(image) => {
-            let natural = image.texture.size_vec2() / pixels_per_point;
-            let scale = (area.width() / natural.x)
-                .min(area.height() / natural.y)
-                .min(1.0);
-            let rect = Rect::from_center_size(area.center(), natural * scale);
-            let uv = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
-            painter.image(image.texture.id(), rect, uv, Color32::WHITE);
-        }
-        Lookup::Failed(message) => {
-            painter.text(
-                area.center(),
-                Align2::CENTER_CENTER,
-                format!("Cannot show this image\n{message}"),
-                FontId::proportional(14.0),
-                tokens::STATUS_ERROR,
-            );
-        }
-        Lookup::Pending => {
-            painter.text(
-                area.center(),
-                Align2::CENTER_CENTER,
-                "Loading…",
-                FontId::proportional(13.0),
-                tokens::MUTED,
-            );
-        }
-    }
-}
-
-fn paint_star(painter: &egui::Painter, center: Pos2, radius: f32, filled: bool, color: Color32) {
-    let inner = radius * 0.45;
-    let points: Vec<Pos2> = (0..10)
-        .map(|i| {
-            let r = if i % 2 == 0 { radius } else { inner };
-            center + r * Vec2::angled(-FRAC_PI_2 + i as f32 * PI / 5.0)
-        })
-        .collect();
-    if filled {
-        // epaint only fills convex shapes: inner pentagon plus five tip triangles.
-        let pentagon: Vec<Pos2> = points.iter().skip(1).step_by(2).copied().collect();
-        painter.add(Shape::convex_polygon(pentagon, color, Stroke::NONE));
-        for tip in (0..10).step_by(2) {
-            let triangle = vec![points[(tip + 9) % 10], points[tip], points[tip + 1]];
-            painter.add(Shape::convex_polygon(triangle, color, Stroke::NONE));
-        }
-    }
-    painter.add(Shape::closed_line(points, Stroke::new(1.4, color)));
 }

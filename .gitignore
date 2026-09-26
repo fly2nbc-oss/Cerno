@@ -2,6 +2,7 @@
 /target/
 **/target/
 /vcpkg/
+/dist/
 *.msi
 *-setup.exe
 *.deb

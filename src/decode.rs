@@ -113,7 +113,7 @@ fn decode_heif(_bytes: &[u8]) -> Result<(u32, u32, Vec<u8>)> {
     bail!("HEIC support is not built in (build with `--features heic`)")
 }
 
-fn resize_rgb(rgb: Vec<u8>, w: u32, h: u32, dst_w: u32, dst_h: u32) -> Result<Vec<u8>> {
+pub fn resize_rgb(rgb: Vec<u8>, w: u32, h: u32, dst_w: u32, dst_h: u32) -> Result<Vec<u8>> {
     let src = Image::from_vec_u8(w, h, rgb, PixelType::U8x3)?;
     let mut dst = Image::new(dst_w, dst_h, PixelType::U8x3);
     let options = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FilterType::CatmullRom));

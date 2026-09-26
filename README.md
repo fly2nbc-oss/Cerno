@@ -1,13 +1,11 @@
 # Cerno
 
-**Fast photo viewer and culling tool – instant switching, 1–5 star ratings from the keyboard, file dates untouched.**
+**Fast photo viewer and culling tool – instant switching, 1–5 star ratings from the keyboard, automatic sharpness and aesthetics scores, file dates untouched.**
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-blue.svg)](#supported-platforms--formats)
 
-Cerno (Latin *cerno* – "I sift, discern, see clearly") is a native Rust desktop app built on **egui + wgpu**. It decodes photos in the background at screen resolution and keeps the neighbours of the current photo ready as GPU textures, so switching feels instant. Ratings go straight into the file as `xmp:Rating`, which Lightroom, Bridge, digiKam and Windows Explorer read – without changing the file's modification or creation date.
-
-Automatic sharpness and aesthetics scoring is the next milestone (see [Roadmap](#roadmap--known-issues)).
+Cerno (Latin *cerno* – "I sift, discern, see clearly") is a native Rust desktop app built on **egui + wgpu**. It decodes photos in the background at screen resolution and keeps the neighbours of the current photo ready as GPU textures, so switching feels instant. Ratings go straight into the file as `xmp:Rating`, which Lightroom, Bridge, digiKam and Windows Explorer read – without changing the file's modification or creation date. Sharpness and aesthetics are computed locally (GPU via DirectML on Windows) and kept in Cerno's own database, never in your photos.
 
 ---
 
@@ -16,6 +14,7 @@ Automatic sharpness and aesthetics scoring is the next milestone (see [Roadmap](
 - [Features](#features)
 - [Quick Start](#quick-start)
 - [Usage](#usage)
+- [Scores](#scores)
 - [Supported Platforms & Formats](#supported-platforms--formats)
 - [Development & Build](#development--build)
 - [Roadmap & Known Issues](#roadmap--known-issues)
@@ -23,37 +22,52 @@ Automatic sharpness and aesthetics scoring is the next milestone (see [Roadmap](
 
 ## Features
 
-- **Instant switching** – background workers prefetch the images around the current one (±3), decoded at monitor resolution and uploaded as GPU textures.
+- **Instant switching** – background workers prefetch the photos around the current one, decoded at monitor resolution and uploaded as GPU textures.
 - **Keyboard-first rating** – `1`–`5` set stars, `0` clears; or click the stars in the info bar.
-- **Safe metadata writes** – only the rating is written, in the background and debounced. File modification and creation dates stay bit-exact.
-- **Windows Explorer friendly** – if a file already carries Explorer's rating tags, they are kept in sync.
-- **Correct orientation** – EXIF orientation is applied (JPEG); HEIC transforms are applied by libheif.
-- **Natural sort order** – `IMG_2` before `IMG_10`, umlauts next to their base letter.
+- **Safe metadata writes** – only the rating is written, in the background and debounced. File modification and creation dates stay bit-exact. Windows Explorer's own rating tags are kept in sync if present.
+- **Zoom** – `Z` or double-click toggles 100 %, mouse wheel zooms around the cursor, drag pans. Full resolution is loaded on demand; zoom and position stay when you switch photos, so a series can be compared at the same spot.
+- **Filmstrip** – thumbnails with your stars and a marker for probably blurry shots.
+- **Sharpness and aesthetics** – see [Scores](#scores). Sort by rating, aesthetics or sharpness; filter by stars; hide the blurriest shots.
+- **Capture info** – camera, lens, focal length, aperture, shutter speed, ISO and capture date.
+- **Correct orientation**, natural sort order (`IMG_2` before `IMG_10`, umlauts next to their base letter).
 
 ## Quick Start
 
 There are no binary releases yet – build from source (see [Development & Build](#development--build)), then:
 
 ```bash
-cargo run --release -- "D:/Photos/2026-09 Trip"
+cargo run --release --features heic -- "D:/Photos/2026-09 Trip"
 ```
 
-You can also start without an argument and drop a folder or photo onto the window, or press `Ctrl+O`.
+You can also start without an argument and drop a folder or photo onto the window, or press `Ctrl+O`. When copying `target/release/cerno.exe` elsewhere, copy `DirectML.dll` from the same folder along with it.
 
 **Requirement:** [ExifTool](https://exiftool.org/) on `PATH` for writing ratings (Windows: `winget install OliverBetz.ExifTool`, Debian/Ubuntu: `apt install libimage-exiftool-perl`). Viewing works without it. `CERNO_EXIFTOOL` can point to a specific executable.
 
 ## Usage
 
-| Key | Action |
+| Input | Action |
 |---|---|
 | `→` `Space` `PageDown` | Next photo (hold to scroll) |
 | `←` `Backspace` `PageUp` | Previous photo |
 | `Home` / `End` | First / last photo |
-| `1`–`5` | Set star rating |
-| `0` | Remove rating |
-| `F11` / `F` | Toggle fullscreen (`Esc` leaves it) |
-| `I` | Toggle the info bar |
+| `1`–`5` / `0` | Set star rating / remove it |
+| `Z`, double-click | Toggle fit ↔ 100 % |
+| `+` / `-`, mouse wheel | Zoom in / out |
+| Drag | Pan while zoomed |
+| `T` | Toggle the filmstrip |
+| `I` | Toggle toolbar, filmstrip and info bar |
+| `F11` / `F` | Toggle fullscreen |
+| `Esc` | Leave zoom, then fullscreen |
 | `Ctrl+O` | Open folder |
+
+## Scores
+
+Cerno analyses every photo of the open folder in the background (nearest first, paused while you browse). Results are stored in `%LOCALAPPDATA%\Cerno\data\cerno.db` (Linux: `~/.local/share/cerno/cerno.db`), keyed by the image content, so renamed photos keep their scores.
+
+- **Sharpness** – variance of the Laplacian on the sharpest tiles, so a blurred background doesn't penalise a sharp subject. Shown as a percentile *within the folder*: "Sharpness 87 %" means sharper than 87 % of this series. The blurriest 20 % are marked "probably blurry".
+- **Aesthetics** – CLIP ViT-L/14 image embedding scored by the [LAION improved aesthetic predictor](https://github.com/christophschuhmann/improved-aesthetic-predictor), roughly 1–10 (ordinary photos around 4–6). It judges the overall impression, not technical quality. Click **Enable aesthetics…** in the toolbar once to download the model (1.2 GB, Hugging Face). It runs on the GPU via DirectML on Windows (any DX12 GPU incl. AMD), otherwise on the CPU.
+
+Everything runs locally. Scores never change your star ratings.
 
 ## Supported Platforms & Formats
 
@@ -62,14 +76,15 @@ You can also start without an argument and drop a folder or photo onto the windo
 | Rendering | wgpu (DX12 / Vulkan) | wgpu (Vulkan), X11 and Wayland |
 | JPEG | ✓ | ✓ |
 | HEIC / HEIF | ✓ with `--features heic` (libheif via vcpkg) | ✓ with `--features heic` (system libheif ≥ 1.17) |
+| Aesthetics model | DirectML (GPU), CPU fallback | CPU; WebGPU with `--features webgpu` (experimental) |
 
 ## Development & Build
 
-Prerequisites: Rust stable, a C/C++ toolchain (Windows: Visual Studio Build Tools with the C++ workload).
+Prerequisites: Rust stable, a C/C++ toolchain (Windows: Visual Studio Build Tools with the C++ workload). The first build downloads prebuilt ONNX Runtime binaries (`ort` crate).
 
 ```bash
 cargo run -- <folder>                 # debug build; dependencies are optimised, so decoding stays fast
-cargo build --release
+cargo build --release --features heic
 cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
 cargo test                            # the ExifTool round-trip test is skipped without ExifTool
@@ -98,10 +113,9 @@ cargo build --release --features heic
 
 **Roadmap**
 
-1. Filmstrip with cached thumbnails, 100 % zoom (tiled textures for images above 8192 px).
-2. SQLite index under the app data directory.
-3. Automatic scoring: tile-based sharpness and an aesthetics model via ONNX Runtime (DirectML on Windows, CPU/WebGPU on Linux) – scores stay in the database, never in the photos.
-4. Installers (`.msi`, `.deb`, `.AppImage`) and an updater.
+1. Personal taste score learned from your own star ratings (uses the stored CLIP embeddings).
+2. Linux verification (build, HEIC, WebGPU on AMD).
+3. Installers (`.msi`, `.deb`, `.AppImage`) and an updater.
 
 **Known issues**
 
@@ -111,4 +125,4 @@ cargo build --release --features heic
 
 ## License
 
-[Apache-2.0](./LICENSE)
+[Apache-2.0](./LICENSE). Third-party components and model weights: [THIRD_PARTY.md](./THIRD_PARTY.md).

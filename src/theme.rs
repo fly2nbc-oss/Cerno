@@ -16,6 +16,7 @@ pub mod tokens {
     pub const ACCENT_SUBTLE: Color32 = Color32::from_rgb(0x1E, 0x3A, 0x52);
     pub const STATUS_ERROR: Color32 = Color32::from_rgb(0xE0, 0x5A, 0x4E);
     pub const STATUS_ERROR_BG: Color32 = Color32::from_rgb(0x3D, 0x12, 0x10);
+    pub const STATUS_WARN: Color32 = Color32::from_rgb(0xF0, 0xA3, 0x30);
     /// Neutral grey behind photos – deliberately not `BG`: its blue tint would bias colour
     /// judgement.
     pub const CANVAS: Color32 = Color32::from_rgb(0x16, 0x16, 0x16);
@@ -46,13 +47,56 @@ pub fn apply(ctx: &egui::Context) {
     ] {
         state.weak_bg_fill = fill;
         state.bg_fill = fill;
-        state.corner_radius = CornerRadius::same(6);
+        // egui shares one radius between buttons and checkboxes; 6 px turns a checkbox into a
+        // circle, so use the design system's small radius.
+        state.corner_radius = CornerRadius::same(4);
     }
+    // Without a border, checkboxes vanish on the dark surfaces.
+    widgets.inactive.bg_stroke = Stroke::new(1.0, LINE);
     widgets.hovered.bg_stroke = Stroke::new(1.0, ACCENT);
     widgets.active.bg_stroke = Stroke::new(1.0, ACCENT_STRONG);
 
     ctx.set_visuals_of(Theme::Dark, visuals);
     ctx.set_theme(Theme::Dark);
+    install_system_font(ctx);
+}
+
+/// The design system's UI font (Segoe UI) or a common Linux sans, read from the system at
+/// start-up. egui's bundled fonts stay as fallback – they lack arrows (← →) and other symbols.
+fn install_system_font(ctx: &egui::Context) {
+    use egui::epaint::text::{FontInsert, FontPriority, InsertFontFamily};
+
+    let candidates: Vec<std::path::PathBuf> = if cfg!(windows) {
+        let windir = std::env::var_os("WINDIR").unwrap_or_else(|| r"C:\Windows".into());
+        vec![std::path::Path::new(&windir).join(r"Fonts\segoeui.ttf")]
+    } else {
+        [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            "/usr/share/fonts/noto/NotoSans-Regular.ttf",
+            "/usr/share/fonts/google-noto/NotoSans-Regular.ttf",
+        ]
+        .map(Into::into)
+        .to_vec()
+    };
+    let Some((path, bytes)) = candidates
+        .into_iter()
+        .find_map(|p| std::fs::read(&p).ok().map(|b| (p, b)))
+    else {
+        log::info!("no system UI font found – using egui's bundled fonts");
+        return;
+    };
+    log::info!("UI font: {}", path.display());
+    ctx.add_font(FontInsert::new(
+        "system-ui",
+        egui::FontData::from_owned(bytes),
+        vec![InsertFontFamily {
+            family: egui::FontFamily::Proportional,
+            priority: FontPriority::Highest,
+        }],
+    ));
 }
 
 /// Primary button fill per the design system (one primary action per view).

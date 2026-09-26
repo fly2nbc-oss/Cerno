@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context as _, Result, bail};
 use eframe::egui;
 
+use crate::db::{Db, FileStamp};
 use crate::exiftool::ExifTool;
 use crate::filetimes;
 use crate::metadata::{self, RatingInfo};
@@ -36,13 +37,13 @@ pub struct RatingWriter {
 }
 
 impl RatingWriter {
-    pub fn new(ctx: egui::Context) -> Self {
+    pub fn new(ctx: egui::Context, db: Arc<Db>) -> Self {
         let (tx, rx) = mpsc::channel();
         let status = Arc::new(Mutex::new(WriterStatus::default()));
         let thread_status = Arc::clone(&status);
         let thread = std::thread::Builder::new()
             .name("cerno-rating-writer".into())
-            .spawn(move || run(&rx, &thread_status, &ctx))
+            .spawn(move || run(&rx, &thread_status, &ctx, &db))
             .expect("failed to spawn rating writer");
         Self {
             tx,
@@ -75,7 +76,7 @@ impl Drop for RatingWriter {
     }
 }
 
-fn run(rx: &mpsc::Receiver<Message>, status: &Mutex<WriterStatus>, ctx: &egui::Context) {
+fn run(rx: &mpsc::Receiver<Message>, status: &Mutex<WriterStatus>, ctx: &egui::Context, db: &Db) {
     let mut exiftool: Option<ExifTool> = None;
     let mut pending: HashMap<PathBuf, (Option<u8>, Instant)> = HashMap::new();
     let mut shutting_down = false;
@@ -104,6 +105,17 @@ fn run(rx: &mpsc::Receiver<Message>, status: &Mutex<WriterStatus>, ctx: &egui::C
                 continue;
             };
             let result = write_rating(&mut exiftool, &path, stars);
+            if result.is_ok() {
+                // The size changed, the mtime didn't: keep the index valid without rehashing.
+                let updated = FileStamp::of(&path)
+                    .map_err(anyhow::Error::from)
+                    .and_then(|stamp| {
+                        db.update_after_rating_write(&path.to_string_lossy(), stamp, stars)
+                    });
+                if let Err(err) = updated {
+                    log::warn!("index update for {}: {err:#}", path.display());
+                }
+            }
             if let Ok(mut status) = status.lock() {
                 match result {
                     Ok(()) => status.last_error = None,
@@ -247,6 +259,26 @@ mod tests {
     /// End-to-end through a real ExifTool; skipped when ExifTool isn't installed.
     #[test]
     fn writes_stars_and_keeps_file_dates() {
+        // Non-ASCII on purpose: needs `-charset filename=UTF8` on Windows.
+        round_trip(
+            Path::new(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/fixtures/tiny.jpg"
+            )),
+            "Überprüfung ä.jpg",
+        );
+    }
+
+    /// The same on a real HEIC (XMP lives in a metadata item there, not in APP1):
+    /// `CERNO_TEST_HEIC=<file.heic> cargo test -- --ignored heic`
+    #[test]
+    #[ignore = "needs a HEIC sample in CERNO_TEST_HEIC"]
+    fn heic_rating_round_trip() {
+        let source = std::env::var_os("CERNO_TEST_HEIC").expect("set CERNO_TEST_HEIC");
+        round_trip(Path::new(&source), "Überprüfung ä.heic");
+    }
+
+    fn round_trip(source: &Path, name: &str) {
         use std::fs::{self, File, FileTimes};
         use std::time::SystemTime;
 
@@ -254,15 +286,14 @@ mod tests {
             eprintln!("ExifTool not found – skipped");
             return;
         }
-        let dir = std::env::temp_dir().join(format!("cerno-rating-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "cerno-rating-{}-{}",
+            std::process::id(),
+            name.len()
+        ));
         fs::create_dir_all(&dir).unwrap();
-        // Non-ASCII on purpose: needs `-charset filename=UTF8` on Windows.
-        let path = dir.join("Überprüfung ä.jpg");
-        fs::copy(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/tiny.jpg"),
-            &path,
-        )
-        .unwrap();
+        let path = dir.join(name);
+        fs::copy(source, &path).unwrap();
         let old = SystemTime::now() - Duration::from_secs(86_400 * 400);
         File::options()
             .write(true)

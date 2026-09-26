@@ -1,0 +1,211 @@
+//! The photo itself: fit-to-window or zoomed (100 % and beyond), pan by dragging.
+//!
+//! Zoom and position survive switching photos, so a series can be compared at the same spot.
+
+use eframe::egui::{Color32, Painter, Pos2, Rect, Vec2, pos2, vec2};
+
+use crate::loader::{FullImage, LoadedImage};
+
+/// Largest zoom: 8 screen pixels per image pixel.
+const MAX_SCALE: f32 = 8.0;
+
+/// `scale` is physical screen pixels per image pixel (1.0 = 100 %); `None` fits the window.
+/// `center` is the image point (0..1 in both axes) shown in the middle of the view.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Zoom {
+    pub scale: Option<f32>,
+    pub center: Vec2,
+}
+
+impl Default for Zoom {
+    fn default() -> Self {
+        Self {
+            scale: None,
+            center: vec2(0.5, 0.5),
+        }
+    }
+}
+
+/// Geometry of one frame: view area, full image size and the display's pixel density.
+#[derive(Debug, Clone, Copy)]
+pub struct Frame {
+    pub area: Rect,
+    pub image_size: [u32; 2],
+    pub pixels_per_point: f32,
+}
+
+impl Frame {
+    fn size(&self) -> Vec2 {
+        vec2(self.image_size[0] as f32, self.image_size[1] as f32)
+    }
+
+    /// Fits into the view, never enlarged beyond 100 %.
+    pub fn fit_scale(&self) -> f32 {
+        let area = self.area.size() * self.pixels_per_point;
+        let size = self.size();
+        (area.x / size.x).min(area.y / size.y).min(1.0)
+    }
+}
+
+impl Zoom {
+    pub fn is_zoomed(&self) -> bool {
+        self.scale.is_some()
+    }
+
+    pub fn effective_scale(&self, frame: &Frame) -> f32 {
+        self.scale.unwrap_or_else(|| frame.fit_scale())
+    }
+
+    /// Where the whole image lies on screen, in points. Snapped to physical pixels so 100 %
+    /// really is 1:1.
+    pub fn image_rect(&self, frame: &Frame) -> Rect {
+        let ppp = frame.pixels_per_point;
+        let size = frame.size() * self.effective_scale(frame) / ppp;
+        let area = frame.area;
+        let axis = |start: f32, end: f32, len: f32, center: f32| {
+            if len <= end - start {
+                (start + end - len) / 2.0
+            } else {
+                let min = (start + end) / 2.0 - center * len;
+                min.clamp(end - len, start)
+            }
+        };
+        let min = pos2(
+            axis(area.left(), area.right(), size.x, self.center.x),
+            axis(area.top(), area.bottom(), size.y, self.center.y),
+        );
+        let snap = |v: f32| (v * ppp).round() / ppp;
+        Rect::from_min_size(pos2(snap(min.x), snap(min.y)), size)
+    }
+
+    /// Switches between fitting and 100 %, keeping the point under the cursor in place.
+    pub fn toggle(&mut self, frame: &Frame, anchor: Option<Pos2>) {
+        if self.is_zoomed() {
+            self.scale = None;
+        } else {
+            let anchor = anchor.unwrap_or(frame.area.center());
+            self.set_scale(frame, 1.0_f32.max(frame.fit_scale() * 1.01), anchor);
+        }
+    }
+
+    /// Zooms by `factor` around `anchor`; zooming out below "fit" returns to fitting.
+    pub fn zoom_by(&mut self, frame: &Frame, factor: f32, anchor: Pos2) {
+        let scale = self.effective_scale(frame) * factor;
+        if scale <= frame.fit_scale() * 1.001 {
+            self.scale = None;
+        } else {
+            self.set_scale(frame, scale.min(MAX_SCALE), anchor);
+        }
+    }
+
+    fn set_scale(&mut self, frame: &Frame, scale: f32, anchor: Pos2) {
+        let before = self.image_rect(frame);
+        let point = ((anchor - before.min) / before.size()).clamp(Vec2::ZERO, Vec2::splat(1.0));
+        let size = frame.size() * scale / frame.pixels_per_point;
+        let min = anchor - point * size;
+        self.scale = Some(scale);
+        self.center = (frame.area.center() - min) / size;
+    }
+
+    /// Moves the image by `delta` points (dragging).
+    pub fn pan(&mut self, frame: &Frame, delta: Vec2) {
+        let size = self.image_rect(frame).size();
+        self.center = (self.center - delta / size).clamp(Vec2::ZERO, Vec2::splat(1.0));
+    }
+}
+
+/// Draws the photo. Returns whether more detail than the display texture has is needed, i.e.
+/// the full-resolution image should be loaded.
+pub fn draw(
+    painter: &Painter,
+    frame: &Frame,
+    zoom: &Zoom,
+    display: &LoadedImage,
+    full: Option<&FullImage>,
+) -> bool {
+    let rect = zoom.image_rect(frame);
+    let painter = painter.with_clip_rect(frame.area);
+    let uv = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
+    let shown_width = zoom.effective_scale(frame) * frame.image_size[0] as f32;
+    let needs_full = shown_width > display.texture.size()[0] as f32 * 1.05;
+
+    match full {
+        Some(full) if needs_full => {
+            let per_pixel = rect.width() / full.size[0] as f32;
+            for tile in &full.tiles {
+                let min = rect.min + vec2(tile.origin[0] as f32, tile.origin[1] as f32) * per_pixel;
+                let tile_rect = Rect::from_min_size(
+                    min,
+                    vec2(tile.size[0] as f32, tile.size[1] as f32) * per_pixel,
+                );
+                if tile_rect.intersects(frame.area) {
+                    painter.image(tile.texture.id(), tile_rect, uv, Color32::WHITE);
+                }
+            }
+        }
+        _ => {
+            painter.image(display.texture.id(), rect, uv, Color32::WHITE);
+        }
+    }
+    needs_full
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn frame() -> Frame {
+        Frame {
+            area: Rect::from_min_size(pos2(0.0, 0.0), vec2(1000.0, 500.0)),
+            image_size: [4000, 2000],
+            pixels_per_point: 1.0,
+        }
+    }
+
+    #[test]
+    fn fits_and_centres() {
+        let zoom = Zoom::default();
+        assert_eq!(frame().fit_scale(), 0.25);
+        assert_eq!(
+            zoom.image_rect(&frame()),
+            Rect::from_min_size(pos2(0.0, 0.0), vec2(1000.0, 500.0))
+        );
+    }
+
+    #[test]
+    fn toggling_keeps_the_point_under_the_cursor() {
+        let mut zoom = Zoom::default();
+        let anchor = pos2(250.0, 125.0); // image point (0.25, 0.25)
+        zoom.toggle(&frame(), Some(anchor));
+        assert_eq!(zoom.scale, Some(1.0));
+        let rect = zoom.image_rect(&frame());
+        assert_eq!(rect.size(), vec2(4000.0, 2000.0));
+        let under_cursor = (anchor - rect.min) / rect.size();
+        assert!(
+            (under_cursor - vec2(0.25, 0.25)).length() < 1e-3,
+            "{under_cursor:?}"
+        );
+        zoom.toggle(&frame(), None);
+        assert_eq!(zoom.scale, None);
+    }
+
+    #[test]
+    fn panning_stops_at_the_edges() {
+        let mut zoom = Zoom {
+            scale: Some(1.0),
+            center: vec2(0.5, 0.5),
+        };
+        zoom.pan(&frame(), vec2(100_000.0, 0.0));
+        let rect = zoom.image_rect(&frame());
+        assert_eq!(rect.left(), 0.0, "left edge stays at the view's left edge");
+    }
+
+    #[test]
+    fn zooming_out_past_fit_returns_to_fit() {
+        let mut zoom = Zoom::default();
+        zoom.zoom_by(&frame(), 2.0, pos2(500.0, 250.0));
+        assert_eq!(zoom.scale, Some(0.5));
+        zoom.zoom_by(&frame(), 0.25, pos2(500.0, 250.0));
+        assert_eq!(zoom.scale, None);
+    }
+}

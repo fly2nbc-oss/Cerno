@@ -1,15 +1,21 @@
 // Release builds have no console window on Windows; debug builds keep it for logs.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod analysis;
 mod app;
+mod db;
 mod decode;
 mod exiftool;
 mod filetimes;
 mod library;
 mod loader;
 mod metadata;
+mod paths;
 mod rating;
 mod theme;
+mod thumbs;
+mod ui;
+mod view;
 
 use std::path::PathBuf;
 
