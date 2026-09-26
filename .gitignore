@@ -1,0 +1,29 @@
+# --- Build artifacts ---
+/target/
+**/target/
+/vcpkg/
+*.msi
+*-setup.exe
+*.deb
+*.rpm
+*.AppImage
+*.profraw
+
+# --- Secrets & local data ---
+.env
+.env.*
+!.env.example
+
+# --- IDE / agent (not for distribution) ---
+.vscode/*
+!.vscode/extensions.json
+.idea
+.cursor/
+.claude/
+
+# --- OS / NAS (SynologyDrive) ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+@eaDir/
+#recycle/
