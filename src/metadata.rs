@@ -40,6 +40,10 @@ pub struct CameraInfo {
     pub iso: Option<u32>,
     /// `YYYY-MM-DD HH:MM`
     pub taken: Option<String>,
+    /// Latitude and longitude in degrees (south and west negative).
+    pub gps: Option<(f64, f64)>,
+    /// EXIF `DigitalZoomRatio`, only when a digital zoom was used (> 1).
+    pub digital_zoom: Option<f64>,
 }
 
 impl CameraInfo {
@@ -157,7 +161,42 @@ fn camera_info(exif: &Exif) -> CameraInfo {
         exposure_s: number(Tag::ExposureTime),
         iso: uint(Tag::PhotographicSensitivity),
         taken: text(Tag::DateTimeOriginal).and_then(|t| format_datetime(&t)),
+        gps: gps(exif),
+        digital_zoom: number(Tag::DigitalZoomRatio).filter(|z| *z > 1.01),
     }
+}
+
+/// Degrees/minutes/seconds plus N/S and E/W → signed decimal degrees. `(0, 0)` is what some
+/// cameras write without a fix, so it counts as no position.
+fn gps(exif: &Exif) -> Option<(f64, f64)> {
+    let coordinate = |tag, reference, negative: u8| -> Option<f64> {
+        let Value::Rational(parts) = &exif.get_field(tag, In::PRIMARY)?.value else {
+            return None;
+        };
+        if parts.is_empty() || parts.iter().any(|r| r.denom == 0) {
+            return None;
+        }
+        let degrees: f64 = parts
+            .iter()
+            .take(3)
+            .zip([1.0, 60.0, 3600.0])
+            .map(|(r, unit)| r.to_f64() / unit)
+            .sum();
+        let sign = match exif.get_field(reference, In::PRIMARY).map(|f| &f.value) {
+            Some(Value::Ascii(v)) if v.first().and_then(|s| s.first()) == Some(&negative) => -1.0,
+            _ => 1.0,
+        };
+        Some(sign * degrees)
+    };
+    let lat = coordinate(Tag::GPSLatitude, Tag::GPSLatitudeRef, b'S')?;
+    let lon = coordinate(Tag::GPSLongitude, Tag::GPSLongitudeRef, b'W')?;
+    let valid = lat.is_finite() && lon.is_finite() && lat.abs() <= 90.0 && lon.abs() <= 180.0;
+    (valid && (lat, lon) != (0.0, 0.0)).then_some((lat, lon))
+}
+
+/// The position in Google Maps.
+pub fn maps_url((lat, lon): (f64, f64)) -> String {
+    format!("https://www.google.com/maps/search/?api=1&query={lat:.6},{lon:.6}")
 }
 
 /// `2026:09:12 14:03:22` → `2026-09-12 14:03`
@@ -308,6 +347,56 @@ mod tests {
             "35 mm  ·  f/2.8  ·  1/250 s  ·  ISO 400"
         );
         assert_eq!(info.gear_line(), "NIKON Z 6_2  ·  NIKKOR Z 24-70mm f/4 S");
+    }
+
+    fn rationals(values: &[(u32, u32)]) -> Value {
+        Value::Rational(
+            values
+                .iter()
+                .map(|&(num, denom)| exif::Rational { num, denom })
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn gps_position_and_digital_zoom() {
+        let ascii = |s: &str| Value::Ascii(vec![s.as_bytes().to_vec()]);
+        // 48° 31' 17.76" N, 9° 3' 27.36" W
+        let exif = exif_from(&[
+            field(Tag::GPSLatitudeRef, ascii("N")),
+            field(
+                Tag::GPSLatitude,
+                rationals(&[(48, 1), (31, 1), (1776, 100)]),
+            ),
+            field(Tag::GPSLongitudeRef, ascii("W")),
+            field(Tag::GPSLongitude, rationals(&[(9, 1), (3, 1), (2736, 100)])),
+            field(Tag::DigitalZoomRatio, rational(2, 1)),
+        ]);
+        let info = camera_info(&exif);
+        let (lat, lon) = info.gps.unwrap();
+        assert!((lat - 48.5216).abs() < 1e-6, "{lat}");
+        assert!((lon + 9.0576).abs() < 1e-6, "{lon}");
+        assert_eq!(info.digital_zoom, Some(2.0));
+        assert_eq!(
+            maps_url((lat, lon)),
+            "https://www.google.com/maps/search/?api=1&query=48.521600,-9.057600"
+        );
+
+        // No fix, a broken rational and "no digital zoom" (1/1 or 0/0) give nothing.
+        let exif = exif_from(&[
+            field(Tag::GPSLatitude, rationals(&[(0, 1), (0, 1), (0, 1)])),
+            field(Tag::GPSLongitude, rationals(&[(0, 1), (0, 1), (0, 1)])),
+            field(Tag::DigitalZoomRatio, rational(1, 1)),
+        ]);
+        let info = camera_info(&exif);
+        assert_eq!((info.gps, info.digital_zoom), (None, None));
+        let exif = exif_from(&[
+            field(Tag::GPSLatitude, rationals(&[(48, 0)])),
+            field(Tag::GPSLongitude, rationals(&[(9, 1)])),
+            field(Tag::DigitalZoomRatio, rational(0, 0)),
+        ]);
+        let info = camera_info(&exif);
+        assert_eq!((info.gps, info.digital_zoom), (None, None));
     }
 
     #[test]

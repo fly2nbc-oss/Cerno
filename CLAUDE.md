@@ -38,8 +38,14 @@ cargo build --release --features heic
 | **File dates must never change** | ExifTool runs with `-P -overwrite_original_in_place`, and `filetimes.rs` snapshots modified/created time before each write and restores them afterwards. |
 | GPU inference must work on **all vendors, AMD has priority** | Windows: ONNX Runtime + DirectML (any DX12 GPU). Linux: CPU, ORT WebGPU (Vulkan) behind the experimental `webgpu` feature. No CUDA/ROCm-only paths. Same model everywhere so scores stay comparable. |
 | Aesthetics = CLIP ViT-L/14 + LAION improved aesthetic predictor | Established, local, 1–10 scale. The LAION MLP has no activations and is collapsed into one linear layer (`tools/make_aesthetic_head.py` → `src/analysis/aesthetic_head.bin`, 3 KB, embedded). The 1.2 GB ONNX vision model is downloaded on request into `%LOCALAPPDATA%\Cerno\data\models` (`~/.local/share/cerno/models`). |
-| CLIP embeddings are stored per image | Basis for the planned personal taste model (learn from the user's own stars) without re-running CLIP. |
-| Design system `ui_design_system_v1.2.md` (see `../MediaFileRenamer/docs/`) | Dark tokens for all chrome, accent `#5B8EC4`, Segoe UI loaded from the system (egui's bundled font lacks ← →). Exception: the photo canvas is **neutral** dark grey, because the bluish `--bg` would bias colour judgement. UI language is English, like the sibling apps. |
+| Second aesthetics score: SigLIP so400m + **Aesthetic Predictor V2.5** | Newer and better on real photos than LAION. The V2.5 head is **AGPL-3.0**, so it is never embedded or committed: `tools/extract_siglip_vision.py` cuts the vision tower out of onnx-community's combined SigLIP export (1.7 GB), `tools/make_aesthetic_head.py` collapses the head (1153 floats). Distribution plan: publish both files once in the user's own Hugging Face repo (AGPL notice + source link for the head) and let Cerno download them like CLIP – the app never converts models itself. Until that repo exists there is no download button; the files are dropped into the models dir and detected at start. |
+| Only the **six modules** below, all local | LAION, V2.5, personal taste, CLIP attributes, exposure, eye sharpness. They share the decoded 2048 px image and the stored embeddings; adding a module means a DB column + version constant + `is_complete` check. |
+| Personal taste model = ridge regression on the stored CLIP embeddings | The user's stars (1–5) are the labels, deleted photos count as 0 (`feedback` table – the file row is gone, the embedding stays). Trained in the background 2 s after ratings/deletions change, from 15 examples; 5-fold CV picks λ and reports the typical error in stars. AI scores still never set stars. |
+| Eye sharpness via YuNet (OpenCV Zoo, MIT, 230 KB, embedded) | Shallow depth of field: a sharp face in a blurred background would otherwise rank low. When a face ≥ 40 px is found, the "subject" sharpness (info bar, filmstrip marker, Hide blurry, sort) uses the eye percentile instead of the whole-frame one. |
+| Design system `ui_design_system_v1.2.md` (see `../MediaFileRenamer/docs/`) | Dark tokens for all chrome, accent `#5B8EC4`, Segoe UI loaded from the system (egui's bundled font lacks ← →). Exception: the photo canvas is **neutral** dark grey, because the bluish `--bg` would bias colour judgement. Icons (flags, map pin, panel toggles) are painted in `ui/icons.rs` – egui has neither flag emoji nor Lucide. |
+| UI in **German, English, French, Spanish, Italian** | User requirement. Starts in the system language (`sys-locale`, fallback English), `L` cycles (flag fades in), the choice is saved. Numbers keep the decimal point in every language ("6.1" next to "f/2.8" – a comma would mix notations). |
+| **The info bar always shows**; top bar, details panel and filmstrip are optional | Buttons at the bottom right (and `B`/`P`/`T`, `I` for all three) toggle them; states are saved. The top bar also appears when a filter hides every photo, so the filter can be changed back. |
+| Version **0.7.0** is the first numbered one | `Cargo.toml` is the only source; the help page and start screen show `CARGO_PKG_VERSION`. |
 
 ## Architecture
 
@@ -49,17 +55,27 @@ app.rs               CernoApp: state, keyboard/mouse model, layout, view (sort/f
 view.rs              sorting + filtering of the folder list (pure, unit-tested)
 ui/viewer.rs         fit / zoom / pan geometry and drawing (display texture or full-res tiles)
 ui/filmstrip.rs      thumbnail strip centred on the current photo
-ui/bars.rs           toolbar, two-row info bar, notices, empty state, drop hint
+ui/bars.rs           toolbar, two-row info bar (meters, zoom, GPS pin, panel buttons), notices, language flash
+ui/details.rs        side panel with every analysis value + plain-language explanation (`P`), scrolls
+ui/help.rs           help page (`H`/`F1`, modal foreground area) and the start screen (same content)
+ui/icons.rs          painted flags, map pin, panel and help icons
 ui/stars.rs          star shapes
+i18n/                `Texts` struct (mod.rs) + one full literal per language (de/en/fr/es/it), date and coordinate formatting
 library.rs           folder scan, supported extensions, natural accent-insensitive order
 loader.rs            prefetch worker pool + texture cache; full-resolution tiles for zoom
 decode.rs            bytes → RGB8 at a target size: JPEG (zune-jpeg) / HEIC (libheif), resize, EXIF orientation
 metadata.rs          rating, orientation, camera/exposure data from the in-memory file bytes
-analysis/mod.rs      background analysis (thumbnail, fingerprint, sharpness, aesthetics) + ScoreBoard + model download
-analysis/sharpness.rs  tile-based Laplacian variance, percentile helper
-analysis/aesthetic.rs  ONNX session (DirectML → CPU), CLIP preprocessing, embedded LAION head
+analysis/mod.rs      background analysis (only the missing parts per image) + ScoreBoard + model download + taste trainer thread
+analysis/sharpness.rs  tile-based Laplacian variance, region variance, percentile helper
+analysis/aesthetic.rs  ONNX encoders (DirectML → CPU): CLIP + embedded LAION head, SigLIP + V2.5 head from the models dir
+analysis/attributes.rs CLIP-IQA-style zero-shot attributes from the embedding (embedded prompt vectors)
+analysis/exposure.rs   share of blown highlights / crushed shadows
+analysis/faces.rs      YuNet face detection (CPU, embedded model) + sharpness around the eyes
+analysis/taste.rs      ridge regression (Cholesky, k-fold CV) from embeddings to the user's stars
 thumbs.rs            filmstrip textures from loader / analysis / database
-db.rs                SQLite index: files (path+stamp → fingerprint, rating), images (scores, thumbnail, embedding), settings
+deletion.rs          delayed deletion queue (countdown, undo, trash worker)
+db.rs                SQLite index: files (path+stamp → fingerprint, rating), images (scores, thumbnail, embedding), feedback (deletions), settings; additive migration
+tools/*.py           one-off model preparation (collapse heads, extract the SigLIP tower, CLIP prompt vectors)
 rating.rs            debounced background writer, one long-lived ExifTool process (-stay_open)
 exiftool.rs          ExifTool stay-open protocol
 filetimes.rs         snapshot / restore of file timestamps
@@ -77,10 +93,40 @@ theme.rs             design tokens → egui Visuals, system UI font
 ### Analysis
 
 - Two workers, nearest-first over the **whole folder** (not the filtered view), paused for 0.9 s after every navigation so display decoding wins.
-- Fast path: `stat` + one query; if the index has complete data (sharpness of the current `sharpness::VERSION`, thumbnail, aesthetics of the current `aesthetic::MODEL_ID` when the model is available) nothing is decoded.
-- Full pass: decode at 2048 px → thumbnail (256 px JPEG in the DB) → **fingerprint = FNV-1a over thumbnail pixels + full size** → sharpness → aesthetics (one shared ORT session, loaded lazily).
+- Fast path: `stat` + one query; if `is_complete` holds (thumbnail, sharpness/exposure/faces of their current `VERSION`, LAION/V2.5 of the current model id when that model is available) nothing is decoded.
+- Otherwise decode at 2048 px once and compute **only what is missing**: thumbnail (256 px JPEG in the DB) → **fingerprint = FNV-1a over thumbnail pixels + full size** → sharpness → exposure → faces + eye sharpness → CLIP (LAION score + embedding) → SigLIP (V2.5). Bumping one module's version re-runs just that module. Each model has its own lazily loaded session (`Slot`) and `ModelState` for the UI.
+- Taste trainer: a separate thread retrains from `Db::taste_examples` 2 s after `taste_changed()` (rating set, deletion carried out). Predictions come from the in-memory embeddings map, so `Analyzer::personal` is cheap per frame.
+- DB migration is additive: `migrate()` reads `PRAGMA table_info(images)` and `ALTER TABLE … ADD COLUMN`s what is missing. Never drop or recreate tables – the index holds the user's ratings history and taste feedback.
 - Records are keyed by fingerprint, so renamed files keep their scores. The rating writer updates the file's size in `files` after each write, so our own writes don't trigger re-fingerprinting.
 - `Analyzer::preload` fills the ScoreBoard from the DB when a folder opens, so saved sort/filter settings apply immediately. `ScoreBoard::version` only changes on real changes; the toolbar offers "Refresh order" when scores arrived after the view was built.
+
+### Start-up (measured: photo on screen ~330 ms, first frame ~230 ms after `main`)
+
+- `main` creates the `egui::Context` and the whole `CernoApp` **before** `run_native_ext`, so the start folder is scanned and the first photo decodes while winit and wgpu set up (textures uploaded meanwhile are queued by egui). eframe's `AppCreator` only applies the theme and hands the app over.
+- Before the first frame the loader decodes only the current photo (`prefetch: false`); neighbours would compete with the GPU set-up. `START_TARGET` (4K) is the decode size until the monitor is known; a larger monitor re-decodes (`Loader::set_target` drops too-small images).
+- wgpu is restricted to one backend (DX12 on Windows, Vulkan + GL elsewhere) – probing all of them cost ~90 ms and opened an untitled OpenGL helper window. `WGPU_BACKEND` overrides.
+- `start-up: …` log lines (info level) report app-ready, first frame and first photo; re-measure after changes that touch start-up.
+
+### Compare mode and deletion
+
+- `pinned` (a path) is the left photo, `current` the right one; `view::skip_pinned` keeps navigation off the pinned index. The loader keeps the pinned photo cached however far away it is and loads full resolution for both on-screen photos. Both sides share one `Zoom`, so they stay aligned.
+- `A` deletes the right photo (next one moves in); `D` deletes the left one and the right photo becomes the new pinned one.
+- `DeleteQueue`: deleted photos are hidden from the view immediately (`rebuild_view` filters `is_hidden`), each deletion restarts the 5 s countdown, `Esc` cancels the whole queue (Esc priority: deletions → zoom → compare → fullscreen → notice). When it runs out, a worker moves the batch to the trash (`trash` crate); failures reappear with a notice. Photos that really went to the trash are recorded as 0-star taste feedback (`Db::record_deletion`); cancelled ones are not. `on_exit` carries out a pending deletion that wasn't cancelled – after `writer.shutdown()`; keep that order, or a rating flushed on exit would hit a file that is already in the trash.
+
+### Languages
+
+- Every user-visible text lives in `i18n::Texts`; each language file is one full struct literal, so a forgotten text is a compile error. Texts with values are non-capturing closures coerced to `fn` pointers (word order per language, arguments type-checked). Add a text: field in `mod.rs` → all five files → `texts_show_their_values` if it takes values.
+- The current language is a global atomic read via `i18n::t()` on every frame. It **starts as English** and only `CernoApp::new` applies the system/saved language, so tests never depend on the machine's locale. Tests must never call `i18n::set` (they run in parallel and `ui::details::tests` looks for "AESTHETICS"); test formatting through the `format_*` helpers that take `&Texts`.
+- `metadata.rs` stays language-free (raw values: `taken` as `YYYY-MM-DD HH:MM`, `gps`, `digital_zoom`); the UI localizes them (`i18n::date`, `i18n::coordinates`, `Texts::digital_zoom`).
+- Not translated: model/backend names (LAION, SigLIP, DirectML, CPU), file names, library error details (only the sentence around them).
+- Wrapped text goes through `i18n::keep_together`, which glues " %", French " :" etc. with U+00A0 – egui never breaks there.
+
+### Info bar
+
+- Centre: stars, `AESTHETICS LAION / V2.5 / personal ★` (value only, "–" when missing) and the sharpness meter. The centre width is measured from the laid-out meters, so longer labels (French, Italian) push the side columns instead of overlapping them.
+- Right: exposure line (+ EXIF digital zoom) and camera/lens; when they don't fit, whole parts are left out (focal length first, lens first) instead of clipping mid-word. Then the buttons: map pin (only with GPS; opens Google Maps via `ctx.open_url`, i.e. the default browser), language flag, help, the three panel toggles.
+- Left: name, position, viewer zoom (while zoomed), capture date, size, decode time.
+- The mouse wheel over the filmstrip steps through the photos (one per notch, touchpads per 50 pt); over the photo it zooms.
 
 ### Rating writes
 
@@ -93,9 +139,11 @@ theme.rs             design tokens → egui Visuals, system UI font
 
 1. ✅ Viewer, prefetch, star rating, timestamp-preserving writes.
 2. ✅ HEIC (Windows verified with a real sample incl. rating round trip), filmstrip, 100 % zoom with tiles, SQLite index, sharpness, aesthetics on DirectML, sort/filter, camera/exposure info.
-3. Personal taste model: ridge regression on the stored CLIP embeddings against the user's own stars (after ~50–100 ratings), shown next to the LAION score.
-4. Linux verification (build, libheif, WebGPU on AMD/Vulkan).
-5. Packaging with `cargo-packager` (`.msi`/NSIS, `.deb`, `.AppImage`) + updater; ship `DirectML.dll`; resolve the libde265 LGPL question first (see Gotchas).
+3. ✅ Analysis modules: V2.5, personal taste model, CLIP attributes, exposure, eye sharpness; details panel.
+4. Host SigLIP vision + V2.5 head in the user's Hugging Face repo and add the download button (like CLIP).
+5. Verify face detection / eye sharpness on real portraits (so far only unit tests and a run on photos without faces).
+6. Linux verification (build, libheif, WebGPU on AMD/Vulkan).
+7. Packaging with `cargo-packager` (`.msi`/NSIS, `.deb`, `.AppImage`) + updater; ship `DirectML.dll`; resolve the libde265 LGPL question first (see Gotchas).
 
 ## Gotchas
 
@@ -106,11 +154,19 @@ theme.rs             design tokens → egui Visuals, system UI font
 - **Torn reads are possible:** if the loader reads a file while ExifTool copies bytes back into it (rate, navigate away and back within the debounce window), the decode fails and the slot shows an error until it is evicted and re-decoded. Rare and self-healing – keep the eviction, don't cache failures forever.
 - **Fingerprints depend on the decoder and resizer.** Upgrading zune-jpeg, libheif or fast_image_resize can change them; that only means a re-analysis, no data loss. Never use `std::hash::DefaultHasher` for them (not stable across Rust versions).
 - DirectML is registered with `error_on_failure()` and falls back to a CPU session explicitly, so the toolbar can show the real backend. It requires `with_memory_pattern(false)`.
-- The ONNX output is picked by shape (the `[batch, 768]` one, `image_embeds`), not by name.
+- The ONNX output is picked by shape (the `[batch, 768]` / `[batch, 1152]` one), not by name. SigLIP's `image_embeds` are already L2-normalised; its preprocessing is a plain squash to 384 px with `v/127.5 − 1`, CLIP's is short side 224 + centre crop + CLIP mean/std.
+- The V2.5 checkpoint stores BFloat16 tensors under `scoring_head.*`; `tools/make_aesthetic_head.py` unpickles Float/Half/BFloat16 without torch and finds the linear layers by shape.
+- YuNet wants 640 × 640 **BGR, 0–255, no normalisation** (letterboxed); score = √(cls · obj). It runs on the CPU on purpose (a few ms; the GPU is busy with the big models).
+- Exposure counts a pixel as blown only when **all** channels are ≥ 250 – a saturated blue sky has B = 255 and must not count (v1 did, and flagged 13 % on a normal landscape).
+- Scripted smoke tests can't use the mouse: posted `WM_MOUSEMOVE`/`WM_MOUSEWHEEL` had no effect in testing (not even wheel-zoom over the photo), while posted keys work. Test pointer behaviour headless (`Context::run_ui` with `RawInput` events, see `ui::details::tests`); remember `textures_delta.clear()` or egui panics on drop.
+- The index at `%LOCALAPPDATA%\Cerno\data\cerno.db` is the user's live data (ratings history, taste feedback). Never delete it to "start clean" – DB tests use in-memory databases.
 - zune-jpeg decodes truncated JPEGs leniently (missing part grey) instead of failing – intended, other viewers do the same.
 - `libheif[core]` is linked statically, which pulls in libde265 (**LGPL-3.0**). Before publishing binaries, switch to the dynamic triplet (`x64-windows` + `VCPKGRS_DYNAMIC=1`) and ship the DLLs, or otherwise satisfy the LGPL relinking terms. The x265 encoder (GPL) is deliberately excluded.
 - `rfd` dialogs (folder picker, model download confirmation) block the UI thread while open – fine for modal dialogs.
+- The help page is modal: `handle_keys` returns early while it is open (only `H`/`F1`/`Esc` and `L` work) and the photo's mouse handling is skipped. It is an `egui::Area` in `Order::Foreground`, so the details panel's scroll area below doesn't react either. Its card height is the content height remembered from the previous frame – not `ScrollArea`'s `content_size`, which with `auto_shrink(false)` is at least the visible area.
+- Clicking the map pin sends the photo's coordinates to Google. Don't click it in scripted tests; `metadata::maps_url` is unit-tested.
 - Linux always updates `ctime` on write; that can't be prevented and no photo tool shows it. `mtime` and (on Windows) the creation time are preserved.
 - Because mtime and often the file size (XMP padding) stay the same, backup/sync tools that only compare size + date (e.g. `rsync` without `-c`) may miss rating changes.
 - No colour management yet: embedded ICC profiles (e.g. Adobe RGB) are ignored.
-- Smoke-testing the window from scripts: send keys with `PostMessage(WM_KEYDOWN/UP)` to Cerno's window handle and capture with `PrintWindow(PW_RENDERFULLCONTENT)`. Never use `SendKeys` – without focus it types into whatever window the user is working in.
+- Smoke-testing the window from scripts: send keys with `PostMessage(WM_KEYDOWN/UP)` to Cerno's window handle and capture with `PrintWindow(PW_RENDERFULLCONTENT)`. Never use `SendKeys` – without focus it types into whatever window the user is working in. Wait for a window whose title contains "Cerno": `Process.MainWindowHandle` can briefly point at wgpu's untitled helper window.
+- Deletion tests must not touch the real trash: `DeleteQueue` takes a `Remover` function, tests pass a recorder.

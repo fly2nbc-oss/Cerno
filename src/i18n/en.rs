@@ -1,0 +1,202 @@
+use super::{DateStyle, Texts};
+
+pub static TEXTS: Texts = Texts {
+    date_style: DateStyle::Iso,
+    compass: ["N", "S", "E", "W"],
+
+    open: "Open…",
+    open_tooltip: "Open folder (Ctrl+O)",
+    photos: |n| {
+        if n == 1 {
+            "1 photo".to_owned()
+        } else {
+            format!("{n} photos")
+        }
+    },
+    photos_shown: |shown, total| format!("{shown} of {total} photos"),
+    sort: |key| format!("Sort: {key}"),
+    show: |filter| format!("Show: {filter}"),
+    hide_blurry: "Hide blurry",
+    hide_blurry_tooltip: "Hides the blurriest 20 % of this folder",
+    refresh_order: "Refresh order",
+    refresh_order_tooltip: "New scores arrived since sorting and filtering",
+    analyzing_progress: |done, total| format!("Analyzing {done} / {total}"),
+    analyzed: |total| format!("{total} analyzed"),
+    enable_aesthetics: "Enable aesthetics…",
+    enable_aesthetics_tooltip: "Downloads the CLIP image model (1.2 GB) once",
+    downloading_model: |percent| format!("Downloading model {percent:.0} %"),
+    aesthetics_ready: "Aesthetics: ready",
+    aesthetics_loading: "Aesthetics: loading model…",
+    aesthetics_backend: |backend| format!("Aesthetics: {backend}"),
+    aesthetics_backend_tooltip: "Where the aesthetics model runs (DirectML = graphics card)",
+    aesthetics_failed: "Aesthetics: failed",
+
+    sort_name: "Name",
+    sort_rating: "Rating",
+    sort_laion: "Aesthetics (LAION)",
+    sort_v25: "Aesthetics (V2.5)",
+    sort_personal: "Personal taste",
+    sort_sharpness: "Sharpness",
+    filter_all: "All",
+    filter_five: "5 stars",
+    filter_at_least: |n| format!("{n}+ stars"),
+    filter_unrated: "Unrated",
+
+    meter_aesthetics: "Aesthetics",
+    meter_aesthetics_tooltip: "LAION / V2.5 / your personal taste (stars)\n1–10 scale, most photos 4–6. – = not available yet",
+    meter_sharpness: "Sharpness",
+    meter_eyes: "Eyes",
+    probably_blurry: "probably blurry",
+    analyzing: "Analyzing…",
+    saving: "Saving…",
+    star_tooltip: |n| format!("{n} ★ – key {n}"),
+    zoom: |percent| format!("Zoom {percent:.0} %"),
+    digital_zoom: |ratio| format!("{ratio:.1}× digital zoom"),
+    map_tooltip: |place| format!("{place}\nClick to open in Google Maps"),
+    button_toolbar: "Top bar (B)",
+    button_details: "Details panel (P)",
+    button_filmstrip: "Filmstrip (T)",
+    button_help: "Help (H)",
+    button_language: |name| format!("Language: {name} (L)"),
+
+    loading: "Loading…",
+    cannot_show: "Cannot show this image",
+    no_match: "No photos match the filter",
+    drop_to_open: "Drop to open",
+    compare_left: "Left",
+    compare_right: "Right",
+    compare_left_badge: "L",
+    keeps_this: |key| format!("{key} keeps this"),
+    compare_needs_two: "Comparing needs at least two photos",
+    deleting: |n| {
+        if n == 1 {
+            "Deleting 1 photo   ·   Esc to undo".to_owned()
+        } else {
+            format!("Deleting {n} photos   ·   Esc to undo")
+        }
+    },
+    delete_failed: |n, name, err| format!("Could not delete {n} photo(s) – {name}: {err}"),
+    blurry_tooltip: |eyes, percent| {
+        let what = if eyes { "Eyes" } else { "Photo" };
+        format!("Probably blurry: {what} sharper than only {percent:.0} % of this folder")
+    },
+
+    db_unavailable: |err| format!("Scores are not saved this session: {err}"),
+    cannot_open: |path, err| format!("Cannot open {path}: {err}"),
+    no_photos_in: |dir| format!("No JPEG or HEIC files in {dir}"),
+    rating_not_saved: |err| format!("Rating not saved – {err}"),
+    open_folder: "Open folder",
+    download_title: "Enable aesthetics scoring",
+    download_text: |gb| {
+        format!(
+            "Cerno needs the CLIP ViT-L/14 image model to score aesthetics.\n\n\
+             Download it now from Hugging Face (Xenova/clip-vit-large-patch14, {gb:.1} GB)? \
+             It is stored in Cerno's data folder and only downloaded once."
+        )
+    },
+
+    section_aesthetics: "Aesthetics",
+    section_sharpness: "Sharpness (within folder)",
+    section_exposure: "Exposure",
+    section_attributes: "CLIP attributes",
+    section_models: "Models",
+    row_laion: "LAION (CLIP)",
+    row_v25: "V2.5 (SigLIP)",
+    row_personal: "Personal taste",
+    row_frame: "Whole frame",
+    row_eyes: "Eyes",
+    row_highlights: "Blown highlights",
+    row_shadows: "Crushed shadows",
+    attributes: [
+        "Overall quality",
+        "Sharp",
+        "Good lighting",
+        "Well composed",
+        "Low noise",
+        "Colorful",
+    ],
+    explain_laion: "How beautiful the photo looks to an AI trained on many human ratings. 1–10; most photos get 4–6, above 6 is very good.",
+    explain_v25: "A newer AI for the same question, better with everyday photos. Same 1–10 scale.",
+    explain_personal: "The stars Cerno thinks you would give. It learns from your own stars and the photos you delete.",
+    explain_frame: "How sharp the sharpest parts are, compared with the other photos in this folder. 80 % means sharper than 80 % of them.",
+    explain_eyes: "Sharpness right at the eyes, if there is a face. For portraits this counts, not the background.",
+    explain_highlights: "Parts that are pure white, without any detail left. More than 1 % is worth a look.",
+    explain_shadows: "Parts that are pure black, without any detail left. Often intended; more than 5 % is marked.",
+    explain_attributes: "The AI compares the photo with two opposite descriptions. 50 % means undecided, near 100 % clearly the first one.",
+    explain_attribute: [
+        "good photo – bad photo",
+        "sharp – blurry",
+        "good light – bad light",
+        "well composed – badly composed",
+        "clean – noisy",
+        "colourful – dull",
+    ],
+    explain_models: "Where each AI runs: DirectML = graphics card, CPU = processor. ± is how far off your taste model typically is.",
+    note_no_embedding: "no CLIP embedding yet",
+    note_learning: |n, of| format!("learning – {n} of {of} photos"),
+    note_analysing: "analysing…",
+    note_no_face: "no face",
+    note_faces_too_small: |n| {
+        if n == 1 {
+            "1 face, too small".to_owned()
+        } else {
+            format!("{n} faces, too small")
+        }
+    },
+    note_needs_clip: "needs the CLIP model",
+    model_missing: "not installed",
+    model_downloading: |percent| format!("downloading {percent:.0} %"),
+    model_ready: "ready",
+    model_loading: "loading…",
+    model_failed: "failed",
+    model_faces: "Faces",
+    model_personal: "Personal",
+    taste_trained: |n, error| format!("{n} photos, ±{error:.1} ★"),
+    taste_photos: |n| format!("{n} photos"),
+    taste_untrained: "not trained yet",
+
+    help_title: "Help",
+    help_intro: "Cerno shows your photos instantly and helps you sort them out. Stars go straight into the photo file, so other programs see them too – the file date stays untouched. Everything else stays in Cerno's own database. Sharpness and beauty are rated automatically in the background; P shows all values with an explanation.",
+    help_drop: "Drop a folder or photo onto the window, or press Ctrl+O.",
+    help_close: "Esc, H or F1 closes this page",
+    help_sections: ["Browse", "Rate and sort out", "View", "More"],
+    help_browse: [
+        ("→, Space, PgDn", "Next photo (hold to run through)"),
+        ("←, Backspace, PgUp", "Previous photo"),
+        ("Home, End", "First / last photo"),
+        (
+            "Mouse wheel",
+            "Over the filmstrip: scroll through the photos",
+        ),
+        ("Ctrl+O", "Open a folder (or drop it onto the window)"),
+    ],
+    help_rate: [
+        ("1 – 5", "Give stars – written into the photo file"),
+        ("0", "Remove the stars"),
+        ("Del", "Delete: goes to the trash after 5 seconds"),
+        ("Esc", "Bring back photos that are waiting to be deleted"),
+        (
+            "C",
+            "Compare: pin this photo on the left, browse on the right",
+        ),
+        (
+            "A, D",
+            "Compare: keep left / keep right – the other one is deleted",
+        ),
+    ],
+    help_view: [
+        ("Z, Double-click", "Whole photo ↔ 100 %"),
+        ("+, −, Mouse wheel", "Zoom in / out"),
+        ("Drag", "Move the zoomed photo"),
+        ("F11, F", "Full screen"),
+        ("B", "Show or hide the top bar"),
+        ("P", "Details panel with all values"),
+        ("T", "Filmstrip"),
+        ("I", "Top bar, details and filmstrip together"),
+    ],
+    help_more: [
+        ("L", "Switch language"),
+        ("H, F1", "This help"),
+        ("Esc", "Step back: zoom, compare mode, full screen"),
+    ],
+};

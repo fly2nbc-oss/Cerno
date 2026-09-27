@@ -1,26 +1,44 @@
-"""Collapses the LAION improved-aesthetic-predictor MLP into a single linear layer.
+"""Collapses a linear-only aesthetic predictor head into a single linear layer.
 
-Source: https://github.com/christophschuhmann/improved-aesthetic-predictor (Apache-2.0),
-weights `sac+logos+ava1-l14-linearMSE.pth` (e.g. huggingface.co/camenduru/improved-aesthetic-predictor).
+Works for both heads Cerno uses:
 
-The MLP is Linear/Dropout only – no activation functions – so at inference time the whole
-network is exactly one affine map: score = w · x + b, with x the L2-normalised CLIP ViT-L/14
-image embedding. The result is written as 769 little-endian f32 (768 weights, then the bias)
-and embedded into Cerno with `include_bytes!`.
+* LAION improved aesthetic predictor (Apache-2.0),
+  https://github.com/christophschuhmann/improved-aesthetic-predictor,
+  `sac+logos+ava1-l14-linearMSE.pth` – CLIP ViT-L/14 embedding, 768 inputs.
+  The result is embedded in Cerno (`src/analysis/aesthetic_head.bin`).
+* Aesthetic Predictor V2.5 (AGPL-3.0), https://github.com/discus0434/aesthetic-predictor-v2-5,
+  `models/aesthetic_predictor_v2_5.pth` – SigLIP so400m embedding, 1152 inputs.
+  Because of the AGPL the result is NOT embedded; it is distributed as a separate model file
+  (`aesthetic-predictor-v2.5-head.bin`), and this script is its corresponding source.
 
-No torch needed: the .pth zip is unpickled with numpy.
+Both heads are Linear/Dropout stacks without activation functions, so at inference time they
+are exactly one affine map: score = w · x + b, with x the L2-normalised image embedding. The
+output is (inputs + 1) little-endian f32: the weights, then the bias.
 
-    python tools/make_aesthetic_head.py sac+logos+ava1-l14-linearMSE.pth src/analysis/aesthetic_head.bin
+No torch needed: the .pth zip is unpickled with numpy (float32, float16 and bfloat16 storages).
+
+    python tools/make_aesthetic_head.py <head.pth> <out.bin>
 """
 
 import collections
 import pickle
+import re
 import sys
 import zipfile
 
 import numpy as np
 
-LAYERS = (0, 2, 4, 6, 7)  # nn.Sequential indices of the Linear layers (the rest is Dropout)
+
+def bfloat16(raw):
+    halves = np.frombuffer(raw, dtype="<u2").astype(np.uint32) << 16
+    return halves.view(np.float32)
+
+
+STORAGES = {
+    "FloatStorage": lambda raw: np.frombuffer(raw, dtype="<f4"),
+    "HalfStorage": lambda raw: np.frombuffer(raw, dtype="<f2").astype(np.float32),
+    "BFloat16Storage": bfloat16,
+}
 
 
 def load_state_dict(path):
@@ -45,38 +63,56 @@ def load_state_dict(path):
 
         def persistent_load(self, pid):
             _, storage_type, key, _location, _numel = pid
-            if storage_type != "FloatStorage":
-                raise ValueError(f"unexpected storage {storage_type}")
-            return np.frombuffer(archive.read(f"{prefix}/data/{key}"), dtype="<f4")
+            if storage_type not in STORAGES:
+                raise ValueError(f"unsupported storage {storage_type}")
+            return STORAGES[storage_type](archive.read(f"{prefix}/data/{key}"))
 
     with archive.open(f"{prefix}/data.pkl") as f:
         return Unpickler(f).load()
 
 
-def main(src, dst):
-    state = load_state_dict(src)
-    weights = [state[f"layers.{i}.weight"].astype(np.float64) for i in LAYERS]
-    biases = [state[f"layers.{i}.bias"].astype(np.float64) for i in LAYERS]
-    print("layers:", [w.shape for w in weights])
+def linear_layers(state):
+    """(weight, bias) pairs in network order, found by their `<prefix>.<index>.weight` keys."""
+    indices = {}
+    for key in state:
+        match = re.fullmatch(r"(.*)\.(\d+)\.weight", key)
+        if match:
+            indices.setdefault(match.group(1), []).append(int(match.group(2)))
+    if len(indices) != 1:
+        raise ValueError(f"expected one layer stack, found {sorted(indices)}")
+    prefix, numbers = next(iter(indices.items()))
+    return [
+        (
+            state[f"{prefix}.{n}.weight"].astype(np.float64),
+            state[f"{prefix}.{n}.bias"].astype(np.float64),
+        )
+        for n in sorted(numbers)
+    ]
 
-    w, b = np.eye(768), np.zeros(768)
-    for wi, bi in zip(weights, biases):
+
+def main(src, dst):
+    layers = linear_layers(load_state_dict(src))
+    print("layers:", [w.shape for w, _ in layers])
+    inputs = layers[0][0].shape[1]
+
+    w, b = np.eye(inputs), np.zeros(inputs)
+    for wi, bi in layers:
         w, b = wi @ w, wi @ b + bi
 
     # Verify against a plain layer-by-layer forward pass.
     rng = np.random.default_rng(0)
     for _ in range(5):
-        x = rng.standard_normal(768)
+        x = rng.standard_normal(inputs)
         x /= np.linalg.norm(x)
         reference = x
-        for wi, bi in zip(weights, biases):
+        for wi, bi in layers:
             reference = wi @ reference + bi
         assert np.allclose(w @ x + b, reference, atol=1e-9), (w @ x + b, reference)
 
     head = np.concatenate([w.reshape(-1), b]).astype("<f4")
-    assert head.shape == (769,)
+    assert head.shape == (inputs + 1,)
     head.tofile(dst)
-    print(f"wrote {dst}: 768 weights + bias {b[0]:.4f}, |w| = {np.linalg.norm(w):.4f}")
+    print(f"wrote {dst}: {inputs} weights + bias {b[0]:.4f}, |w| = {np.linalg.norm(w):.4f}")
 
 
 if __name__ == "__main__":

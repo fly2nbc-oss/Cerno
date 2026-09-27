@@ -1,11 +1,14 @@
-//! Thumbnail strip centred on the current photo.
+//! Thumbnail strip centred on the current photo. The mouse wheel over it steps through the
+//! photos.
 
 use std::path::PathBuf;
 
 use eframe::egui::{
-    Align2, Color32, CursorIcon, FontId, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2,
+    Align2, Color32, CursorIcon, Event, FontId, MouseWheelUnit, Rect, Sense, Stroke, StrokeKind,
+    Ui, Vec2, pos2, vec2,
 };
 
+use crate::i18n;
 use crate::theme::tokens;
 use crate::thumbs::Thumbs;
 use crate::ui::stars;
@@ -20,9 +23,22 @@ pub struct CellInfo {
     pub rating: Option<u8>,
     /// Shown as a warning marker with this explanation.
     pub blurry: Option<String>,
+    /// The photo pinned on the left in compare mode.
+    pub pinned: bool,
 }
 
-/// Draws the strip; returns the index the user clicked.
+/// Touchpads scroll in points: this many make one photo.
+const POINTS_PER_STEP: f32 = 50.0;
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct StripOutput {
+    /// The photo the user clicked.
+    pub clicked: Option<usize>,
+    /// Photos to move by the mouse wheel (+ = forward).
+    pub step: isize,
+}
+
+/// Draws the strip and reads clicks and the wheel over it.
 pub fn draw(
     ui: &Ui,
     rect: Rect,
@@ -30,7 +46,7 @@ pub fn draw(
     current: usize,
     thumbs: &Thumbs,
     info: impl Fn(usize) -> CellInfo,
-) -> Option<usize> {
+) -> StripOutput {
     let painter = ui.painter().with_clip_rect(rect);
     painter.rect_filled(rect, 0.0, tokens::SURFACE);
     painter.hline(
@@ -85,6 +101,23 @@ pub fn draw(
                 Stroke::new(2.0, tokens::ACCENT),
                 StrokeKind::Outside,
             );
+        } else if cell_info.pinned {
+            // Compare mode: the left photo, marked in the neutral text colour with an "L".
+            painter.rect_stroke(
+                cell,
+                4.0,
+                Stroke::new(2.0, tokens::TEXT),
+                StrokeKind::Outside,
+            );
+            let badge = Rect::from_min_size(cell.min + vec2(4.0, 4.0), vec2(16.0, 16.0));
+            painter.rect_filled(badge, 3.0, tokens::TEXT);
+            painter.text(
+                badge.center(),
+                Align2::CENTER_CENTER,
+                i18n::t().compare_left_badge,
+                FontId::proportional(11.0),
+                tokens::BG,
+            );
         } else if response.hovered() {
             painter.rect_stroke(
                 cell,
@@ -115,5 +148,64 @@ pub fn draw(
             response.on_hover_text(reason);
         }
     }
-    clicked
+    StripOutput {
+        clicked,
+        step: wheel_steps(ui, rect),
+    }
+}
+
+/// Whole photos to move for the wheel events of this frame while the pointer is over the
+/// strip. Fractions (touchpads, high-resolution wheels) carry over to the next frame.
+fn wheel_steps(ui: &Ui, rect: Rect) -> isize {
+    if !ui.rect_contains_pointer(rect) {
+        return 0;
+    }
+    let notches: f32 = ui.input(|i| {
+        i.raw
+            .events
+            .iter()
+            .map(|event| match event {
+                Event::MouseWheel { unit, delta, .. } => notches(*unit, *delta),
+                _ => 0.0,
+            })
+            .sum()
+    });
+    if notches == 0.0 {
+        return 0;
+    }
+    let id = ui.id().with("filmstrip-wheel");
+    ui.data_mut(|d| accumulate(d.get_temp_mut_or_default::<f32>(id), notches))
+}
+
+/// Wheel down or swipe left = forward. egui's delta moves the *content*, hence the minus.
+fn notches(unit: MouseWheelUnit, delta: Vec2) -> f32 {
+    let amount = -(delta.x + delta.y);
+    match unit {
+        MouseWheelUnit::Line | MouseWheelUnit::Page => amount,
+        MouseWheelUnit::Point => amount / POINTS_PER_STEP,
+    }
+}
+
+fn accumulate(carry: &mut f32, notches: f32) -> isize {
+    *carry += notches;
+    let whole = carry.trunc();
+    *carry -= whole;
+    whole as isize
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn one_photo_per_notch() {
+        assert_eq!(notches(MouseWheelUnit::Line, vec2(0.0, -1.0)), 1.0);
+        assert_eq!(notches(MouseWheelUnit::Line, vec2(0.0, 2.0)), -2.0);
+        assert_eq!(notches(MouseWheelUnit::Point, vec2(-25.0, 0.0)), 0.5);
+        let mut carry = 0.0;
+        assert_eq!(accumulate(&mut carry, 1.0), 1);
+        assert_eq!(accumulate(&mut carry, 0.6), 0);
+        assert_eq!(accumulate(&mut carry, 0.6), 1);
+        assert_eq!(accumulate(&mut carry, -3.0), -2);
+    }
 }

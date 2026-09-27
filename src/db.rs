@@ -1,15 +1,17 @@
 //! Index of analysis results and thumbnails. Scores live here – never in the photos.
 //!
-//! Two tables: `files` maps a path (valid while size and mtime match) to a content
-//! fingerprint; `images` holds everything computed from the pixels, keyed by that fingerprint.
-//! A renamed or re-rated file therefore keeps its scores.
+//! `files` maps a path (valid while size and mtime match) to a content fingerprint; `images`
+//! holds everything computed from the pixels, keyed by that fingerprint, so a renamed or
+//! re-rated file keeps its scores. `feedback` remembers deleted photos as negative examples
+//! for the personal taste model.
 
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, UNIX_EPOCH};
 
 use anyhow::{Context as _, Result};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, Row, params};
 
 const SCHEMA: &str = "
     CREATE TABLE IF NOT EXISTS files (
@@ -25,7 +27,7 @@ const SCHEMA: &str = "
         sharpness_version INTEGER NOT NULL DEFAULT 0,
         aesthetic         REAL,
         aesthetic_model   TEXT,
-        -- CLIP image embedding (768 × f32 LE) – basis for a personal taste model later.
+        -- CLIP image embedding (768 × f32 LE): personal taste model, CLIP attributes.
         embedding         BLOB,
         thumbnail         BLOB
     );
@@ -33,7 +35,29 @@ const SCHEMA: &str = "
         key   TEXT PRIMARY KEY,
         value TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS feedback (
+        fingerprint INTEGER PRIMARY KEY,
+        label       REAL NOT NULL,
+        at          INTEGER NOT NULL
+    );
 ";
+
+/// Columns added after the first release; `migrate` adds whichever an index lacks.
+const ADDED_IMAGE_COLUMNS: &[(&str, &str)] = &[
+    ("aesthetic25", "REAL"),
+    ("aesthetic25_model", "TEXT"),
+    ("highlights", "REAL"),
+    ("shadows", "REAL"),
+    ("exposure_version", "INTEGER NOT NULL DEFAULT 0"),
+    ("eyes", "REAL"),
+    ("faces", "INTEGER"),
+    ("faces_version", "INTEGER NOT NULL DEFAULT 0"),
+];
+
+/// Everything `ImageRecord` needs, in the order `image_from_row` reads it.
+const IMAGE_COLUMNS: &str = "i.sharpness, i.sharpness_version, i.aesthetic, i.aesthetic_model,
+    i.aesthetic25, i.aesthetic25_model, i.highlights, i.shadows, i.exposure_version,
+    i.eyes, i.faces, i.faces_version, i.thumbnail IS NOT NULL, i.embedding";
 
 /// Cheap identity check for a file: if size or mtime changed, the fingerprint is recomputed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,8 +82,19 @@ impl FileStamp {
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct Scores {
+    /// Laplacian variance of the sharpest tiles.
     pub sharpness: Option<f32>,
+    /// LAION predictor on CLIP ViT-L/14, ~1–10.
     pub aesthetic: Option<f32>,
+    /// Aesthetic Predictor V2.5 on SigLIP, ~1–10.
+    pub aesthetic25: Option<f32>,
+    /// Share of clipped highlight / shadow pixels, 0..1.
+    pub highlights: Option<f32>,
+    pub shadows: Option<f32>,
+    /// Laplacian variance around the eyes of the largest face; `None` without a usable face.
+    pub eyes: Option<f32>,
+    /// Faces found; `None` until face detection ran.
+    pub faces: Option<u8>,
 }
 
 /// What was computed from an image's pixels.
@@ -68,7 +103,11 @@ pub struct ImageRecord {
     pub scores: Scores,
     pub sharpness_version: i64,
     pub aesthetic_model: Option<String>,
+    pub aesthetic25_model: Option<String>,
+    pub exposure_version: i64,
+    pub faces_version: i64,
     pub has_thumbnail: bool,
+    pub embedding: Option<Vec<f32>>,
 }
 
 /// What the index knows about one path.
@@ -78,6 +117,44 @@ pub struct FileRecord {
     /// Rating read from the file when it was indexed (kept current by the rating writer).
     pub rating: Option<u8>,
     pub image: ImageRecord,
+}
+
+fn opt_f32(row: &Row<'_>, index: usize) -> rusqlite::Result<Option<f32>> {
+    Ok(row.get::<_, Option<f64>>(index)?.map(|v| v as f32))
+}
+
+fn blob_to_f32(blob: &[u8]) -> Vec<f32> {
+    blob.as_chunks::<4>()
+        .0
+        .iter()
+        .map(|b| f32::from_le_bytes(*b))
+        .collect()
+}
+
+/// Reads `IMAGE_COLUMNS` starting at `at`. Columns are NULL when there is no images row.
+fn image_from_row(row: &Row<'_>, at: usize) -> rusqlite::Result<ImageRecord> {
+    Ok(ImageRecord {
+        scores: Scores {
+            sharpness: opt_f32(row, at)?,
+            aesthetic: opt_f32(row, at + 2)?,
+            aesthetic25: opt_f32(row, at + 4)?,
+            highlights: opt_f32(row, at + 6)?,
+            shadows: opt_f32(row, at + 7)?,
+            eyes: opt_f32(row, at + 9)?,
+            faces: row
+                .get::<_, Option<i64>>(at + 10)?
+                .map(|n| n.clamp(0, 255) as u8),
+        },
+        sharpness_version: row.get::<_, Option<i64>>(at + 1)?.unwrap_or(0),
+        aesthetic_model: row.get(at + 3)?,
+        aesthetic25_model: row.get(at + 5)?,
+        exposure_version: row.get::<_, Option<i64>>(at + 8)?.unwrap_or(0),
+        faces_version: row.get::<_, Option<i64>>(at + 11)?.unwrap_or(0),
+        has_thumbnail: row.get::<_, Option<bool>>(at + 12)?.unwrap_or(false),
+        embedding: row
+            .get::<_, Option<Vec<u8>>>(at + 13)?
+            .map(|b| blob_to_f32(&b)),
+    })
 }
 
 pub struct Db {
@@ -102,6 +179,7 @@ impl Db {
     fn init(conn: Connection) -> Result<Self> {
         conn.busy_timeout(Duration::from_secs(5))?;
         conn.execute_batch(SCHEMA)?;
+        migrate(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -114,12 +192,11 @@ impl Db {
     /// The record for `path`, if the file is unchanged since it was indexed.
     pub fn lookup(&self, path: &str, stamp: FileStamp) -> Result<Option<FileRecord>> {
         let conn = self.conn();
-        let mut stmt = conn.prepare_cached(
-            "SELECT f.fingerprint, f.rating, i.sharpness, i.sharpness_version, i.aesthetic,
-                    i.aesthetic_model, i.thumbnail IS NOT NULL
+        let mut stmt = conn.prepare_cached(&format!(
+            "SELECT f.fingerprint, f.rating, {IMAGE_COLUMNS}
              FROM files f LEFT JOIN images i ON i.fingerprint = f.fingerprint
-             WHERE f.path = ?1 AND f.size = ?2 AND f.mtime_ns = ?3",
-        )?;
+             WHERE f.path = ?1 AND f.size = ?2 AND f.mtime_ns = ?3"
+        ))?;
         let record = stmt
             .query_row(params![path, stamp.size as i64, stamp.mtime_ns], |row| {
                 Ok(FileRecord {
@@ -128,15 +205,7 @@ impl Db {
                         .get::<_, Option<i64>>(1)?
                         .and_then(|r| u8::try_from(r).ok())
                         .filter(|r| (1..=5).contains(r)),
-                    image: ImageRecord {
-                        scores: Scores {
-                            sharpness: row.get::<_, Option<f64>>(2)?.map(|v| v as f32),
-                            aesthetic: row.get::<_, Option<f64>>(4)?.map(|v| v as f32),
-                        },
-                        sharpness_version: row.get::<_, Option<i64>>(3)?.unwrap_or(0),
-                        aesthetic_model: row.get(5)?,
-                        has_thumbnail: row.get::<_, Option<bool>>(6)?.unwrap_or(false),
-                    },
+                    image: image_from_row(row, 2)?,
                 })
             })
             .optional()?;
@@ -146,22 +215,11 @@ impl Db {
     /// Everything known for a fingerprint, e.g. after the file was renamed.
     pub fn image(&self, fingerprint: u64) -> Result<ImageRecord> {
         let conn = self.conn();
-        let mut stmt = conn.prepare_cached(
-            "SELECT sharpness, sharpness_version, aesthetic, aesthetic_model, thumbnail IS NOT NULL
-             FROM images WHERE fingerprint = ?1",
-        )?;
+        let mut stmt = conn.prepare_cached(&format!(
+            "SELECT {IMAGE_COLUMNS} FROM images i WHERE i.fingerprint = ?1"
+        ))?;
         let record = stmt
-            .query_row(params![fingerprint as i64], |row| {
-                Ok(ImageRecord {
-                    scores: Scores {
-                        sharpness: row.get::<_, Option<f64>>(0)?.map(|v| v as f32),
-                        aesthetic: row.get::<_, Option<f64>>(2)?.map(|v| v as f32),
-                    },
-                    sharpness_version: row.get(1)?,
-                    aesthetic_model: row.get(3)?,
-                    has_thumbnail: row.get(4)?,
-                })
-            })
+            .query_row(params![fingerprint as i64], |row| image_from_row(row, 0))
             .optional()?;
         Ok(record.unwrap_or_default())
     }
@@ -204,6 +262,47 @@ impl Db {
         Ok(())
     }
 
+    /// A deleted photo becomes a negative example (label 0) for the taste model. Must run
+    /// before its `files` row goes – that row is the only link to the fingerprint.
+    pub fn record_deletion(&self, path: &str) -> Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        tx.execute(
+            "INSERT OR REPLACE INTO feedback (fingerprint, label, at)
+             SELECT fingerprint, 0.0, CAST(strftime('%s', 'now') AS INTEGER)
+             FROM files WHERE path = ?1",
+            [path],
+        )?;
+        tx.execute("DELETE FROM files WHERE path = ?1", [path])?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Training data for the taste model: (CLIP embedding, label 0–5). Explicit ratings win
+    /// over deletion feedback for the same pixels.
+    pub fn taste_examples(&self) -> Result<Vec<(Vec<f32>, f32)>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "SELECT i.embedding, CAST(MAX(f.rating) AS REAL)
+             FROM files f JOIN images i ON i.fingerprint = f.fingerprint
+             WHERE f.rating BETWEEN 1 AND 5 AND i.embedding IS NOT NULL
+             GROUP BY f.fingerprint
+             UNION ALL
+             SELECT i.embedding, fb.label
+             FROM feedback fb JOIN images i ON i.fingerprint = fb.fingerprint
+             WHERE i.embedding IS NOT NULL
+               AND fb.fingerprint NOT IN
+                   (SELECT fingerprint FROM files WHERE rating BETWEEN 1 AND 5)",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                blob_to_f32(&row.get::<_, Vec<u8>>(0)?),
+                row.get::<_, f64>(1)? as f32,
+            ))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
     pub fn put_sharpness(&self, fingerprint: u64, value: f32, version: i64) -> Result<()> {
         self.conn()
             .prepare_cached(
@@ -236,6 +335,65 @@ impl Db {
                 f64::from(value),
                 model,
                 embedding
+            ])?;
+        Ok(())
+    }
+
+    pub fn put_aesthetic25(&self, fingerprint: u64, value: f32, model: &str) -> Result<()> {
+        self.conn()
+            .prepare_cached(
+                "INSERT INTO images (fingerprint, aesthetic25, aesthetic25_model) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(fingerprint) DO UPDATE
+                 SET aesthetic25 = excluded.aesthetic25,
+                     aesthetic25_model = excluded.aesthetic25_model",
+            )?
+            .execute(params![fingerprint as i64, f64::from(value), model])?;
+        Ok(())
+    }
+
+    pub fn put_exposure(
+        &self,
+        fingerprint: u64,
+        highlights: f32,
+        shadows: f32,
+        version: i64,
+    ) -> Result<()> {
+        self.conn()
+            .prepare_cached(
+                "INSERT INTO images (fingerprint, highlights, shadows, exposure_version)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(fingerprint) DO UPDATE
+                 SET highlights = excluded.highlights, shadows = excluded.shadows,
+                     exposure_version = excluded.exposure_version",
+            )?
+            .execute(params![
+                fingerprint as i64,
+                f64::from(highlights),
+                f64::from(shadows),
+                version
+            ])?;
+        Ok(())
+    }
+
+    pub fn put_faces(
+        &self,
+        fingerprint: u64,
+        eyes: Option<f32>,
+        faces: u8,
+        version: i64,
+    ) -> Result<()> {
+        self.conn()
+            .prepare_cached(
+                "INSERT INTO images (fingerprint, eyes, faces, faces_version) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(fingerprint) DO UPDATE
+                 SET eyes = excluded.eyes, faces = excluded.faces,
+                     faces_version = excluded.faces_version",
+            )?
+            .execute(params![
+                fingerprint as i64,
+                eyes.map(f64::from),
+                faces,
+                version
             ])?;
         Ok(())
     }
@@ -283,6 +441,23 @@ impl Db {
     }
 }
 
+/// Adds columns introduced after an index was created.
+fn migrate(conn: &Connection) -> Result<()> {
+    let existing: HashSet<String> = conn
+        .prepare("PRAGMA table_info(images)")?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<rusqlite::Result<_>>()?;
+    for (name, declaration) in ADDED_IMAGE_COLUMNS {
+        if !existing.contains(*name) {
+            conn.execute_batch(&format!(
+                "ALTER TABLE images ADD COLUMN {name} {declaration}"
+            ))?;
+            log::info!("index: added column images.{name}");
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -323,14 +498,26 @@ mod tests {
         let db = Db::open_in_memory().unwrap();
         db.put_sharpness(7, 123.5, 1).unwrap();
         db.put_aesthetic(7, 6.25, "m1", &[0.5; 768]).unwrap();
+        db.put_aesthetic25(7, 5.5, "v25").unwrap();
+        db.put_exposure(7, 0.01, 0.2, 1).unwrap();
+        db.put_faces(7, Some(88.0), 2, 1).unwrap();
         db.put_thumbnail(7, &[1, 2, 3]).unwrap();
         // A renamed file pointing at the same pixels sees the same scores.
         db.put_file("renamed.jpg", STAMP, 7, None).unwrap();
         let image = db.lookup("renamed.jpg", STAMP).unwrap().unwrap().image;
         assert_eq!(image.scores.sharpness, Some(123.5));
         assert_eq!(image.scores.aesthetic, Some(6.25));
+        assert_eq!(image.scores.aesthetic25, Some(5.5));
+        assert_eq!(image.scores.highlights, Some(0.01));
+        assert_eq!(image.scores.shadows, Some(0.2));
+        assert_eq!(image.scores.eyes, Some(88.0));
+        assert_eq!(image.scores.faces, Some(2));
         assert_eq!(image.sharpness_version, 1);
+        assert_eq!(image.exposure_version, 1);
+        assert_eq!(image.faces_version, 1);
         assert_eq!(image.aesthetic_model.as_deref(), Some("m1"));
+        assert_eq!(image.aesthetic25_model.as_deref(), Some("v25"));
+        assert_eq!(image.embedding.as_deref(), Some(&[0.5f32; 768][..]));
         assert!(image.has_thumbnail);
         assert_eq!(db.thumbnail(7).unwrap(), Some(vec![1, 2, 3]));
         assert_eq!(db.image(7).unwrap(), image);
@@ -343,5 +530,46 @@ mod tests {
         assert_eq!(db.setting("sort"), None);
         db.put_setting("sort", "aesthetics");
         assert_eq!(db.setting("sort").as_deref(), Some("aesthetics"));
+    }
+
+    /// An index written by the first release (without the newer columns) must open and work.
+    #[test]
+    fn migrates_an_index_from_the_first_release() {
+        const FIRST_RELEASE: &str = "
+            CREATE TABLE files (path TEXT PRIMARY KEY, size INTEGER NOT NULL,
+                mtime_ns INTEGER NOT NULL, fingerprint INTEGER NOT NULL, rating INTEGER);
+            CREATE TABLE images (fingerprint INTEGER PRIMARY KEY, sharpness REAL,
+                sharpness_version INTEGER NOT NULL DEFAULT 0, aesthetic REAL,
+                aesthetic_model TEXT, embedding BLOB, thumbnail BLOB);
+            CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            INSERT INTO images (fingerprint, sharpness, sharpness_version) VALUES (9, 50.0, 1);
+            INSERT INTO files VALUES ('old.jpg', 1000, 42, 9, 4);";
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(FIRST_RELEASE).unwrap();
+        let db = Db::init(conn).unwrap();
+
+        let record = db.lookup("old.jpg", STAMP).unwrap().unwrap();
+        assert_eq!(record.rating, Some(4));
+        assert_eq!(record.image.scores.sharpness, Some(50.0));
+        assert_eq!(record.image.exposure_version, 0);
+        db.put_faces(9, None, 0, 1).unwrap();
+        assert_eq!(db.image(9).unwrap().scores.faces, Some(0));
+    }
+
+    #[test]
+    fn deletions_become_negative_examples() {
+        let db = Db::open_in_memory().unwrap();
+        for (fp, path, rating) in [(1, "liked.jpg", Some(5)), (2, "binned.jpg", None)] {
+            db.put_aesthetic(fp, 5.0, "m", &[fp as f32; 768]).unwrap();
+            db.put_file(path, STAMP, fp, rating).unwrap();
+        }
+        db.record_deletion("binned.jpg").unwrap();
+        assert!(db.lookup("binned.jpg", STAMP).unwrap().is_none());
+
+        let mut examples = db.taste_examples().unwrap();
+        examples.sort_by(|a, b| a.1.total_cmp(&b.1));
+        assert_eq!(examples.len(), 2);
+        assert_eq!((examples[0].0[0], examples[0].1), (2.0, 0.0));
+        assert_eq!((examples[1].0[0], examples[1].1), (1.0, 5.0));
     }
 }

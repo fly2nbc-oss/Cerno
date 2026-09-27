@@ -15,38 +15,55 @@ pub fn measure(rgb: &[u8], width: u32, height: u32) -> f32 {
     if w < 3 || h < 3 || rgb.len() < w * h * 3 {
         return 0.0;
     }
-    let luma: Vec<f32> = rgb
-        .as_chunks::<3>()
-        .0
-        .iter()
-        .map(|[r, g, b]| 0.299 * f32::from(*r) + 0.587 * f32::from(*g) + 0.114 * f32::from(*b))
-        .collect();
-
+    let luma = luma(rgb);
     let mut tiles = Vec::with_capacity(GRID * GRID);
     for ty in 0..GRID {
         for tx in 0..GRID {
-            let (x0, x1) = ((tx * w / GRID).max(1), ((tx + 1) * w / GRID).min(w - 1));
-            let (y0, y1) = ((ty * h / GRID).max(1), ((ty + 1) * h / GRID).min(h - 1));
-            let (mut sum, mut sum_sq, mut n) = (0.0f64, 0.0f64, 0usize);
-            for y in y0..y1 {
-                for x in x0..x1 {
-                    let i = y * w + x;
-                    let laplacian =
-                        luma[i - 1] + luma[i + 1] + luma[i - w] + luma[i + w] - 4.0 * luma[i];
-                    sum += f64::from(laplacian);
-                    sum_sq += f64::from(laplacian * laplacian);
-                    n += 1;
-                }
-            }
-            if n > 0 {
-                let mean = sum / n as f64;
-                tiles.push((sum_sq / n as f64 - mean * mean) as f32);
-            }
+            let region = [
+                tx * w / GRID,
+                ty * h / GRID,
+                (tx + 1) * w / GRID,
+                (ty + 1) * h / GRID,
+            ];
+            tiles.extend(region_variance(&luma, w, h, region));
         }
     }
     tiles.sort_by(|a, b| b.total_cmp(a));
     let top = &tiles[..TOP_TILES.min(tiles.len())];
     top.iter().sum::<f32>() / top.len().max(1) as f32
+}
+
+pub fn luma(rgb: &[u8]) -> Vec<f32> {
+    rgb.as_chunks::<3>()
+        .0
+        .iter()
+        .map(|[r, g, b]| 0.299 * f32::from(*r) + 0.587 * f32::from(*g) + 0.114 * f32::from(*b))
+        .collect()
+}
+
+/// Variance of the 4-neighbour Laplacian inside `[x0, y0, x1, y1)` (clamped to the image
+/// interior). `None` for an empty region.
+pub fn region_variance(luma: &[f32], w: usize, h: usize, region: [usize; 4]) -> Option<f32> {
+    if w < 3 || h < 3 {
+        return None;
+    }
+    let [x0, y0, x1, y1] = region;
+    let (x0, x1) = (x0.max(1), x1.min(w - 1));
+    let (y0, y1) = (y0.max(1), y1.min(h - 1));
+    let (mut sum, mut sum_sq, mut n) = (0.0f64, 0.0f64, 0usize);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let i = y * w + x;
+            let laplacian = luma[i - 1] + luma[i + 1] + luma[i - w] + luma[i + w] - 4.0 * luma[i];
+            sum += f64::from(laplacian);
+            sum_sq += f64::from(laplacian * laplacian);
+            n += 1;
+        }
+    }
+    (n > 0).then(|| {
+        let mean = sum / n as f64;
+        (sum_sq / n as f64 - mean * mean) as f32
+    })
 }
 
 /// Share of `sorted` values below `value`, 0.0..=1.0.

@@ -3,7 +3,9 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::analysis::{Known, sharpness};
+use crate::analysis::sharpness;
+use crate::db::Scores;
+use crate::i18n;
 
 /// Sharpness percentile (within the folder) below which a photo counts as probably blurry.
 pub const BLURRY_PERCENTILE: f32 = 0.2;
@@ -13,18 +15,30 @@ pub enum SortKey {
     Name,
     Rating,
     Aesthetics,
+    AestheticsV25,
+    Personal,
     Sharpness,
 }
 
 impl SortKey {
-    pub const ALL: [SortKey; 4] = [Self::Name, Self::Rating, Self::Aesthetics, Self::Sharpness];
+    pub const ALL: [SortKey; 6] = [
+        Self::Name,
+        Self::Rating,
+        Self::Aesthetics,
+        Self::AestheticsV25,
+        Self::Personal,
+        Self::Sharpness,
+    ];
 
     pub fn label(self) -> &'static str {
+        let t = i18n::t();
         match self {
-            Self::Name => "Name",
-            Self::Rating => "Rating",
-            Self::Aesthetics => "Aesthetics",
-            Self::Sharpness => "Sharpness",
+            Self::Name => t.sort_name,
+            Self::Rating => t.sort_rating,
+            Self::Aesthetics => t.sort_laion,
+            Self::AestheticsV25 => t.sort_v25,
+            Self::Personal => t.sort_personal,
+            Self::Sharpness => t.sort_sharpness,
         }
     }
 
@@ -33,6 +47,8 @@ impl SortKey {
             Self::Name => "name",
             Self::Rating => "rating",
             Self::Aesthetics => "aesthetics",
+            Self::AestheticsV25 => "aesthetics25",
+            Self::Personal => "personal",
             Self::Sharpness => "sharpness",
         }
     }
@@ -61,11 +77,12 @@ impl RatingFilter {
     ];
 
     pub fn label(self) -> String {
+        let t = i18n::t();
         match self {
-            Self::All => "All".to_owned(),
-            Self::AtLeast(5) => "5 stars".to_owned(),
-            Self::AtLeast(n) => format!("{n}+ stars"),
-            Self::Unrated => "Unrated".to_owned(),
+            Self::All => t.filter_all.to_owned(),
+            Self::AtLeast(5) => t.filter_five.to_owned(),
+            Self::AtLeast(n) => (t.filter_at_least)(n),
+            Self::Unrated => t.filter_unrated.to_owned(),
         }
     }
 
@@ -114,50 +131,104 @@ impl ViewOptions {
     }
 }
 
+/// What sorting and filtering look at for one photo.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct Facts {
+    pub rating: Option<u8>,
+    pub scores: Scores,
+    /// Personal taste model, 0..=5.
+    pub personal: Option<f32>,
+}
+
+/// Sorted values of the folder for percentiles: the whole frame among all photos, the eyes
+/// among the photos with a measurable face.
+#[derive(Debug, Default, Clone)]
+pub struct Percentiles {
+    pub sharpness: Vec<f32>,
+    pub eyes: Vec<f32>,
+}
+
+impl Percentiles {
+    pub fn from_scores<'a>(scores: impl Iterator<Item = &'a Scores>) -> Self {
+        let (mut sharpness, mut eyes) = (Vec::new(), Vec::new());
+        for s in scores {
+            sharpness.extend(s.sharpness);
+            eyes.extend(s.eyes);
+        }
+        sharpness.sort_by(f32::total_cmp);
+        eyes.sort_by(f32::total_cmp);
+        Self { sharpness, eyes }
+    }
+
+    /// Whole-frame sharpness percentile, 0..=1.
+    pub fn frame(&self, scores: &Scores) -> Option<f32> {
+        Some(sharpness::percentile(scores.sharpness?, &self.sharpness))
+    }
+
+    /// Eye sharpness percentile among photos with faces, 0..=1.
+    pub fn eyes(&self, scores: &Scores) -> Option<f32> {
+        Some(sharpness::percentile(scores.eyes?, &self.eyes))
+    }
+
+    /// What matters for "is it in focus": the eyes if a face was measured, otherwise the
+    /// whole frame. The flag says whether it came from the eyes.
+    pub fn subject(&self, scores: &Scores) -> Option<(f32, bool)> {
+        self.eyes(scores)
+            .map(|p| (p, true))
+            .or_else(|| self.frame(scores).map(|p| (p, false)))
+    }
+}
+
 /// Filters and sorts `all` (which is in name order). Session ratings win over those read from
 /// the files. Photos without scores yet are kept and sorted last, so nothing disappears just
 /// because the analysis hasn't reached it.
 pub fn build(
     all: &[PathBuf],
     options: ViewOptions,
-    known: impl Fn(&Path) -> Option<Known>,
+    facts: impl Fn(&Path) -> Option<Facts>,
     session_ratings: &HashMap<PathBuf, Option<u8>>,
 ) -> Vec<PathBuf> {
-    let entries: Vec<(&PathBuf, Option<Known>, Option<u8>)> = all
+    let entries: Vec<(&PathBuf, Option<Facts>, Option<u8>)> = all
         .iter()
         .map(|path| {
-            let known = known(path);
+            let facts = facts(path);
             let rating = match session_ratings.get(path) {
                 Some(stars) => *stars,
-                None => known.and_then(|k| k.rating),
+                None => facts.and_then(|f| f.rating),
             };
-            (path, known, rating)
+            (path, facts, rating)
         })
         .collect();
-    let mut sharpness_sorted: Vec<f32> = entries
-        .iter()
-        .filter_map(|(_, k, _)| k.and_then(|k| k.scores.sharpness))
-        .collect();
-    sharpness_sorted.sort_by(f32::total_cmp);
+    let percentiles = Percentiles::from_scores(
+        entries
+            .iter()
+            .filter_map(|(_, f, _)| f.as_ref().map(|f| &f.scores)),
+    );
+    let subject = |facts: &Option<Facts>| {
+        facts
+            .as_ref()
+            .and_then(|f| percentiles.subject(&f.scores))
+            .map(|(p, _)| p)
+    };
 
     let mut shown: Vec<_> = entries
-        .into_iter()
-        .filter(|(_, known, rating)| {
-            let blurry = options.hide_blurry
-                && known.and_then(|k| k.scores.sharpness).is_some_and(|s| {
-                    sharpness::percentile(s, &sharpness_sorted) < BLURRY_PERCENTILE
-                });
+        .iter()
+        .filter(|(_, facts, rating)| {
+            let blurry =
+                options.hide_blurry && subject(facts).is_some_and(|p| p < BLURRY_PERCENTILE);
             options.filter.accepts(*rating) && !blurry
         })
         .collect();
 
     // Stable sort, descending, missing values last; ties keep the name order.
-    let key = |(_, known, rating): &(&PathBuf, Option<Known>, Option<u8>)| -> Option<f32> {
+    let key = |(_, facts, rating): &&(&PathBuf, Option<Facts>, Option<u8>)| -> Option<f32> {
         match options.sort {
             SortKey::Name => None,
             SortKey::Rating => rating.map(f32::from),
-            SortKey::Aesthetics => known.and_then(|k| k.scores.aesthetic),
-            SortKey::Sharpness => known.and_then(|k| k.scores.sharpness),
+            SortKey::Aesthetics => facts.and_then(|f| f.scores.aesthetic),
+            SortKey::AestheticsV25 => facts.and_then(|f| f.scores.aesthetic25),
+            SortKey::Personal => facts.and_then(|f| f.personal),
+            SortKey::Sharpness => subject(facts),
         }
     };
     if options.sort != SortKey::Name {
@@ -168,31 +239,77 @@ pub fn build(
             (None, None) => std::cmp::Ordering::Equal,
         });
     }
-    shown.into_iter().map(|(path, _, _)| path.clone()).collect()
+    shown
+        .into_iter()
+        .map(|(path, _, _)| (*path).clone())
+        .collect()
+}
+
+/// `index`, or – if that is the pinned photo (compare mode) – its neighbour in `direction`,
+/// else the other one. `None` if nothing but the pinned photo is left.
+pub fn skip_pinned(
+    len: usize,
+    index: usize,
+    pinned: Option<usize>,
+    direction: isize,
+) -> Option<usize> {
+    if index >= len {
+        return None;
+    }
+    if Some(index) != pinned {
+        return Some(index);
+    }
+    let valid = |i: Option<usize>| i.filter(|&i| i < len);
+    valid(index.checked_add_signed(direction)).or(valid(index.checked_add_signed(-direction)))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::Scores;
 
-    fn known(rating: Option<u8>, aesthetic: Option<f32>, sharpness: Option<f32>) -> Known {
-        Known {
+    #[test]
+    fn navigation_steps_over_the_pinned_photo() {
+        assert_eq!(skip_pinned(5, 2, None, 1), Some(2));
+        assert_eq!(skip_pinned(5, 2, Some(2), 1), Some(3));
+        assert_eq!(skip_pinned(5, 2, Some(2), -1), Some(1));
+        // At the end there is only the way back.
+        assert_eq!(skip_pinned(5, 4, Some(4), 1), Some(3));
+        assert_eq!(skip_pinned(5, 0, Some(0), -1), Some(1));
+        assert_eq!(skip_pinned(1, 0, Some(0), 1), None);
+        assert_eq!(skip_pinned(0, 0, None, 1), None);
+    }
+
+    fn facts(
+        rating: Option<u8>,
+        aesthetic: Option<f32>,
+        sharpness: Option<f32>,
+        personal: Option<f32>,
+    ) -> Facts {
+        Facts {
             rating,
             scores: Scores {
                 sharpness,
                 aesthetic,
+                aesthetic25: aesthetic.map(|a| 10.0 - a),
+                ..Scores::default()
             },
+            personal,
         }
     }
 
-    fn fixture() -> (Vec<PathBuf>, HashMap<PathBuf, Known>) {
+    fn fixture() -> (Vec<PathBuf>, HashMap<PathBuf, Facts>) {
         let all: Vec<PathBuf> = ["a", "b", "c", "d", "e"].map(PathBuf::from).to_vec();
         let known = HashMap::from([
-            (all[0].clone(), known(Some(2), Some(4.0), Some(10.0))),
-            (all[1].clone(), known(None, Some(6.5), Some(500.0))),
-            (all[2].clone(), known(Some(5), Some(5.0), Some(300.0))),
-            (all[3].clone(), known(Some(3), None, Some(200.0))),
+            (
+                all[0].clone(),
+                facts(Some(2), Some(4.0), Some(10.0), Some(1.0)),
+            ),
+            (all[1].clone(), facts(None, Some(6.5), Some(500.0), None)),
+            (
+                all[2].clone(),
+                facts(Some(5), Some(5.0), Some(300.0), Some(4.5)),
+            ),
+            (all[3].clone(), facts(Some(3), None, Some(200.0), Some(3.0))),
             // "e" not analysed yet
         ]);
         (all, known)
@@ -215,6 +332,8 @@ mod tests {
         };
         assert_eq!(sorted(SortKey::Name), "abcde");
         assert_eq!(sorted(SortKey::Aesthetics), "bcade");
+        assert_eq!(sorted(SortKey::AestheticsV25), "acbde");
+        assert_eq!(sorted(SortKey::Personal), "cdabe");
         assert_eq!(sorted(SortKey::Sharpness), "bcdae");
         assert_eq!(sorted(SortKey::Rating), "cdabe");
     }
@@ -248,6 +367,25 @@ mod tests {
             names(&build(&all, options, lookup, &HashMap::new())),
             "bcde"
         );
+    }
+
+    #[test]
+    fn eyes_decide_for_portraits() {
+        let scores = |sharpness, eyes| Scores {
+            sharpness: Some(sharpness),
+            eyes,
+            ..Scores::default()
+        };
+        // A portrait with a soft frame (skin, bokeh) but the sharpest eyes of the series.
+        let all = [
+            scores(900.0, None),
+            scores(100.0, Some(80.0)),
+            scores(120.0, Some(20.0)),
+        ];
+        let p = Percentiles::from_scores(all.iter());
+        assert_eq!(p.subject(&all[1]), Some((1.0, true)));
+        assert_eq!(p.subject(&all[2]), Some((0.0, true)));
+        assert_eq!(p.subject(&all[0]), Some((1.0, false)));
     }
 
     #[test]

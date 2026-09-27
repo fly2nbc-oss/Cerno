@@ -4,8 +4,9 @@
 //! nor being decoded, relative to the *current* index at the moment it looks. Jumping around
 //! therefore re-prioritises automatically.
 //!
-//! Display images are decoded at monitor resolution. For zooming, the current image can also
-//! be loaded at full resolution, split into tiles that fit the GPU's texture limit.
+//! Display images are decoded at monitor resolution. For zooming, the current image (and the
+//! pinned left image in compare mode) can also be loaded at full resolution, split into tiles
+//! that fit the GPU's texture limit.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -37,7 +38,7 @@ pub struct LoadedImage {
     pub load_ms: u128,
 }
 
-/// The current image at 100 %, as tiles in image pixel coordinates.
+/// An image at 100 %, as tiles in image pixel coordinates.
 pub struct FullImage {
     pub size: [u32; 2],
     pub tiles: Vec<Tile>,
@@ -66,15 +67,40 @@ struct State {
     generation: u64,
     paths: Arc<Vec<PathBuf>>,
     current: usize,
+    /// Kept decoded however far away it is (the left photo in compare mode).
+    pinned: Option<usize>,
     /// Decode size in physical pixels (monitor size, clamped to the max texture side).
     target: [u32; 2],
     cache: HashMap<usize, Slot>,
     in_flight: HashSet<usize>,
-    /// Full resolution wanted for this index (set while zoomed in).
-    want_full: Option<usize>,
-    full: Option<(usize, Option<Arc<FullImage>>)>,
-    full_in_flight: bool,
+    /// Full resolution wanted for these indices (current and pinned, while zoomed in).
+    want_full: HashSet<usize>,
+    full: HashMap<usize, Option<Arc<FullImage>>>,
+    full_in_flight: HashSet<usize>,
+    /// Off until the first frame: before that only the current photo decodes, so the
+    /// neighbours don't compete with the GPU and window set-up.
+    prefetch: bool,
     shutdown: bool,
+}
+
+impl State {
+    fn keeps(&self, index: usize) -> bool {
+        index.abs_diff(self.current) <= KEEP_RADIUS || self.pinned == Some(index)
+    }
+
+    /// Only the photos on screen get full resolution.
+    fn on_screen(&self, index: usize) -> bool {
+        index == self.current || self.pinned == Some(index)
+    }
+
+    fn prune(&mut self) {
+        let (current, pinned) = (self.current, self.pinned);
+        let on_screen = |i: usize| i == current || pinned == Some(i);
+        self.cache
+            .retain(|&i, _| i.abs_diff(current) <= KEEP_RADIUS || pinned == Some(i));
+        self.full.retain(|&i, _| on_screen(i));
+        self.want_full.retain(|&i| on_screen(i));
+    }
 }
 
 struct Shared {
@@ -118,12 +144,14 @@ impl Loader {
                 generation: 0,
                 paths: Arc::new(Vec::new()),
                 current: 0,
+                pinned: None,
                 target,
                 cache: HashMap::new(),
                 in_flight: HashSet::new(),
-                want_full: None,
-                full: None,
-                full_in_flight: false,
+                want_full: HashSet::new(),
+                full: HashMap::new(),
+                full_in_flight: HashSet::new(),
+                prefetch: false,
                 shutdown: false,
             }),
             wake: Condvar::new(),
@@ -146,9 +174,9 @@ impl Loader {
         Self { shared, workers }
     }
 
-    /// Switches to a new list. Images that are in both lists stay cached (re-sorting or
-    /// filtering doesn't decode anything again).
-    pub fn set_library(&self, paths: Arc<Vec<PathBuf>>, current: usize) {
+    /// Switches to a new list. Images that are in both lists stay cached (re-sorting,
+    /// filtering or deleting doesn't decode anything again).
+    pub fn set_library(&self, paths: Arc<Vec<PathBuf>>, current: usize, pinned: Option<usize>) {
         let mut guard = self.shared.lock();
         let state = &mut *guard;
         let old_paths = std::mem::replace(&mut state.paths, paths);
@@ -158,23 +186,25 @@ impl Loader {
             .enumerate()
             .map(|(i, p)| (p, i))
             .collect();
-        for (old, slot) in std::mem::take(&mut state.cache) {
-            if let Some(&new) = old_paths.get(old).and_then(|p| positions.get(p))
-                && new.abs_diff(current) <= KEEP_RADIUS
-            {
-                state.cache.insert(new, slot);
-            }
-        }
-        state.full = state
-            .full
-            .take()
-            .and_then(|(old, full)| Some((*positions.get(old_paths.get(old)?)?, full)))
-            .filter(|(index, _)| *index == current);
+        let remap = |old: usize| old_paths.get(old).and_then(|p| positions.get(p)).copied();
+        let cache: Vec<_> = std::mem::take(&mut state.cache).into_iter().collect();
+        let full: Vec<_> = std::mem::take(&mut state.full).into_iter().collect();
+        state.cache = cache
+            .into_iter()
+            .filter_map(|(old, slot)| Some((remap(old)?, slot)))
+            .collect();
+        state.full = full
+            .into_iter()
+            .filter_map(|(old, image)| Some((remap(old)?, image)))
+            .collect();
+        drop(positions);
         state.generation += 1;
         state.current = current;
+        state.pinned = pinned;
         state.in_flight.clear();
-        state.want_full = None;
-        state.full_in_flight = false;
+        state.want_full.clear();
+        state.full_in_flight.clear();
+        state.prune();
         drop(guard);
         self.shared.wake.notify_all();
     }
@@ -185,22 +215,36 @@ impl Loader {
             return;
         }
         state.current = current;
-        state
-            .cache
-            .retain(|&i, _| i.abs_diff(current) <= KEEP_RADIUS);
-        if state.full.as_ref().is_some_and(|(i, _)| *i != current) {
-            state.full = None;
-        }
-        if state.want_full != Some(current) {
-            state.want_full = None;
-        }
+        state.prune();
         drop(state);
         self.shared.wake.notify_all();
     }
 
-    /// Applies to new decodes; images already cached keep their size until evicted.
+    pub fn set_pinned(&self, pinned: Option<usize>) {
+        let mut state = self.shared.lock();
+        if state.pinned == pinned {
+            return;
+        }
+        state.pinned = pinned;
+        state.prune();
+        drop(state);
+        self.shared.wake.notify_all();
+    }
+
+    /// Applies to new decodes. A smaller target keeps the cache; a larger one (screen bigger
+    /// than the start-up guess) drops images that would now look soft, so they decode again.
     pub fn set_target(&self, target: [u32; 2]) {
-        self.shared.lock().target = target;
+        let mut state = self.shared.lock();
+        let grew = target[0] > state.target[0] || target[1] > state.target[1];
+        state.target = target;
+        if grew {
+            state.cache.retain(|_, slot| match slot {
+                Slot::Ready(image) => !too_small(image, target),
+                Slot::Failed(_) => true,
+            });
+            drop(state);
+            self.shared.wake.notify_all();
+        }
     }
 
     pub fn get(&self, index: usize) -> Lookup {
@@ -211,21 +255,27 @@ impl Loader {
         }
     }
 
-    /// Asks for the full-resolution version of `index` (only kept for the current image).
+    /// Asks for the full-resolution version of `index` (kept only while it is on screen).
     pub fn request_full(&self, index: usize) {
         let mut state = self.shared.lock();
-        if state.want_full != Some(index) {
-            state.want_full = Some(index);
+        if state.on_screen(index) && state.want_full.insert(index) {
+            drop(state);
+            self.shared.wake.notify_all();
+        }
+    }
+
+    /// Called once the window is up: decode the neighbours too.
+    pub fn start_prefetch(&self) {
+        let mut state = self.shared.lock();
+        if !state.prefetch {
+            state.prefetch = true;
             drop(state);
             self.shared.wake.notify_all();
         }
     }
 
     pub fn full(&self, index: usize) -> Option<Arc<FullImage>> {
-        match &self.shared.lock().full {
-            Some((i, Some(full))) if *i == index => Some(Arc::clone(full)),
-            _ => None,
-        }
+        self.shared.lock().full.get(&index).cloned().flatten()
     }
 }
 
@@ -265,6 +315,15 @@ fn worker(shared: &Shared) {
                     continue;
                 }
                 state.in_flight.remove(&job.index);
+                // Decoded for a smaller screen than we now know we have: decode again.
+                if result
+                    .as_ref()
+                    .is_ok_and(|image| too_small(image, state.target))
+                {
+                    drop(state);
+                    shared.wake.notify_all();
+                    continue;
+                }
                 let slot = match result {
                     Ok(image) => Slot::Ready(Arc::new(image)),
                     Err(err) => {
@@ -272,7 +331,7 @@ fn worker(shared: &Shared) {
                         Slot::Failed(format!("{err:#}"))
                     }
                 };
-                if job.index.abs_diff(state.current) <= KEEP_RADIUS {
+                if state.keeps(job.index) {
                     state.cache.insert(job.index, slot);
                 }
             }
@@ -282,13 +341,13 @@ fn worker(shared: &Shared) {
                 if state.generation != job.generation {
                     continue;
                 }
-                state.full_in_flight = false;
-                if job.index == state.current {
+                state.full_in_flight.remove(&job.index);
+                if state.on_screen(job.index) {
                     let full = result
                         .map_err(|err| log::warn!("full size {}: {err:#}", job.path.display()))
                         .ok()
                         .map(Arc::new);
-                    state.full = Some((job.index, full));
+                    state.full.insert(job.index, full);
                 }
             }
         }
@@ -296,38 +355,65 @@ fn worker(shared: &Shared) {
     }
 }
 
-fn next_job(state: &mut State) -> Option<Job> {
-    let len = state.paths.len();
-    let job = |state: &State, kind, index: usize| Job {
+fn job(state: &State, kind: Kind, index: usize) -> Job {
+    Job {
         kind,
         generation: state.generation,
         index,
         path: state.paths[index].clone(),
         target: state.target,
-    };
-    for (n, offset) in PREFETCH_ORDER.into_iter().enumerate() {
-        // Right after the current image itself: its full-resolution version, if zoomed.
-        if n == 1
-            && state.want_full == Some(state.current)
-            && !state.full_in_flight
-            && state.full.as_ref().is_none_or(|(i, _)| *i != state.current)
-        {
-            state.full_in_flight = true;
-            return Some(job(state, Kind::Full, state.current));
-        }
-        let Some(index) = state
-            .current
-            .checked_add_signed(offset)
-            .filter(|&i| i < len)
-        else {
-            continue;
-        };
-        if state.cache.contains_key(&index) || !state.in_flight.insert(index) {
-            continue;
-        }
-        return Some(job(state, Kind::Display, index));
     }
-    None
+}
+
+fn display_job(state: &mut State, index: usize) -> Option<Job> {
+    if index >= state.paths.len()
+        || state.cache.contains_key(&index)
+        || !state.in_flight.insert(index)
+    {
+        return None;
+    }
+    Some(job(state, Kind::Display, index))
+}
+
+fn full_job(state: &mut State, index: usize) -> Option<Job> {
+    if !state.want_full.contains(&index)
+        || state.full.contains_key(&index)
+        || !state.full_in_flight.insert(index)
+    {
+        return None;
+    }
+    Some(job(state, Kind::Full, index))
+}
+
+/// Current photo, its full resolution, the pinned photo and its full resolution, then the
+/// neighbours.
+fn next_job(state: &mut State) -> Option<Job> {
+    let current = state.current;
+    if let Some(job) = display_job(state, current) {
+        return Some(job);
+    }
+    if !state.prefetch {
+        return None;
+    }
+    if let Some(job) = full_job(state, current) {
+        return Some(job);
+    }
+    if let Some(pinned) = state.pinned
+        && let Some(job) = display_job(state, pinned).or_else(|| full_job(state, pinned))
+    {
+        return Some(job);
+    }
+    PREFETCH_ORDER.into_iter().skip(1).find_map(|offset| {
+        let index = current.checked_add_signed(offset)?;
+        display_job(state, index)
+    })
+}
+
+/// Whether `image` has fewer pixels than a decode for `target` would produce.
+fn too_small(image: &LoadedImage, target: [u32; 2]) -> bool {
+    let wanted = decode::fit_within(image.original_size, target);
+    let have = image.texture.size();
+    (have[0] as u32) < wanted[0] || (have[1] as u32) < wanted[1]
 }
 
 fn load_display(shared: &Shared, job: &Job) -> Result<LoadedImage> {
@@ -403,4 +489,62 @@ fn load_full(ctx: &egui::Context, job: &Job) -> Result<FullImage> {
         size: [width, height],
         tiles,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn state(len: usize, current: usize, pinned: Option<usize>) -> State {
+        State {
+            generation: 0,
+            paths: Arc::new(
+                (0..len)
+                    .map(|i| PathBuf::from(format!("{i}.jpg")))
+                    .collect(),
+            ),
+            current,
+            pinned,
+            target: [100, 100],
+            cache: HashMap::new(),
+            in_flight: HashSet::new(),
+            want_full: HashSet::new(),
+            full: HashMap::new(),
+            full_in_flight: HashSet::new(),
+            prefetch: true,
+            shutdown: false,
+        }
+    }
+
+    fn order(state: &mut State) -> Vec<(usize, bool)> {
+        std::iter::from_fn(|| next_job(state).map(|j| (j.index, j.kind == Kind::Full))).collect()
+    }
+
+    #[test]
+    fn current_first_then_pinned_then_neighbours() {
+        let mut s = state(20, 10, Some(2));
+        s.want_full.extend([10, 2]);
+        assert_eq!(
+            order(&mut s),
+            [
+                (10, false),
+                (10, true),
+                (2, false),
+                (2, true),
+                (11, false),
+                (9, false),
+                (12, false),
+                (13, false),
+                (8, false),
+                (7, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn only_the_current_photo_before_the_first_frame() {
+        let mut s = state(20, 10, None);
+        s.prefetch = false;
+        assert_eq!(order(&mut s), [(10, false)]);
+    }
 }

@@ -1,0 +1,208 @@
+use super::{DateStyle, Texts};
+
+pub static TEXTS: Texts = Texts {
+    date_style: DateStyle::DayMonthYear('/'),
+    compass: ["N", "S", "E", "O"],
+
+    open: "Apri…",
+    open_tooltip: "Apri cartella (Ctrl+O)",
+    photos: |n| format!("{n} foto"),
+    photos_shown: |shown, total| format!("{shown} di {total} foto"),
+    sort: |key| format!("Ordina: {key}"),
+    show: |filter| format!("Mostra: {filter}"),
+    hide_blurry: "Nascondi sfocate",
+    hide_blurry_tooltip: "Nasconde il 20 % delle foto più sfocate di questa cartella",
+    refresh_order: "Aggiorna ordine",
+    refresh_order_tooltip: "Dopo l'ordinamento e il filtro sono arrivati nuovi punteggi",
+    analyzing_progress: |done, total| format!("Analisi {done} / {total}"),
+    analyzed: |total| format!("{total} analizzate"),
+    enable_aesthetics: "Attiva estetica…",
+    enable_aesthetics_tooltip: "Scarica una sola volta il modello di immagini CLIP (1.2 GB)",
+    downloading_model: |percent| format!("Download del modello {percent:.0} %"),
+    aesthetics_ready: "Estetica: pronta",
+    aesthetics_loading: "Estetica: caricamento modello…",
+    aesthetics_backend: |backend| format!("Estetica: {backend}"),
+    aesthetics_backend_tooltip: "Dove viene eseguito il modello estetico (DirectML = scheda grafica)",
+    aesthetics_failed: "Estetica: errore",
+
+    sort_name: "Nome",
+    sort_rating: "Stelle",
+    sort_laion: "Estetica (LAION)",
+    sort_v25: "Estetica (V2.5)",
+    sort_personal: "Gusto personale",
+    sort_sharpness: "Nitidezza",
+    filter_all: "Tutte",
+    filter_five: "5 stelle",
+    filter_at_least: |n| format!("{n}+ stelle"),
+    filter_unrated: "Senza stelle",
+
+    meter_aesthetics: "Estetica",
+    meter_aesthetics_tooltip: "LAION / V2.5 / il tuo gusto personale (stelle)\nScala 1–10, la maggior parte delle foto 4–6. – = non ancora disponibile",
+    meter_sharpness: "Nitidezza",
+    meter_eyes: "Occhi",
+    probably_blurry: "probabilmente sfocata",
+    analyzing: "Analisi in corso…",
+    saving: "Salvataggio…",
+    star_tooltip: |n| format!("{n} ★ – tasto {n}"),
+    zoom: |percent| format!("Zoom {percent:.0} %"),
+    digital_zoom: |ratio| format!("Zoom digitale {ratio:.1}×"),
+    map_tooltip: |place| format!("{place}\nClicca per aprire in Google Maps"),
+    button_toolbar: "Barra superiore (B)",
+    button_details: "Pannello dettagli (P)",
+    button_filmstrip: "Striscia di miniature (T)",
+    button_help: "Aiuto (H)",
+    button_language: |name| format!("Lingua: {name} (L)"),
+
+    loading: "Caricamento…",
+    cannot_show: "Impossibile mostrare questa immagine",
+    no_match: "Nessuna foto corrisponde al filtro",
+    drop_to_open: "Rilascia per aprire",
+    compare_left: "Sinistra",
+    compare_right: "Destra",
+    compare_left_badge: "S",
+    keeps_this: |key| format!("{key} tiene questa"),
+    compare_needs_two: "Per confrontare servono almeno due foto",
+    deleting: |n| format!("Eliminazione di {n} foto   ·   Esc per annullare"),
+    delete_failed: |n, name, err| format!("Impossibile eliminare {n} foto – {name}: {err}"),
+    blurry_tooltip: |eyes, percent| {
+        let what = if eyes {
+            "occhi più nitidi"
+        } else {
+            "foto più nitida"
+        };
+        format!("Probabilmente sfocata: {what} solo del {percent:.0} % di questa cartella")
+    },
+
+    db_unavailable: |err| format!("I punteggi non vengono salvati in questa sessione: {err}"),
+    cannot_open: |path, err| format!("Impossibile aprire {path}: {err}"),
+    no_photos_in: |dir| format!("Nessun file JPEG o HEIC in {dir}"),
+    rating_not_saved: |err| format!("Stelle non salvate – {err}"),
+    open_folder: "Apri cartella",
+    download_title: "Attiva la valutazione estetica",
+    download_text: |gb| {
+        format!(
+            "Per valutare l'estetica, Cerno ha bisogno del modello di immagini CLIP ViT-L/14.\n\n\
+             Vuoi scaricarlo ora da Hugging Face (Xenova/clip-vit-large-patch14, {gb:.1} GB)? \
+             Viene salvato nella cartella dati di Cerno e scaricato una sola volta."
+        )
+    },
+
+    section_aesthetics: "Estetica",
+    section_sharpness: "Nitidezza (nella cartella)",
+    section_exposure: "Esposizione",
+    section_attributes: "Caratteristiche CLIP",
+    section_models: "Modelli",
+    row_laion: "LAION (CLIP)",
+    row_v25: "V2.5 (SigLIP)",
+    row_personal: "Gusto personale",
+    row_frame: "Immagine intera",
+    row_eyes: "Occhi",
+    row_highlights: "Luci bruciate",
+    row_shadows: "Ombre chiuse",
+    attributes: [
+        "Qualità generale",
+        "Nitida",
+        "Buona luce",
+        "Ben composta",
+        "Poco rumore",
+        "Colorata",
+    ],
+    explain_laion: "Quanto è bella la foto per un'IA addestrata su molte valutazioni di persone. 1–10; la maggior parte delle foto ottiene 4–6, sopra 6 è molto buona.",
+    explain_v25: "Un'IA più recente per la stessa domanda, migliore con le foto di tutti i giorni. Stessa scala 1–10.",
+    explain_personal: "Le stelle che secondo Cerno daresti tu. Impara dalle tue stelle e dalle foto che elimini.",
+    explain_frame: "Quanto sono nitide le parti più nitide, rispetto alle altre foto di questa cartella. 80 % significa: più nitida dell'80 % delle altre.",
+    explain_eyes: "Nitidezza proprio sugli occhi, se c'è un volto. Nei ritratti conta questa, non lo sfondo.",
+    explain_highlights: "Parti completamente bianche, senza più alcun dettaglio. Oltre l'1 % merita un'occhiata.",
+    explain_shadows: "Parti completamente nere, senza più alcun dettaglio. Spesso è voluto; oltre il 5 % viene segnalato.",
+    explain_attributes: "L'IA confronta la foto con due descrizioni opposte. 50 % significa indecisa, vicino al 100 % chiaramente la prima.",
+    explain_attribute: [
+        "bella foto – brutta foto",
+        "nitida – sfocata",
+        "buona luce – cattiva luce",
+        "ben composta – mal composta",
+        "pulita – con rumore",
+        "colorata – spenta",
+    ],
+    explain_models: "Dove viene eseguita ogni IA: DirectML = scheda grafica, CPU = processore. ± indica di quanto sbaglia di solito il tuo modello del gusto.",
+    note_no_embedding: "ancora nessun dato CLIP",
+    note_learning: |n, of| format!("in apprendimento – {n} di {of} foto"),
+    note_analysing: "analisi in corso…",
+    note_no_face: "nessun volto",
+    note_faces_too_small: |n| {
+        if n == 1 {
+            "1 volto, troppo piccolo".to_owned()
+        } else {
+            format!("{n} volti, troppo piccoli")
+        }
+    },
+    note_needs_clip: "serve il modello CLIP",
+    model_missing: "non installato",
+    model_downloading: |percent| format!("download {percent:.0} %"),
+    model_ready: "pronto",
+    model_loading: "caricamento…",
+    model_failed: "errore",
+    model_faces: "Volti",
+    model_personal: "Gusto",
+    taste_trained: |n, error| format!("{n} foto, ±{error:.1} ★"),
+    taste_photos: |n| format!("{n} foto"),
+    taste_untrained: "non ancora addestrato",
+
+    help_title: "Aiuto",
+    help_intro: "Cerno mostra subito le tue foto e ti aiuta a fare una selezione. Le stelle vengono scritte direttamente nel file della foto, così le vedono anche gli altri programmi – la data del file non cambia. Tutto il resto resta nel database di Cerno. Nitidezza e bellezza vengono valutate automaticamente in background; P mostra tutti i valori con una spiegazione.",
+    help_drop: "Trascina una cartella o una foto sulla finestra, oppure premi Ctrl+O.",
+    help_close: "Esc, H o F1 chiude questa pagina",
+    help_sections: [
+        "Sfogliare",
+        "Valutare e selezionare",
+        "Visualizzare",
+        "Altro",
+    ],
+    help_browse: [
+        (
+            "→, Spazio, Pag giù",
+            "Foto successiva (tieni premuto per scorrere)",
+        ),
+        ("←, Backspace, Pag su", "Foto precedente"),
+        ("Home, Fine", "Prima / ultima foto"),
+        (
+            "Rotellina",
+            "Sopra la striscia di miniature: scorri le foto",
+        ),
+        ("Ctrl+O", "Apri una cartella (o trascinala sulla finestra)"),
+    ],
+    help_rate: [
+        (
+            "1 – 5",
+            "Assegna le stelle – vengono scritte nel file della foto",
+        ),
+        ("0", "Rimuovi le stelle"),
+        ("Canc", "Elimina: va nel cestino dopo 5 secondi"),
+        ("Esc", "Recupera le foto in attesa di essere eliminate"),
+        (
+            "C",
+            "Confronta: fissa questa foto a sinistra, sfoglia a destra",
+        ),
+        (
+            "A, D",
+            "Confronta: tieni la sinistra / la destra – l'altra viene eliminata",
+        ),
+    ],
+    help_view: [
+        ("Z, Doppio clic", "Foto intera ↔ 100 %"),
+        ("+, −, Rotellina", "Ingrandisci / riduci"),
+        ("Trascina", "Sposta la foto ingrandita"),
+        ("F11, F", "Schermo intero"),
+        ("B", "Mostra o nascondi la barra superiore"),
+        ("P", "Pannello dettagli con tutti i valori"),
+        ("T", "Striscia di miniature"),
+        (
+            "I",
+            "Barra superiore, dettagli e striscia di miniature insieme",
+        ),
+    ],
+    help_more: [
+        ("L", "Cambia lingua"),
+        ("H, F1", "Questa guida"),
+        ("Esc", "Torna indietro: zoom, confronto, schermo intero"),
+    ],
+};

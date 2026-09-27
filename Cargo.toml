@@ -1,6 +1,6 @@
 [package]
 name = "cerno"
-version = "0.1.0"
+version = "0.7.0"
 edition = "2024"
 description = "Fast photo viewer and culling tool: instant switching, 1-5 star ratings, automatic sharpness and aesthetics scoring"
 license = "Apache-2.0"
@@ -32,6 +32,9 @@ memchr = "2.8.3"
 ort = { version = "2.0.0-rc.13", default-features = false, features = ["std", "download-binaries", "copy-dylibs", "tls-rustls", "api-27"] }
 rfd = "0.17.2"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
+# UI language default: the system locale (Windows, Linux, macOS).
+sys-locale = "0.3"
+trash = "5.2.9"
 ureq = "3.4.2"
 zune-core = "0.5.3"
 zune-jpeg = "0.5.15"
