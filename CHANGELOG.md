@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ---
 
+## [0.8.1] – 2026-09-27
+
+### Changed
+
+- Aesthetics scores (LAION, V2.5) are shown on the star scale 0–5 (2 → 0, 8 → 5), so they compare directly with your stars and the personal taste value. Stored scores and sort order are unchanged.
+
 ## [0.8.0] – 2026-09-27
 
 ### Added

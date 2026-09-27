@@ -20,6 +20,12 @@ use ort::value::Tensor;
 
 use crate::decode;
 
+/// A score on the star scale, so it reads like the user's own stars: real photos score
+/// between 2 and 8, that range becomes 0–5 (the bars always used it).
+pub fn as_stars(score: f32) -> f32 {
+    ((score - 2.0) * 5.0 / 6.0).clamp(0.0, 5.0)
+}
+
 /// CLIP vision model, file name in the models directory.
 pub const MODEL_FILE: &str = "clip-vit-large-patch14-vision.onnx";
 pub const MODEL_URL: &str =
@@ -280,6 +286,15 @@ fn linear_head(head: &[f32], embedding: &[f32]) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scores_map_onto_the_star_scale() {
+        assert_eq!(as_stars(2.0), 0.0);
+        assert_eq!(as_stars(5.0), 2.5);
+        assert_eq!(as_stars(8.0), 5.0);
+        assert_eq!(as_stars(1.0), 0.0);
+        assert_eq!(as_stars(9.5), 5.0);
+    }
 
     #[test]
     fn head_weights_are_embedded() {

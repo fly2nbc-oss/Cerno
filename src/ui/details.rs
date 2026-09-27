@@ -3,7 +3,7 @@
 
 use eframe::egui::{Align2, FontId, Painter, Rect, ScrollArea, Stroke, Ui, UiBuilder, pos2, vec2};
 
-use crate::analysis::{ModelState, Status, exposure};
+use crate::analysis::{ModelState, Status, aesthetic, exposure};
 use crate::db::Scores;
 use crate::i18n;
 use crate::theme::tokens;
@@ -131,7 +131,7 @@ fn content(painter: &Painter, rect: Rect, d: &Details<'_>) -> f32 {
         &mut y,
         t.row_laion,
         match scores.aesthetic {
-            Some(v) => Value::score(format!("{v:.1}"), (v - 2.0) / 6.0),
+            Some(v) => stars_value(aesthetic::as_stars(v)),
             None => Value::note(model_note(&status.aesthetics)),
         },
         t.explain_laion,
@@ -140,7 +140,7 @@ fn content(painter: &Painter, rect: Rect, d: &Details<'_>) -> f32 {
         &mut y,
         t.row_v25,
         match scores.aesthetic25 {
-            Some(v) => Value::score(format!("{v:.1}"), (v - 2.0) / 6.0),
+            Some(v) => stars_value(aesthetic::as_stars(v)),
             None => Value::note(model_note(&status.v25)),
         },
         t.explain_v25,
@@ -260,6 +260,11 @@ fn content(painter: &Painter, rect: Rect, d: &Details<'_>) -> f32 {
         y = explanation(painter, rect, y + 4.0, t.explain_models);
     }
     y + PAD
+}
+
+/// `3.4 ★` with its bar.
+fn stars_value(stars: f32) -> Value {
+    Value::score(format!("{stars:.1} ★"), stars / 5.0)
 }
 
 fn model_note(state: &ModelState) -> String {

@@ -7,7 +7,7 @@ use eframe::egui::{
 };
 use std::sync::Arc;
 
-use crate::analysis::{ModelState, Status};
+use crate::analysis::{ModelState, Status, aesthetic};
 use crate::i18n::{self, Lang};
 use crate::loader::LoadedImage;
 use crate::metadata::{self, Rating};
@@ -394,7 +394,7 @@ fn meters(bar: &InfoBar<'_>) -> Vec<Meter> {
     let mut meters = Vec::new();
     let [laion, v25] = bar.aesthetics;
     if laion.is_some() || v25.is_some() || bar.personal.is_some() {
-        // L 6.1 / V 6.5 / ★ 2.4 – the letters say which model, "–" means not known yet.
+        // L 3.4 / V 3.8 / ★ 2.4, all on the star scale – the letters say which model, "–" means not known yet.
         let score =
             |v: Option<f32>| Piece::Value(v.map_or_else(|| "–".to_owned(), |v| format!("{v:.1}")));
         let slash = || Piece::Separator(" / ".to_owned());
@@ -402,10 +402,10 @@ fn meters(bar: &InfoBar<'_>) -> Vec<Meter> {
             label: t.meter_aesthetics.to_owned(),
             value: vec![
                 Piece::Prefix("L ".to_owned()),
-                score(laion),
+                score(laion.map(aesthetic::as_stars)),
                 slash(),
                 Piece::Prefix("V ".to_owned()),
-                score(v25),
+                score(v25.map(aesthetic::as_stars)),
                 slash(),
                 Piece::Prefix("★ ".to_owned()),
                 score(bar.personal),
