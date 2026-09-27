@@ -1,5 +1,6 @@
 //! Toolbar (top), info bar (bottom), notices and the drop hint.
 
+use eframe::egui::text::{LayoutJob, TextFormat};
 use eframe::egui::{
     Align, Align2, Color32, ComboBox, CursorIcon, FontId, Galley, Layout, Painter, Pos2, Rect,
     RichText, Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2, pos2, vec2,
@@ -9,7 +10,7 @@ use std::sync::Arc;
 use crate::analysis::{ModelState, Status};
 use crate::i18n::{self, Lang};
 use crate::loader::LoadedImage;
-use crate::metadata;
+use crate::metadata::{self, Rating};
 use crate::theme::tokens;
 use crate::ui::icons::{self, Panel};
 use crate::ui::stars;
@@ -162,7 +163,7 @@ pub struct InfoBar<'a> {
     /// 1-based position and count.
     pub position: (usize, usize),
     pub image: Option<&'a LoadedImage>,
-    pub rating: Option<u8>,
+    pub rating: Rating,
     /// Some analysis result is known for this photo.
     pub analysed: bool,
     /// LAION and V2.5 scores, 1..10.
@@ -180,10 +181,9 @@ pub struct InfoBar<'a> {
 #[derive(Default)]
 pub struct InfoBarOutput {
     /// The star the user clicked (`Some(None)` clears the rating).
-    pub rating: Option<Option<u8>>,
+    pub rating: Option<Rating>,
     pub toggle: Option<Panel>,
     pub help: bool,
-    pub language: bool,
     /// Google Maps link of the photo's position.
     pub open_map: Option<String>,
 }
@@ -210,7 +210,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     } else {
         vec![Meter {
             label: String::new(),
-            value: t.analyzing.to_owned(),
+            value: vec![Piece::Value(t.analyzing.to_owned())],
             fraction: None,
             color: tokens::MUTED,
             tooltip: None,
@@ -323,7 +323,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
                 Sense::click(),
             )
             .on_hover_cursor(CursorIcon::PointingHand);
-        let filled = bar.rating.is_some_and(|r| n <= r);
+        let filled = bar.rating.stars().is_some_and(|r| n <= r);
         let color = if filled || response.hovered() {
             tokens::ACCENT
         } else {
@@ -332,9 +332,24 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
         stars::paint_star(painter, star.center(), STAR_SIZE / 2.0, filled, color);
         if response.clicked() {
             // Clicking the current rating again clears it.
-            out.rating = Some(if bar.rating == Some(n) { None } else { Some(n) });
+            out.rating = Some(if bar.rating == Rating::Stars(n) {
+                Rating::Unrated
+            } else {
+                Rating::Stars(n)
+            });
         }
         response.on_hover_text((t.star_tooltip)(n));
+    }
+    if bar.rating == Rating::Rejected {
+        let x = stars_left + stars_width + 14.0;
+        icons::reject_mark(painter, pos2(x + 5.0, row1), 9.0, tokens::STATUS_ERROR);
+        painter.text(
+            pos2(x + 16.0, row1),
+            Align2::LEFT_CENTER,
+            t.rejected,
+            FontId::proportional(12.0),
+            tokens::STATUS_ERROR,
+        );
     }
     out
 }
@@ -379,13 +394,22 @@ fn meters(bar: &InfoBar<'_>) -> Vec<Meter> {
     let mut meters = Vec::new();
     let [laion, v25] = bar.aesthetics;
     if laion.is_some() || v25.is_some() || bar.personal.is_some() {
-        let score = |v: Option<f32>| v.map_or_else(|| "–".to_owned(), |v| format!("{v:.1}"));
-        let personal = bar
-            .personal
-            .map_or_else(|| "–".to_owned(), |v| format!("{v:.1} ★"));
+        // L 6.1 / V 6.5 / ★ 2.4 – the letters say which model, "–" means not known yet.
+        let score =
+            |v: Option<f32>| Piece::Value(v.map_or_else(|| "–".to_owned(), |v| format!("{v:.1}")));
+        let slash = || Piece::Separator(" / ".to_owned());
         meters.push(Meter {
             label: t.meter_aesthetics.to_owned(),
-            value: format!("{} / {} / {personal}", score(laion), score(v25)),
+            value: vec![
+                Piece::Prefix("L ".to_owned()),
+                score(laion),
+                slash(),
+                Piece::Prefix("V ".to_owned()),
+                score(v25),
+                slash(),
+                Piece::Prefix("★ ".to_owned()),
+                score(bar.personal),
+            ],
             fraction: None,
             color: tokens::ACCENT,
             tooltip: Some(t.meter_aesthetics_tooltip),
@@ -404,7 +428,7 @@ fn meters(bar: &InfoBar<'_>) -> Vec<Meter> {
             } else {
                 name.to_owned()
             },
-            value: format!("{:.0} %", p * 100.0),
+            value: vec![Piece::Value(format!("{:.0} %", p * 100.0))],
             fraction: Some(p),
             color: if blurry {
                 tokens::STATUS_WARN
@@ -417,8 +441,8 @@ fn meters(bar: &InfoBar<'_>) -> Vec<Meter> {
     meters
 }
 
-/// Buttons at the right end, laid out from the right edge: panel toggles, then help and
-/// language, then the map pin if the photo has a position. Returns their left edge.
+/// Buttons at the right end, laid out from the right edge: panel toggles, then help, then
+/// the map pin if the photo has a position. Returns their left edge.
 fn buttons(ui: &Ui, rect: Rect, bar: &InfoBar<'_>, out: &mut InfoBarOutput) -> f32 {
     let t = i18n::t();
     let y = rect.center().y;
@@ -431,13 +455,19 @@ fn buttons(ui: &Ui, rect: Rect, bar: &InfoBar<'_>, out: &mut InfoBarOutput) -> f
         area
     };
 
-    for (panel, shown, tooltip) in [
-        (Panel::Bottom, bar.panels.filmstrip, t.button_filmstrip),
-        (Panel::Right, bar.panels.details, t.button_details),
-        (Panel::Top, bar.panels.toolbar, t.button_toolbar),
+    for (panel, shown, label, key) in [
+        (
+            Panel::Bottom,
+            bar.panels.filmstrip,
+            t.button_filmstrip,
+            "F6",
+        ),
+        (Panel::Right, bar.panels.details, t.button_details, "Tab"),
+        (Panel::Top, bar.panels.toolbar, t.button_toolbar, "T"),
     ] {
         let area = next(&mut x);
-        if icon_button(ui, area, tooltip, shown, |p, c, color| {
+        let tooltip = format!("{label} ({key})");
+        if icon_button(ui, area, &tooltip, shown, |p, c, color| {
             icons::panel(p, c, panel, shown, color);
         }) {
             out.toggle = Some(panel);
@@ -445,18 +475,10 @@ fn buttons(ui: &Ui, rect: Rect, bar: &InfoBar<'_>, out: &mut InfoBarOutput) -> f
     }
     x -= 8.0;
     let area = next(&mut x);
-    out.help = icon_button(ui, area, t.button_help, false, |p, c, color| {
+    let tooltip = format!("{} (H)", t.button_help);
+    out.help = icon_button(ui, area, &tooltip, false, |p, c, color| {
         icons::help(p, c, color);
     });
-    let lang = i18n::current();
-    let area = next(&mut x);
-    out.language = icon_button(
-        ui,
-        area,
-        &(t.button_language)(lang.name()),
-        false,
-        |p, c, _| paint_small_flag(p, c, lang),
-    );
     if let Some(position) = bar.image.and_then(|i| i.camera.gps) {
         let area = next(&mut x);
         let tooltip = (t.map_tooltip)(&i18n::coordinates(position.0, position.1));
@@ -467,14 +489,6 @@ fn buttons(ui: &Ui, rect: Rect, bar: &InfoBar<'_>, out: &mut InfoBarOutput) -> f
         }
     }
     x
-}
-
-fn paint_small_flag(painter: &Painter, center: Pos2, lang: Lang) {
-    icons::flag(
-        painter,
-        Rect::from_center_size(center, vec2(21.0, 14.0)),
-        lang,
-    );
 }
 
 /// A square icon button with tooltip; returns whether it was clicked.
@@ -499,10 +513,20 @@ fn icon_button(
     response.on_hover_text(tooltip).clicked()
 }
 
+/// Part of a meter's value text.
+#[derive(Clone)]
+enum Piece {
+    Value(String),
+    /// Small muted letter in front of a value.
+    Prefix(String),
+    /// Muted, value-sized (" / ").
+    Separator(String),
+}
+
 #[derive(Clone)]
 struct Meter {
     label: String,
-    value: String,
+    value: Vec<Piece>,
     /// Bar fill, 0.0..=1.0; `None` shows the value only.
     fraction: Option<f32>,
     color: Color32,
@@ -537,8 +561,20 @@ fn layout_meters(painter: &Painter, meters: &[Meter]) -> LaidMeters {
                 tokens::TEXT
             };
             let size = if m.label.is_empty() { 12.0 } else { 17.0 };
-            let value =
-                painter.layout_no_wrap(m.value.clone(), FontId::proportional(size), value_color);
+            let mut job = LayoutJob::default();
+            for piece in &m.value {
+                let (text, size, color) = match piece {
+                    Piece::Value(text) => (text, size, value_color),
+                    Piece::Prefix(text) => (text, 11.0, tokens::MUTED),
+                    Piece::Separator(text) => (text, size, tokens::MUTED),
+                };
+                let mut format = TextFormat::simple(FontId::proportional(size), color);
+                if matches!(piece, Piece::Prefix(_)) {
+                    format.valign = Align::Center;
+                }
+                job.append(text, 0.0, format);
+            }
+            let value = painter.layout_job(job);
             (label, value, m.clone())
         })
         .collect();
@@ -605,7 +641,7 @@ fn paint_meters(
 }
 
 /// Compare mode: `LEFT  name  ★★★  A keeps this` in the top left corner of a photo.
-pub fn compare_label(ui: &Ui, area: Rect, side: &str, name: &str, rating: Option<u8>, hint: &str) {
+pub fn compare_label(ui: &Ui, area: Rect, side: &str, name: &str, rating: Rating, hint: &str) {
     let painter = ui.painter().with_clip_rect(area);
     let side = painter.layout_no_wrap(
         side.to_uppercase(),
@@ -614,7 +650,12 @@ pub fn compare_label(ui: &Ui, area: Rect, side: &str, name: &str, rating: Option
     );
     let name = painter.layout_no_wrap(name.to_owned(), FontId::proportional(13.0), tokens::TEXT);
     let hint = painter.layout_no_wrap(hint.to_owned(), FontId::proportional(11.5), tokens::MUTED);
-    let stars_width = rating.map_or(0.0, |r| f32::from(r) * 10.0 + 8.0);
+    // Stars, or the red cross for a rejected photo.
+    let stars_width = match rating {
+        Rating::Stars(r) => f32::from(r) * 10.0 + 8.0,
+        Rating::Rejected => 20.0,
+        Rating::Unrated => 0.0,
+    };
     let height = 28.0;
     let width =
         12.0 + side.size().x + 10.0 + name.size().x + stars_width + 12.0 + hint.size().x + 12.0;
@@ -634,16 +675,20 @@ pub fn compare_label(ui: &Ui, area: Rect, side: &str, name: &str, rating: Option
         painter.galley(pos2(x, y - galley.size().y / 2.0), galley, tokens::TEXT);
         x += w + 10.0;
     }
-    if let Some(rating) = rating {
-        stars::paint_mini_rating(
+    match rating {
+        Rating::Stars(stars) => stars::paint_mini_rating(
             &painter,
-            pos2(x + f32::from(rating) * 5.0 - 2.0, y),
-            rating,
+            pos2(x + f32::from(stars) * 5.0 - 2.0, y),
+            stars,
             4.0,
             tokens::ACCENT,
-        );
-        x += stars_width;
+        ),
+        Rating::Rejected => {
+            icons::reject_mark(&painter, pos2(x + 5.0, y), 9.0, tokens::STATUS_ERROR);
+        }
+        Rating::Unrated => {}
     }
+    x += stars_width;
     painter.galley(pos2(x + 2.0, y - hint.size().y / 2.0), hint, tokens::MUTED);
 }
 

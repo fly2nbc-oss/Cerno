@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ---
 
+## [0.8.0] – 2026-09-27
+
+### Added
+
+- Command palette (`Ctrl+K`): type a few letters to find and run any command – sorting, filters, panels, compare, zoom, language, help – with arrows and Enter.
+- `Shift+1`–`5` / `Shift+0`: rate and go to the next photo (like Lightroom). `?` opens the help.
+- "Rejected" as a rating (`X`, `Shift+X` rejects and moves on): written into the file as `xmp:Rating = -1` (the XMP standard's value), shown as a red cross, dimmed in the filmstrip, filter "Rejected", sorted last. Rejects count as 0 stars for the taste model. The palette offers "Delete rejected photos (n)" with the usual countdown.
+- Details panel in three stages: `I` steps through values → values with explanations → off.
+
+### Changed
+
+- Neutral grey surfaces instead of blue-grey, so no tint around the photo influences colour judgement (deliberate deviation from the shared design system).
+- Compare mode rejects the losing photo instead of deleting it (`A` / `D`).
+- Lightroom key layout: `Tab` details panel, `Shift+Tab` all panels, `T` top bar, `F6` filmstrip, `Ctrl+L` language (was `P`, `I`, `B`, `T`, `L`).
+- By default only the photo, the filmstrip and the info bar are shown; top bar and details panel are one key away.
+- Info bar: the three aesthetics values carry small labels (`L 6.1 / V 6.5 / ★ 2.4`); the language flag only appears while switching, and the panel buttons' tooltips name their keys.
+
 ## [0.7.0] – 2026-09-27
 
 First numbered version.

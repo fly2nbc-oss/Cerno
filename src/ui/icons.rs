@@ -156,6 +156,14 @@ pub fn panel(painter: &Painter, center: Pos2, panel: Panel, shown: bool, color: 
     painter.rect_stroke(frame, 2.0, Stroke::new(1.3, color), StrokeKind::Inside);
 }
 
+/// The "rejected" cross.
+pub fn reject_mark(painter: &Painter, center: Pos2, size: f32, color: Color32) {
+    let d = size / 2.0;
+    let stroke = Stroke::new((size / 6.0).max(1.4), color);
+    painter.line_segment([center + vec2(-d, -d), center + vec2(d, d)], stroke);
+    painter.line_segment([center + vec2(-d, d), center + vec2(d, -d)], stroke);
+}
+
 /// Circled question mark.
 pub fn help(painter: &Painter, center: Pos2, color: Color32) {
     painter.circle_stroke(center, 7.5, Stroke::new(1.3, color));

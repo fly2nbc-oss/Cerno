@@ -5,5 +5,6 @@ pub mod details;
 pub mod filmstrip;
 pub mod help;
 pub mod icons;
+pub mod palette;
 pub mod stars;
 pub mod viewer;

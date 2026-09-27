@@ -34,7 +34,7 @@ cargo build --release --features heic
 |---|---|
 | Pure Rust + egui/eframe (wgpu renderer) instead of Tauri | WebViews can't display HEIC (Rust would have to decode *and* re-encode), WebKitGTK is slow on Linux. Decode once → GPU texture. |
 | Formats: **JPEG + HEIC** | User requirement. HEIC via `libheif-rs` (vcpkg on Windows, system libheif ≥ 1.17 on Linux), behind the `heic` feature. |
-| Only the **1–5 star rating** is written into the original file (`xmp:Rating`) | Everything else (scores, thumbnails, CLIP embeddings) lives in a central SQLite DB under the app data dir – never next to or inside the photos. AI scores never set stars. |
+| Only the **rating** is written into the original file (`xmp:Rating`: 1–5 stars, or **-1 = rejected** as the XMP standard defines it) | Everything else (scores, thumbnails, CLIP embeddings) lives in a central SQLite DB under the app data dir – never next to or inside the photos. AI scores never set stars. |
 | **File dates must never change** | ExifTool runs with `-P -overwrite_original_in_place`, and `filetimes.rs` snapshots modified/created time before each write and restores them afterwards. |
 | GPU inference must work on **all vendors, AMD has priority** | Windows: ONNX Runtime + DirectML (any DX12 GPU). Linux: CPU, ORT WebGPU (Vulkan) behind the experimental `webgpu` feature. No CUDA/ROCm-only paths. Same model everywhere so scores stay comparable. |
 | Aesthetics = CLIP ViT-L/14 + LAION improved aesthetic predictor | Established, local, 1–10 scale. The LAION MLP has no activations and is collapsed into one linear layer (`tools/make_aesthetic_head.py` → `src/analysis/aesthetic_head.bin`, 3 KB, embedded). The 1.2 GB ONNX vision model is downloaded on request into `%LOCALAPPDATA%\Cerno\data\models` (`~/.local/share/cerno/models`). |
@@ -42,9 +42,11 @@ cargo build --release --features heic
 | Only the **six modules** below, all local | LAION, V2.5, personal taste, CLIP attributes, exposure, eye sharpness. They share the decoded 2048 px image and the stored embeddings; adding a module means a DB column + version constant + `is_complete` check. |
 | Personal taste model = ridge regression on the stored CLIP embeddings | The user's stars (1–5) are the labels, deleted photos count as 0 (`feedback` table – the file row is gone, the embedding stays). Trained in the background 2 s after ratings/deletions change, from 15 examples; 5-fold CV picks λ and reports the typical error in stars. AI scores still never set stars. |
 | Eye sharpness via YuNet (OpenCV Zoo, MIT, 230 KB, embedded) | Shallow depth of field: a sharp face in a blurred background would otherwise rank low. When a face ≥ 40 px is found, the "subject" sharpness (info bar, filmstrip marker, Hide blurry, sort) uses the eye percentile instead of the whole-frame one. |
-| Design system `ui_design_system_v1.2.md` (see `../MediaFileRenamer/docs/`) | Dark tokens for all chrome, accent `#5B8EC4`, Segoe UI loaded from the system (egui's bundled font lacks ← →). Exception: the photo canvas is **neutral** dark grey, because the bluish `--bg` would bias colour judgement. Icons (flags, map pin, panel toggles) are painted in `ui/icons.rs` – egui has neither flag emoji nor Lucide. |
-| UI in **German, English, French, Spanish, Italian** | User requirement. Starts in the system language (`sys-locale`, fallback English), `L` cycles (flag fades in), the choice is saved. Numbers keep the decimal point in every language ("6.1" next to "f/2.8" – a comma would mix notations). |
-| **The info bar always shows**; top bar, details panel and filmstrip are optional | Buttons at the bottom right (and `B`/`P`/`T`, `I` for all three) toggle them; states are saved. The top bar also appears when a filter hides every photo, so the filter can be changed back. |
+| Design system `ui_design_system_v1.2.md` (see `../MediaFileRenamer/docs/`) | Dark token *structure*, accent `#5B8EC4`, status colours, Segoe UI loaded from the system (egui's bundled font lacks ← →). **Deliberate deviation: all surfaces are neutral grey** (`#141414`/`#202020`/`#2A2A2A`, canvas `#161616`) instead of the system's blue-grey – tinted chrome around a photo biases colour judgement (Lightroom and Capture One are neutral too). Only accent and status colours carry hue. Icons (flags, map pin, panel toggles, the palette's check mark) are painted in `ui/icons.rs` / in place – egui has no flag emoji, no Lucide, and Segoe UI lacks ✓. |
+| UI in **German, English, French, Spanish, Italian** | User requirement. Starts in the system language (`sys-locale`, fallback English), `Ctrl+L` cycles, the choice is saved. The flag appears **only while switching** (fade-in); the help header shows the language as a word. Numbers keep the decimal point in every language ("6.1" next to "f/2.8" – a comma would mix notations). |
+| **The info bar always shows**; top bar, details panel and filmstrip are optional | Default: photo, filmstrip and info bar only. Buttons at the bottom right and `T` / `Tab` / `F6` (`Shift+Tab` all three) toggle them; states are saved (`top_bar`, `details_mode`, `filmstrip` – the pre-0.8 keys `toolbar`/`details` are ignored so the new default applied once). The top bar also appears when a filter hides every photo, so the filter can be changed back. |
+| **Keyboard = Lightroom conventions** where Cerno has the same function | `Tab` details panel, `Shift+Tab` all panels, `T` top bar, `F6` filmstrip, `I` detail stages (off → values → with explanations), `X` = reject (toggles; `Shift+X` rejects and moves on), `Delete` = delete, `Shift+0…5` rate and move on, `Z`, `F`, `C`, digits as in Lightroom; `?`/`H`/`F1` help; `Ctrl+K` command palette for everything else (sort, filter, panels, language …); `Ctrl+L` language. `Space` stays "next" and `Backspace` "previous" (Lightroom differs; harmless). |
+| Three aesthetics values in the info bar | `L 6.1 / V 6.5 / ★ 2.4` – small muted letters say which model; the tooltip explains. |
 | Version **0.7.0** is the first numbered one | `Cargo.toml` is the only source; the help page and start screen show `CARGO_PKG_VERSION`. |
 
 ## Architecture
@@ -56,8 +58,9 @@ view.rs              sorting + filtering of the folder list (pure, unit-tested)
 ui/viewer.rs         fit / zoom / pan geometry and drawing (display texture or full-res tiles)
 ui/filmstrip.rs      thumbnail strip centred on the current photo
 ui/bars.rs           toolbar, two-row info bar (meters, zoom, GPS pin, panel buttons), notices, language flash
-ui/details.rs        side panel with every analysis value + plain-language explanation (`P`), scrolls
-ui/help.rs           help page (`H`/`F1`, modal foreground area) and the start screen (same content)
+ui/details.rs        side panel with every analysis value; `DetailsMode` off / values / explained; scrolls
+ui/help.rs           help page (`H`/`F1`/`?`, modal foreground area) and the start screen (same content)
+ui/palette.rs        command palette (`Ctrl+K`): accent-insensitive word search, arrows, Enter
 ui/icons.rs          painted flags, map pin, panel and help icons
 ui/stars.rs          star shapes
 i18n/                `Texts` struct (mod.rs) + one full literal per language (de/en/fr/es/it), date and coordinate formatting
@@ -110,7 +113,8 @@ theme.rs             design tokens → egui Visuals, system UI font
 ### Compare mode and deletion
 
 - `pinned` (a path) is the left photo, `current` the right one; `view::skip_pinned` keeps navigation off the pinned index. The loader keeps the pinned photo cached however far away it is and loads full resolution for both on-screen photos. Both sides share one `Zoom`, so they stay aligned.
-- `A` deletes the right photo (next one moves in); `D` deletes the left one and the right photo becomes the new pinned one.
+- `A` **rejects** the right photo (next one moves in); `D` rejects the left one and the right photo becomes the new pinned one. Nothing is deleted in compare mode – rejects stay visible (dimmed in the filmstrip) until the palette's "Delete rejected photos (n)" sends them through the normal `DeleteQueue`.
+- `metadata::Rating` (`Unrated` / `Rejected` / `Stars(1..=5)`) is the one rating type everywhere (file, index, session map, view, UI). The index stores the file's value (NULL, -1, 1–5); rejects are taste examples with label 0, like deletions. Sorting by rating puts rejects after unrated photos; filter "Rejected" shows only them.
 - `DeleteQueue`: deleted photos are hidden from the view immediately (`rebuild_view` filters `is_hidden`), each deletion restarts the 5 s countdown, `Esc` cancels the whole queue (Esc priority: deletions → zoom → compare → fullscreen → notice). When it runs out, a worker moves the batch to the trash (`trash` crate); failures reappear with a notice. Photos that really went to the trash are recorded as 0-star taste feedback (`Db::record_deletion`); cancelled ones are not. `on_exit` carries out a pending deletion that wasn't cancelled – after `writer.shutdown()`; keep that order, or a rating flushed on exit would hit a file that is already in the trash.
 
 ### Languages
@@ -123,16 +127,22 @@ theme.rs             design tokens → egui Visuals, system UI font
 
 ### Info bar
 
-- Centre: stars, `AESTHETICS LAION / V2.5 / personal ★` (value only, "–" when missing) and the sharpness meter. The centre width is measured from the laid-out meters, so longer labels (French, Italian) push the side columns instead of overlapping them.
-- Right: exposure line (+ EXIF digital zoom) and camera/lens; when they don't fit, whole parts are left out (focal length first, lens first) instead of clipping mid-word. Then the buttons: map pin (only with GPS; opens Google Maps via `ctx.open_url`, i.e. the default browser), language flag, help, the three panel toggles.
+- Centre: stars, `AESTHETICS L 6.1 / V 6.5 / ★ 2.4` (LAION / V2.5 / personal; the letters are muted `Piece::Prefix`es of one `LayoutJob`, "–" when missing) and the sharpness meter. The centre width is measured from the laid-out meters, so longer labels (French, Italian) push the side columns instead of overlapping them.
+- Right: exposure line (+ EXIF digital zoom) and camera/lens; when they don't fit, whole parts are left out (focal length first, lens first) instead of clipping mid-word. Then the buttons: map pin (only with GPS; opens Google Maps via `ctx.open_url`, i.e. the default browser), help, the three panel toggles (tooltips carry the keys).
 - Left: name, position, viewer zoom (while zoomed), capture date, size, decode time.
 - The mouse wheel over the filmstrip steps through the photos (one per notch, touchpads per 50 pt); over the photo it zooms.
+
+### Keyboard details
+
+- `Tab` never reaches egui: `raw_input_hook` removes it and queues it for `handle_keys`. egui would otherwise move keyboard focus to the next widget with `Tab`, and `Space` ("next photo") would then also click that widget.
+- `Shift+digit` is recognised by the **physical** key (`Event::Key::physical_key`): with Shift the logical key is `!`, `"`, `§` … depending on the layout. On German layouts `Shift+0` types `=`, which is also a zoom key – zoom-in is suppressed in a frame with a shifted digit.
+- Texts show modifiers with the language's key names (`i18n::with_ctrl("K")` → `Strg+K` / `Ctrl+K`); help rows are literal per language.
 
 ### Rating writes
 
 - The UI updates immediately (session map `path → rating`); the write is queued.
 - The writer debounces per file (pressing 3 then 4 quickly = one write) and skips writes that don't change the value read from the file.
-- Only `XMP-xmp:Rating` is written, plus the Microsoft rating tags (`EXIF:Rating`/`RatingPercent`, `XMP-microsoft:RatingPercent`) **only if the file already has them**, so Windows Explorer never shows a stale value. `0` deletes the tags.
+- Only `XMP-xmp:Rating` is written, plus the Microsoft rating tags (`EXIF:Rating`/`RatingPercent`, `XMP-microsoft:RatingPercent`) **only if the file already has them**, so Windows Explorer never shows a stale value. `0` deletes the tags. Rejected writes `-1` into `xmp:Rating` and clears the Microsoft tags – they have no "rejected", and Explorer then shows no stars.
 - `on_exit` flushes pending writes and joins the writer thread – a rating set just before closing must not be lost.
 
 ## Roadmap
@@ -163,10 +173,10 @@ theme.rs             design tokens → egui Visuals, system UI font
 - zune-jpeg decodes truncated JPEGs leniently (missing part grey) instead of failing – intended, other viewers do the same.
 - `libheif[core]` is linked statically, which pulls in libde265 (**LGPL-3.0**). Before publishing binaries, switch to the dynamic triplet (`x64-windows` + `VCPKGRS_DYNAMIC=1`) and ship the DLLs, or otherwise satisfy the LGPL relinking terms. The x265 encoder (GPL) is deliberately excluded.
 - `rfd` dialogs (folder picker, model download confirmation) block the UI thread while open – fine for modal dialogs.
-- The help page is modal: `handle_keys` returns early while it is open (only `H`/`F1`/`Esc` and `L` work) and the photo's mouse handling is skipped. It is an `egui::Area` in `Order::Foreground`, so the details panel's scroll area below doesn't react either. Its card height is the content height remembered from the previous frame – not `ScrollArea`'s `content_size`, which with `auto_shrink(false)` is at least the visible area.
+- Help page and command palette are modal: `handle_keys` returns early while one is open (help: only `H`/`F1`/`?`/`Esc`, `Ctrl+L`, `Ctrl+K`; the palette consumes its own arrows/Enter/Esc before its text field sees them) and the photo's mouse handling is skipped. It is an `egui::Area` in `Order::Foreground`, so the details panel's scroll area below doesn't react either. Its card height is the content height remembered from the previous frame – not `ScrollArea`'s `content_size`, which with `auto_shrink(false)` is at least the visible area.
 - Clicking the map pin sends the photo's coordinates to Google. Don't click it in scripted tests; `metadata::maps_url` is unit-tested.
 - Linux always updates `ctime` on write; that can't be prevented and no photo tool shows it. `mtime` and (on Windows) the creation time are preserved.
 - Because mtime and often the file size (XMP padding) stay the same, backup/sync tools that only compare size + date (e.g. `rsync` without `-c`) may miss rating changes.
 - No colour management yet: embedded ICC profiles (e.g. Adobe RGB) are ignored.
-- Smoke-testing the window from scripts: send keys with `PostMessage(WM_KEYDOWN/UP)` to Cerno's window handle and capture with `PrintWindow(PW_RENDERFULLCONTENT)`. Never use `SendKeys` – without focus it types into whatever window the user is working in. Wait for a window whose title contains "Cerno": `Process.MainWindowHandle` can briefly point at wgpu's untitled helper window.
+- Smoke-testing the window from scripts: send keys with `PostMessage(WM_KEYDOWN/UP)` to Cerno's window handle and capture with `PrintWindow(PW_RENDERFULLCONTENT)`. Posted modifier keys are ignored – winit reads the thread's key state – so for `Ctrl`/`Shift` combos attach to Cerno's UI thread (`AttachThreadInput`), set the modifier in `SetKeyboardState`, post the key, restore the state and detach; this touches only Cerno's input queue, never the user's foreground window. Never use `SendKeys` – without focus it types into whatever window the user is working in. Wait for a window whose title contains "Cerno": `Process.MainWindowHandle` can briefly point at wgpu's untitled helper window.
 - Deletion tests must not touch the real trash: `DeleteQueue` takes a `Remover` function, tests pass a recorder.

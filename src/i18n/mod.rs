@@ -138,6 +138,16 @@ fn format_coordinates(t: &Texts, lat: f64, lon: f64) -> String {
     )
 }
 
+/// `Strg+K` / `Ctrl+K` with this language's key name.
+pub fn with_ctrl(key: &str) -> String {
+    format!("{}+{key}", t().key_ctrl)
+}
+
+/// `Umschalt+Tab` / `Shift+Tab` with this language's key name.
+pub fn with_shift(key: &str) -> String {
+    format!("{}+{key}", t().key_shift)
+}
+
 /// Glues "50 %" and French "valeur :" together, so wrapping never leaves a lone sign at the
 /// start of a line (egui does not break at U+00A0).
 pub fn keep_together(text: &str) -> String {
@@ -155,6 +165,9 @@ pub struct Texts {
     pub date_style: DateStyle,
     /// North, south, east, west.
     pub compass: [&'static str; 4],
+    /// Modifier key names as printed on this language's keyboards (`Strg`, `Umschalt`).
+    pub key_ctrl: &'static str,
+    pub key_shift: &'static str,
 
     // Toolbar.
     pub open: &'static str,
@@ -189,6 +202,7 @@ pub struct Texts {
     pub filter_five: &'static str,
     pub filter_at_least: fn(u8) -> String,
     pub filter_unrated: &'static str,
+    pub filter_rejected: &'static str,
 
     // Info bar.
     pub meter_aesthetics: &'static str,
@@ -198,6 +212,8 @@ pub struct Texts {
     pub probably_blurry: &'static str,
     pub analyzing: &'static str,
     pub saving: &'static str,
+    /// Marks a rejected photo (info bar, compare label).
+    pub rejected: &'static str,
     pub star_tooltip: fn(u8) -> String,
     pub zoom: fn(f32) -> String,
     pub digital_zoom: fn(f64) -> String,
@@ -207,6 +223,20 @@ pub struct Texts {
     pub button_filmstrip: &'static str,
     pub button_help: &'static str,
     pub button_language: fn(&str) -> String,
+
+    // Command palette (`Ctrl+K`).
+    pub palette_placeholder: &'static str,
+    pub palette_empty: &'static str,
+    pub cmd_explanations: &'static str,
+    pub cmd_all_panels: &'static str,
+    pub cmd_fullscreen: &'static str,
+    pub cmd_compare: &'static str,
+    pub cmd_zoom: &'static str,
+    pub cmd_first: &'static str,
+    pub cmd_last: &'static str,
+    pub cmd_language: fn(&str) -> String,
+    pub cmd_reject: &'static str,
+    pub cmd_delete_rejected: fn(usize) -> String,
 
     // Photo area, compare mode and deletion.
     pub loading: &'static str,
@@ -284,9 +314,9 @@ pub struct Texts {
     pub help_close: &'static str,
     pub help_sections: [&'static str; 4],
     pub help_browse: [HelpRow; 5],
-    pub help_rate: [HelpRow; 6],
-    pub help_view: [HelpRow; 8],
-    pub help_more: [HelpRow; 3],
+    pub help_rate: [HelpRow; 8],
+    pub help_view: [HelpRow; 9],
+    pub help_more: [HelpRow; 4],
 }
 
 #[cfg(test)]
@@ -331,6 +361,8 @@ mod tests {
             assert!((t.digital_zoom)(2.0).contains('2'), "{name}");
             assert!((t.map_tooltip)("N 48").contains("N 48"), "{name}");
             assert!((t.button_language)(name).contains(name), "{name}");
+            assert!((t.cmd_language)(name).contains(name), "{name}");
+            assert!((t.cmd_delete_rejected)(7).contains('7'), "{name}");
             assert!((t.keeps_this)("A").contains('A'), "{name}");
             assert!((t.deleting)(1).contains('1'), "{name}");
             assert!((t.deleting)(12).contains("12"), "{name}");

@@ -10,10 +10,48 @@ use memchr::memmem;
 /// Microsoft's EXIF rating tag (IFD0 0x4746), written by Windows Explorer.
 const EXIF_RATING: exif::Tag = exif::Tag(exif::Context::Tiff, 0x4746);
 
+/// A photo's rating field (`xmp:Rating`): the XMP standard defines -1 as "rejected" and 0 (or
+/// no value) as "unrated".
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Rating {
+    #[default]
+    Unrated,
+    /// Out of the running (`X`), but kept – nothing is deleted.
+    Rejected,
+    /// 1..=5
+    Stars(u8),
+}
+
+impl Rating {
+    /// From the tag value: -1 rejected, 1..=5 stars, anything else unrated.
+    pub fn from_value(value: i64) -> Self {
+        match value {
+            -1 => Self::Rejected,
+            1..=5 => Self::Stars(value as u8),
+            _ => Self::Unrated,
+        }
+    }
+
+    /// What goes into `xmp:Rating` and the index; `None` removes it.
+    pub fn value(self) -> Option<i64> {
+        match self {
+            Self::Unrated => None,
+            Self::Rejected => Some(-1),
+            Self::Stars(n) => Some(i64::from(n)),
+        }
+    }
+
+    pub fn stars(self) -> Option<u8> {
+        match self {
+            Self::Stars(n) => Some(n),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct RatingInfo {
-    /// 1..=5; `None` for unrated, `0` and `-1` ("rejected").
-    pub stars: Option<u8>,
+    pub value: Rating,
     /// Windows Explorer keeps extra copies of the rating. If they exist they are updated too,
     /// so Explorer never shows a stale value.
     pub has_exif_rating: bool,
@@ -100,14 +138,14 @@ pub fn read(bytes: &[u8]) -> FileMetadata {
 
     let xmp = find_xmp_packet(bytes);
     let xmp_rating = xmp.as_deref().and_then(parse_xmp_rating);
-    let stars = xmp_rating
-        .or(exif_rating.map(|r| r as i32))
-        .filter(|r| (1..=5).contains(r))
-        .map(|r| r as u8);
+    let value = xmp_rating
+        .map(i64::from)
+        .or(exif_rating.map(i64::from))
+        .map_or(Rating::Unrated, Rating::from_value);
 
     FileMetadata {
         rating: RatingInfo {
-            stars,
+            value,
             has_exif_rating: exif_rating.is_some(),
             has_ms_photo_rating: xmp.is_some_and(|x| x.contains("MicrosoftPhoto:Rating")),
         },
@@ -293,7 +331,7 @@ mod tests {
         );
         bytes.extend_from_slice(&[0x00, 0xFF, 0xD9]);
         let meta = read(&bytes);
-        assert_eq!(meta.rating.stars, Some(3));
+        assert_eq!(meta.rating.value, Rating::Stars(3));
         assert!(meta.rating.has_ms_photo_rating);
         assert!(!meta.rating.has_exif_rating);
         assert_eq!(meta.orientation, 1);
@@ -417,10 +455,18 @@ mod tests {
     }
 
     #[test]
-    fn rejected_and_unrated_are_no_stars() {
+    fn rejected_and_unrated() {
         let meta = read(br#"<x:xmpmeta><a xmp:Rating="-1"/></x:xmpmeta>"#);
-        assert_eq!(meta.rating.stars, None);
+        assert_eq!(meta.rating.value, Rating::Rejected);
+        assert_eq!(meta.rating.value.stars(), None);
         let meta = read(br#"<x:xmpmeta><a xmp:Rating="0"/></x:xmpmeta>"#);
-        assert_eq!(meta.rating.stars, None);
+        assert_eq!(meta.rating.value, Rating::Unrated);
+        assert_eq!(read(b"no metadata").rating.value, Rating::Unrated);
+        for rating in [Rating::Unrated, Rating::Rejected, Rating::Stars(4)] {
+            assert_eq!(
+                rating.value().map_or(Rating::Unrated, Rating::from_value),
+                rating
+            );
+        }
     }
 }

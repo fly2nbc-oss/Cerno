@@ -1,4 +1,4 @@
-//! Writes star ratings into the original files – in the background, debounced, with the file
+//! Writes ratings (stars or "rejected") into the original files – in the background, debounced, with the file
 //! dates preserved.
 
 use std::collections::HashMap;
@@ -14,7 +14,7 @@ use eframe::egui;
 use crate::db::{Db, FileStamp};
 use crate::exiftool::ExifTool;
 use crate::filetimes;
-use crate::metadata::{self, RatingInfo};
+use crate::metadata::{self, Rating, RatingInfo};
 
 /// Pressing 3 and then 4 within this time results in a single write.
 const DEBOUNCE: Duration = Duration::from_millis(400);
@@ -26,7 +26,7 @@ pub struct WriterStatus {
 }
 
 enum Message {
-    Set { path: PathBuf, stars: Option<u8> },
+    Set { path: PathBuf, rating: Rating },
     Shutdown,
 }
 
@@ -52,9 +52,9 @@ impl RatingWriter {
         }
     }
 
-    /// `None` removes the rating.
-    pub fn set(&self, path: PathBuf, stars: Option<u8>) {
-        let _ = self.tx.send(Message::Set { path, stars });
+    /// `Rating::Unrated` removes the rating.
+    pub fn set(&self, path: PathBuf, rating: Rating) {
+        let _ = self.tx.send(Message::Set { path, rating });
     }
 
     pub fn status(&self) -> WriterStatus {
@@ -78,7 +78,7 @@ impl Drop for RatingWriter {
 
 fn run(rx: &mpsc::Receiver<Message>, status: &Mutex<WriterStatus>, ctx: &egui::Context, db: &Db) {
     let mut exiftool: Option<ExifTool> = None;
-    let mut pending: HashMap<PathBuf, (Option<u8>, Instant)> = HashMap::new();
+    let mut pending: HashMap<PathBuf, (Rating, Instant)> = HashMap::new();
     let mut shutting_down = false;
 
     while !shutting_down {
@@ -88,8 +88,8 @@ fn run(rx: &mpsc::Receiver<Message>, status: &Mutex<WriterStatus>, ctx: &egui::C
             Duration::from_millis(50)
         };
         match rx.recv_timeout(timeout) {
-            Ok(Message::Set { path, stars }) => {
-                pending.insert(path, (stars, Instant::now()));
+            Ok(Message::Set { path, rating }) => {
+                pending.insert(path, (rating, Instant::now()));
             }
             Ok(Message::Shutdown) | Err(RecvTimeoutError::Disconnected) => shutting_down = true,
             Err(RecvTimeoutError::Timeout) => {}
@@ -101,16 +101,16 @@ fn run(rx: &mpsc::Receiver<Message>, status: &Mutex<WriterStatus>, ctx: &egui::C
             .map(|(path, _)| path.clone())
             .collect();
         for path in due {
-            let Some((stars, _)) = pending.remove(&path) else {
+            let Some((rating, _)) = pending.remove(&path) else {
                 continue;
             };
-            let result = write_rating(&mut exiftool, &path, stars);
+            let result = write_rating(&mut exiftool, &path, rating);
             if result.is_ok() {
                 // The size changed, the mtime didn't: keep the index valid without rehashing.
                 let updated = FileStamp::of(&path)
                     .map_err(anyhow::Error::from)
                     .and_then(|stamp| {
-                        db.update_after_rating_write(&path.to_string_lossy(), stamp, stars)
+                        db.update_after_rating_write(&path.to_string_lossy(), stamp, rating)
                     });
                 if let Err(err) = updated {
                     log::warn!("index update for {}: {err:#}", path.display());
@@ -138,14 +138,14 @@ fn run(rx: &mpsc::Receiver<Message>, status: &Mutex<WriterStatus>, ctx: &egui::C
     // Dropping `exiftool` ends the stay-open process.
 }
 
-fn write_rating(exiftool: &mut Option<ExifTool>, path: &Path, stars: Option<u8>) -> Result<()> {
+fn write_rating(exiftool: &mut Option<ExifTool>, path: &Path, rating: Rating) -> Result<()> {
     let path_str = path.to_str().context("path is not valid Unicode")?;
     // Read what is in the file right now: skips no-op writes and tells which extra rating tags
     // (Windows Explorer's) need to be kept in sync.
     let bytes = std::fs::read(path).context("cannot read file")?;
     let on_disk = metadata::read(&bytes).rating;
     drop(bytes);
-    if on_disk.stars == stars {
+    if on_disk.value == rating {
         return Ok(());
     }
 
@@ -154,7 +154,7 @@ fn write_rating(exiftool: &mut Option<ExifTool>, path: &Path, stars: Option<u8>)
         Some(tool) => tool,
         None => exiftool.insert(ExifTool::spawn()?),
     };
-    let args = rating_args(stars, &on_disk);
+    let args = rating_args(rating, &on_disk);
     let mut command: Vec<&str> = args.iter().map(String::as_str).collect();
     command.push(path_str);
     let output = match tool.execute(&command) {
@@ -187,17 +187,20 @@ fn write_rating(exiftool: &mut Option<ExifTool>, path: &Path, stars: Option<u8>)
             .unwrap_or("ExifTool did not update the file");
         bail!("{message}");
     }
-    log::info!("rating {:?} written to {}", stars, path.display());
+    log::info!("rating {:?} written to {}", rating, path.display());
     Ok(())
 }
 
-/// An empty value makes ExifTool delete the tag.
-fn rating_args(stars: Option<u8>, on_disk: &RatingInfo) -> Vec<String> {
-    let value = stars.map(|s| s.to_string()).unwrap_or_default();
+/// An empty value makes ExifTool delete the tag. Windows' own tags know no "rejected"; they are
+/// cleared then, so Explorer shows no stars.
+fn rating_args(rating: Rating, on_disk: &RatingInfo) -> Vec<String> {
+    let value = rating.value().map(|v| v.to_string()).unwrap_or_default();
+    let stars = rating.stars();
+    let windows = stars.map(|s| s.to_string()).unwrap_or_default();
     let percent = stars.map(|s| percent(s).to_string()).unwrap_or_default();
     let mut args = vec![format!("-XMP-xmp:Rating={value}")];
     if on_disk.has_exif_rating {
-        args.push(format!("-EXIF:Rating={value}"));
+        args.push(format!("-EXIF:Rating={windows}"));
         args.push(format!("-EXIF:RatingPercent={percent}"));
     }
     if on_disk.has_ms_photo_rating {
@@ -224,16 +227,16 @@ mod tests {
     #[test]
     fn only_xmp_unless_microsoft_tags_exist() {
         assert_eq!(
-            rating_args(Some(4), &RatingInfo::default()),
+            rating_args(Rating::Stars(4), &RatingInfo::default()),
             ["-XMP-xmp:Rating=4"]
         );
         let windows = RatingInfo {
-            stars: Some(2),
+            value: Rating::Stars(2),
             has_exif_rating: true,
             has_ms_photo_rating: true,
         };
         assert_eq!(
-            rating_args(Some(5), &windows),
+            rating_args(Rating::Stars(5), &windows),
             [
                 "-XMP-xmp:Rating=5",
                 "-EXIF:Rating=5",
@@ -246,13 +249,31 @@ mod tests {
     #[test]
     fn clearing_deletes_the_tags() {
         let windows = RatingInfo {
-            stars: Some(3),
+            value: Rating::Stars(3),
             has_exif_rating: true,
             has_ms_photo_rating: false,
         };
         assert_eq!(
-            rating_args(None, &windows),
+            rating_args(Rating::Unrated, &windows),
             ["-XMP-xmp:Rating=", "-EXIF:Rating=", "-EXIF:RatingPercent="]
+        );
+    }
+
+    #[test]
+    fn rejected_is_minus_one_and_clears_the_windows_stars() {
+        let windows = RatingInfo {
+            value: Rating::Stars(3),
+            has_exif_rating: true,
+            has_ms_photo_rating: true,
+        };
+        assert_eq!(
+            rating_args(Rating::Rejected, &windows),
+            [
+                "-XMP-xmp:Rating=-1",
+                "-EXIF:Rating=",
+                "-EXIF:RatingPercent=",
+                "-XMP-microsoft:RatingPercent=",
+            ]
         );
     }
 
@@ -302,14 +323,16 @@ mod tests {
             .set_times(FileTimes::new().set_modified(old))
             .unwrap();
         let before = fs::metadata(&path).unwrap();
-        let stars_on_disk = || metadata::read(&fs::read(&path).unwrap()).rating.stars;
+        let on_disk = || metadata::read(&fs::read(&path).unwrap()).rating.value;
         let mut exiftool = None;
 
-        write_rating(&mut exiftool, &path, Some(4)).unwrap();
-        assert_eq!(stars_on_disk(), Some(4));
-        write_rating(&mut exiftool, &path, Some(4)).unwrap(); // no-op
-        write_rating(&mut exiftool, &path, None).unwrap();
-        assert_eq!(stars_on_disk(), None);
+        write_rating(&mut exiftool, &path, Rating::Stars(4)).unwrap();
+        assert_eq!(on_disk(), Rating::Stars(4));
+        write_rating(&mut exiftool, &path, Rating::Stars(4)).unwrap(); // no-op
+        write_rating(&mut exiftool, &path, Rating::Rejected).unwrap();
+        assert_eq!(on_disk(), Rating::Rejected);
+        write_rating(&mut exiftool, &path, Rating::Unrated).unwrap();
+        assert_eq!(on_disk(), Rating::Unrated);
 
         let after = fs::metadata(&path).unwrap();
         assert_eq!(after.modified().unwrap(), before.modified().unwrap());

@@ -124,10 +124,29 @@ fn content(ui: &mut Ui, welcome: bool) -> (HelpOutput, f32) {
             out.close = true;
         }
     }
-    let lang = i18n::current();
-    let area = Rect::from_min_size(pos2(x - 34.0, y), vec2(34.0, 28.0));
-    if header_button(ui, area, &(t.button_language)(lang.name()), |p, c, _| {
-        icons::flag(p, Rect::from_center_size(c, vec2(24.0, 16.0)), lang);
+    // The language as a quiet word (the flag only shows while switching).
+    let name = painter.layout_no_wrap(
+        i18n::current().name().to_owned(),
+        FontId::proportional(12.5),
+        tokens::MUTED,
+    );
+    let area = Rect::from_min_size(
+        pos2(x - name.size().x - 16.0, y),
+        vec2(name.size().x + 16.0, 28.0),
+    );
+    let tooltip = format!(
+        "{} ({})",
+        (t.button_language)(i18n::current().name()),
+        i18n::with_ctrl("L")
+    );
+    if header_button(ui, area, &tooltip, |p, c, color| {
+        p.text(
+            c,
+            Align2::CENTER_CENTER,
+            i18n::current().name(),
+            FontId::proportional(12.5),
+            color,
+        );
     }) {
         out.language = true;
     }

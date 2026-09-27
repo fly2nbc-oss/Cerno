@@ -9,8 +9,10 @@ use eframe::egui::{
 };
 
 use crate::i18n;
+use crate::metadata::Rating;
 use crate::theme::tokens;
 use crate::thumbs::Thumbs;
+use crate::ui::icons;
 use crate::ui::stars;
 
 pub const HEIGHT: f32 = 96.0;
@@ -20,7 +22,7 @@ const THUMB_HEIGHT: f32 = 66.0;
 
 /// What the strip shows about one photo besides its thumbnail.
 pub struct CellInfo {
-    pub rating: Option<u8>,
+    pub rating: Rating,
     /// Shown as a warning marker with this explanation.
     pub blurry: Option<String>,
     /// The photo pinned on the left in compare mode.
@@ -80,6 +82,7 @@ pub fn draw(
             clicked = Some(index);
         }
 
+        let cell_info = info(index);
         painter.rect_filled(cell, 4.0, tokens::SURFACE_MUTED);
         if let Some(texture) = thumbs.get_or_request(path) {
             let size = texture.size_vec2();
@@ -93,7 +96,10 @@ pub fn draw(
             );
         }
 
-        let cell_info = info(index);
+        // Rejects are dimmed, like in Lightroom – below the selection frame.
+        if cell_info.rating == Rating::Rejected {
+            painter.rect_filled(cell, 4.0, Color32::from_black_alpha(150));
+        }
         if index == current {
             painter.rect_stroke(
                 cell,
@@ -126,14 +132,23 @@ pub fn draw(
                 StrokeKind::Outside,
             );
         }
-        if let Some(rating) = cell_info.rating {
-            stars::paint_mini_rating(
+        match cell_info.rating {
+            Rating::Stars(stars) => stars::paint_mini_rating(
                 &painter,
                 pos2(cell.center().x, cell.bottom() + 11.0),
-                rating,
+                stars,
                 4.0,
                 tokens::ACCENT,
-            );
+            ),
+            Rating::Rejected => {
+                icons::reject_mark(
+                    &painter,
+                    pos2(cell.center().x, cell.bottom() + 11.0),
+                    8.0,
+                    tokens::STATUS_ERROR,
+                );
+            }
+            Rating::Unrated => {}
         }
         if let Some(reason) = cell_info.blurry {
             let marker = pos2(cell.right() - 8.0, cell.top() + 8.0);

@@ -1,16 +1,19 @@
-//! Dark tokens of `ui_design_system_v1.2.md`, mapped onto egui.
+//! Dark tokens of `ui_design_system_v1.2.md`, mapped onto egui – with neutral greys instead of
+//! the system's blue-grey surfaces: tinted chrome around a photo biases colour judgement, so
+//! (like Lightroom or Capture One) only the accent and status colours carry hue.
 
 use eframe::egui::{self, Color32, CornerRadius, Stroke, Theme, Visuals};
 
 pub mod tokens {
     use eframe::egui::Color32;
 
-    pub const BG: Color32 = Color32::from_rgb(0x0F, 0x19, 0x23);
-    pub const SURFACE: Color32 = Color32::from_rgb(0x1A, 0x25, 0x35);
-    pub const SURFACE_MUTED: Color32 = Color32::from_rgb(0x1F, 0x2E, 0x40);
-    pub const TEXT: Color32 = Color32::from_rgb(0xE2, 0xEA, 0xF4);
-    pub const MUTED: Color32 = Color32::from_rgb(0x8A, 0x9B, 0xB0);
-    pub const LINE: Color32 = Color32::from_rgb(0x2A, 0x3A, 0x4E);
+    pub const BG: Color32 = Color32::from_rgb(0x14, 0x14, 0x14);
+    pub const SURFACE: Color32 = Color32::from_rgb(0x20, 0x20, 0x20);
+    pub const SURFACE_MUTED: Color32 = Color32::from_rgb(0x2A, 0x2A, 0x2A);
+    pub const TEXT: Color32 = Color32::from_rgb(0xE6, 0xE6, 0xE6);
+    /// ≈ 5.8:1 on `SURFACE`.
+    pub const MUTED: Color32 = Color32::from_rgb(0x9A, 0x9A, 0x9A);
+    pub const LINE: Color32 = Color32::from_rgb(0x35, 0x35, 0x35);
     pub const ACCENT: Color32 = Color32::from_rgb(0x5B, 0x8E, 0xC4);
     pub const ACCENT_STRONG: Color32 = Color32::from_rgb(0x7A, 0xAC, 0xD8);
     pub const ACCENT_SUBTLE: Color32 = Color32::from_rgb(0x1E, 0x3A, 0x52);

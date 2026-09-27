@@ -14,6 +14,41 @@ const PAD: f32 = 16.0;
 const BAR_HEIGHT: f32 = 4.0;
 /// Space between the explanation of one row and the next row.
 const ROW_GAP: f32 = 12.0;
+/// Space below a row without explanation.
+const COMPACT_GAP: f32 = 10.0;
+
+/// How much the panel shows: `Tab` shows or hides it, `I` steps through the three stages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DetailsMode {
+    Off,
+    Values,
+    /// Values with a plain-language explanation under each.
+    Explained,
+}
+
+impl DetailsMode {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Off => Self::Values,
+            Self::Values => Self::Explained,
+            Self::Explained => Self::Off,
+        }
+    }
+
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Values => "values",
+            Self::Explained => "explained",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        [Self::Off, Self::Values, Self::Explained]
+            .into_iter()
+            .find(|m| m.id() == id)
+    }
+}
 
 pub struct Details<'a> {
     pub scores: Option<Scores>,
@@ -23,6 +58,8 @@ pub struct Details<'a> {
     pub eyes_percentile: Option<f32>,
     pub attributes: Option<[f32; 6]>,
     pub status: &'a Status,
+    /// Show the explanations (third stage).
+    pub explained: bool,
 }
 
 /// Value text, bar fill (0..1) and whether it deserves a warning colour.
@@ -79,7 +116,14 @@ fn content(painter: &Painter, rect: Rect, d: &Details<'_>) -> f32 {
     let scores = d.scores.unwrap_or_default();
     let status = d.status;
     let row = |y: &mut f32, label: &str, value: Value, explain: &str| {
-        row(painter, rect, y, label, value, explain);
+        row(
+            painter,
+            rect,
+            y,
+            label,
+            value,
+            d.explained.then_some(explain),
+        );
     };
 
     section(painter, rect, &mut y, t.section_aesthetics);
@@ -169,7 +213,9 @@ fn content(painter: &Painter, rect: Rect, d: &Details<'_>) -> f32 {
     );
 
     section(painter, rect, &mut y, t.section_attributes);
-    y = explanation(painter, rect, y, t.explain_attributes) + ROW_GAP;
+    if d.explained {
+        y = explanation(painter, rect, y, t.explain_attributes) + ROW_GAP;
+    }
     for (i, name) in t.attributes.iter().enumerate() {
         row(
             &mut y,
@@ -210,7 +256,10 @@ fn content(painter: &Painter, rect: Rect, d: &Details<'_>) -> f32 {
         );
         y += 20.0;
     }
-    explanation(painter, rect, y + 4.0, t.explain_models) + PAD
+    if d.explained {
+        y = explanation(painter, rect, y + 4.0, t.explain_models);
+    }
+    y + PAD
 }
 
 fn model_note(state: &ModelState) -> String {
@@ -252,8 +301,15 @@ fn explanation(painter: &Painter, rect: Rect, y: f32, text: &str) -> f32 {
     y + height
 }
 
-/// Label and value, a bar below (if the value has one), then the explanation.
-fn row(painter: &Painter, rect: Rect, y: &mut f32, label: &str, value: Value, explain: &str) {
+/// Label and value, a bar below (if the value has one), then the explanation (if shown).
+fn row(
+    painter: &Painter,
+    rect: Rect,
+    y: &mut f32,
+    label: &str,
+    value: Value,
+    explain: Option<&str>,
+) {
     let (left, right) = (rect.left() + PAD, rect.right() - PAD);
     painter.text(
         pos2(left, *y),
@@ -299,7 +355,10 @@ fn row(painter: &Painter, rect: Rect, y: &mut f32, label: &str, value: Value, ex
         );
         bottom = track.bottom();
     }
-    *y = explanation(painter, rect, bottom + 5.0, explain) + ROW_GAP;
+    *y = match explain {
+        Some(text) => explanation(painter, rect, bottom + 5.0, text) + ROW_GAP,
+        None => bottom + COMPACT_GAP,
+    };
 }
 
 #[cfg(test)]
@@ -337,6 +396,27 @@ mod tests {
     }
 
     #[test]
+    fn i_steps_through_three_stages() {
+        let mut mode = DetailsMode::Off;
+        let mut seen = Vec::new();
+        for _ in 0..3 {
+            mode = mode.next();
+            seen.push(mode);
+        }
+        assert_eq!(
+            seen,
+            [
+                DetailsMode::Values,
+                DetailsMode::Explained,
+                DetailsMode::Off
+            ]
+        );
+        for mode in seen {
+            assert_eq!(DetailsMode::from_id(mode.id()), Some(mode));
+        }
+    }
+
+    #[test]
     fn a_low_window_scrolls_the_panel() {
         let ctx = Context::default();
         let status = status();
@@ -347,6 +427,7 @@ mod tests {
             eyes_percentile: None,
             attributes: None,
             status: &status,
+            explained: true,
         };
         let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 300.0));
         let frame = |events: Vec<Event>, time: f64| {

@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use crate::analysis::sharpness;
 use crate::db::Scores;
 use crate::i18n;
+use crate::metadata::Rating;
 
 /// Sharpness percentile (within the folder) below which a photo counts as probably blurry.
 pub const BLURRY_PERCENTILE: f32 = 0.2;
@@ -63,10 +64,11 @@ pub enum RatingFilter {
     All,
     AtLeast(u8),
     Unrated,
+    Rejected,
 }
 
 impl RatingFilter {
-    pub const ALL: [RatingFilter; 7] = [
+    pub const ALL: [RatingFilter; 8] = [
         Self::All,
         Self::AtLeast(1),
         Self::AtLeast(2),
@@ -74,6 +76,7 @@ impl RatingFilter {
         Self::AtLeast(4),
         Self::AtLeast(5),
         Self::Unrated,
+        Self::Rejected,
     ];
 
     pub fn label(self) -> String {
@@ -83,6 +86,7 @@ impl RatingFilter {
             Self::AtLeast(5) => t.filter_five.to_owned(),
             Self::AtLeast(n) => (t.filter_at_least)(n),
             Self::Unrated => t.filter_unrated.to_owned(),
+            Self::Rejected => t.filter_rejected.to_owned(),
         }
     }
 
@@ -91,6 +95,7 @@ impl RatingFilter {
             Self::All => "all".to_owned(),
             Self::AtLeast(n) => n.to_string(),
             Self::Unrated => "unrated".to_owned(),
+            Self::Rejected => "rejected".to_owned(),
         }
     }
 
@@ -98,11 +103,12 @@ impl RatingFilter {
         Self::ALL.into_iter().find(|f| f.id() == id)
     }
 
-    fn accepts(self, rating: Option<u8>) -> bool {
+    fn accepts(self, rating: Rating) -> bool {
         match self {
             Self::All => true,
-            Self::AtLeast(n) => rating.is_some_and(|r| r >= n),
-            Self::Unrated => rating.is_none(),
+            Self::AtLeast(n) => rating.stars().is_some_and(|r| r >= n),
+            Self::Unrated => rating == Rating::Unrated,
+            Self::Rejected => rating == Rating::Rejected,
         }
     }
 }
@@ -134,7 +140,7 @@ impl ViewOptions {
 /// What sorting and filtering look at for one photo.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct Facts {
-    pub rating: Option<u8>,
+    pub rating: Rating,
     pub scores: Scores,
     /// Personal taste model, 0..=5.
     pub personal: Option<f32>,
@@ -186,15 +192,15 @@ pub fn build(
     all: &[PathBuf],
     options: ViewOptions,
     facts: impl Fn(&Path) -> Option<Facts>,
-    session_ratings: &HashMap<PathBuf, Option<u8>>,
+    session_ratings: &HashMap<PathBuf, Rating>,
 ) -> Vec<PathBuf> {
-    let entries: Vec<(&PathBuf, Option<Facts>, Option<u8>)> = all
+    let entries: Vec<(&PathBuf, Option<Facts>, Rating)> = all
         .iter()
         .map(|path| {
             let facts = facts(path);
             let rating = match session_ratings.get(path) {
-                Some(stars) => *stars,
-                None => facts.and_then(|f| f.rating),
+                Some(rating) => *rating,
+                None => facts.map(|f| f.rating).unwrap_or_default(),
             };
             (path, facts, rating)
         })
@@ -221,10 +227,15 @@ pub fn build(
         .collect();
 
     // Stable sort, descending, missing values last; ties keep the name order.
-    let key = |(_, facts, rating): &&(&PathBuf, Option<Facts>, Option<u8>)| -> Option<f32> {
+    let key = |(_, facts, rating): &&(&PathBuf, Option<Facts>, Rating)| -> Option<f32> {
         match options.sort {
             SortKey::Name => None,
-            SortKey::Rating => rating.map(f32::from),
+            // Stars, then unrated, rejected last.
+            SortKey::Rating => Some(match rating {
+                Rating::Stars(n) => f32::from(*n),
+                Rating::Unrated => 0.0,
+                Rating::Rejected => -1.0,
+            }),
             SortKey::Aesthetics => facts.and_then(|f| f.scores.aesthetic),
             SortKey::AestheticsV25 => facts.and_then(|f| f.scores.aesthetic25),
             SortKey::Personal => facts.and_then(|f| f.personal),
@@ -280,7 +291,7 @@ mod tests {
     }
 
     fn facts(
-        rating: Option<u8>,
+        rating: Rating,
         aesthetic: Option<f32>,
         sharpness: Option<f32>,
         personal: Option<f32>,
@@ -302,14 +313,20 @@ mod tests {
         let known = HashMap::from([
             (
                 all[0].clone(),
-                facts(Some(2), Some(4.0), Some(10.0), Some(1.0)),
+                facts(Rating::Stars(2), Some(4.0), Some(10.0), Some(1.0)),
             ),
-            (all[1].clone(), facts(None, Some(6.5), Some(500.0), None)),
+            (
+                all[1].clone(),
+                facts(Rating::Unrated, Some(6.5), Some(500.0), None),
+            ),
             (
                 all[2].clone(),
-                facts(Some(5), Some(5.0), Some(300.0), Some(4.5)),
+                facts(Rating::Stars(5), Some(5.0), Some(300.0), Some(4.5)),
             ),
-            (all[3].clone(), facts(Some(3), None, Some(200.0), Some(3.0))),
+            (
+                all[3].clone(),
+                facts(Rating::Stars(3), None, Some(200.0), Some(3.0)),
+            ),
             // "e" not analysed yet
         ]);
         (all, known)
@@ -342,7 +359,11 @@ mod tests {
     fn filters_by_rating_with_session_override() {
         let (all, known) = fixture();
         let lookup = |p: &Path| known.get(p).copied();
-        let session = HashMap::from([(PathBuf::from("b"), Some(4)), (PathBuf::from("c"), None)]);
+        let session = HashMap::from([
+            (PathBuf::from("b"), Rating::Stars(4)),
+            (PathBuf::from("c"), Rating::Unrated),
+            (PathBuf::from("a"), Rating::Rejected),
+        ]);
         let filtered = |filter| {
             let options = ViewOptions {
                 filter,
@@ -351,7 +372,9 @@ mod tests {
             names(&build(&all, options, lookup, &session))
         };
         assert_eq!(filtered(RatingFilter::AtLeast(3)), "bd");
+        assert_eq!(filtered(RatingFilter::AtLeast(1)), "bd");
         assert_eq!(filtered(RatingFilter::Unrated), "ce");
+        assert_eq!(filtered(RatingFilter::Rejected), "a");
         assert_eq!(filtered(RatingFilter::All), "abcde");
     }
 

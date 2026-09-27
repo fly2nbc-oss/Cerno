@@ -13,6 +13,8 @@ use std::time::{Duration, UNIX_EPOCH};
 use anyhow::{Context as _, Result};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
+use crate::metadata::Rating;
+
 const SCHEMA: &str = "
     CREATE TABLE IF NOT EXISTS files (
         path        TEXT PRIMARY KEY,
@@ -115,7 +117,8 @@ pub struct ImageRecord {
 pub struct FileRecord {
     pub fingerprint: u64,
     /// Rating read from the file when it was indexed (kept current by the rating writer).
-    pub rating: Option<u8>,
+    /// Stored as in the file: 1–5, -1 for rejected, NULL for unrated.
+    pub rating: Rating,
     pub image: ImageRecord,
 }
 
@@ -203,8 +206,7 @@ impl Db {
                     fingerprint: row.get::<_, i64>(0)? as u64,
                     rating: row
                         .get::<_, Option<i64>>(1)?
-                        .and_then(|r| u8::try_from(r).ok())
-                        .filter(|r| (1..=5).contains(r)),
+                        .map_or(Rating::Unrated, Rating::from_value),
                     image: image_from_row(row, 2)?,
                 })
             })
@@ -229,7 +231,7 @@ impl Db {
         path: &str,
         stamp: FileStamp,
         fingerprint: u64,
-        rating: Option<u8>,
+        rating: Rating,
     ) -> Result<()> {
         self.conn()
             .prepare_cached(
@@ -241,7 +243,7 @@ impl Db {
                 stamp.size as i64,
                 stamp.mtime_ns,
                 fingerprint as i64,
-                rating
+                rating.value()
             ])?;
         Ok(())
     }
@@ -252,13 +254,18 @@ impl Db {
         &self,
         path: &str,
         stamp: FileStamp,
-        rating: Option<u8>,
+        rating: Rating,
     ) -> Result<()> {
         self.conn()
             .prepare_cached(
                 "UPDATE files SET size = ?2, mtime_ns = ?3, rating = ?4 WHERE path = ?1",
             )?
-            .execute(params![path, stamp.size as i64, stamp.mtime_ns, rating])?;
+            .execute(params![
+                path,
+                stamp.size as i64,
+                stamp.mtime_ns,
+                rating.value()
+            ])?;
         Ok(())
     }
 
@@ -278,21 +285,21 @@ impl Db {
         Ok(())
     }
 
-    /// Training data for the taste model: (CLIP embedding, label 0–5). Explicit ratings win
-    /// over deletion feedback for the same pixels.
+    /// Training data for the taste model: (CLIP embedding, label 0–5). Rejected photos count
+    /// as 0 like deleted ones; explicit ratings win over deletion feedback for the same pixels.
     pub fn taste_examples(&self) -> Result<Vec<(Vec<f32>, f32)>> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(
-            "SELECT i.embedding, CAST(MAX(f.rating) AS REAL)
+            "SELECT i.embedding, CAST(MAX(MAX(f.rating, 0)) AS REAL)
              FROM files f JOIN images i ON i.fingerprint = f.fingerprint
-             WHERE f.rating BETWEEN 1 AND 5 AND i.embedding IS NOT NULL
+             WHERE (f.rating BETWEEN 1 AND 5 OR f.rating = -1) AND i.embedding IS NOT NULL
              GROUP BY f.fingerprint
              UNION ALL
              SELECT i.embedding, fb.label
              FROM feedback fb JOIN images i ON i.fingerprint = fb.fingerprint
              WHERE i.embedding IS NOT NULL
                AND fb.fingerprint NOT IN
-                   (SELECT fingerprint FROM files WHERE rating BETWEEN 1 AND 5)",
+                   (SELECT fingerprint FROM files WHERE rating BETWEEN 1 AND 5 OR rating = -1)",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok((
@@ -470,14 +477,15 @@ mod tests {
     #[test]
     fn lookup_requires_matching_stamp() {
         let db = Db::open_in_memory().unwrap();
-        db.put_file("a.jpg", STAMP, u64::MAX - 7, Some(3)).unwrap();
+        db.put_file("a.jpg", STAMP, u64::MAX - 7, Rating::Stars(3))
+            .unwrap();
         let record = db.lookup("a.jpg", STAMP).unwrap().unwrap();
         assert_eq!(
             record.fingerprint,
             u64::MAX - 7,
             "u64 survives the i64 column"
         );
-        assert_eq!(record.rating, Some(3));
+        assert_eq!(record.rating, Rating::Stars(3));
         assert_eq!(record.image, ImageRecord::default());
 
         let changed = FileStamp {
@@ -485,11 +493,11 @@ mod tests {
             ..STAMP
         };
         assert!(db.lookup("a.jpg", changed).unwrap().is_none());
-        db.update_after_rating_write("a.jpg", changed, Some(5))
+        db.update_after_rating_write("a.jpg", changed, Rating::Rejected)
             .unwrap();
         assert_eq!(
             db.lookup("a.jpg", changed).unwrap().unwrap().rating,
-            Some(5)
+            Rating::Rejected
         );
     }
 
@@ -503,7 +511,8 @@ mod tests {
         db.put_faces(7, Some(88.0), 2, 1).unwrap();
         db.put_thumbnail(7, &[1, 2, 3]).unwrap();
         // A renamed file pointing at the same pixels sees the same scores.
-        db.put_file("renamed.jpg", STAMP, 7, None).unwrap();
+        db.put_file("renamed.jpg", STAMP, 7, Rating::Unrated)
+            .unwrap();
         let image = db.lookup("renamed.jpg", STAMP).unwrap().unwrap().image;
         assert_eq!(image.scores.sharpness, Some(123.5));
         assert_eq!(image.scores.aesthetic, Some(6.25));
@@ -549,7 +558,7 @@ mod tests {
         let db = Db::init(conn).unwrap();
 
         let record = db.lookup("old.jpg", STAMP).unwrap().unwrap();
-        assert_eq!(record.rating, Some(4));
+        assert_eq!(record.rating, Rating::Stars(4));
         assert_eq!(record.image.scores.sharpness, Some(50.0));
         assert_eq!(record.image.exposure_version, 0);
         db.put_faces(9, None, 0, 1).unwrap();
@@ -557,19 +566,27 @@ mod tests {
     }
 
     #[test]
-    fn deletions_become_negative_examples() {
+    fn deletions_and_rejections_become_negative_examples() {
         let db = Db::open_in_memory().unwrap();
-        for (fp, path, rating) in [(1, "liked.jpg", Some(5)), (2, "binned.jpg", None)] {
+        for (fp, path, rating) in [
+            (1, "liked.jpg", Rating::Stars(5)),
+            (2, "binned.jpg", Rating::Unrated),
+            (3, "rejected.jpg", Rating::Rejected),
+            (4, "unrated.jpg", Rating::Unrated),
+        ] {
             db.put_aesthetic(fp, 5.0, "m", &[fp as f32; 768]).unwrap();
             db.put_file(path, STAMP, fp, rating).unwrap();
         }
         db.record_deletion("binned.jpg").unwrap();
         assert!(db.lookup("binned.jpg", STAMP).unwrap().is_none());
 
-        let mut examples = db.taste_examples().unwrap();
-        examples.sort_by(|a, b| a.1.total_cmp(&b.1));
-        assert_eq!(examples.len(), 2);
-        assert_eq!((examples[0].0[0], examples[0].1), (2.0, 0.0));
-        assert_eq!((examples[1].0[0], examples[1].1), (1.0, 5.0));
+        let mut examples: Vec<(f32, f32)> = db
+            .taste_examples()
+            .unwrap()
+            .into_iter()
+            .map(|(embedding, label)| (embedding[0], label))
+            .collect();
+        examples.sort_by(|a, b| a.0.total_cmp(&b.0));
+        assert_eq!(examples, [(1.0, 5.0), (2.0, 0.0), (3.0, 0.0)]);
     }
 }

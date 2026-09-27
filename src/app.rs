@@ -16,13 +16,15 @@ use crate::deletion::{self, DeleteQueue};
 use crate::i18n::{self, Lang};
 use crate::library::{self, Library};
 use crate::loader::{LoadedImage, Loader, Lookup};
+use crate::metadata::Rating;
 use crate::paths;
 use crate::rating::RatingWriter;
 use crate::theme::tokens;
 use crate::thumbs::Thumbs;
 use crate::ui::bars::Panels;
+use crate::ui::details::DetailsMode;
 use crate::ui::icons::Panel;
-use crate::ui::{bars, details, filmstrip, help, viewer};
+use crate::ui::{bars, details, filmstrip, help, palette, viewer};
 use crate::view::{
     self, BLURRY_PERCENTILE, Facts, Percentiles, RatingFilter, SortKey, ViewOptions,
 };
@@ -33,13 +35,13 @@ use crate::view::{
 const START_TARGET: [u32; 2] = [3840, 2160];
 /// Decode size if the monitor size is unknown (Wayland never reports it).
 const FALLBACK_TARGET: [u32; 2] = [2560, 1440];
-const STAR_KEYS: [(Key, Option<u8>); 6] = [
-    (Key::Num0, None),
-    (Key::Num1, Some(1)),
-    (Key::Num2, Some(2)),
-    (Key::Num3, Some(3)),
-    (Key::Num4, Some(4)),
-    (Key::Num5, Some(5)),
+const STAR_KEYS: [(Key, Rating); 6] = [
+    (Key::Num0, Rating::Unrated),
+    (Key::Num1, Rating::Stars(1)),
+    (Key::Num2, Rating::Stars(2)),
+    (Key::Num3, Rating::Stars(3)),
+    (Key::Num4, Rating::Stars(4)),
+    (Key::Num5, Rating::Stars(5)),
 ];
 /// Zoom step for `+`/`-`.
 const ZOOM_STEP: f32 = 1.25;
@@ -76,15 +78,22 @@ pub struct CernoApp {
 
     /// Ratings given in this session; they win over the value read from the file, whose
     /// write may still be pending.
-    session_ratings: HashMap<PathBuf, Option<u8>>,
+    session_ratings: HashMap<PathBuf, Rating>,
     target: Option<[u32; 2]>,
     zoom: viewer::Zoom,
-    /// Top bar (`B`), filmstrip (`T`) and details panel (`P`); the info bar always shows.
+    /// Top bar (`T`), filmstrip (`F6`) and details panel (`Tab`, stages with `I`); the info
+    /// bar always shows. Lightroom's keys, so photographers feel at home.
     show_toolbar: bool,
     show_filmstrip: bool,
-    show_details: bool,
-    /// Help page over the photos (`H`, `F1`).
+    details: DetailsMode,
+    /// The stage `Tab` brings back.
+    details_last: DetailsMode,
+    /// Help page over the photos (`H`, `F1`, `?`).
     help_open: bool,
+    /// Command palette (`Ctrl+K`) while open.
+    palette: Option<palette::State>,
+    /// `Tab` presses taken out of egui's input (`true` = with Shift), see `raw_input_hook`.
+    tab_presses: Vec<bool>,
     /// When the language was last switched (the flag shows for a moment).
     language_flash: Option<Instant>,
     notice: Option<String>,
@@ -99,7 +108,12 @@ struct KeyInput {
     prev: bool,
     first: bool,
     last: bool,
-    rating: Option<Option<u8>>,
+    rating: Option<Rating>,
+    /// `Shift+0…5`: rate and move on.
+    rate_and_next: Option<Rating>,
+    /// `X` (toggles), `Shift+X` rejects and moves on – like Lightroom.
+    reject: bool,
+    reject_and_next: bool,
     delete: bool,
     compare: bool,
     keep_left: bool,
@@ -107,16 +121,59 @@ struct KeyInput {
     toggle_fullscreen: bool,
     escape: bool,
     toggle_toolbar: bool,
-    toggle_panels: bool,
     toggle_filmstrip: bool,
-    toggle_details: bool,
+    cycle_details: bool,
     help: bool,
     language: bool,
+    palette: bool,
     toggle_zoom: bool,
     zoom_in: bool,
     zoom_out: bool,
     open: bool,
     is_fullscreen: bool,
+}
+
+/// What a palette entry does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Action {
+    Open,
+    Sort(SortKey),
+    Filter(RatingFilter),
+    HideBlurry,
+    Refresh,
+    EnableAesthetics,
+    TopBar,
+    Details,
+    Explanations,
+    Filmstrip,
+    AllPanels,
+    Compare,
+    Zoom,
+    Fullscreen,
+    First,
+    Last,
+    Reject,
+    DeleteRejected,
+    Language(Lang),
+    Help,
+}
+
+/// `Shift+0…5` as stars. Found by the physical key: with Shift the typed character is `!`,
+/// `"`, `§` … depending on the keyboard layout.
+fn shifted_digit(events: &[egui::Event]) -> Option<Rating> {
+    events.iter().find_map(|event| match event {
+        egui::Event::Key {
+            physical_key: Some(key),
+            pressed: true,
+            repeat: false,
+            modifiers,
+            ..
+        } if modifiers.shift_only() => STAR_KEYS
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, stars)| *stars),
+        _ => None,
+    })
 }
 
 /// One photo slot on screen: which photo, where, and which side (compare mode).
@@ -166,9 +223,13 @@ impl CernoApp {
                 .unwrap_or(RatingFilter::All),
             hide_blurry: db.setting("hide_blurry").as_deref() == Some("1"),
         };
-        let show_toolbar = db.setting("toolbar").as_deref() != Some("0");
+        // Only the photo, the filmstrip and the info bar by default.
+        let show_toolbar = db.setting("top_bar").as_deref() == Some("1");
         let show_filmstrip = db.setting("filmstrip").as_deref() != Some("0");
-        let show_details = db.setting("details").as_deref() == Some("1");
+        let details = db
+            .setting("details_mode")
+            .and_then(|m| DetailsMode::from_id(&m))
+            .unwrap_or(DetailsMode::Off);
 
         let mut app = Self {
             loader: Loader::new(ctx.clone(), START_TARGET, Arc::clone(&thumbs)),
@@ -197,8 +258,15 @@ impl CernoApp {
             zoom: viewer::Zoom::default(),
             show_toolbar,
             show_filmstrip,
-            show_details,
+            details,
+            details_last: if details == DetailsMode::Off {
+                DetailsMode::Values
+            } else {
+                details
+            },
             help_open: false,
+            palette: None,
+            tab_presses: Vec::new(),
             language_flash: None,
             notice,
             started,
@@ -382,23 +450,67 @@ impl CernoApp {
         ctx.send_viewport_cmd(ViewportCommand::Title(title));
     }
 
-    fn set_rating(&mut self, stars: Option<u8>) {
-        let Some(path) = self.view.get(self.current).cloned() else {
-            return;
-        };
-        self.session_ratings.insert(path.clone(), stars);
-        self.writer.set(path, stars);
+    /// Rates the current photo.
+    fn set_rating(&mut self, rating: Rating) {
+        if let Some(path) = self.view.get(self.current).cloned() {
+            self.rate(path, rating);
+        }
+    }
+
+    fn rate(&mut self, path: PathBuf, rating: Rating) {
+        self.session_ratings.insert(path.clone(), rating);
+        self.writer.set(path, rating);
         self.analyzer.taste_changed();
     }
 
-    fn rating_of(&self, path: &Path, image: Option<&LoadedImage>) -> Option<u8> {
-        if let Some(stars) = self.session_ratings.get(path) {
-            return *stars;
+    /// `X`: rejects the current photo, or takes the rejection back.
+    fn toggle_reject(&mut self) {
+        if let Some(path) = self.view.get(self.current).cloned() {
+            let image = match self.loader.get(self.current) {
+                Lookup::Ready(image) => Some(image),
+                _ => None,
+            };
+            let rating = match self.rating_of(&path, image.as_deref()) {
+                Rating::Rejected => Rating::Unrated,
+                _ => Rating::Rejected,
+            };
+            self.rate(path, rating);
+        }
+    }
+
+    fn rating_of(&self, path: &Path, image: Option<&LoadedImage>) -> Rating {
+        if let Some(rating) = self.session_ratings.get(path) {
+            return *rating;
         }
         image
-            .map(|i| i.rating.stars)
+            .map(|i| i.rating.value)
             .or_else(|| self.board.get(path).map(|k| k.rating))
-            .flatten()
+            .unwrap_or_default()
+    }
+
+    /// Rejected photos of the folder (for "delete rejected photos").
+    fn rejected(&self) -> Vec<PathBuf> {
+        self.all
+            .iter()
+            .filter(|p| !self.deletions.is_hidden(p))
+            .filter(|p| {
+                let rating = match self.session_ratings.get(*p) {
+                    Some(rating) => *rating,
+                    None => self.board.get(p).map(|k| k.rating).unwrap_or_default(),
+                };
+                rating == Rating::Rejected
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// All rejected photos go to the trash – with the usual countdown, `Esc` brings them back.
+    fn delete_rejected(&mut self, ctx: &egui::Context) {
+        let now = Instant::now();
+        for path in self.rejected() {
+            self.deletions.push(path, now);
+        }
+        self.rebuild_view(ctx, None);
     }
 
     /// What sorting, filtering and the UI know about a photo.
@@ -526,57 +638,72 @@ impl CernoApp {
         self.rebuild_view(ctx, right);
     }
 
-    /// `A`: the left photo wins, the right one is deleted and the next photo moves in.
+    /// `A`: the left photo wins, the right one is rejected and the next photo moves in.
     fn keep_left(&mut self, ctx: &egui::Context) {
-        if self.pinned.is_some() {
-            self.delete_current(ctx);
+        if self.pinned.is_none() {
+            return;
         }
+        let Some(right) = self.view.get(self.current).cloned() else {
+            return;
+        };
+        let next = self.neighbour(self.current, &[&right]);
+        self.rate(right, Rating::Rejected);
+        self.rebuild_view(ctx, next);
     }
 
-    /// `D`: the right photo wins and moves to the left, the left one is deleted.
+    /// `D`: the right photo wins and moves to the left, the left one is rejected.
     fn keep_right(&mut self, ctx: &egui::Context) {
         let (Some(left), Some(right)) = (self.pinned.clone(), self.view.get(self.current).cloned())
         else {
             return;
         };
         let next = self.neighbour(self.current, &[&left, &right]);
+        self.rate(left, Rating::Rejected);
         self.pinned = Some(right);
-        self.delete(ctx, left, next);
+        self.rebuild_view(ctx, next);
     }
 
     fn panels(&self) -> Panels {
         Panels {
             toolbar: self.show_toolbar,
-            details: self.show_details,
+            details: self.details != DetailsMode::Off,
             filmstrip: self.show_filmstrip,
         }
     }
 
-    fn set_panels(&mut self, panels: Panels) {
-        self.show_toolbar = panels.toolbar;
-        self.show_details = panels.details;
-        self.show_filmstrip = panels.filmstrip;
-        for (key, shown) in [
-            ("toolbar", panels.toolbar),
-            ("details", panels.details),
-            ("filmstrip", panels.filmstrip),
-        ] {
-            self.db.put_setting(key, if shown { "1" } else { "0" });
+    fn save_panels(&self) {
+        let flag = |shown: bool| if shown { "1" } else { "0" };
+        self.db.put_setting("top_bar", flag(self.show_toolbar));
+        self.db.put_setting("filmstrip", flag(self.show_filmstrip));
+        self.db.put_setting("details_mode", self.details.id());
+    }
+
+    fn set_details(&mut self, mode: DetailsMode) {
+        self.details = mode;
+        if mode != DetailsMode::Off {
+            self.details_last = mode;
         }
     }
 
+    /// Buttons and `T` / `Tab` / `F6`. The details panel comes back at the stage it had.
     fn toggle_panel(&mut self, panel: Panel) {
-        let mut panels = self.panels();
         match panel {
-            Panel::Top => panels.toolbar = !panels.toolbar,
-            Panel::Right => panels.details = !panels.details,
-            Panel::Bottom => panels.filmstrip = !panels.filmstrip,
+            Panel::Top => self.show_toolbar = !self.show_toolbar,
+            Panel::Bottom => self.show_filmstrip = !self.show_filmstrip,
+            Panel::Right if self.details == DetailsMode::Off => self.details = self.details_last,
+            Panel::Right => self.details = DetailsMode::Off,
         }
-        self.set_panels(panels);
+        self.save_panels();
     }
 
-    /// `I`: hides top bar, details and filmstrip together – or shows all three if none is.
-    /// The info bar stays either way.
+    /// `I`: details off → values → values with explanations → off.
+    fn cycle_details(&mut self) {
+        self.set_details(self.details.next());
+        self.save_panels();
+    }
+
+    /// `Shift+Tab`: hides top bar, details and filmstrip together – or shows all three if none
+    /// is. The info bar stays either way.
     fn toggle_all_panels(&mut self) {
         let Panels {
             toolbar,
@@ -584,19 +711,147 @@ impl CernoApp {
             filmstrip,
         } = self.panels();
         let show = !(toolbar || details || filmstrip);
-        self.set_panels(Panels {
-            toolbar: show,
-            details: show,
-            filmstrip: show,
-        });
+        self.show_toolbar = show;
+        self.show_filmstrip = show;
+        self.details = if show {
+            self.details_last
+        } else {
+            DetailsMode::Off
+        };
+        self.save_panels();
     }
 
     fn switch_language(&mut self, ctx: &egui::Context) {
-        let next = i18n::current().next();
-        i18n::set(next);
-        self.db.put_setting("language", next.code());
+        self.set_language(ctx, i18n::current().next());
+    }
+
+    fn set_language(&mut self, ctx: &egui::Context, lang: Lang) {
+        i18n::set(lang);
+        self.db.put_setting("language", lang.code());
         self.language_flash = Some(Instant::now());
         ctx.request_repaint();
+    }
+
+    /// Everything the palette offers, labelled in the current language.
+    fn commands(&self) -> Vec<palette::Command<Action>> {
+        use palette::Command;
+        let t = i18n::t();
+        let key = |k: &str| Some(k.to_owned());
+        let mut list = vec![Command::new(
+            Action::Open,
+            t.open_folder,
+            Some(i18n::with_ctrl("O")),
+        )];
+        if !self.all.is_empty() {
+            for sort in SortKey::ALL {
+                list.push(
+                    Command::new(Action::Sort(sort), (t.sort)(sort.label()), None)
+                        .checked(self.options.sort == sort),
+                );
+            }
+            for filter in RatingFilter::ALL {
+                list.push(
+                    Command::new(Action::Filter(filter), (t.show)(&filter.label()), None)
+                        .checked(self.options.filter == filter),
+                );
+            }
+            list.push(
+                Command::new(Action::HideBlurry, t.hide_blurry, None)
+                    .checked(self.options.hide_blurry),
+            );
+            if self.options.depends_on_scores() && self.board.version() != self.view_version {
+                list.push(Command::new(Action::Refresh, t.refresh_order, None));
+            }
+            list.extend([
+                Command::new(Action::TopBar, t.button_toolbar, key("T")).checked(self.show_toolbar),
+                Command::new(Action::Details, t.button_details, key("Tab"))
+                    .checked(self.details != DetailsMode::Off),
+                Command::new(Action::Explanations, t.cmd_explanations, key("I"))
+                    .checked(self.details == DetailsMode::Explained),
+                Command::new(Action::Filmstrip, t.button_filmstrip, key("F6"))
+                    .checked(self.show_filmstrip),
+                Command::new(
+                    Action::AllPanels,
+                    t.cmd_all_panels,
+                    Some(i18n::with_shift("Tab")),
+                ),
+                Command::new(Action::Compare, t.cmd_compare, key("C"))
+                    .checked(self.pinned.is_some()),
+                Command::new(Action::Zoom, t.cmd_zoom, key("Z")).checked(self.zoom.is_zoomed()),
+                Command::new(Action::Fullscreen, t.cmd_fullscreen, key("F11")),
+                Command::new(Action::First, t.cmd_first, None),
+                Command::new(Action::Last, t.cmd_last, None),
+                Command::new(Action::Reject, t.cmd_reject, key("X")),
+            ]);
+            let rejected = self.rejected().len();
+            if rejected > 0 {
+                list.push(Command::new(
+                    Action::DeleteRejected,
+                    (t.cmd_delete_rejected)(rejected),
+                    None,
+                ));
+            }
+        }
+        if self.analyzer.status().aesthetics == crate::analysis::ModelState::Missing {
+            list.push(Command::new(
+                Action::EnableAesthetics,
+                t.enable_aesthetics,
+                None,
+            ));
+        }
+        for lang in Lang::ALL {
+            list.push(
+                Command::new(Action::Language(lang), (t.cmd_language)(lang.name()), None)
+                    .checked(i18n::current() == lang),
+            );
+        }
+        list.push(Command::new(Action::Help, t.help_title, key("H")));
+        list
+    }
+
+    fn run(&mut self, ctx: &egui::Context, action: Action, frames: &[viewer::Frame]) {
+        match action {
+            Action::Open => self.pick_folder(ctx),
+            Action::Sort(sort) => self.change_options(ctx, |o| o.sort = sort),
+            Action::Filter(filter) => self.change_options(ctx, |o| o.filter = filter),
+            Action::HideBlurry => self.change_options(ctx, |o| o.hide_blurry = !o.hide_blurry),
+            Action::Refresh => self.rebuild_view(ctx, None),
+            Action::EnableAesthetics => self.confirm_model_download(),
+            Action::TopBar => self.toggle_panel(Panel::Top),
+            Action::Details => self.toggle_panel(Panel::Right),
+            Action::Explanations => {
+                self.set_details(if self.details == DetailsMode::Explained {
+                    DetailsMode::Values
+                } else {
+                    DetailsMode::Explained
+                });
+                self.save_panels();
+            }
+            Action::Filmstrip => self.toggle_panel(Panel::Bottom),
+            Action::AllPanels => self.toggle_all_panels(),
+            Action::Compare => self.toggle_compare(ctx),
+            Action::Zoom => {
+                if let Some(frame) = frames.last() {
+                    self.zoom.toggle(frame, None);
+                }
+            }
+            Action::Fullscreen => {
+                let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+                ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!fullscreen));
+            }
+            Action::First => self.go_to(ctx, 0, 1),
+            Action::Last => self.go_to(ctx, usize::MAX, -1),
+            Action::Reject => self.toggle_reject(),
+            Action::DeleteRejected => self.delete_rejected(ctx),
+            Action::Language(lang) => self.set_language(ctx, lang),
+            Action::Help => self.help_open = !self.all.is_empty(),
+        }
+    }
+
+    fn change_options(&mut self, ctx: &egui::Context, change: impl FnOnce(&mut ViewOptions)) {
+        change(&mut self.options);
+        self.save_options();
+        self.rebuild_view(ctx, None);
     }
 
     /// The flag in the middle of the photo area for a moment after switching.
@@ -659,15 +914,18 @@ impl CernoApp {
         }
     }
 
+    /// Lightroom's keys where Cerno has the same function (see the help page for all).
     fn handle_keys(&mut self, ctx: &egui::Context, frames: &[viewer::Frame]) {
         if let Some(path) =
             ctx.input(|i| i.raw.dropped_files.first().map(|f| f.path().to_path_buf()))
         {
             self.open(ctx, &path);
         }
+        let tabs = std::mem::take(&mut self.tab_presses);
 
         let keys = ctx.input(|i| {
             let plain = i.modifiers.is_none();
+            let rate_and_next = shifted_digit(&i.events);
             KeyInput {
                 next: [Key::ArrowRight, Key::Space, Key::PageDown]
                     .iter()
@@ -681,20 +939,27 @@ impl CernoApp {
                     .iter()
                     .find(|(k, _)| plain && i.key_pressed(*k))
                     .map(|(_, stars)| *stars),
+                rate_and_next,
+                reject: plain && i.key_pressed(Key::X),
+                reject_and_next: i.modifiers.shift_only() && i.key_pressed(Key::X),
                 delete: plain && i.key_pressed(Key::Delete),
                 compare: plain && i.key_pressed(Key::C),
                 keep_left: plain && i.key_pressed(Key::A),
                 keep_right: plain && i.key_pressed(Key::D),
                 toggle_fullscreen: i.key_pressed(Key::F11) || (plain && i.key_pressed(Key::F)),
                 escape: i.key_pressed(Key::Escape),
-                toggle_toolbar: plain && i.key_pressed(Key::B),
-                toggle_panels: plain && i.key_pressed(Key::I),
-                toggle_filmstrip: plain && i.key_pressed(Key::T),
-                toggle_details: plain && i.key_pressed(Key::P),
-                help: i.key_pressed(Key::F1) || (plain && i.key_pressed(Key::H)),
-                language: plain && i.key_pressed(Key::L),
+                toggle_toolbar: plain && i.key_pressed(Key::T),
+                toggle_filmstrip: i.key_pressed(Key::F6),
+                cycle_details: plain && i.key_pressed(Key::I),
+                help: i.key_pressed(Key::F1)
+                    || i.key_pressed(Key::Questionmark)
+                    || (plain && i.key_pressed(Key::H)),
+                language: i.modifiers.command && i.key_pressed(Key::L),
+                palette: i.modifiers.command && i.key_pressed(Key::K),
                 toggle_zoom: plain && i.key_pressed(Key::Z),
+                // German layouts type "=" for Shift+0, which is "rate 0 and next" here.
                 zoom_in: !i.modifiers.command
+                    && rate_and_next.is_none()
                     && (i.key_pressed(Key::Plus) || i.key_pressed(Key::Equals)),
                 zoom_out: !i.modifiers.command && i.key_pressed(Key::Minus),
                 open: i.modifiers.command && i.key_pressed(Key::O),
@@ -704,6 +969,18 @@ impl CernoApp {
 
         if keys.language {
             self.switch_language(ctx);
+        }
+        // The palette handles its own keys (typing, arrows, Enter, Esc).
+        if self.palette.is_some() {
+            if keys.palette {
+                self.palette = None;
+            }
+            return;
+        }
+        if keys.palette {
+            self.help_open = false;
+            self.palette = Some(palette::State::default());
+            return;
         }
         // The help page is modal: only closing it (and switching the language) works.
         if self.help_open {
@@ -735,6 +1012,17 @@ impl CernoApp {
         if let Some(stars) = keys.rating {
             self.set_rating(stars);
         }
+        if let Some(stars) = keys.rate_and_next {
+            self.set_rating(stars);
+            self.go_to(ctx, self.current.saturating_add(1), 1);
+        }
+        if keys.reject {
+            self.toggle_reject();
+        }
+        if keys.reject_and_next {
+            self.set_rating(Rating::Rejected);
+            self.go_to(ctx, self.current.saturating_add(1), 1);
+        }
         if keys.compare {
             self.toggle_compare(ctx);
         }
@@ -747,8 +1035,12 @@ impl CernoApp {
         if keys.delete {
             self.delete_current(ctx);
         }
-        if keys.toggle_panels {
-            self.toggle_all_panels();
+        for shift in tabs {
+            if shift {
+                self.toggle_all_panels();
+            } else {
+                self.toggle_panel(Panel::Right);
+            }
         }
         if keys.toggle_toolbar {
             self.toggle_panel(Panel::Top);
@@ -756,8 +1048,8 @@ impl CernoApp {
         if keys.toggle_filmstrip {
             self.toggle_panel(Panel::Bottom);
         }
-        if keys.toggle_details {
-            self.toggle_panel(Panel::Right);
+        if keys.cycle_details {
+            self.cycle_details();
         }
         // Zoom keys act on the photo under the mouse, otherwise on the current (right) one.
         let pointer = ctx.pointer_hover_pos();
@@ -795,7 +1087,6 @@ impl CernoApp {
             }
         }
     }
-
     /// Mouse on a photo: double-click toggles 100 %, wheel zooms, drag pans. Both photos in
     /// compare mode share one zoom, so they stay aligned.
     fn handle_mouse(&mut self, ui: &egui::Ui, frame: &viewer::Frame, side: Side) {
@@ -928,7 +1219,7 @@ impl eframe::App for CernoApp {
             area.max.y = r.min.y;
             r
         });
-        let details_rect = (info_rect.is_some() && self.show_details).then(|| {
+        let details_rect = (info_rect.is_some() && self.details != DetailsMode::Off).then(|| {
             let r = Rect::from_min_max(pos2(area.max.x - details::WIDTH, area.min.y), area.max);
             area.max.x = r.min.x;
             r
@@ -973,8 +1264,8 @@ impl eframe::App for CernoApp {
                     .filter(|(p, _)| *p < BLURRY_PERCENTILE)
                     .map(|(p, eyes)| (i18n::t().blurry_tooltip)(eyes, p * 100.0));
                 let rating = match self.session_ratings.get(path) {
-                    Some(stars) => *stars,
-                    None => known.and_then(|k| k.rating),
+                    Some(rating) => *rating,
+                    None => known.map(|k| k.rating).unwrap_or_default(),
                 };
                 filmstrip::CellInfo {
                     rating,
@@ -1027,9 +1318,6 @@ impl eframe::App for CernoApp {
             if out.help {
                 self.help_open = true;
             }
-            if out.language {
-                self.switch_language(&ctx);
-            }
             if let Some(url) = out.open_map {
                 ctx.open_url(OpenUrl::new_tab(url));
             }
@@ -1045,6 +1333,7 @@ impl eframe::App for CernoApp {
                         eyes_percentile: scores.and_then(|s| percentiles.eyes(&s)),
                         attributes: self.analyzer.attributes(&path),
                         status: &status,
+                        explained: self.details == DetailsMode::Explained,
                     },
                 );
             }
@@ -1102,8 +1391,38 @@ impl eframe::App for CernoApp {
                 self.help_open = false;
             }
         }
+        if let Some(mut state) = self.palette.take() {
+            let commands = self.commands();
+            let out = palette::show(&ctx, window, &mut state, &commands);
+            if !out.close && out.run.is_none() {
+                self.palette = Some(state);
+            }
+            if let Some(action) = out.run {
+                self.run(&ctx, action, &frames);
+            }
+        }
         self.draw_language_flash(&ctx, if self.all.is_empty() { window } else { area });
         bars::drop_hint(ui, window);
+    }
+
+    /// `Tab` is Lightroom's panel key. egui would move keyboard focus to the next widget with
+    /// it – and `Space` would then click that widget – so it never reaches egui.
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        raw_input.events.retain(|event| match event {
+            egui::Event::Key {
+                key: Key::Tab,
+                pressed,
+                repeat,
+                modifiers,
+                ..
+            } => {
+                if *pressed && !*repeat && !modifiers.command && !modifiers.alt {
+                    self.tab_presses.push(modifiers.shift);
+                }
+                false
+            }
+            _ => true,
+        });
     }
 
     fn on_exit(&mut self) {
@@ -1111,5 +1430,40 @@ impl eframe::App for CernoApp {
         // wasn't undone is carried out.
         self.writer.shutdown();
         self.deletions.finish_now();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eframe::egui::{Event, Modifiers};
+
+    fn key(physical: Key, logical: Key, modifiers: Modifiers) -> Event {
+        Event::Key {
+            key: logical,
+            physical_key: Some(physical),
+            pressed: true,
+            repeat: false,
+            modifiers,
+        }
+    }
+
+    #[test]
+    fn shift_digits_rate_by_physical_key() {
+        // German layout: Shift+3 types "§", Shift+0 types "=".
+        let shift = Modifiers::SHIFT;
+        assert_eq!(
+            shifted_digit(&[key(Key::Num3, Key::Num3, shift)]),
+            Some(Rating::Stars(3))
+        );
+        assert_eq!(
+            shifted_digit(&[key(Key::Num0, Key::Equals, shift)]),
+            Some(Rating::Unrated)
+        );
+        assert_eq!(
+            shifted_digit(&[key(Key::Num3, Key::Num3, Modifiers::NONE)]),
+            None
+        );
+        assert_eq!(shifted_digit(&[key(Key::Num7, Key::Slash, shift)]), None);
     }
 }

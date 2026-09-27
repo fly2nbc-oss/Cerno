@@ -25,6 +25,7 @@ use anyhow::{Context as _, Result, bail};
 use eframe::egui;
 
 use crate::db::{Db, FileStamp, ImageRecord, Scores};
+use crate::metadata::Rating;
 use crate::{decode, library, metadata, paths, thumbs};
 use aesthetic::{AestheticModel, V25Model};
 use faces::FaceDetector;
@@ -41,7 +42,7 @@ const WORKERS: usize = 2;
 /// What is known about a file, as far as the UI is concerned.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct Known {
-    pub rating: Option<u8>,
+    pub rating: Rating,
     pub scores: Scores,
 }
 
@@ -533,7 +534,7 @@ fn analyze(shared: &Shared, path: &Path) -> Result<()> {
     let mut record = shared.db.image(fingerprint)?;
     shared
         .db
-        .put_file(&key, stamp, fingerprint, meta.rating.stars)?;
+        .put_file(&key, stamp, fingerprint, meta.rating.value)?;
     if !record.has_thumbnail {
         shared
             .db
@@ -619,7 +620,7 @@ fn analyze(shared: &Shared, path: &Path) -> Result<()> {
     shared.board.set(
         path,
         Known {
-            rating: meta.rating.stars,
+            rating: meta.rating.value,
             scores: record.scores,
         },
     );
