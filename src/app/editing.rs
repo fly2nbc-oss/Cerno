@@ -248,10 +248,11 @@ impl CernoApp {
         let thread = std::thread::Builder::new()
             .name("cerno-edit".into())
             .spawn(move || {
-                let result = match job {
+                // A panic would never report back, and `edit_busy` would block every edit.
+                let result = crate::decode::catch_panic(|| match job {
                     PixelJob::Rotate(radians) => edit::render_rotation(&path, radians, &files),
                     PixelJob::Crop(rect) => edit::render_crop(&path, rect, &files),
-                };
+                });
                 match result {
                     Ok(jpeg) => channel.replace_pixels(path, jpeg),
                     Err(err) => channel.fail(path, format!("{err:#}")),

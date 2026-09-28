@@ -342,7 +342,7 @@ fn worker(shared: &Shared) {
 
         match job.kind {
             Kind::Display => {
-                let result = load_display(shared, &job);
+                let result = decode::catch_panic(|| load_display(shared, &job));
                 let mut state = shared.lock();
                 if state.generation != job.generation {
                     continue;
@@ -369,7 +369,7 @@ fn worker(shared: &Shared) {
                 }
             }
             Kind::Full => {
-                let result = load_full(shared, &job);
+                let result = decode::catch_panic(|| load_full(shared, &job));
                 let mut state = shared.lock();
                 if state.generation != job.generation {
                     continue;

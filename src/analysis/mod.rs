@@ -459,7 +459,7 @@ fn worker(shared: &Shared) {
             std::thread::sleep(NAVIGATION_PAUSE - since);
         }
 
-        let outcome = analyze(shared, &job.path).unwrap_or_else(|err| {
+        let outcome = decode::catch_panic(|| analyze(shared, &job.path)).unwrap_or_else(|err| {
             log::warn!("analysis of {}: {err:#}", job.path.display());
             Outcome::Done
         });

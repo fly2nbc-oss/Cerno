@@ -10,6 +10,12 @@ use zune_jpeg::JpegDecoder;
 
 use crate::library::Format;
 
+/// Photos with more pixels are not decoded. The decoders allocate the whole frame before
+/// reading a pixel, so a tiny file whose header claims 65 535 × 65 535 would ask for 12.9 GB –
+/// on every visit of the folder, since the analysis reaches every file. 200 megapixels
+/// (600 MB RGB) cover every camera and most panoramas.
+pub const MAX_PIXELS: u64 = 200_000_000;
+
 pub struct DecodedImage {
     pub width: u32,
     pub height: u32,
@@ -90,15 +96,18 @@ fn decode_jpeg(bytes: &[u8], srgb: bool) -> Result<(u32, u32, Vec<u8>)> {
         .set_max_width(usize::from(u16::MAX))
         .set_max_height(usize::from(u16::MAX));
     let mut decoder = JpegDecoder::new_with_options(ZCursor::new(bytes), options);
-    let pixels = decoder
+    decoder
+        .decode_headers()
+        .map_err(|e| anyhow!("JPEG decoding failed: {e:?}"))?;
+    let info = decoder.info().context("JPEG header missing")?;
+    let (w, h) = (u32::from(info.width), u32::from(info.height));
+    check_size(u64::from(w), u64::from(h))?;
+    let mut pixels = decoder
         .decode()
         .map_err(|e| anyhow!("JPEG decoding failed: {e:?}"))?;
-    let mut pixels = pixels;
     if srgb && let Some(profile) = decoder.icc_profile() {
         to_srgb(&mut pixels, &profile);
     }
-    let info = decoder.info().context("JPEG header missing")?;
-    let (w, h) = (u32::from(info.width), u32::from(info.height));
     let expected = w as usize * h as usize * 3;
     if pixels.len() != expected {
         bail!(
@@ -116,6 +125,7 @@ fn decode_heif(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>)> {
     let lib = LibHeif::new();
     let ctx = HeifContext::read_from_bytes(bytes)?;
     let handle = ctx.primary_image_handle()?;
+    check_size(u64::from(handle.width()), u64::from(handle.height()))?;
     let image = lib.decode(&handle, ColorSpace::Rgb(RgbChroma::Rgb), None)?;
     let planes = image.planes();
     let plane = planes
@@ -133,6 +143,32 @@ fn decode_heif(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>)> {
 #[cfg(not(feature = "heic"))]
 fn decode_heif(_bytes: &[u8]) -> Result<(u32, u32, Vec<u8>)> {
     bail!("HEIC support is not built in (build with `--features heic`)")
+}
+
+/// The header's size, checked before anything is allocated for it (see [`MAX_PIXELS`]).
+fn check_size(width: u64, height: u64) -> Result<()> {
+    if width * height > MAX_PIXELS {
+        bail!(
+            "photo too large ({width} × {height} pixels, at most {} megapixels)",
+            MAX_PIXELS / 1_000_000
+        );
+    }
+    Ok(())
+}
+
+/// Runs one decode job. A panic in it – a defective file hitting a bug in a decoder crate –
+/// becomes an error, so the worker thread lives on and the photo shows a message instead of
+/// loading forever. Needs `panic = "unwind"` (the default); `abort` in a profile would end the
+/// whole program instead.
+pub fn catch_panic<T>(job: impl FnOnce() -> Result<T>) -> Result<T> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(job)).unwrap_or_else(|payload| {
+        let message = payload
+            .downcast_ref::<&str>()
+            .copied()
+            .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+            .unwrap_or("unknown cause");
+        bail!("decoder crashed: {message}")
+    })
 }
 
 pub fn resize_rgb(rgb: Vec<u8>, w: u32, h: u32, dst_w: u32, dst_h: u32) -> Result<Vec<u8>> {
@@ -377,6 +413,42 @@ mod tests {
         assert_eq!(fit_within([6000, 4000], [2560, 1440]), [2160, 1440]);
         assert_eq!(fit_within([4000, 6000], [2560, 1440]), [960, 1440]);
         assert_eq!(fit_within([800, 600], [2560, 1440]), [800, 600]);
+    }
+
+    /// A header that claims 20 000 × 20 000 pixels in a file of a few hundred bytes: refused
+    /// before the decoder allocates 1.2 GB for it.
+    #[test]
+    fn a_huge_header_is_refused_before_decoding() {
+        let mut jpeg = fixtures::jpeg(1, 1, &[200, 40, 40]);
+        let sof = jpeg
+            .windows(2)
+            .position(|marker| marker == [0xFF, 0xC0])
+            .expect("SOF0 marker");
+        jpeg[sof + 5..sof + 7].copy_from_slice(&20_000u16.to_be_bytes());
+        jpeg[sof + 7..sof + 9].copy_from_slice(&20_000u16.to_be_bytes());
+        for result in [
+            decode_for_display(&jpeg, Format::Jpeg, 1, [8, 8]).map(|_| ()),
+            decode_for_edit(&jpeg, 1).map(|_| ()),
+        ] {
+            let err = result.unwrap_err();
+            assert!(err.to_string().contains("20000 × 20000"), "{err}");
+        }
+    }
+
+    #[test]
+    fn the_limit_is_200_megapixels() {
+        assert!(check_size(20_000, 10_000).is_ok());
+        assert!(check_size(20_000, 10_001).is_err());
+        assert!(check_size(65_535, 65_535).is_err());
+    }
+
+    #[test]
+    fn a_panicking_job_becomes_an_error() {
+        let err = catch_panic(|| -> Result<()> { panic!("broken file") }).unwrap_err();
+        assert!(err.to_string().contains("broken file"), "{err}");
+        let err = catch_panic(|| -> Result<()> { panic!("{} bytes", 3) }).unwrap_err();
+        assert!(err.to_string().contains("3 bytes"), "{err}");
+        assert_eq!(catch_panic(|| Ok(7)).unwrap(), 7);
     }
 
     #[test]
