@@ -55,7 +55,7 @@ winresource = "0.1.31"
 # `VCPKGRS_DYNAMIC=1` is set in `.cargo/config.toml`; `build.rs` copies the DLLs.
 [package.metadata.vcpkg]
 git = "https://github.com/microsoft/vcpkg"
-rev = "c76c06644034521fb761a39f8f52d8e87d1103d5" # tag 2026.07.29
+rev = "b30c88338f4ec47a322a81f4113d7385702e03a7" # master 2026-09-22: libheif 1.23.5, libde265 1.1.3 (no vcpkg tag since 2026.07.29)
 dependencies = ["libheif[core]"]
 
 [package.metadata.vcpkg.target]

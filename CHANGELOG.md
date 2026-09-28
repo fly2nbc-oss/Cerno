@@ -60,6 +60,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ### Security
 
+- On Windows, HEIC photos are decoded with libheif 1.23.5 and libde265 1.1.3 instead of 1.23.1 and 1.1.1. They fix flaws a crafted HEIC file could trigger, among them heap overflows that allow running code (CVE-2026-84383). The Linux packages use the distribution's libheif.
 - The CLIP model is downloaded from a fixed commit of its Hugging Face repository instead of the moving `main` branch, and checked by SHA-256 as well as by size before it is used. A changed or swapped file is rejected and removed.
 - ExifTool is only looked up in absolute `PATH` entries, and Cerno starts exactly the file it found – an empty entry no longer points into the working folder.
 - The temporary JPEG that straighten and crop write is always a new file; a file or link already there under its name is never written through.
