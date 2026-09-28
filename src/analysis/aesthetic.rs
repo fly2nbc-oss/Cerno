@@ -28,9 +28,13 @@ pub fn as_stars(score: f32) -> f32 {
 
 /// CLIP vision model, file name in the models directory.
 pub const MODEL_FILE: &str = "clip-vit-large-patch14-vision.onnx";
-pub const MODEL_URL: &str =
-    "https://huggingface.co/Xenova/clip-vit-large-patch14/resolve/main/onnx/vision_model.onnx";
+/// Pinned to a commit, not `main`: a change in that repository must not reach Cerno, and
+/// the scores stay comparable with the ones already stored.
+pub const MODEL_URL: &str = "https://huggingface.co/Xenova/clip-vit-large-patch14/resolve/\
+     c307790166907339eed5a9a53a249af534102536/onnx/vision_model.onnx";
 pub const MODEL_BYTES: u64 = 1_216_438_437;
+/// Checked after the download (the LFS object id Hugging Face lists for the file).
+pub const MODEL_SHA256: &str = "ff49f8aa57c7abfd26e382eb083e4dbf988505223a9bd3767dbfd4e729206709";
 /// Stored with every LAION score; change it when the model, head or preprocessing change.
 pub const MODEL_ID: &str = "clip-vit-l14+laion-sac-logos-ava1-linear/1";
 

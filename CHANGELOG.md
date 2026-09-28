@@ -45,6 +45,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 - No torn reads or copies: reading, copying and writing a photo take turns, so the analysis, the viewer and a copy never see a file halfway through a rating write.
 - A tiny defective file whose header claims a gigantic size no longer crashes or freezes Cerno each time its folder opens: photos over 200 megapixels are refused with "photo too large" before anything is allocated for them.
 - A file that crashes a decoder shows an error instead of "Loading…" forever, and the viewer, the analysis and straighten/crop keep working. Before, a few such files stopped all loading until a restart.
+
+### Security
+
+- The CLIP model is downloaded from a fixed commit of its Hugging Face repository instead of the moving `main` branch, and checked by SHA-256 as well as by size before it is used. A changed or swapped file is rejected and removed.
 - A photo rated while it was being analysed is analysed again shortly afterwards instead of staying without values until the folder is reopened, and the index no longer keeps the rating it had before.
 - The explanations in the details panel (`I`) wrap inside the panel; before, they ran out of it and pushed every value out of view.
 - The window fills the screen at start (it stayed at its restored size while flagged as maximized on scaled displays).

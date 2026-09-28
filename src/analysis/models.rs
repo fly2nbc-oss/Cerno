@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result, bail};
 use eframe::egui;
+use sha2::{Digest as _, Sha256};
 
 use crate::paths;
 
@@ -149,23 +150,14 @@ pub(super) fn run_model<M, R>(
     }
 }
 
-/// Streams the model to `<dest>.part`, checks its size, then renames it into place. A failed
-/// or cancelled download leaves no `.part` behind.
+/// Streams the model to `<dest>.part`, checks its size and SHA-256, then renames it into
+/// place. A failed or cancelled download leaves no `.part` behind.
 fn download(shared: &Shared, dest: &Path) -> Result<()> {
     if let Some(dir) = dest.parent() {
         std::fs::create_dir_all(dir)?;
     }
     let part = dest.with_extension("onnx.part");
-    let result = fetch(shared, &part).and_then(|received| {
-        if received == aesthetic::MODEL_BYTES {
-            Ok(())
-        } else {
-            bail!(
-                "unexpected size {received} bytes (expected {})",
-                aesthetic::MODEL_BYTES
-            )
-        }
-    });
+    let result = fetch(shared, &part).and_then(|(received, sha256)| verify(received, &sha256));
     if result.is_err() {
         let _ = std::fs::remove_file(&part);
         return result;
@@ -174,7 +166,60 @@ fn download(shared: &Shared, dest: &Path) -> Result<()> {
     Ok(())
 }
 
-fn fetch(shared: &Shared, part: &Path) -> Result<u64> {
+/// The file is the one the pinned commit names: ONNX Runtime parses it next, so nothing
+/// else may get through.
+fn verify(received: u64, sha256: &str) -> Result<()> {
+    if received != aesthetic::MODEL_BYTES {
+        bail!(
+            "unexpected size {received} bytes (expected {})",
+            aesthetic::MODEL_BYTES
+        );
+    }
+    if sha256 != aesthetic::MODEL_SHA256 {
+        bail!(
+            "unexpected SHA-256 {sha256} (expected {})",
+            aesthetic::MODEL_SHA256
+        );
+    }
+    Ok(())
+}
+
+/// Passes the bytes on and hashes them on the way, so the 1.2 GB are not read a second time.
+struct Hashing<W> {
+    out: W,
+    sha256: Sha256,
+}
+
+impl<W> Hashing<W> {
+    fn new(out: W) -> Self {
+        Self {
+            out,
+            sha256: Sha256::new(),
+        }
+    }
+
+    /// The writer back, and the SHA-256 in lower-case hex (as Hugging Face lists it).
+    fn finish(self) -> (W, String) {
+        let digest = self.sha256.finalize();
+        let hex = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+        (self.out, hex)
+    }
+}
+
+impl<W: Write> Write for Hashing<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let written = self.out.write(buf)?;
+        self.sha256.update(&buf[..written]);
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.out.flush()
+    }
+}
+
+/// The bytes received and their SHA-256.
+fn fetch(shared: &Shared, part: &Path) -> Result<(u64, String)> {
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_connect(Some(Duration::from_secs(30)))
         .timeout_recv_response(Some(Duration::from_secs(60)))
@@ -205,7 +250,7 @@ fn fetch(shared: &Shared, part: &Path) -> Result<u64> {
                 }
             }
         })?;
-    let mut file = File::create(part)?;
+    let mut file = Hashing::new(File::create(part)?);
     let mut last_report = Instant::now();
     let received = receive(
         &rx,
@@ -220,8 +265,9 @@ fn fetch(shared: &Shared, part: &Path) -> Result<u64> {
         },
         || lock(&shared.state).shutdown,
     )?;
+    let (file, sha256) = file.finish();
     file.sync_all()?;
-    Ok(received)
+    Ok((received, sha256))
 }
 
 /// Writes the chunks from `rx` to `out` until the empty one that marks the end. Gives up after
@@ -338,6 +384,36 @@ impl Analyzer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_download_is_hashed_on_the_way_and_checked() {
+        let mut out = Hashing::new(Vec::new());
+        out.write_all(b"ab").unwrap();
+        out.write_all(b"c").unwrap();
+        let (bytes, sha256) = out.finish();
+        assert_eq!(bytes, b"abc");
+        assert_eq!(
+            sha256,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+
+        let size = aesthetic::MODEL_BYTES;
+        assert!(verify(size, aesthetic::MODEL_SHA256).is_ok());
+        let err = verify(size, &sha256).unwrap_err();
+        assert!(err.to_string().contains("SHA-256"), "{err}");
+        let err = verify(size - 1, aesthetic::MODEL_SHA256).unwrap_err();
+        assert!(err.to_string().contains("size"), "{err}");
+    }
+
+    #[test]
+    fn the_model_url_names_a_commit() {
+        let url = aesthetic::MODEL_URL;
+        assert!(!url.contains(char::is_whitespace), "{url}");
+        assert!(
+            url.contains("/resolve/c307790166907339eed5a9a53a249af534102536/onnx/"),
+            "{url}"
+        );
+    }
 
     #[test]
     fn a_stalled_download_gives_up_and_a_finished_one_counts_its_bytes() {
