@@ -5,6 +5,38 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- Straighten (`S`, fine grid, wheel or arrows, `Shift` finer) and crop (`R`: Original, 3:2, 4:3, 16:9, 1:1; `A` changes the ratio, `X` flips) for JPEGs, `Ctrl+←` / `Ctrl+→` for lossless quarter turns via the EXIF orientation. `Enter` applies, `Esc` cancels.
+- **Originals are kept**: before any of these edits the file is copied into Cerno's data folder (`backups`), and `Ctrl+Z` (also Edit › Undo) writes the newest copy of the current photo back – same file, same dates, with the rating and colour label given since. Copies are deleted after 30 days.
+- Action menu (`Ctrl+M`, "Action" in the filter bar): copy or move every photo the filter shows to another folder, or delete them with the usual countdown.
+- "Models & data" in the menu: where each model runs, the models folder, download, reset For you and delete the models – no longer part of the details panel.
+- Colour labels are part of the filter (small squares in the filter bar, rows with a colour dot in the menu); "Show all" resets them too.
+- The details panel shows the photo's size and load time.
+- JPEGs are converted to sRGB on decode (Adobe RGB, Display P3 by a fixed matrix, other profiles through a colour engine).
+
+### Changed
+
+- The burger menu is grouped (view, sort, filter, edit, photo, colour labels, models & data, language, help) and fully keyboard-operated: arrows, `Enter`, `→`/`←` for submenus, a letter jumps, `Esc` closes the submenu first. Switches show a box, choices a tick; long rows end in "…".
+- Keys: `F` and `F11` full screen, `T` the filter bar (Lightroom: F full screen, T toolbar). "Sort and filter" is called "Filter bar" everywhere.
+- Info bar: `L / V / ☆` without the "Aesthetics" label – For you has an outline star, filled stars are only your rating. Size and load time left for the details panel; parts that don't fit are left out whole, and the side columns no longer move while browsing. Buttons are 32 px.
+- Filter bar: one line; the status only shows while something needs attention (analysis running, model missing, loading or failed); hidden boxes fade at the edge.
+- "Probably blurry" needs the folder's blurriest 20 % **and** an absolute ceiling, so a folder of sharp photos gets no warnings. The filmstrip mark is a painted icon; every mark of a cell is named in its tooltip.
+- Duplicates: the original is the file whose name the others extend ("IMG_1.jpg" for "IMG_1 - Kopie.jpg"), else the only marked one, else the first in folder order. Before, the copy often counted as the original.
+- No system dialogs apart from the folder picker: an in-app card confirms the model download, resetting For you and deleting the models; copy, move and delete of the selection ask nothing (the folder choice or the countdown is the confirmation). No download dialog at start – a one-time hint once a folder is open.
+- Hints fade after about 5 s; errors stay until `Esc` or a click.
+- The start screen is a small card with the five keys to begin with; `H` shows the full help (with its own "Edit" section), also over the start screen.
+- Six font sizes instead of fifteen; section titles and the series line are muted, the accent marks the current photo and interaction only; label blue is clearly different from the accent.
+
+### Fixed
+
+- The explanations in the details panel (`I`) wrap inside the panel; before, they ran out of it and pushed every value out of view.
+- The window fills the screen at start (it stayed at its restored size while flagged as maximized on scaled displays).
+- `Ctrl+←` / `Ctrl+→` no longer also step to the neighbouring photo.
+- In name order without filters, duplicate marks and series appear as the analysis finds them, not only after sorting or filtering.
+
 ## [0.9.0] – 2026-09-28
 
 ### Added

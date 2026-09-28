@@ -63,7 +63,7 @@ const LANGUAGE_FADE: Duration = Duration::from_millis(450);
 const CLIP_OFFER_SHOWN: &str = "clip_download_declined";
 
 /// How long a hint stays at least (longer ones a little longer), and how long it fades.
-const NOTICE_TIME: Duration = Duration::from_secs(4);
+const NOTICE_TIME: Duration = Duration::from_secs(5);
 const NOTICE_FADE: Duration = Duration::from_millis(400);
 
 /// A message over the photo. Hints fade on their own; errors stay until Esc or a click;

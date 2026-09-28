@@ -52,21 +52,22 @@ Cerno (Latin *cerno* – "I sift, discern, see clearly") is a native Rust deskto
 ## Features
 
 - **Instant switching** – background workers prefetch the photos around the current one, decoded at monitor resolution and uploaded as GPU textures.
-- **Keyboard-first, Lightroom-style keys** – `1`–`5` set stars, `Shift+1`–`5` rate and move on, `0` clears, `X` marks a photo as rejected (written as `xmp:Rating = -1`, nothing is deleted), `6`–`9` set a colour label (red, yellow, green, blue; purple is in the menu). `Ctrl+K` opens the menu at the bottom right – view, sort, filter, edit, photo, colour labels, language and help – with the shortcut shown on each row.
+- **Keyboard-first, Lightroom-style keys** – `1`–`5` set stars, `Shift+1`–`5` rate and move on, `0` clears, `X` marks a photo as rejected (written as `xmp:Rating = -1`, nothing is deleted), `6`–`9` set a colour label (red, yellow, green, blue; purple is in the menu). `Ctrl+K` opens the menu at the bottom right – view, sort, filter, edit, photo, colour labels, models & data, language and help – with the shortcut shown on each row; arrows, `Enter`, `→`/`←` and a letter work in it like anywhere else.
 - **Safe metadata writes** – apart from the EXIF orientation of a 90° turn, the rating and the colour label (`xmp:Label`, English names) are the only metadata Cerno writes, in the background and debounced, in one pass when both change. File modification and creation dates stay bit-exact. Windows Explorer's own rating tags are kept in sync if present.
-- **Straighten, crop, rotate (JPEG)** – `S` straightens over a fine grid (mouse wheel or arrows, `Shift` for finer steps), `R` crops to Original, 3:2, 4:3, 16:9 or 1:1 (`A` changes the ratio, `X` flips landscape/portrait), `Ctrl+←` / `Ctrl+→` rotate by 90° losslessly through the EXIF orientation. `Enter` applies, `Esc` cancels. Straighten and crop re-encode the JPEG (quality 95, no chroma subsampling) into the original file – there is no undo; the file dates stay as they were.
+- **Straighten, crop, rotate (JPEG)** – `S` straightens over a fine grid (mouse wheel or arrows, `Shift` for finer steps), `R` crops to Original, 3:2, 4:3, 16:9 or 1:1 (`A` changes the ratio, `X` flips landscape/portrait), `Ctrl+←` / `Ctrl+→` rotate by 90° losslessly through the EXIF orientation. `Enter` applies, `Esc` cancels. Straighten and crop re-encode the JPEG (quality 95, no chroma subsampling) into the original file; the file dates stay as they were. **Before every edit the original is kept** in Cerno's data folder: `Ctrl+Z` puts it back (with the rating and colour label given since), pressed again the one before. Kept originals are deleted after 30 days.
 - **Zoom** – `Z` or double-click toggles 100 %, mouse wheel zooms around the cursor, drag pans. Full resolution is loaded on demand; zoom and position stay when you switch photos, so a series can be compared at the same spot.
 - **Compare** – `C` pins the current photo on the left, the right side browses the rest. `A` keeps the left one, `D` the right one; the other is marked as rejected and the next photo moves in, so a burst is culled in a few keystrokes. Both sides zoom together. Aesthetics and sharpness sit under each photo. The menu's "Delete rejected photos" sends all rejects to the trash when you are done.
-- **Series and duplicates** – photos shot within two seconds form a series; sorting by capture time puts the sharpest one first, and "Best of each series" hides the rest. Identical copies (same pixels) are marked as duplicates of the first file, never deleted on their own.
+- **Series and duplicates** – photos shot within two seconds form a series; sorting by capture time puts the sharpest one first, and "Best of each series" hides the rest. Identical copies (same pixels) are marked as duplicates – the original is the file the others only extend (`IMG_1.jpg` for `IMG_1 - Kopie.jpg`), else the only rated one, else the first; nothing is deleted on its own.
 - **Folders** – open one folder, or turn on "Include subfolders" to read the tree under it (hidden folders stay out).
 - **Delete without dialogs** – `Delete` hides the photo at once and moves it to the trash after a 5-second countdown; every further deletion restarts it, `Esc` brings all waiting photos back. Nothing blocks meanwhile.
-- **Copy, move or delete what the filter shows** – the filter bar's Action menu (`Ctrl+M`) copies or moves every photo on screen to another folder, or deletes them, after one confirmation. Deleting uses the same countdown.
-- **Filmstrip** – thumbnails with your stars, a colour stripe, a marker for probably blurry shots, and a wider gap between series.
-- **Sharpness, aesthetics and For you** – see [Scores](#scores). Sort by name, capture time, rating, either aesthetics score, For you or sharpness. The filter bar (`F`) keeps sort and filter on one line and combines stars, unrated, rejected, blurry, duplicate copies and the five colour labels; nothing ticked shows every photo.
-- **Details panel** – `Tab` shows every value Cerno measured for the current photo, `I` expands or collapses a short explanation in plain words under each value: both aesthetics scores, For you, whole-frame and eye sharpness, clipped highlights and shadows, CLIP attributes, a histogram and the state of each model. Rows fold open. For you can be reset from here, and the models section shows the folder of the model files with a button that copies the path.
-- **Info bar** – always visible: stars, aesthetics and For you side by side (`L 6.1 / V 6.5 / ★ 2.4` = LAION / V2.5 / For you), sharpness, capture data incl. digital zoom, the current zoom level, and a map pin for photos with GPS coordinates (click opens Google Maps). A menu button at the bottom right (`Ctrl+K`) opens every function; by default only the photo, the filmstrip and the info bar are visible. The filter bar opens with `F`.
+- **Copy, move or delete what the filter shows** – the filter bar's Action menu (`Ctrl+M`) copies or moves every photo on screen to another folder (choosing the folder is the confirmation), or deletes them with the same countdown and `Esc`.
+- **Filmstrip** – thumbnails with your stars, a colour stripe, a marker for probably blurry shots and one for duplicates (each named in the tooltip), and a wider gap between series.
+- **Sharpness, aesthetics and For you** – see [Scores](#scores). Sort by name, capture time, rating, either aesthetics score, For you or sharpness. The filter bar (`T`) keeps sort and filter on one line and combines stars, unrated, rejected, blurry, duplicate copies and the five colour labels; nothing ticked shows every photo.
+- **Details panel** – `Tab` shows every value Cerno measured for the current photo, `I` expands or collapses a short explanation in plain words under each value: both aesthetics scores, For you, whole-frame and eye sharpness, clipped highlights and shadows, CLIP attributes, a histogram, the photo's size and load time. Rows fold open.
+- **Models & data** – from the menu: which model runs where (DirectML = graphics card, CPU), the models folder (copy the path), downloading the aesthetics model, resetting For you and deleting the models. Confirmations are a card in the app (`Enter` / `Esc`), not a system dialog.
+- **Info bar** – always visible: stars, aesthetics and For you side by side (`L 6.1 / V 6.5 / ☆ 2.4` = LAION / V2.5 / For you – the outline star is Cerno's guess, filled stars are your rating), sharpness, capture data incl. digital zoom, the current zoom level, and a map pin for photos with GPS coordinates (click opens Google Maps). A menu button at the bottom right (`Ctrl+K`) opens every function; by default only the photo, the filmstrip and the info bar are visible. The filter bar opens with `T`. Hints fade after a few seconds; errors stay until `Esc` or a click.
 - **Five languages** – German, English, French, Spanish, Italian. Cerno starts in your system language; `Ctrl+L` switches, a flag briefly shows the new one.
-- **Help** – `H`, `F1` or `?` lists all shortcuts with a short explanation; the start screen shows the same page.
+- **Help** – `H`, `F1` or `?` lists all shortcuts with a short explanation; the start screen shows the five keys to begin with.
 - **Capture info** – camera, lens, focal length, aperture, shutter speed, ISO and capture date.
 - **Correct orientation**, natural sort order (`IMG_2` before `IMG_10`, umlauts next to their base letter).
 
@@ -105,17 +106,18 @@ Or drop a folder onto the window / `Ctrl+O`. When moving the binary, keep beside
 | `Z`, double-click | Toggle fit ↔ 100 % |
 | `+` / `-`, mouse wheel | Zoom in / out |
 | Drag | Pan while zoomed |
-| `F` | Toggle the filter bar (sort and filter) |
+| `T` | Toggle the filter bar (sort and filter) |
 | `Tab` | Toggle the details panel (mouse wheel scrolls it) |
 | `I` | Expand or collapse the explanations in the details panel |
 | `F6` | Toggle the filmstrip |
 | `Shift+Tab` | Filter bar, details panel and filmstrip together (the info bar always stays) |
-| `F11` | Toggle fullscreen |
+| `F`, `F11` | Toggle full screen |
 | `S` | Straighten (JPEG): mouse wheel or arrows rotate, `Shift` is finer |
 | `R` | Crop (JPEG): draw a frame, `A` changes the ratio, `X` flips landscape/portrait |
 | `Ctrl+←` / `Ctrl+→` | Rotate 90° – lossless, via the EXIF orientation |
 | `Enter` / `Esc` | Apply / cancel straighten or crop |
-| `Ctrl+K` | Menu: view, sort, filter, edit, photo, colour labels, language, help |
+| `Ctrl+Z` | Undo the last straighten, crop or quarter turn of the current photo (the original is kept for 30 days) |
+| `Ctrl+K` | Menu: view, sort, filter, edit, photo, colour labels, models & data, language, help – arrows, `Enter`, `→`/`←`, a letter jumps |
 | `Ctrl+M` | Action menu: copy, move or delete the photos on screen |
 | `Ctrl+L` | Switch language (DE → EN → FR → ES → IT) |
 | `H` / `F1` / `?` | Help page with all shortcuts |
@@ -128,8 +130,8 @@ Or drop a folder onto the window / `Ctrl+O`. When moving the binary, keep beside
 
 Background analysis (nearest first) is stored in `%LOCALAPPDATA%\Cerno\data\cerno.db` (Linux: `~/.local/share/cerno/cerno.db`); models under `…/models`. Scores never set your stars.
 
-- **Sharpness** – Laplacian on the sharpest tiles; folder percentile; optional eye sharpness via built-in [YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet).
-- **Aesthetics** – LAION (CLIP, ~1.2 GB – offered once at start, or "Enable aesthetics…" in the menu and the filter bar) and optional V2.5 (SigLIP files in the models folder; AGPL head not bundled). Shown as stars 0–5 (`L … / V … / ★ …`).
+- **Sharpness** – Laplacian on the sharpest tiles; folder percentile; optional eye sharpness via built-in [YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet). "Probably blurry" means among the blurriest 20 % of the folder **and** below a fixed ceiling, so a folder of sharp photos gets no warnings.
+- **Aesthetics** – LAION (CLIP, ~1.2 GB – a one-time hint once a folder is open; download from "Models & data", "Enable aesthetics…" in the menu or the filter bar) and optional V2.5 (SigLIP files in the models folder; AGPL head not bundled). Shown as stars 0–5 (`L … / V … / ☆ …`).
 - **For you** – ridge regression on your ratings and deletions (from 15 examples). The stars Cerno thinks you would give; not an aesthetics score.
 - **Exposure & CLIP attributes** – blown/crushed pixels; zero-shot quality cues 0–100 %.
 
