@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+## [1.0.0] – 2026-09-29
+
+The first release with packages. It also contains the changes of 0.9.0 (capture-time sort, colour labels, series, subfolders, duplicate marks, auto-advance), which had no release of its own.
+
 ### Added
 
 - **Packages**, built by CI with HEIC support: a Windows installer (per user, no admin rights, in the five UI languages; uninstalling keeps Cerno's data unless asked), a Windows portable zip (VC++ runtime included), a Linux AppImage (HEIC libraries included, glibc 2.39+) and a `.deb` for Ubuntu 24.04+ / Debian 13+. A `v*` tag drafts a GitHub release with all four and `SHA256SUMS.txt`.
