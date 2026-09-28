@@ -60,7 +60,6 @@ pub static TEXTS: Texts = Texts {
     star_tooltip: |n| format!("{n} ★ – tasto {n}"),
     zoom: |percent| format!("Zoom {percent:.0} %"),
     digital_zoom: |ratio| format!("Zoom digitale {ratio:.1}×"),
-    map_tooltip: |place| format!("{place}\nClicca per aprire in Google Maps"),
     button_toolbar: "Barra dei filtri",
     button_details: "Pannello dettagli",
     button_filmstrip: "Striscia di miniature",
@@ -146,6 +145,7 @@ pub static TEXTS: Texts = Texts {
     section_file: "File",
     row_size: "Dimensioni",
     row_load_time: "Tempo di caricamento",
+    row_location: "Posizione",
     row_laion: "LAION (CLIP)",
     row_v25: "V2.5 (SigLIP)",
     row_personal: "Per te",
@@ -288,7 +288,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "A, D",
-            "Confronta: tieni la sinistra / la destra – l'altra viene rifiutata",
+            "Confronta: tieni la sinistra / la destra – l'altra viene rifiutata e il confronto termina",
         ),
         (
             "6 – 9",

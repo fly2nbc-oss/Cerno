@@ -1,4 +1,4 @@
-//! Small painted symbols: language flags, map pin, panel toggles, help. Painted instead of
+//! Small painted symbols: language flags, panel toggles, help. Painted instead of
 //! taken from a font – egui has no flag emoji and no Lucide icons.
 
 use eframe::egui::{
@@ -96,25 +96,6 @@ fn union_jack(painter: &Painter, rect: Rect) {
         );
         painter.rect_filled(Rect::from_center_size(c, vec2(width, h)), 0.0, color);
     }
-}
-
-/// Map pin with its tip at the bottom of a `size`-high symbol centred at `center`.
-pub fn map_pin(painter: &Painter, center: Pos2, size: f32, color: Color32, hole: Color32) {
-    let r = size * 0.32;
-    let head = center - vec2(0.0, size * 0.14);
-    let tip = center + vec2(0.0, size * 0.5);
-    // Tangent points of the tip on the head circle.
-    let d = tip.y - head.y;
-    let angle = (r / d).asin();
-    let (s, co) = angle.sin_cos();
-    let side = |sign: f32| head + vec2(sign * r * co, r * s);
-    painter.add(Shape::convex_polygon(
-        vec![side(-1.0), tip, side(1.0)],
-        color,
-        Stroke::NONE,
-    ));
-    painter.circle_filled(head, r, color);
-    painter.circle_filled(head, r * 0.42, hole);
 }
 
 /// Which part of the window a panel button toggles.

@@ -238,7 +238,6 @@ pub struct Texts {
     pub star_tooltip: fn(u8) -> String,
     pub zoom: fn(f32) -> String,
     pub digital_zoom: fn(f64) -> String,
-    pub map_tooltip: fn(&str) -> String,
     pub button_toolbar: &'static str,
     pub button_details: &'static str,
     pub button_filmstrip: &'static str,
@@ -342,6 +341,7 @@ pub struct Texts {
     pub section_file: &'static str,
     pub row_size: &'static str,
     pub row_load_time: &'static str,
+    pub row_location: &'static str,
     pub row_laion: &'static str,
     pub row_v25: &'static str,
     pub row_personal: &'static str,
@@ -452,7 +452,6 @@ mod tests {
             assert!((t.star_tooltip)(4).contains('4'), "{name}");
             assert!((t.zoom)(250.0).contains("250"), "{name}");
             assert!((t.digital_zoom)(2.0).contains('2'), "{name}");
-            assert!((t.map_tooltip)("N 48").contains("N 48"), "{name}");
             assert!((t.button_language)(name).contains(name), "{name}");
             assert!((t.cmd_delete_rejected)(7).contains('7'), "{name}");
             let series = (t.series_position)(3, 7);

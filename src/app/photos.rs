@@ -1,5 +1,7 @@
 //! The photo area: one photo or two side by side (compare mode), mouse zoom and pan.
 
+use std::path::PathBuf;
+
 use eframe::egui::{self, CursorIcon, PointerButton, Rect, Sense, pos2, vec2};
 
 use crate::i18n;
@@ -10,6 +12,7 @@ use crate::theme::tokens;
 use crate::ui::{overlays, viewer};
 
 use super::CernoApp;
+use super::gate::Change;
 use super::notice::Notice;
 
 /// Gap between the two photos in compare mode.
@@ -50,29 +53,34 @@ impl CernoApp {
         self.rebuild_view(ctx, right);
     }
 
-    /// `A`: the left photo wins, the right one is rejected and the next photo moves in.
+    /// `A`: the left photo wins – the right one is rejected, compare mode ends on the left one.
     pub(super) fn keep_left(&mut self, ctx: &egui::Context) {
-        if self.pinned.is_none() {
-            return;
+        if let Some((left, right)) = self.compared() {
+            self.choose(ctx, left, right);
         }
-        let Some(right) = self.view.get(self.current).cloned() else {
-            return;
-        };
-        let next = self.neighbour(self.current, &[&right]);
-        self.rate(ctx, right, Rating::Rejected, false);
-        self.rebuild_view(ctx, next);
     }
 
-    /// `D`: the right photo wins and moves to the left, the left one is rejected.
+    /// `D`: the right photo wins – the left one is rejected, compare mode ends on the right one.
     pub(super) fn keep_right(&mut self, ctx: &egui::Context) {
-        let (Some(left), Some(right)) = (self.pinned.clone(), self.view.get(self.current).cloned())
-        else {
+        if let Some((left, right)) = self.compared() {
+            self.choose(ctx, right, left);
+        }
+    }
+
+    /// The left (pinned) and right photo while comparing.
+    fn compared(&self) -> Option<(PathBuf, PathBuf)> {
+        Some((self.pinned.clone()?, self.view.get(self.current).cloned()?))
+    }
+
+    /// Rejects `loser`, leaves compare mode and shows `winner` alone. A photo that takes no
+    /// mark right now (it is being moved) keeps the comparison open.
+    fn choose(&mut self, ctx: &egui::Context, winner: PathBuf, loser: PathBuf) {
+        if !self.allowed(Change::Mark, Some(&loser)) {
             return;
-        };
-        let next = self.neighbour(self.current, &[&left, &right]);
-        self.rate(ctx, left, Rating::Rejected, false);
-        self.pinned = Some(right);
-        self.rebuild_view(ctx, next);
+        }
+        self.pinned = None;
+        self.rate(ctx, loser, Rating::Rejected, false);
+        self.rebuild_view(ctx, Some(winner));
     }
 
     /// Photo slots on screen: one, or pinned left + current right in compare mode.

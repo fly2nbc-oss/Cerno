@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use eframe::egui::{self, OpenUrl, Rect, pos2, vec2};
+use eframe::egui::{self, Rect, pos2, vec2};
 
 use crate::i18n;
 use crate::loader::Lookup;
@@ -217,9 +217,6 @@ impl CernoApp {
                 Some(palette::State::default())
             };
         }
-        if let Some(url) = out.open_map {
-            ctx.open_url(OpenUrl::new_tab(url));
-        }
         if let Some(rect) = details_rect {
             let status = self.analyzer.status();
             details::draw(
@@ -234,6 +231,7 @@ impl CernoApp {
                     histogram: image.as_deref().map(|i| &i.histogram),
                     status: &status,
                     file: image.as_deref().map(|i| (i.original_size, i.load_ms)),
+                    position: image.as_deref().and_then(|i| i.camera.gps),
                 },
                 &mut self.details_expanded,
             );
