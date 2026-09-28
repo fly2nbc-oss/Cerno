@@ -9,7 +9,7 @@ use eframe::egui::{
 
 use crate::analysis::{ModelState, Status};
 use crate::i18n;
-use crate::theme::tokens;
+use crate::theme::{text, tokens};
 use crate::ui::details::model_note;
 use crate::ui::{icons, modal};
 
@@ -37,7 +37,7 @@ fn content(ui: &mut Ui, status: &Status) -> ModelsOutput {
     let top_right = ui.max_rect().right_top() + vec2(8.0, -8.0);
     ui.label(
         RichText::new(t.menu_models)
-            .font(FontId::proportional(17.0))
+            .font(FontId::proportional(text::VALUE))
             .color(tokens::TEXT),
     );
     out.close = modal::close_button(ui, top_right, t.btn_close);
@@ -60,7 +60,7 @@ fn content(ui: &mut Ui, status: &Status) -> ModelsOutput {
     ui.add(
         Label::new(
             RichText::new(i18n::keep_together(t.explain_models))
-                .font(FontId::proportional(12.5))
+                .font(FontId::proportional(text::BODY))
                 .color(tokens::MUTED),
         )
         .wrap(),
@@ -103,13 +103,13 @@ fn row(ui: &mut Ui, label: &str, value: &str) {
     ui.horizontal(|ui| {
         ui.label(
             RichText::new(label)
-                .font(FontId::proportional(13.0))
+                .font(FontId::proportional(text::BODY))
                 .color(tokens::MUTED),
         );
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.label(
                 RichText::new(value)
-                    .font(FontId::proportional(13.0))
+                    .font(FontId::proportional(text::BODY))
                     .color(tokens::TEXT),
             );
         });
@@ -138,7 +138,7 @@ fn models_folder(ui: &mut Ui) {
             ui.add(
                 Label::new(
                     RichText::new(&text)
-                        .font(FontId::proportional(12.0))
+                        .font(FontId::proportional(text::SMALL))
                         .color(tokens::MUTED),
                 )
                 .wrap(),

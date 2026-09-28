@@ -10,7 +10,7 @@ use eframe::egui::{
 
 use crate::i18n;
 use crate::metadata::{Label, Rating};
-use crate::theme::tokens;
+use crate::theme::{text, tokens};
 use crate::thumbs::Thumbs;
 use crate::ui::icons;
 use crate::ui::stars;
@@ -36,7 +36,8 @@ pub struct CellInfo {
     pub in_current_series: bool,
     /// Further photos of the series hidden by "best of each series".
     pub more: Option<u32>,
-    pub duplicate: bool,
+    /// Display name of the original when this photo is an exact copy.
+    pub duplicate_of: Option<String>,
 }
 
 /// Touchpads scroll in points: this many make one photo.
@@ -146,7 +147,7 @@ pub fn draw(
                 badge.center(),
                 Align2::CENTER_CENTER,
                 i18n::t().compare_left_badge,
-                FontId::proportional(11.0),
+                FontId::proportional(text::LABEL),
                 tokens::BG,
             );
         } else if response.hovered() {
@@ -175,17 +176,14 @@ pub fn draw(
             }
             Rating::Unrated => {}
         }
+        // Every mark explains itself in one tooltip.
+        let mut tooltip = Vec::new();
         if let Some(reason) = &cell_info.blurry {
-            let marker = pos2(cell.right() - 8.0, cell.top() + 8.0);
-            painter.circle_filled(marker, 5.0, tokens::STATUS_WARN);
-            painter.text(
-                marker,
-                Align2::CENTER_CENTER,
-                "!",
-                FontId::proportional(9.0),
-                Color32::BLACK,
-            );
-            response.clone().on_hover_text(reason);
+            icons::warning(&painter, pos2(cell.right() - 10.0, cell.top() + 10.0));
+            tooltip.push(reason.clone());
+        }
+        if cell_info.rating == Rating::Rejected {
+            tooltip.push(i18n::t().rejected.to_owned());
         }
         if let Some(label) = cell_info.label {
             let stripe = Rect::from_min_max(
@@ -193,31 +191,33 @@ pub fn draw(
                 pos2(cell.right() - 4.0, cell.bottom() - 1.0),
             );
             painter.rect_filled(stripe, 1.0, crate::theme::label_color(label));
+            tooltip.push(i18n::label_name(label).to_owned());
         }
+        // Muted, not the accent: the accent frame is the current photo alone.
         if cell_info.in_current_series {
             painter.hline(
                 (cell.left() + 8.0)..=(cell.right() - 8.0),
                 rect.bottom() - 3.0,
-                Stroke::new(2.0, tokens::ACCENT),
+                Stroke::new(2.0, tokens::MUTED),
             );
         }
-        if cell_info.duplicate && !cell_info.pinned {
-            let badge = Rect::from_min_size(cell.min + vec2(4.0, 4.0), vec2(14.0, 14.0));
-            painter.rect_filled(badge, 3.0, tokens::SURFACE);
-            painter.text(
-                badge.center(),
-                Align2::CENTER_CENTER,
-                "2",
-                FontId::proportional(10.0),
-                tokens::TEXT,
-            );
+        if let Some(original) = &cell_info.duplicate_of {
+            if !cell_info.pinned {
+                let badge = Rect::from_min_size(cell.min + vec2(4.0, 4.0), vec2(18.0, 18.0));
+                painter.rect_filled(badge, 3.0, tokens::SURFACE);
+                icons::copy(&painter, badge.center(), tokens::TEXT);
+            }
+            tooltip.push((i18n::t().duplicate_of)(original));
+        }
+        if !tooltip.is_empty() {
+            response.clone().on_hover_text(tooltip.join("\n"));
         }
         if let Some(more) = cell_info.more {
             painter.text(
                 pos2(cell.right() - 4.0, cell.bottom() + 11.0),
                 Align2::RIGHT_CENTER,
                 (i18n::t().series_more)(more),
-                FontId::proportional(10.0),
+                FontId::proportional(text::LABEL),
                 tokens::MUTED,
             );
         }

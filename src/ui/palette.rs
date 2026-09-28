@@ -10,7 +10,7 @@ use eframe::egui::{
     StrokeKind, pos2, vec2,
 };
 
-use crate::theme::tokens;
+use crate::theme::{text, tokens};
 use crate::ui::icons;
 
 const WIDTH: f32 = 340.0;
@@ -468,7 +468,7 @@ fn row_button(
         pos2(x, y),
         Align2::LEFT_CENTER,
         look.label,
-        FontId::proportional(13.5),
+        FontId::proportional(text::BODY),
         tokens::TEXT,
     );
     let right_reserve = if look.submenu { 22.0 } else { 10.0 };
@@ -477,7 +477,7 @@ fn row_button(
             pos2(row.right() - right_reserve, y),
             Align2::RIGHT_CENTER,
             shortcut,
-            FontId::proportional(12.0),
+            FontId::proportional(text::SMALL),
             tokens::MUTED,
         );
     }

@@ -3,7 +3,7 @@
 use eframe::egui::{Color32, Painter, Pos2, Rect, Stroke, pos2, vec2};
 
 use crate::edit::{Corner, Crop};
-use crate::theme::tokens;
+use crate::theme::{text, tokens};
 
 const HANDLE: f32 = 10.0;
 /// Divisions of the shorter side. Fine enough to judge a horizon, not a rule of thirds.
@@ -145,10 +145,16 @@ pub fn screen_delta(image: Rect, image_size: [u32; 2], delta: eframe::egui::Vec2
 pub fn banner(painter: &Painter, area: Rect, primary: &str, hint: &str) {
     use eframe::egui::FontId;
 
-    let primary_galley =
-        painter.layout_no_wrap(primary.to_owned(), FontId::proportional(14.0), tokens::TEXT);
-    let hint_galley =
-        painter.layout_no_wrap(hint.to_owned(), FontId::proportional(12.0), tokens::MUTED);
+    let primary_galley = painter.layout_no_wrap(
+        primary.to_owned(),
+        FontId::proportional(text::LARGE),
+        tokens::TEXT,
+    );
+    let hint_galley = painter.layout_no_wrap(
+        hint.to_owned(),
+        FontId::proportional(text::SMALL),
+        tokens::MUTED,
+    );
     let width = primary_galley.size().x.max(hint_galley.size().x) + 28.0;
     let bar = Rect::from_center_size(pos2(area.center().x, area.top() + 28.0), vec2(width, 40.0));
     painter.rect_filled(bar, 8.0, Color32::from_black_alpha(180));

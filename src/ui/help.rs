@@ -8,7 +8,7 @@ use eframe::egui::{
 };
 
 use crate::i18n::{self, HelpRow};
-use crate::theme::{self, tokens};
+use crate::theme::{self, text, tokens};
 use crate::ui::icons;
 
 const MAX_WIDTH: f32 = 940.0;
@@ -101,7 +101,11 @@ fn content(ui: &mut Ui, welcome: bool) -> (HelpOutput, f32) {
     let mut y = top.y + 4.0;
 
     // Header: "Cerno 0.7.0 · Help", language flag and (over the photos) a close button.
-    let title = painter.layout_no_wrap("Cerno".into(), FontId::proportional(24.0), tokens::TEXT);
+    let title = painter.layout_no_wrap(
+        "Cerno".into(),
+        FontId::proportional(text::TITLE),
+        tokens::TEXT,
+    );
     let title_height = title.size().y;
     let title_width = title.size().x;
     painter.galley(pos2(left, y), title, tokens::TEXT);
@@ -114,7 +118,7 @@ fn content(ui: &mut Ui, welcome: bool) -> (HelpOutput, f32) {
         pos2(left + title_width + 10.0, y + title_height - 6.0),
         Align2::LEFT_BOTTOM,
         subtitle,
-        FontId::proportional(13.0),
+        FontId::proportional(text::BODY),
         tokens::MUTED,
     );
     let mut x = right;
@@ -133,7 +137,7 @@ fn content(ui: &mut Ui, welcome: bool) -> (HelpOutput, f32) {
     // The language as a quiet word (the flag only shows while switching).
     let name = painter.layout_no_wrap(
         i18n::current().name().to_owned(),
-        FontId::proportional(12.5),
+        FontId::proportional(text::BODY),
         tokens::MUTED,
     );
     let area = Rect::from_min_size(
@@ -150,7 +154,7 @@ fn content(ui: &mut Ui, welcome: bool) -> (HelpOutput, f32) {
             c,
             Align2::CENTER_CENTER,
             i18n::current().name(),
-            FontId::proportional(12.5),
+            FontId::proportional(text::BODY),
             color,
         );
     }) {
@@ -165,7 +169,7 @@ fn content(ui: &mut Ui, welcome: bool) -> (HelpOutput, f32) {
         } else {
             t.help_intro
         }),
-        FontId::proportional(13.5),
+        FontId::proportional(text::BODY),
         tokens::TEXT,
         width.min(760.0),
     );
@@ -183,7 +187,7 @@ fn content(ui: &mut Ui, welcome: bool) -> (HelpOutput, f32) {
             pos2(left + width / 2.0, y),
             Align2::CENTER_TOP,
             t.help_drop,
-            FontId::proportional(12.5),
+            FontId::proportional(text::BODY),
             tokens::MUTED,
         );
         y += 34.0;
@@ -193,7 +197,7 @@ fn content(ui: &mut Ui, welcome: bool) -> (HelpOutput, f32) {
             pos2(left + width / 2.0, y),
             Align2::CENTER_TOP,
             t.welcome_more,
-            FontId::proportional(12.5),
+            FontId::proportional(text::BODY),
             tokens::MUTED,
         );
         y += 24.0;
@@ -232,7 +236,7 @@ fn content(ui: &mut Ui, welcome: bool) -> (HelpOutput, f32) {
             pos2(left + width / 2.0, y + 4.0),
             Align2::CENTER_TOP,
             t.help_close,
-            FontId::proportional(11.5),
+            FontId::proportional(text::SMALL),
             tokens::MUTED,
         );
         y += 24.0;
@@ -249,8 +253,8 @@ fn section(painter: &Painter, x: f32, y: f32, width: f32, title: &str, rows: &[H
             pos2(x, y),
             Align2::LEFT_TOP,
             title.to_uppercase(),
-            FontId::proportional(11.0),
-            tokens::ACCENT,
+            FontId::proportional(text::LABEL),
+            tokens::MUTED,
         );
         y += 22.0;
     }
@@ -259,7 +263,7 @@ fn section(painter: &Painter, x: f32, y: f32, width: f32, title: &str, rows: &[H
         let caps_height = keycaps(painter, pos2(x, y), keys_width, keys);
         let description = painter.layout(
             i18n::keep_together(action),
-            FontId::proportional(12.5),
+            FontId::proportional(text::BODY),
             tokens::TEXT,
             width - keys_width - 12.0,
         );
@@ -280,8 +284,11 @@ fn keycaps(painter: &Painter, origin: Pos2, max_width: f32, keys: &str) -> f32 {
     let (mut x, mut y) = (origin.x, origin.y);
     let mut line_height: f32 = 0.0;
     for key in keys.split(", ") {
-        let galley =
-            painter.layout_no_wrap(key.to_owned(), FontId::proportional(12.0), tokens::TEXT);
+        let galley = painter.layout_no_wrap(
+            key.to_owned(),
+            FontId::proportional(text::SMALL),
+            tokens::TEXT,
+        );
         let size = galley.size() + vec2(14.0, 6.0);
         if x > origin.x && x + size.x > origin.x + max_width {
             x = origin.x;

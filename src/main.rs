@@ -52,7 +52,9 @@ fn main() -> eframe::Result {
             .with_app_id("cerno")
             .with_inner_size([1280.0, 860.0])
             .with_min_inner_size([480.0, 320.0])
-            .with_maximized(true)
+            // No `with_maximized`: on a scaled Windows display it leaves the window flagged as
+            // maximized at its restored size, and the maximize command of the first frame
+            // (`app.rs`) is then a no-op. Measured: the restored window shows for ~13 ms.
             .with_drag_and_drop(true),
         renderer: eframe::Renderer::Wgpu,
         wgpu_options: wgpu_options(),

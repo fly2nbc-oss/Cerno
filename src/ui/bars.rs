@@ -13,7 +13,7 @@ use crate::analysis::{ModelState, Status, aesthetic};
 use crate::i18n::{self, Lang};
 use crate::loader::LoadedImage;
 use crate::metadata::{self, Label, Rating};
-use crate::theme::{self, tokens};
+use crate::theme::{self, text, tokens};
 use crate::ui::icons;
 use crate::ui::stars;
 use crate::view::{FilterKind, SortKey, ViewOptions};
@@ -350,7 +350,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
         pos2(x, row1),
         Align2::LEFT_CENTER,
         bar.name,
-        FontId::proportional(13.0),
+        FontId::proportional(text::BODY),
         tokens::TEXT,
     );
     // Size and load time live in the details panel. What doesn't fit is left out whole, the
@@ -371,7 +371,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     if let Some(taken) = bar.image.and_then(|image| image.camera.taken.as_ref()) {
         facts.push(i18n::date(taken));
     }
-    let font = FontId::proportional(11.5);
+    let font = FontId::proportional(text::SMALL);
     let room = (centre - centre_half - 12.0 - x).max(0.0);
     let text = fit_parts(painter, facts, "   ·   ", &font, room, Drop::Back);
     left.text(
@@ -402,7 +402,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
             exposure.push((t.digital_zoom)(ratio));
         }
         // Aperture, shutter speed and ISO matter most; the focal length goes first.
-        let font = FontId::proportional(12.5);
+        let font = FontId::proportional(text::BODY);
         let text = fit_parts(painter, exposure, "  ·  ", &font, room, Drop::Front);
         right.text(
             pos2(x, row1),
@@ -425,7 +425,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
         );
     }
     // The camera matters more than the lens.
-    let font = FontId::proportional(11.5);
+    let font = FontId::proportional(text::SMALL);
     let text = fit_parts(painter, gear, "   ·   ", &font, room, Drop::Back);
     right.text(
         pos2(x, row2),
@@ -475,7 +475,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
             pos2(x + 16.0, row1),
             Align2::LEFT_CENTER,
             t.rejected,
-            FontId::proportional(12.0),
+            FontId::proportional(text::SMALL),
             tokens::STATUS_ERROR,
         );
     }
@@ -707,7 +707,7 @@ fn layout_meters(painter: &Painter, meters: &[Meter]) -> LaidMeters {
         .map(|m| {
             let label = painter.layout_no_wrap(
                 m.label.to_uppercase(),
-                FontId::proportional(10.5),
+                FontId::proportional(text::LABEL),
                 if m.color == tokens::ACCENT {
                     tokens::MUTED
                 } else {
@@ -719,18 +719,18 @@ fn layout_meters(painter: &Painter, meters: &[Meter]) -> LaidMeters {
             } else {
                 tokens::TEXT
             };
-            let size = if m.small { 12.0 } else { 17.0 };
+            let size = if m.small { text::SMALL } else { text::VALUE };
             let mut job = LayoutJob::default();
             let mut stars = Vec::new();
             let mut chars = 0;
             for piece in &m.value {
                 let (text, size, color) = match piece {
                     Piece::Value(text) => (text.as_str(), size, value_color),
-                    Piece::Prefix(text) => (text.as_str(), 11.0, tokens::MUTED),
+                    Piece::Prefix(text) => (text.as_str(), text::LABEL, tokens::MUTED),
                     Piece::Separator(text) => (text.as_str(), size, tokens::MUTED),
                     Piece::Star => {
                         stars.push(chars);
-                        (STAR_PLACEHOLDER, 11.0, tokens::MUTED)
+                        (STAR_PLACEHOLDER, text::LABEL, tokens::MUTED)
                     }
                 };
                 let mut format = TextFormat::simple(FontId::proportional(size), color);
@@ -829,11 +829,19 @@ pub fn compare_label(ui: &Ui, area: Rect, side: &str, name: &str, rating: Rating
     let painter = ui.painter().with_clip_rect(area);
     let side = painter.layout_no_wrap(
         side.to_uppercase(),
-        FontId::proportional(11.0),
-        tokens::ACCENT,
+        FontId::proportional(text::LABEL),
+        tokens::MUTED,
     );
-    let name = painter.layout_no_wrap(name.to_owned(), FontId::proportional(13.0), tokens::TEXT);
-    let hint = painter.layout_no_wrap(hint.to_owned(), FontId::proportional(11.5), tokens::MUTED);
+    let name = painter.layout_no_wrap(
+        name.to_owned(),
+        FontId::proportional(text::BODY),
+        tokens::TEXT,
+    );
+    let hint = painter.layout_no_wrap(
+        hint.to_owned(),
+        FontId::proportional(text::SMALL),
+        tokens::MUTED,
+    );
     // Stars, or the red cross for a rejected photo.
     let stars_width = match rating {
         Rating::Stars(r) => f32::from(r) * 10.0 + 8.0,
@@ -907,7 +915,7 @@ pub fn compare_scores(
         after.push_str(&format!("   {name} {:.0} %", p * 100.0));
     }
     let painter = ui.painter().with_clip_rect(area);
-    let font = FontId::proportional(12.5);
+    let font = FontId::proportional(text::BODY);
     let before = painter.layout_no_wrap(before, font.clone(), tokens::TEXT);
     let after = painter.layout_no_wrap(after, font, tokens::TEXT);
     let pill = Rect::from_min_size(
@@ -936,7 +944,7 @@ pub fn compare_scores(
 pub fn delete_countdown(ui: &Ui, area: Rect, count: usize, left: f32) {
     let painter = ui.painter();
     let text = (i18n::t().deleting)(count);
-    let galley = painter.layout_no_wrap(text, FontId::proportional(13.0), tokens::TEXT);
+    let galley = painter.layout_no_wrap(text, FontId::proportional(text::BODY), tokens::TEXT);
     let width = (galley.size().x + 32.0).max(300.0);
     let pill = Rect::from_center_size(
         pos2(area.center().x, area.bottom() - 44.0),
@@ -977,7 +985,7 @@ pub fn notices(ui: &Ui, rect: Rect, message: Option<(&str, bool, f32)>) -> bool 
     painter.set_opacity(opacity);
     let galley = painter.layout(
         text,
-        FontId::proportional(13.0),
+        FontId::proportional(text::BODY),
         tokens::TEXT,
         (rect.width() - 64.0).max(120.0),
     );
@@ -1015,7 +1023,7 @@ pub fn drop_hint(ui: &Ui, rect: Rect) {
         rect.center(),
         Align2::CENTER_CENTER,
         i18n::t().drop_to_open,
-        FontId::proportional(18.0),
+        FontId::proportional(text::VALUE),
         tokens::TEXT,
     );
 }
@@ -1026,7 +1034,7 @@ pub fn centred_message(ui: &Ui, area: Rect, text: &str, color: Color32) {
         area.center(),
         Align2::CENTER_CENTER,
         text,
-        FontId::proportional(14.0),
+        FontId::proportional(text::LARGE),
         color,
     );
 }
@@ -1037,7 +1045,7 @@ pub fn language_flash(painter: &Painter, area: Rect, lang: Lang, opacity: f32) {
     painter.set_opacity(opacity);
     let name = painter.layout_no_wrap(
         lang.name().to_owned(),
-        FontId::proportional(20.0),
+        FontId::proportional(text::TITLE),
         tokens::TEXT,
     );
     let flag = vec2(96.0, 64.0);

@@ -6,7 +6,7 @@ use eframe::egui::{
 };
 
 use crate::i18n::Lang;
-use crate::theme::tokens;
+use crate::theme::{text, tokens};
 
 /// The flag of `lang` filling `rect` (3:2 looks right). English uses the Union Jack.
 pub fn flag(painter: &Painter, rect: Rect, lang: Lang) {
@@ -165,6 +165,15 @@ pub fn reject_mark(painter: &Painter, center: Pos2, size: f32, color: Color32) {
     painter.line_segment([center + vec2(-d, d), center + vec2(d, -d)], stroke);
 }
 
+/// "Probably blurry": a status-coloured disc with a painted exclamation mark (a 9 px text "!"
+/// was below the design system's 12 px minimum for icons).
+pub fn warning(painter: &Painter, center: Pos2) {
+    painter.circle_filled(center, 6.5, tokens::STATUS_WARN);
+    let stroke = Stroke::new(1.8, Color32::BLACK);
+    painter.line_segment([center + vec2(0.0, -3.6), center + vec2(0.0, 1.0)], stroke);
+    painter.circle_filled(center + vec2(0.0, 3.4), 1.0, Color32::BLACK);
+}
+
 /// Two overlapping sheets, the "copy" mark.
 pub fn copy(painter: &Painter, center: Pos2, color: Color32) {
     let stroke = Stroke::new(1.2, color);
@@ -190,7 +199,7 @@ pub fn help(painter: &Painter, center: Pos2, color: Color32) {
         center + vec2(0.0, 0.5),
         Align2::CENTER_CENTER,
         "?",
-        FontId::proportional(11.0),
+        FontId::proportional(text::LABEL),
         color,
     );
 }

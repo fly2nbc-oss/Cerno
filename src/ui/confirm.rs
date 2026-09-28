@@ -8,7 +8,7 @@ use eframe::egui::{
 };
 
 use crate::i18n;
-use crate::theme::tokens;
+use crate::theme::{text, tokens};
 use crate::ui::modal;
 
 pub struct Confirm<'a> {
@@ -31,14 +31,14 @@ pub fn show(ctx: &Context, window: Rect, confirm: &Confirm<'_>) -> Option<bool> 
     let modal = modal::show(ctx, window, Id::new("confirm"), 460.0, |ui| {
         ui.label(
             RichText::new(confirm.title)
-                .font(FontId::proportional(17.0))
+                .font(FontId::proportional(text::VALUE))
                 .color(tokens::TEXT),
         );
         ui.add_space(10.0);
         ui.add(
             Label::new(
                 RichText::new(i18n::keep_together(&confirm.text))
-                    .font(FontId::proportional(13.0))
+                    .font(FontId::proportional(text::BODY))
                     .color(tokens::TEXT),
             )
             .wrap(),

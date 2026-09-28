@@ -28,8 +28,27 @@ pub mod tokens {
     pub const LABEL_RED: Color32 = Color32::from_rgb(0xE2, 0x4B, 0x4B);
     pub const LABEL_YELLOW: Color32 = Color32::from_rgb(0xE6, 0xC2, 0x29);
     pub const LABEL_GREEN: Color32 = Color32::from_rgb(0x3D, 0xAB, 0x6E);
-    pub const LABEL_BLUE: Color32 = Color32::from_rgb(0x4C, 0x8F, 0xE0);
+    /// A purer blue than the accent (CIEDE2000 13.5 from it, 2.9 before), ~3.2:1 on the
+    /// surfaces.
+    pub const LABEL_BLUE: Color32 = Color32::from_rgb(0x33, 0x66, 0xE6);
     pub const LABEL_PURPLE: Color32 = Color32::from_rgb(0xA5, 0x6B, 0xC7);
+}
+
+/// The only font sizes of the UI – a few roles, as in the design system, instead of one size
+/// per place.
+pub mod text {
+    /// Uppercase section labels, badges, small letters in front of values.
+    pub const LABEL: f32 = 11.0;
+    /// Secondary lines: capture data, shortcuts, hints, key caps.
+    pub const SMALL: f32 = 12.0;
+    /// Standard text: names, menu rows, notices, explanations.
+    pub const BODY: f32 = 13.0;
+    /// Values in the details panel, banners, placeholders in the photo area.
+    pub const LARGE: f32 = 15.0;
+    /// Scores in the info bar, card titles.
+    pub const VALUE: f32 = 17.0;
+    /// Help title and the language flash.
+    pub const TITLE: f32 = 22.0;
 }
 
 pub fn label_color(label: crate::metadata::Label) -> Color32 {
@@ -122,7 +141,11 @@ fn install_system_font(ctx: &egui::Context) {
 
 /// Primary button fill per the design system (one primary action per view).
 pub fn primary_button(text: &str) -> egui::Button<'_> {
-    egui::Button::new(egui::RichText::new(text).color(Color32::WHITE).size(14.0))
-        .fill(tokens::ACCENT)
-        .min_size(egui::vec2(140.0, 38.0))
+    egui::Button::new(
+        egui::RichText::new(text)
+            .color(Color32::WHITE)
+            .size(self::text::BODY),
+    )
+    .fill(tokens::ACCENT)
+    .min_size(egui::vec2(140.0, 38.0))
 }

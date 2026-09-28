@@ -11,7 +11,7 @@ use crate::analysis::{ModelState, Status, aesthetic, exposure};
 use crate::db::Scores;
 use crate::histogram::RgbHistogram;
 use crate::i18n;
-use crate::theme::tokens;
+use crate::theme::{text, tokens};
 use crate::ui::icons;
 use crate::view::is_blurry;
 
@@ -304,8 +304,8 @@ fn section(ui: &mut Ui, title: &str) {
         ui.add_space(PAD);
         ui.label(
             RichText::new(title.to_uppercase())
-                .font(FontId::proportional(10.5))
-                .color(tokens::ACCENT),
+                .font(FontId::proportional(text::LABEL))
+                .color(tokens::MUTED),
         );
     });
     ui.add_space(2.0);
@@ -328,7 +328,7 @@ fn metric_row(
             icons::chevron(ui.painter(), chevron_rect.center(), open, tokens::MUTED);
             ui.label(
                 RichText::new(label)
-                    .font(FontId::proportional(12.5))
+                    .font(FontId::proportional(text::BODY))
                     .color(tokens::TEXT),
             );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -366,8 +366,8 @@ fn clip_details(ui: &mut Ui, d: &Details<'_>) {
         ui.add_space(PAD + 14.0);
         ui.label(
             RichText::new(t.section_attributes.to_uppercase())
-                .font(FontId::proportional(10.5))
-                .color(tokens::ACCENT),
+                .font(FontId::proportional(text::LABEL))
+                .color(tokens::MUTED),
         );
     });
     ui.add_space(ROW_INNER);
@@ -378,7 +378,7 @@ fn clip_details(ui: &mut Ui, d: &Details<'_>) {
         };
         ui.horizontal(|ui| {
             ui.add_space(PAD + 14.0);
-            ui.label(RichText::new(*name).font(FontId::proportional(12.0)))
+            ui.label(RichText::new(*name).font(FontId::proportional(text::SMALL)))
                 .on_hover_text(t.explain_attribute[i]);
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.add_space(PAD);
@@ -398,14 +398,14 @@ fn plain_row(ui: &mut Ui, label: &str, value: String) {
         ui.add_space(PAD + 14.0);
         ui.label(
             RichText::new(label)
-                .font(FontId::proportional(12.0))
+                .font(FontId::proportional(text::SMALL))
                 .color(tokens::MUTED),
         );
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.add_space(PAD);
             ui.label(
                 RichText::new(value)
-                    .font(FontId::proportional(12.0))
+                    .font(FontId::proportional(text::SMALL))
                     .color(tokens::TEXT),
             );
         });
@@ -419,7 +419,11 @@ fn paint_value(ui: &mut Ui, value: &Value) {
     } else {
         tokens::TEXT
     };
-    let size = if value.fill.is_some() { 15.0 } else { 12.0 };
+    let size = if value.fill.is_some() {
+        text::LARGE
+    } else {
+        text::SMALL
+    };
     let text_colour = if value.fill.is_some() {
         colour
     } else {
@@ -468,7 +472,7 @@ fn explanation(ui: &mut Ui, text: &str) {
             ui.add(
                 Label::new(
                     RichText::new(i18n::keep_together(text))
-                        .font(FontId::proportional(13.0))
+                        .font(FontId::proportional(text::BODY))
                         .color(tokens::MUTED),
                 )
                 .wrap(),

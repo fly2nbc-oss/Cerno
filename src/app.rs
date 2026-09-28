@@ -2499,7 +2499,10 @@ impl eframe::App for CernoApp {
                         series_id: place.map(|p| p.id),
                         in_current_series: place.is_some_and(|p| Some(p.id) == current_series),
                         more,
-                        duplicate: duplicates.get(i).is_some_and(|p| p.is_some()),
+                        duplicate_of: duplicates
+                            .get(i)
+                            .and_then(|p| p.as_ref())
+                            .map(|original| self.photo_name(original)),
                     }
                 });
             if let Some(index) = strip.clicked
