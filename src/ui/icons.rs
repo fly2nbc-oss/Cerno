@@ -176,6 +176,25 @@ pub fn help(painter: &Painter, center: Pos2, color: Color32) {
     );
 }
 
+/// Small triangle for fold rows in the details panel (`open` = expanded).
+pub fn chevron(painter: &Painter, center: Pos2, open: bool, color: Color32) {
+    let d = 4.0;
+    let points = if open {
+        [
+            center + vec2(-d, d * 0.35),
+            center + vec2(d, d * 0.35),
+            center + vec2(0.0, -d * 0.9),
+        ]
+    } else {
+        [
+            center + vec2(-d * 0.55, -d),
+            center + vec2(-d * 0.55, d),
+            center + vec2(d * 0.85, 0.0),
+        ]
+    };
+    painter.add(Shape::convex_polygon(points.to_vec(), color, Stroke::NONE));
+}
+
 /// Hover/active background shared by all icon buttons.
 pub fn button_background(painter: &Painter, rect: Rect, hovered: bool, active: bool) {
     let fill = match (hovered, active) {

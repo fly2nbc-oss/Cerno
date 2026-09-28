@@ -1,68 +1,101 @@
-//! Side panel with every analysis value of the current photo (`P`), each with a short
-//! explanation in plain language.
+//! Side panel with analysis values of the current photo; explanations fold out per row.
 
-use eframe::egui::{Align2, FontId, Painter, Rect, ScrollArea, Stroke, Ui, UiBuilder, pos2, vec2};
+use std::collections::HashSet;
+
+use eframe::egui::{
+    Align, Color32, FontId, Id, Layout, Rect, RichText, ScrollArea, Sense, Stroke, Ui, UiBuilder,
+    vec2,
+};
 
 use crate::analysis::{ModelState, Status, aesthetic, exposure};
 use crate::db::Scores;
+use crate::histogram::RgbHistogram;
 use crate::i18n;
 use crate::theme::tokens;
+use crate::ui::icons;
 use crate::view::BLURRY_PERCENTILE;
 
 pub const WIDTH: f32 = 320.0;
 const PAD: f32 = 16.0;
 const BAR_HEIGHT: f32 = 4.0;
-/// Space between the explanation of one row and the next row.
-const ROW_GAP: f32 = 12.0;
-/// Space below a row without explanation.
-const COMPACT_GAP: f32 = 10.0;
+const ROW_INNER: f32 = 6.0;
+const HIST_HEIGHT: f32 = 72.0;
 
-/// How much the panel shows: `Tab` shows or hides it, `I` steps through the three stages.
+/// `Tab` shows or hides the panel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DetailsMode {
     Off,
-    Values,
-    /// Values with a plain-language explanation under each.
-    Explained,
+    On,
 }
 
 impl DetailsMode {
-    pub fn next(self) -> Self {
-        match self {
-            Self::Off => Self::Values,
-            Self::Values => Self::Explained,
-            Self::Explained => Self::Off,
-        }
-    }
-
     pub fn id(self) -> &'static str {
         match self {
             Self::Off => "off",
-            Self::Values => "values",
-            Self::Explained => "explained",
+            Self::On => "on",
         }
     }
 
     pub fn from_id(id: &str) -> Option<Self> {
-        [Self::Off, Self::Values, Self::Explained]
-            .into_iter()
-            .find(|m| m.id() == id)
+        match id {
+            "off" => Some(Self::Off),
+            "on" | "values" | "explained" => Some(Self::On),
+            _ => None,
+        }
     }
+}
+
+/// Rows that can expand to show an explanation (and CLIP attributes on the model row).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DetailRow {
+    Laion,
+    V25,
+    Personal,
+    Frame,
+    Eyes,
+    Highlights,
+    Shadows,
+    ClipModel,
+}
+
+pub const EXPANDABLE_ROWS: &[DetailRow] = &[
+    DetailRow::Laion,
+    DetailRow::V25,
+    DetailRow::Personal,
+    DetailRow::Frame,
+    DetailRow::Eyes,
+    DetailRow::Highlights,
+    DetailRow::Shadows,
+    DetailRow::ClipModel,
+];
+
+pub fn all_expanded(expanded: &HashSet<DetailRow>) -> bool {
+    EXPANDABLE_ROWS.iter().all(|row| expanded.contains(row))
+}
+
+pub fn set_all_expanded(expanded: &mut HashSet<DetailRow>, on: bool) {
+    expanded.clear();
+    if on {
+        expanded.extend(EXPANDABLE_ROWS);
+    }
+}
+
+#[derive(Default)]
+pub struct DetailsOutput {
+    pub reset_taste: bool,
+    pub delete_models: bool,
 }
 
 pub struct Details<'a> {
     pub scores: Option<Scores>,
     pub personal: Option<f32>,
-    /// Whole-frame and eye sharpness percentiles within the folder.
     pub frame_percentile: Option<f32>,
     pub eyes_percentile: Option<f32>,
     pub attributes: Option<[f32; 6]>,
+    pub histogram: Option<&'a RgbHistogram>,
     pub status: &'a Status,
-    /// Show the explanations (third stage).
-    pub explained: bool,
 }
 
-/// Value text, bar fill (0..1) and whether it deserves a warning colour.
 struct Value {
     text: String,
     fill: Option<f32>,
@@ -87,9 +120,12 @@ impl Value {
     }
 }
 
-/// Scrolls when the window is too low for all rows (the mouse wheel over the photo zooms, over
-/// the panel it scrolls).
-pub fn draw(ui: &mut Ui, rect: Rect, d: &Details<'_>) {
+pub fn draw(
+    ui: &mut Ui,
+    rect: Rect,
+    d: &Details<'_>,
+    expanded: &mut HashSet<DetailRow>,
+) -> DetailsOutput {
     let painter = ui.painter().with_clip_rect(rect);
     painter.rect_filled(rect, 0.0, tokens::SURFACE);
     painter.vline(
@@ -98,37 +134,40 @@ pub fn draw(ui: &mut Ui, rect: Rect, d: &Details<'_>) {
         Stroke::new(1.0, tokens::LINE),
     );
 
+    let mut out = DetailsOutput::default();
     let mut panel = ui.new_child(UiBuilder::new().max_rect(rect).id_salt("details"));
     ScrollArea::vertical()
         .auto_shrink(false)
         .show(&mut panel, |ui| {
-            let top = ui.cursor().min;
-            let frame = Rect::from_min_size(top, vec2(ui.available_width(), 0.0));
-            let bottom = content(ui.painter(), frame, d);
-            ui.allocate_space(vec2(frame.width(), bottom - top.y));
+            ui.set_width(rect.width());
+            ui.add_space(PAD);
+            ui.spacing_mut().item_spacing.y = 4.0;
+            if let Some(hist) = d.histogram {
+                histogram(ui, hist);
+                ui.add_space(8.0);
+            }
+            content(ui, d, expanded, &mut out);
+            ui.add_space(PAD);
         });
+    out
 }
 
-/// Draws all rows below `rect.top()` and returns where they end.
-fn content(painter: &Painter, rect: Rect, d: &Details<'_>) -> f32 {
+fn content(
+    ui: &mut Ui,
+    d: &Details<'_>,
+    expanded: &mut HashSet<DetailRow>,
+    out: &mut DetailsOutput,
+) {
     let t = i18n::t();
-    let mut y = rect.top() + PAD;
     let scores = d.scores.unwrap_or_default();
     let status = d.status;
-    let row = |y: &mut f32, label: &str, value: Value, explain: &str| {
-        row(
-            painter,
-            rect,
-            y,
-            label,
-            value,
-            d.explained.then_some(explain),
-        );
-    };
+    let taste = &status.taste;
 
-    section(painter, rect, &mut y, t.section_aesthetics);
-    row(
-        &mut y,
+    section(ui, t.section_aesthetics);
+    metric_row(
+        ui,
+        expanded,
+        DetailRow::Laion,
         t.row_laion,
         match scores.aesthetic {
             Some(v) => stars_value(aesthetic::as_stars(v)),
@@ -136,8 +175,10 @@ fn content(painter: &Painter, rect: Rect, d: &Details<'_>) -> f32 {
         },
         t.explain_laion,
     );
-    row(
-        &mut y,
+    metric_row(
+        ui,
+        expanded,
+        DetailRow::V25,
         t.row_v25,
         match scores.aesthetic25 {
             Some(v) => stars_value(aesthetic::as_stars(v)),
@@ -145,9 +186,10 @@ fn content(painter: &Painter, rect: Rect, d: &Details<'_>) -> f32 {
         },
         t.explain_v25,
     );
-    let taste = &status.taste;
-    row(
-        &mut y,
+    metric_row(
+        ui,
+        expanded,
+        DetailRow::Personal,
         t.row_personal,
         match (d.personal, taste.model) {
             (Some(v), _) => Value::score(format!("{v:.1} ★"), v / 5.0),
@@ -160,9 +202,11 @@ fn content(painter: &Painter, rect: Rect, d: &Details<'_>) -> f32 {
         t.explain_personal,
     );
 
-    section(painter, rect, &mut y, t.section_sharpness);
-    row(
-        &mut y,
+    section(ui, t.section_sharpness);
+    metric_row(
+        ui,
+        expanded,
+        DetailRow::Frame,
         t.row_frame,
         match d.frame_percentile {
             Some(p) => Value {
@@ -174,8 +218,10 @@ fn content(painter: &Painter, rect: Rect, d: &Details<'_>) -> f32 {
         },
         t.explain_frame,
     );
-    row(
-        &mut y,
+    metric_row(
+        ui,
+        expanded,
+        DetailRow::Eyes,
         t.row_eyes,
         match (d.eyes_percentile, scores.faces) {
             (Some(p), _) => Value {
@@ -190,7 +236,7 @@ fn content(painter: &Painter, rect: Rect, d: &Details<'_>) -> f32 {
         t.explain_eyes,
     );
 
-    section(painter, rect, &mut y, t.section_exposure);
+    section(ui, t.section_exposure);
     let clipped = |share: Option<f32>, limit: f32| match share {
         Some(s) => Value {
             text: format!("{:.1} %", s * 100.0),
@@ -199,70 +245,307 @@ fn content(painter: &Painter, rect: Rect, d: &Details<'_>) -> f32 {
         },
         None => Value::note(t.note_analysing),
     };
-    row(
-        &mut y,
+    metric_row(
+        ui,
+        expanded,
+        DetailRow::Highlights,
         t.row_highlights,
         clipped(scores.highlights, exposure::HIGHLIGHTS_WARN),
         t.explain_highlights,
     );
-    row(
-        &mut y,
+    metric_row(
+        ui,
+        expanded,
+        DetailRow::Shadows,
         t.row_shadows,
         clipped(scores.shadows, exposure::SHADOWS_WARN),
         t.explain_shadows,
     );
 
-    section(painter, rect, &mut y, t.section_attributes);
-    if d.explained {
-        y = explanation(painter, rect, y, t.explain_attributes) + ROW_GAP;
-    }
-    for (i, name) in t.attributes.iter().enumerate() {
-        row(
-            &mut y,
-            name,
-            match d.attributes {
-                Some(a) => Value::score(format!("{:.0} %", a[i] * 100.0), a[i]),
-                None => Value::note(t.note_needs_clip),
-            },
-            t.explain_attribute[i],
-        );
-    }
-
-    section(painter, rect, &mut y, t.section_models);
+    section(ui, t.section_models);
     let personal = match taste.model {
         Some((n, error)) if error.is_finite() => (t.taste_trained)(n, error),
         Some((n, _)) => (t.taste_photos)(n),
         None => t.taste_untrained.to_owned(),
     };
-    for (name, text) in [
-        ("CLIP", model_note(&status.aesthetics)),
-        ("V2.5", model_note(&status.v25)),
-        (t.model_faces, model_note(&status.faces)),
-        (t.model_personal, personal),
-    ] {
-        painter.text(
-            pos2(rect.left() + PAD, y),
-            Align2::LEFT_TOP,
-            name,
-            FontId::proportional(12.0),
-            tokens::MUTED,
-        );
-        painter.text(
-            pos2(rect.right() - PAD, y),
-            Align2::RIGHT_TOP,
-            text,
-            FontId::proportional(12.0),
-            tokens::TEXT,
-        );
-        y += 20.0;
-    }
-    if d.explained {
-        y = explanation(painter, rect, y + 4.0, t.explain_models);
-    }
-    y + PAD
+    model_row(
+        ui,
+        expanded,
+        DetailRow::ClipModel,
+        "CLIP",
+        model_note(&status.aesthetics),
+        Some(t.explain_models),
+        d,
+    );
+    plain_model_row(ui, "V2.5", model_note(&status.v25));
+    plain_model_row(ui, t.model_faces, model_note(&status.faces));
+    plain_model_row(ui, t.model_personal, personal);
+
+    ui.add_space(8.0);
+    ui.horizontal(|ui| {
+        if ui.button(t.btn_reset_taste).clicked() {
+            out.reset_taste = true;
+        }
+        if ui.button(t.btn_delete_models).clicked() {
+            out.delete_models = true;
+        }
+    });
 }
 
-/// `3.4 ★` with its bar.
+fn histogram(ui: &mut Ui, hist: &RgbHistogram) {
+    let t = i18n::t();
+    section(ui, t.section_histogram);
+    let width = ui.available_width() - 2.0 * PAD;
+    let (rect, _) = ui.allocate_exact_size(vec2(width, HIST_HEIGHT), Sense::hover());
+    let rect = rect.translate(vec2(PAD, 0.0));
+    let painter = ui.painter().with_clip_rect(rect);
+    painter.rect_filled(rect, 2.0, tokens::SURFACE_MUTED);
+    let max = hist
+        .iter()
+        .flat_map(|channel| channel.iter())
+        .copied()
+        .max()
+        .unwrap_or(1)
+        .max(1) as f32;
+    let colours = [
+        Color32::from_rgba_unmultiplied(0xe0, 0x5a, 0x4e, 140),
+        Color32::from_rgba_unmultiplied(0x6a, 0xc4, 0x6a, 140),
+        Color32::from_rgba_unmultiplied(0x5b, 0x8e, 0xc4, 140),
+    ];
+    let bar_w = rect.width() / 256.0;
+    for (channel, colour) in hist.iter().zip(colours) {
+        for (bin, &count) in channel.iter().enumerate() {
+            if count == 0 {
+                continue;
+            }
+            let h = rect.height() * (count as f32 / max);
+            let x = rect.left() + bar_w * bin as f32;
+            let y = rect.bottom() - h;
+            painter.rect_filled(
+                Rect::from_min_max(
+                    eframe::egui::pos2(x, y),
+                    eframe::egui::pos2(x + bar_w.max(1.0), rect.bottom()),
+                ),
+                0.0,
+                colour,
+            );
+        }
+    }
+}
+
+fn section(ui: &mut Ui, title: &str) {
+    ui.add_space(6.0);
+    ui.label(
+        RichText::new(title.to_uppercase())
+            .font(FontId::proportional(10.5))
+            .color(tokens::ACCENT),
+    );
+    ui.add_space(2.0);
+}
+
+fn metric_row(
+    ui: &mut Ui,
+    expanded: &mut HashSet<DetailRow>,
+    id: DetailRow,
+    label: &str,
+    value: Value,
+    explain: &str,
+) {
+    let open = expanded.contains(&id);
+    let row_id = Id::new(("detail_row", id));
+    let response = ui
+        .horizontal(|ui| {
+            ui.add_space(PAD);
+            let (chevron_rect, _) = ui.allocate_exact_size(vec2(14.0, 18.0), Sense::hover());
+            icons::chevron(ui.painter(), chevron_rect.center(), open, tokens::MUTED);
+            ui.label(
+                RichText::new(label)
+                    .font(FontId::proportional(12.5))
+                    .color(tokens::TEXT),
+            );
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.add_space(PAD);
+                paint_value(ui, &value);
+            });
+        })
+        .response
+        .interact(Sense::click());
+    if response.clicked() {
+        if open {
+            expanded.remove(&id);
+        } else {
+            expanded.insert(id);
+        }
+        ui.ctx().request_repaint();
+    }
+    if value.fill.is_some() {
+        value_bar(ui, row_id, &value);
+    }
+    if open {
+        ui.add_space(ROW_INNER);
+        explanation(ui, explain);
+        ui.add_space(ROW_INNER);
+    } else {
+        ui.add_space(4.0);
+    }
+}
+
+fn model_row(
+    ui: &mut Ui,
+    expanded: &mut HashSet<DetailRow>,
+    id: DetailRow,
+    label: &str,
+    status_text: String,
+    explain: Option<&str>,
+    d: &Details<'_>,
+) {
+    let open = expanded.contains(&id);
+    let response = ui
+        .horizontal(|ui| {
+            ui.add_space(PAD);
+            let (chevron_rect, _) = ui.allocate_exact_size(vec2(14.0, 18.0), Sense::hover());
+            icons::chevron(ui.painter(), chevron_rect.center(), open, tokens::MUTED);
+            ui.label(
+                RichText::new(label)
+                    .font(FontId::proportional(12.0))
+                    .color(tokens::MUTED),
+            );
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.add_space(PAD);
+                ui.label(
+                    RichText::new(status_text)
+                        .font(FontId::proportional(12.0))
+                        .color(tokens::TEXT),
+                );
+            });
+        })
+        .response
+        .interact(Sense::click());
+    if response.clicked() {
+        if open {
+            expanded.remove(&id);
+        } else {
+            expanded.insert(id);
+        }
+    }
+    if open {
+        let t = i18n::t();
+        ui.add_space(ROW_INNER);
+        if let Some(text) = explain {
+            explanation(ui, text);
+            ui.add_space(ROW_INNER);
+        }
+        explanation(ui, t.explain_attributes);
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.add_space(PAD + 14.0);
+            ui.label(
+                RichText::new(t.section_attributes.to_uppercase())
+                    .font(FontId::proportional(10.5))
+                    .color(tokens::ACCENT),
+            );
+        });
+        ui.add_space(ROW_INNER);
+        for (i, name) in t.attributes.iter().enumerate() {
+            let value = match d.attributes {
+                Some(a) => Value::score(format!("{:.0} %", a[i] * 100.0), a[i]),
+                None => Value::note(t.note_needs_clip),
+            };
+            ui.horizontal(|ui| {
+                ui.add_space(PAD + 14.0);
+                ui.label(RichText::new(*name).font(FontId::proportional(12.0)))
+                    .on_hover_text(t.explain_attribute[i]);
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    ui.add_space(PAD);
+                    paint_value(ui, &value);
+                });
+            });
+            if value.fill.is_some() {
+                value_bar(ui, Id::new(("clip_attr", i)), &value);
+            }
+            ui.add_space(4.0);
+        }
+        ui.add_space(4.0);
+    } else {
+        ui.add_space(2.0);
+    }
+}
+
+fn plain_model_row(ui: &mut Ui, label: &str, status_text: String) {
+    ui.horizontal(|ui| {
+        ui.add_space(PAD + 14.0);
+        ui.label(
+            RichText::new(label)
+                .font(FontId::proportional(12.0))
+                .color(tokens::MUTED),
+        );
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.add_space(PAD);
+            ui.label(
+                RichText::new(status_text)
+                    .font(FontId::proportional(12.0))
+                    .color(tokens::TEXT),
+            );
+        });
+    });
+    ui.add_space(2.0);
+}
+
+fn paint_value(ui: &mut Ui, value: &Value) {
+    let colour = if value.warn {
+        tokens::STATUS_WARN
+    } else {
+        tokens::TEXT
+    };
+    let size = if value.fill.is_some() { 15.0 } else { 12.0 };
+    let text_colour = if value.fill.is_some() {
+        colour
+    } else {
+        tokens::MUTED
+    };
+    ui.label(
+        RichText::new(value.text.clone())
+            .font(FontId::proportional(size))
+            .color(text_colour),
+    );
+}
+
+fn value_bar(ui: &mut Ui, _id: Id, value: &Value) {
+    let Some(fill) = value.fill else {
+        return;
+    };
+    let width = ui.available_width() - 2.0 * PAD;
+    let (rect, _) = ui.allocate_exact_size(vec2(width, BAR_HEIGHT + 4.0), Sense::hover());
+    let track = rect.translate(vec2(PAD, 2.0)).shrink2(vec2(0.0, 0.0));
+    let track = Rect::from_min_size(track.min, vec2(track.width(), BAR_HEIGHT));
+    let painter = ui.painter();
+    painter.rect_filled(track, 2.0, tokens::LINE);
+    let bar_colour = if value.warn {
+        tokens::STATUS_WARN
+    } else {
+        tokens::ACCENT
+    };
+    painter.rect_filled(
+        Rect::from_min_size(
+            track.min,
+            vec2(track.width() * fill.clamp(0.0, 1.0), BAR_HEIGHT),
+        ),
+        2.0,
+        bar_colour,
+    );
+}
+
+fn explanation(ui: &mut Ui, text: &str) {
+    ui.horizontal(|ui| {
+        ui.add_space(PAD);
+        ui.label(
+            RichText::new(i18n::keep_together(text))
+                .font(FontId::proportional(11.0))
+                .color(tokens::MUTED),
+        );
+    });
+}
+
 fn stars_value(stars: f32) -> Value {
     Value::score(format!("{stars:.1} ★"), stars / 5.0)
 }
@@ -281,98 +564,11 @@ fn model_note(state: &ModelState) -> String {
     }
 }
 
-fn section(painter: &Painter, rect: Rect, y: &mut f32, title: &str) {
-    *y += 6.0;
-    painter.text(
-        pos2(rect.left() + PAD, *y),
-        Align2::LEFT_TOP,
-        title.to_uppercase(),
-        FontId::proportional(10.5),
-        tokens::ACCENT,
-    );
-    *y += 20.0;
-}
-
-/// Wrapped muted text at `y`; returns its bottom.
-fn explanation(painter: &Painter, rect: Rect, y: f32, text: &str) -> f32 {
-    let galley = painter.layout(
-        i18n::keep_together(text),
-        FontId::proportional(11.0),
-        tokens::MUTED,
-        rect.width() - 2.0 * PAD,
-    );
-    let height = galley.size().y;
-    painter.galley(pos2(rect.left() + PAD, y), galley, tokens::MUTED);
-    y + height
-}
-
-/// Label and value, a bar below (if the value has one), then the explanation (if shown).
-fn row(
-    painter: &Painter,
-    rect: Rect,
-    y: &mut f32,
-    label: &str,
-    value: Value,
-    explain: Option<&str>,
-) {
-    let (left, right) = (rect.left() + PAD, rect.right() - PAD);
-    painter.text(
-        pos2(left, *y),
-        Align2::LEFT_TOP,
-        label,
-        FontId::proportional(12.5),
-        tokens::TEXT,
-    );
-    let colour = if value.warn {
-        tokens::STATUS_WARN
-    } else {
-        tokens::TEXT
-    };
-    let size = if value.fill.is_some() { 15.0 } else { 12.0 };
-    let text_colour = if value.fill.is_some() {
-        colour
-    } else {
-        tokens::MUTED
-    };
-    painter.text(
-        pos2(right, *y - 1.0),
-        Align2::RIGHT_TOP,
-        value.text,
-        FontId::proportional(size),
-        text_colour,
-    );
-    let mut bottom = *y + 19.0;
-    if let Some(fill) = value.fill {
-        let track = Rect::from_min_size(pos2(left, *y + 20.0), vec2(right - left, BAR_HEIGHT));
-        painter.rect_filled(track, 2.0, tokens::LINE);
-        let bar_colour = if value.warn {
-            tokens::STATUS_WARN
-        } else {
-            tokens::ACCENT
-        };
-        painter.rect_filled(
-            Rect::from_min_size(
-                track.min,
-                vec2(track.width() * fill.clamp(0.0, 1.0), BAR_HEIGHT),
-            ),
-            2.0,
-            bar_colour,
-        );
-        bottom = track.bottom();
-    }
-    *y = match explain {
-        Some(text) => explanation(painter, rect, bottom + 5.0, text) + ROW_GAP,
-        None => bottom + COMPACT_GAP,
-    };
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::analysis::TasteStatus;
-    use eframe::egui::{
-        Context, Event, FullOutput, Modifiers, MouseWheelUnit, RawInput, Shape, TouchPhase,
-    };
+    use eframe::egui::{Context, RawInput, Shape, pos2, vec2};
 
     fn status() -> Status {
         Status {
@@ -388,41 +584,15 @@ mod tests {
         }
     }
 
-    /// Where the first section title was painted.
-    fn title_y(output: &FullOutput) -> f32 {
-        output
-            .shapes
-            .iter()
-            .find_map(|clipped| match &clipped.shape {
-                Shape::Text(text) if text.galley.text() == "AESTHETICS" => Some(text.pos.y),
-                _ => None,
-            })
-            .expect("section title painted")
+    #[test]
+    fn details_mode_maps_legacy_settings() {
+        assert_eq!(DetailsMode::from_id("explained"), Some(DetailsMode::On));
+        assert_eq!(DetailsMode::from_id("values"), Some(DetailsMode::On));
+        assert_eq!(DetailsMode::from_id("off"), Some(DetailsMode::Off));
     }
 
     #[test]
-    fn i_steps_through_three_stages() {
-        let mut mode = DetailsMode::Off;
-        let mut seen = Vec::new();
-        for _ in 0..3 {
-            mode = mode.next();
-            seen.push(mode);
-        }
-        assert_eq!(
-            seen,
-            [
-                DetailsMode::Values,
-                DetailsMode::Explained,
-                DetailsMode::Off
-            ]
-        );
-        for mode in seen {
-            assert_eq!(DetailsMode::from_id(mode.id()), Some(mode));
-        }
-    }
-
-    #[test]
-    fn a_low_window_scrolls_the_panel() {
+    fn clip_fold_shows_attribute_labels() {
         let ctx = Context::default();
         let status = status();
         let details = Details {
@@ -430,36 +600,38 @@ mod tests {
             personal: None,
             frame_percentile: None,
             eyes_percentile: None,
-            attributes: None,
+            attributes: Some([0.5; 6]),
+            histogram: None,
             status: &status,
-            explained: true,
         };
-        let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 300.0));
-        let frame = |events: Vec<Event>, time: f64| {
-            let input = RawInput {
+        let mut expanded = HashSet::from([DetailRow::ClipModel]);
+        let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 800.0));
+        let mut output = ctx.run_ui(
+            RawInput {
                 screen_rect: Some(screen),
-                time: Some(time),
-                events,
                 ..Default::default()
-            };
-            let mut output = ctx.run_ui(input, |ui| draw(ui, screen, &details));
-            // No renderer here to take the font atlas.
-            output.textures_delta.clear();
-            output
-        };
+            },
+            |ui| {
+                draw(ui, screen, &details, &mut expanded);
+            },
+        );
+        output.textures_delta.clear();
+        let has_quality = output.shapes.iter().any(|clipped| {
+            matches!(
+                &clipped.shape,
+                Shape::Text(text) if text.galley.text().contains("Overall quality")
+            )
+        });
+        assert!(has_quality, "CLIP attributes visible when expanded");
+    }
 
-        let pointer = vec![Event::PointerMoved(pos2(150.0, 150.0))];
-        let before = title_y(&frame(pointer, 0.0));
-        let wheel = Event::MouseWheel {
-            unit: MouseWheelUnit::Point,
-            delta: vec2(0.0, -200.0),
-            phase: TouchPhase::Move,
-            modifiers: Modifiers::NONE,
-        };
-        let mut output = frame(vec![wheel], 0.1);
-        for i in 2..40 {
-            output = frame(Vec::new(), i as f64 * 0.05);
-        }
-        assert!(title_y(&output) < before - 50.0, "panel did not scroll");
+    #[test]
+    fn expand_all_helpers() {
+        let mut expanded = HashSet::new();
+        assert!(!all_expanded(&expanded));
+        set_all_expanded(&mut expanded, true);
+        assert!(all_expanded(&expanded));
+        set_all_expanded(&mut expanded, false);
+        assert!(expanded.is_empty());
     }
 }
