@@ -584,8 +584,7 @@ fn apply_quarter_turn(
 fn apply_pixels(exiftool: &mut Option<ExifTool>, path: &Path, jpeg: &[u8], db: &Db) -> Result<()> {
     let path_str = path.to_str().context("path is not valid Unicode")?;
     let snapshot = filetimes::Snapshot::capture(path).context("cannot read file times")?;
-    let temp = TempJpeg::create()?;
-    std::fs::write(&temp.path, jpeg).context("cannot write temporary JPEG")?;
+    let temp = TempJpeg::write(jpeg)?;
     let temp_str = temp
         .path
         .to_str()
@@ -677,14 +676,30 @@ struct TempJpeg {
 }
 
 impl TempJpeg {
-    fn create() -> Result<Self> {
+    /// A new file with `bytes` in the temp folder. `create_new` fails when the name is taken
+    /// instead of following a link another user planted there (a shared `/tmp` on Linux).
+    fn write(bytes: &[u8]) -> Result<Self> {
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
         let path =
             std::env::temp_dir().join(format!("cerno-edit-{}-{nanos}.jpg", std::process::id()));
-        Ok(Self { path })
+        Self::write_at(path, bytes)
+    }
+
+    fn write_at(path: PathBuf, bytes: &[u8]) -> Result<Self> {
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .context("cannot create temporary JPEG")?;
+        // Ours from here on: removed on drop, also when the write fails.
+        let temp = Self { path };
+        file.write_all(bytes)
+            .context("cannot write temporary JPEG")?;
+        Ok(temp)
     }
 }
 
@@ -697,6 +712,27 @@ impl Drop for TempJpeg {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The temp JPEG never reuses a name: whatever is there already stays untouched – it is
+    /// neither written through nor deleted on drop.
+    #[test]
+    fn temp_jpeg_refuses_a_taken_name() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("cerno-temp-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let taken = dir.join("taken.jpg");
+        fs::write(&taken, b"someone else's").unwrap();
+        assert!(TempJpeg::write_at(taken.clone(), b"edit").is_err());
+        assert_eq!(fs::read(&taken).unwrap(), b"someone else's");
+
+        let fresh = dir.join("fresh.jpg");
+        let temp = TempJpeg::write_at(fresh.clone(), b"edit").unwrap();
+        assert_eq!(fs::read(&fresh).unwrap(), b"edit");
+        drop(temp);
+        assert!(!fresh.exists());
+        fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn only_xmp_unless_microsoft_tags_exist() {
