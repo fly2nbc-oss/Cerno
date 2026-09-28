@@ -166,7 +166,7 @@ theme.rs             design tokens → egui Visuals, `text` font sizes, system U
 ### Keyboard details
 
 - `Tab` never reaches egui: `raw_input_hook` removes it and queues it for `handle_keys`. egui would otherwise move keyboard focus to the next widget with `Tab`, and `Space` ("next photo") would then also click that widget.
-- `Shift+digit` and `Shift+6`–`9` are recognised by the **physical** key (`Event::Key::physical_key`): with Shift the logical key is `!`, `"`, `§` … depending on the layout. On German layouts `Shift+0` types `=`, which is also a zoom key – zoom-in is suppressed in a frame with a shifted digit. `6`–`9` use the same physical-key path.
+- Digits – plain and with Shift – are recognised by the **physical** key (`app::digit_key`, `Event::Key::physical_key`; the logical key only when there is none): with Shift the logical key is `!`, `"`, `§` … depending on the layout, and on AZERTY even the plain keys type `&`, `é`, `'`, `-` …. On German layouts `Shift+0` types `=`, which is also a zoom key – zoom-in is suppressed in a frame with a shifted digit; on AZERTY the 6 key types `-`, so zoom-out is suppressed in a frame with a colour digit. Key repeats don't rate.
 - `Ctrl+←/→` turn the photo; next/previous ignore Ctrl (they used to step as well, so a following `Ctrl+Z` looked at the neighbour).
 - Texts show modifiers with the language's key names (`i18n::with_ctrl("K")` → `Strg+K` / `Ctrl+K`); help rows are literal per language.
 
@@ -204,6 +204,8 @@ theme.rs             design tokens → egui Visuals, `text` font sizes, system U
 - Exposure counts a pixel as blown only when **all** channels are ≥ 250 – a saturated blue sky has B = 255 and must not count (v1 did, and flagged 13 % on a normal landscape).
 - Scripted smoke tests can't use the mouse: posted `WM_MOUSEMOVE`/`WM_MOUSEWHEEL` had no effect in testing (not even wheel-zoom over the photo), while posted keys work. Test pointer behaviour headless (`Context::run_ui` with `RawInput` events, see `ui::details::tests`); remember `textures_delta.clear()` or egui panics on drop.
 - The index at `%LOCALAPPDATA%\Cerno\data\cerno.db` is the user's live data (ratings history, taste feedback). Never delete it to "start clean" – DB tests use in-memory databases.
+- When the index can't be opened, Cerno runs on an in-memory database (`Db::is_in_memory`): the error notice stays (`open` doesn't replace an error), and straighten, crop, quarter turns and `Ctrl+Z` are blocked (`Blocked::NoIndex`) – a kept original would have no row to be found or pruned by.
+- `Library::open` makes the path absolute first; the index keys files by their full path.
 - zune-jpeg decodes truncated JPEGs leniently (missing part grey) instead of failing – intended, other viewers do the same.
 - **HEIC on Windows is dynamically linked** (vcpkg triplet `x64-windows`, `VCPKGRS_DYNAMIC=1` in `.cargo/config.toml`). `libheif` and `libde265` are LGPL-3.0; `build.rs` copies their DLLs and `licenses/` next to the executable. Do not switch the triplet back to `x64-windows-static-md`. The x265 encoder (GPL) stays excluded via `libheif[core]`. Linux links the system libheif; a package depends on the distro library instead of bundling a static copy. ExifTool stays a separate program and is not distributed. The V2.5 head (AGPL-3.0) stays out of the binary.
 - The only `rfd` dialogs left are the folder pickers (open, copy / move target); they block the UI thread while open – fine for modal dialogs. Confirmations are `ui/confirm.rs`.

@@ -222,6 +222,7 @@ pub static TEXTS: Texts = Texts {
     busy_editing: "The edit is still open – Enter applies, Esc cancels",
     busy_copying: "This photo is being copied – possible again in a moment",
     busy_moving: "This photo is being moved",
+    edit_needs_index: "Editing needs the index, which could not be opened",
     edit_reencoded: "JPEG re-encoded – Ctrl+Z brings the original back.",
     undo_done: "Original restored",
     undo_nothing: "No original kept for this photo",

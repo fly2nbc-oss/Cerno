@@ -224,6 +224,7 @@ pub static TEXTS: Texts = Texts {
     busy_editing: "Die Bearbeitung ist noch offen – Enter übernimmt, Esc verwirft",
     busy_copying: "Das Foto wird gerade kopiert – gleich wieder möglich",
     busy_moving: "Das Foto wird gerade verschoben",
+    edit_needs_index: "Bearbeiten braucht den Index, und der ließ sich nicht öffnen",
     edit_reencoded: "JPEG neu kodiert – Strg+Z holt das Original zurück.",
     undo_done: "Original zurückgeholt",
     undo_nothing: "Für dieses Foto ist kein Original aufbewahrt",

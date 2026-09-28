@@ -280,6 +280,8 @@ pub struct Texts {
     pub busy_editing: &'static str,
     pub busy_copying: &'static str,
     pub busy_moving: &'static str,
+    /// Straighten, crop, quarter turns and Ctrl+Z are off while the index is the in-memory fallback.
+    pub edit_needs_index: &'static str,
     pub edit_reencoded: &'static str,
     pub undo_done: &'static str,
     pub undo_nothing: &'static str,

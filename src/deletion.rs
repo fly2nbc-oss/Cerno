@@ -121,17 +121,23 @@ impl DeleteQueue {
     }
 
     /// On exit: a deletion that wasn't cancelled is carried out, and running batches finish.
-    pub fn finish_now(&mut self) {
-        if !self.pending.is_empty() {
-            let batch = std::mem::take(&mut self.pending);
-            for (path, err) in run(self.remove, batch).failed {
-                log::error!("could not delete {}: {err}", path.display());
-            }
-        }
+    /// Returns everything that happened, like [`Self::poll`], so the deletions still count.
+    pub fn finish_now(&mut self) -> Finished {
+        let mut all = if self.pending.is_empty() {
+            Finished::default()
+        } else {
+            run(self.remove, std::mem::take(&mut self.pending))
+        };
         self.deadline = None;
         for worker in self.workers.drain(..) {
             let _ = worker.join();
         }
+        while let Ok(batch) = self.rx.try_recv() {
+            all.deleted.extend(batch.deleted);
+            all.failed.extend(batch.failed);
+        }
+        self.in_progress.clear();
+        all
     }
 }
 
@@ -233,8 +239,25 @@ mod tests {
     fn pending_deletions_run_on_exit() {
         let mut queue = DeleteQueue::new(ok);
         queue.push("a.jpg".into(), Instant::now());
-        queue.finish_now();
+        let done = queue.finish_now();
+        assert_eq!(done.deleted, [PathBuf::from("a.jpg")]);
         assert!(queue.countdown(Instant::now()).is_none());
         assert!(!queue.is_hidden(Path::new("a.jpg")));
+    }
+
+    #[test]
+    fn a_batch_still_running_on_exit_is_reported_too() {
+        let t0 = Instant::now();
+        let mut queue = DeleteQueue::new(ok);
+        queue.push("running.jpg".into(), t0);
+        assert!(queue.tick(t0 + DELAY, || {}));
+        queue.push("waiting.jpg".into(), t0 + DELAY);
+        let mut done = queue.finish_now().deleted;
+        done.sort();
+        assert_eq!(
+            done,
+            [PathBuf::from("running.jpg"), PathBuf::from("waiting.jpg")]
+        );
+        assert!(!queue.is_hidden(Path::new("running.jpg")));
     }
 }

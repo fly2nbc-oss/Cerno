@@ -187,6 +187,8 @@ fn image_from_row(row: &Row<'_>, at: usize) -> rusqlite::Result<ImageRecord> {
 
 pub struct Db {
     conn: Mutex<Connection>,
+    /// The fallback when the index file can't be opened: everything is gone on exit.
+    in_memory: bool,
 }
 
 impl Db {
@@ -197,20 +199,26 @@ impl Db {
         let conn = Connection::open(path)
             .with_context(|| format!("cannot open database {}", path.display()))?;
         conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")?;
-        Self::init(conn)
+        Self::init(conn, false)
     }
 
     pub fn open_in_memory() -> Result<Self> {
-        Self::init(Connection::open_in_memory()?)
+        Self::init(Connection::open_in_memory()?, true)
     }
 
-    fn init(conn: Connection) -> Result<Self> {
+    fn init(conn: Connection, in_memory: bool) -> Result<Self> {
         conn.busy_timeout(Duration::from_secs(5))?;
         conn.execute_batch(SCHEMA)?;
         migrate(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
+            in_memory,
         })
+    }
+
+    /// Nothing written here survives the session (the index file could not be opened).
+    pub fn is_in_memory(&self) -> bool {
+        self.in_memory
     }
 
     fn conn(&self) -> MutexGuard<'_, Connection> {
@@ -729,7 +737,7 @@ mod tests {
             INSERT INTO files VALUES ('old.jpg', 1000, 42, 9, 4);";
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(FIRST_RELEASE).unwrap();
-        let db = Db::init(conn).unwrap();
+        let db = Db::init(conn, true).unwrap();
 
         let record = db.lookup("old.jpg", STAMP).unwrap().unwrap();
         assert_eq!(record.rating, Rating::Stars(4));

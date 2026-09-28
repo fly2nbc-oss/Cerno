@@ -226,6 +226,7 @@ pub static TEXTS: Texts = Texts {
     busy_editing: "La edición sigue abierta: Intro aplica, Esc cancela",
     busy_copying: "Esta foto se está copiando; en un momento vuelve a ser posible",
     busy_moving: "Esta foto se está moviendo",
+    edit_needs_index: "Editar necesita el índice, que no se pudo abrir",
     edit_reencoded: "JPEG recodificado – Ctrl+Z recupera el original.",
     undo_done: "Original recuperado",
     undo_nothing: "No se guarda ningún original de esta foto",

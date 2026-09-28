@@ -220,6 +220,7 @@ pub static TEXTS: Texts = Texts {
     busy_editing: "La modifica è ancora aperta – Invio applica, Esc annulla",
     busy_copying: "La foto è in fase di copia – di nuovo possibile tra poco",
     busy_moving: "La foto è in fase di spostamento",
+    edit_needs_index: "La modifica richiede l'indice, che non è stato possibile aprire",
     edit_reencoded: "JPEG ricodificato – Ctrl+Z ripristina l'originale.",
     undo_done: "Originale ripristinato",
     undo_nothing: "Nessun originale conservato per questa foto",

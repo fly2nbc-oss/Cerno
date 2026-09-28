@@ -229,6 +229,7 @@ pub static TEXTS: Texts = Texts {
     busy_editing: "La retouche est encore ouverte – Entrée applique, Échap annule",
     busy_copying: "Cette photo est en cours de copie – possible dans un instant",
     busy_moving: "Cette photo est en cours de déplacement",
+    edit_needs_index: "La retouche a besoin de l'index, qui n'a pas pu être ouvert",
     edit_reencoded: "JPEG réencodé – Ctrl+Z restaure l'original.",
     undo_done: "Original restauré",
     undo_nothing: "Aucun original conservé pour cette photo",

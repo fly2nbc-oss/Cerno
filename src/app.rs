@@ -148,6 +148,9 @@ enum Blocked {
     Copying,
     /// The photo is being moved to another folder.
     Moving,
+    /// The index could not be opened: an edit's kept original would have no row to find it
+    /// by (`Ctrl+Z`) or to delete it after 30 days.
+    NoIndex,
 }
 
 impl Blocked {
@@ -158,18 +161,34 @@ impl Blocked {
             Self::Editing => t.busy_editing,
             Self::Copying => t.busy_copying,
             Self::Moving => t.busy_moving,
+            Self::NoIndex => t.edit_needs_index,
         }
     }
 }
 
-/// `writing`: an edit is in the writer; `editing`: a session is open; `transfer`: how the
-/// photo (or, for several photos, any of them) takes part in a copy or move.
-fn blocked(
-    change: Change,
+/// What is going on right now, as far as [`blocked`] is concerned.
+#[derive(Debug, Default, Clone, Copy)]
+struct Activity {
+    /// An edit is in the writer.
     writing: bool,
+    /// A straighten or crop session is open.
     editing: bool,
+    /// How the photo (or, for several photos, any of them) takes part in a copy or move.
     transfer: Option<TransferMode>,
-) -> Option<Blocked> {
+    /// The index is the in-memory fallback.
+    no_index: bool,
+}
+
+fn blocked(change: Change, now: Activity) -> Option<Blocked> {
+    let Activity {
+        writing,
+        editing,
+        transfer,
+        no_index,
+    } = now;
+    if no_index && matches!(change, Change::Edit | Change::Rewrite) {
+        return Some(Blocked::NoIndex);
+    }
     match (change, transfer) {
         // A moved file is gone from here: nothing may queue up for its old path.
         (_, Some(TransferMode::Move)) => return Some(Blocked::Moving),
@@ -349,29 +368,35 @@ enum Action {
     DeleteSelection,
 }
 
-/// `Shift` plus a physical key. With Shift the typed character depends on the layout
-/// (`!`, `"`, `§`, `=` …), so the key itself is what counts.
-fn shifted_key<T: Copy>(events: &[egui::Event], keys: &[(Key, T)]) -> Option<T> {
+/// A digit key, found by its place on the keyboard: the typed character depends on the layout
+/// – with Shift (`!`, `"`, `§`, `=` …) and on AZERTY even without (`&`, `é`, `"`, `'`, `-` …).
+/// Without a physical key (headless tests) the logical one counts. `shift`: only with Shift
+/// alone, otherwise only without any modifier. Key repeats don't count.
+fn digit_key<T: Copy>(events: &[egui::Event], keys: &[(Key, T)], shift: bool) -> Option<T> {
     events.iter().find_map(|event| match event {
         egui::Event::Key {
-            physical_key: Some(key),
+            key,
+            physical_key,
             pressed: true,
             repeat: false,
             modifiers,
-            ..
-        } if modifiers.shift_only() => keys.iter().find(|(k, _)| k == key).map(|(_, value)| *value),
+        } if (shift && modifiers.shift_only()) || (!shift && modifiers.is_none()) => {
+            let place = physical_key.unwrap_or(*key);
+            keys.iter()
+                .find(|(k, _)| *k == place)
+                .map(|(_, value)| *value)
+        }
         _ => None,
     })
 }
 
-/// `Shift+0…5` as stars. Found by the physical key: with Shift the typed character is `!`,
-/// `"`, `§` … depending on the keyboard layout.
+/// `Shift+0…5`: rate and move on.
 fn shifted_digit(events: &[egui::Event]) -> Option<Rating> {
-    shifted_key(events, &STAR_KEYS)
+    digit_key(events, &STAR_KEYS, true)
 }
 
 fn shifted_label(events: &[egui::Event]) -> Option<Label> {
-    shifted_key(events, &LABEL_KEYS)
+    digit_key(events, &LABEL_KEYS, true)
 }
 
 /// One photo slot on screen: which photo, where, and which side (compare mode).
@@ -653,18 +678,20 @@ impl CernoApp {
                 return;
             }
         };
-        self.notice = library
-            .paths
-            .is_empty()
-            .then(|| Notice::hint((i18n::t().no_photos_in)(&library.dir.display().to_string())));
-        // No dialog at start: once the first folder with photos is open, a quiet hint says
-        // where the aesthetics model is downloaded.
-        if !library.paths.is_empty()
-            && self.analyzer.clip_model_missing()
-            && self.db.setting(CLIP_OFFER_SHOWN).as_deref() != Some("1")
-        {
-            self.notice = Some(Notice::hint(i18n::t().aesthetics_offer));
-            self.db.put_setting(CLIP_OFFER_SHOWN, "1");
+        // An error (e.g. the index could not be opened at start) stays until it is read.
+        if !self.notice.as_ref().is_some_and(|notice| notice.error) {
+            self.notice = library.paths.is_empty().then(|| {
+                Notice::hint((i18n::t().no_photos_in)(&library.dir.display().to_string()))
+            });
+            // No dialog at start: once the first folder with photos is open, a quiet hint says
+            // where the aesthetics model is downloaded.
+            if !library.paths.is_empty()
+                && self.analyzer.clip_model_missing()
+                && self.db.setting(CLIP_OFFER_SHOWN).as_deref() != Some("1")
+            {
+                self.notice = Some(Notice::hint(i18n::t().aesthetics_offer));
+                self.db.put_setting(CLIP_OFFER_SHOWN, "1");
+            }
         }
         self.all_index = index_of(&library.paths);
         // A photo that was opened directly stays selected; a folder starts at the top of the
@@ -968,7 +995,15 @@ impl CernoApp {
             Some(path) => self.transfers.involves(path),
             None => self.transfers.mode(),
         };
-        blocked(change, self.edit_busy, self.edit.is_some(), transfer)
+        blocked(
+            change,
+            Activity {
+                writing: self.edit_busy,
+                editing: self.edit.is_some(),
+                transfer,
+                no_index: self.db.is_in_memory(),
+            },
+        )
     }
 
     /// `true` when `change` may go ahead; otherwise a hint says why not.
@@ -2203,6 +2238,8 @@ impl CernoApp {
         let keys = ctx.input(|i| {
             let plain = i.modifiers.is_none();
             let rate_and_next = shifted_digit(&i.events);
+            let rating = digit_key(&i.events, &STAR_KEYS, false);
+            let label = digit_key(&i.events, &LABEL_KEYS, false);
             KeyInput {
                 // Without Ctrl: Ctrl+Left/Right turn the photo instead.
                 next: !i.modifiers.command
@@ -2215,17 +2252,11 @@ impl CernoApp {
                         .any(|k| i.key_pressed(*k)),
                 first: i.key_pressed(Key::Home),
                 last: i.key_pressed(Key::End),
-                rating: STAR_KEYS
-                    .iter()
-                    .find(|(k, _)| plain && i.key_pressed(*k))
-                    .map(|(_, stars)| *stars),
+                rating,
                 rate_and_next,
                 reject: plain && i.key_pressed(Key::X),
                 reject_and_next: i.modifiers.shift_only() && i.key_pressed(Key::X),
-                label: LABEL_KEYS
-                    .iter()
-                    .find(|(k, _)| plain && i.key_pressed(*k))
-                    .map(|(_, label)| *label),
+                label,
                 label_and_next: shifted_label(&i.events),
                 delete: plain && i.key_pressed(Key::Delete),
                 compare: plain && i.key_pressed(Key::C),
@@ -2248,7 +2279,8 @@ impl CernoApp {
                 zoom_in: !i.modifiers.command
                     && rate_and_next.is_none()
                     && (i.key_pressed(Key::Plus) || i.key_pressed(Key::Equals)),
-                zoom_out: !i.modifiers.command && i.key_pressed(Key::Minus),
+                // AZERTY types "-" on the 6 key, which is the red label here.
+                zoom_out: !i.modifiers.command && label.is_none() && i.key_pressed(Key::Minus),
                 open: i.modifiers.command && i.key_pressed(Key::O),
                 is_fullscreen: i.viewport().fullscreen.unwrap_or(false),
                 straighten: plain && i.key_pressed(Key::S),
@@ -2979,7 +3011,12 @@ impl eframe::App for CernoApp {
         for outcome in self.transfers.finish_now() {
             self.retarget_moved(&outcome);
         }
-        self.deletions.finish_now();
+        // Photos that really went to the trash teach For you, as during the session.
+        for path in self.deletions.finish_now().deleted {
+            if let Err(err) = self.db.record_deletion(&path.to_string_lossy()) {
+                log::warn!("index: {err:#}");
+            }
+        }
     }
 }
 
@@ -3017,39 +3054,56 @@ mod tests {
     #[test]
     fn one_action_at_a_time_on_a_photo() {
         use Change::*;
-        let none = None;
+        let idle = Activity::default();
+        let moving = Activity {
+            transfer: Some(TransferMode::Move),
+            ..idle
+        };
+        let copying = Activity {
+            transfer: Some(TransferMode::Copy),
+            ..idle
+        };
+        let writing = Activity {
+            writing: true,
+            ..idle
+        };
+        let editing = Activity {
+            editing: true,
+            ..idle
+        };
+        let no_index = Activity {
+            no_index: true,
+            ..idle
+        };
         // Nothing going on: everything may happen.
         for change in [Mark, Delete, Edit, Rewrite, Transfer] {
-            assert_eq!(blocked(change, false, false, none), None, "{change:?}");
+            assert_eq!(blocked(change, idle), None, "{change:?}");
         }
         // A moved photo takes nothing, a copied one still takes marks.
         for change in [Mark, Delete, Edit, Rewrite] {
-            assert_eq!(
-                blocked(change, false, false, Some(TransferMode::Move)),
-                Some(Blocked::Moving)
-            );
+            assert_eq!(blocked(change, moving), Some(Blocked::Moving));
         }
-        assert_eq!(blocked(Mark, false, false, Some(TransferMode::Copy)), None);
+        assert_eq!(blocked(Mark, copying), None);
         for change in [Delete, Edit, Rewrite] {
-            assert_eq!(
-                blocked(change, false, false, Some(TransferMode::Copy)),
-                Some(Blocked::Copying)
-            );
+            assert_eq!(blocked(change, copying), Some(Blocked::Copying));
         }
         // An edit being written holds everything but marks.
-        assert_eq!(blocked(Mark, true, false, none), None);
+        assert_eq!(blocked(Mark, writing), None);
         for change in [Delete, Edit, Rewrite, Transfer] {
-            assert_eq!(blocked(change, true, false, none), Some(Blocked::Writing));
+            assert_eq!(blocked(change, writing), Some(Blocked::Writing));
         }
         // An open session: no quarter turn, no Ctrl+Z, no copy or move until Enter or Esc.
-        assert_eq!(blocked(Rewrite, false, true, none), Some(Blocked::Editing));
-        assert_eq!(blocked(Transfer, false, true, none), Some(Blocked::Editing));
-        assert_eq!(blocked(Mark, false, true, none), None);
-        assert_eq!(
-            blocked(Edit, false, true, none),
-            None,
-            "S/R switch the session"
-        );
+        assert_eq!(blocked(Rewrite, editing), Some(Blocked::Editing));
+        assert_eq!(blocked(Transfer, editing), Some(Blocked::Editing));
+        assert_eq!(blocked(Mark, editing), None);
+        assert_eq!(blocked(Edit, editing), None, "S/R switch the session");
+        // Without the index file no edit at all – its kept original would be lost track of.
+        for change in [Edit, Rewrite] {
+            assert_eq!(blocked(change, no_index), Some(Blocked::NoIndex));
+        }
+        for change in [Mark, Delete, Transfer] {
+            assert_eq!(blocked(change, no_index), None);
+        }
     }
 
     #[test]
@@ -3069,5 +3123,46 @@ mod tests {
             None
         );
         assert_eq!(shifted_digit(&[key(Key::Num7, Key::Slash, shift)]), None);
+    }
+
+    #[test]
+    fn plain_digits_count_by_their_place_on_the_keyboard() {
+        let plain = Modifiers::NONE;
+        let stars = |event| digit_key(&[event], &STAR_KEYS, false);
+        let label = |event| digit_key(&[event], &LABEL_KEYS, false);
+        // French AZERTY: the 4 key types "'", the 6 key "-", the 3 key '"'.
+        assert_eq!(
+            stars(key(Key::Num4, Key::Quote, plain)),
+            Some(Rating::Stars(4))
+        );
+        assert_eq!(
+            stars(key(Key::Num3, Key::Quote, plain)),
+            Some(Rating::Stars(3))
+        );
+        assert_eq!(label(key(Key::Num6, Key::Minus, plain)), Some(Label::Red));
+        // QWERTZ / QWERTY and headless events without a physical key.
+        assert_eq!(
+            stars(key(Key::Num2, Key::Num2, plain)),
+            Some(Rating::Stars(2))
+        );
+        let logical_only = Event::Key {
+            key: Key::Num5,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: plain,
+        };
+        assert_eq!(stars(logical_only), Some(Rating::Stars(5)));
+        // Shift, Ctrl and repeats are not plain digits.
+        assert_eq!(stars(key(Key::Num4, Key::Num4, Modifiers::SHIFT)), None);
+        assert_eq!(stars(key(Key::Num4, Key::Num4, Modifiers::COMMAND)), None);
+        let repeat = Event::Key {
+            key: Key::Num4,
+            physical_key: Some(Key::Num4),
+            pressed: true,
+            repeat: true,
+            modifiers: plain,
+        };
+        assert_eq!(stars(repeat), None);
     }
 }

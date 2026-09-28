@@ -34,6 +34,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 - One action at a time on a photo: a photo being moved takes no stars, labels, edits or deletion, one being copied no edit or deletion; while a straighten or crop is open, quarter turns, `Ctrl+Z` and copy/move wait for `Enter` or `Esc`. A short hint says why, and the menu greys those rows out. Before, stars given during a move could be lost and an edit could land on the neighbouring photo.
 - Straighten and crop keep the photo's colour profile: an Adobe RGB or Display P3 JPEG was written back as untagged sRGB, with its strong colours clipped for good.
+- Digits rate and set colours on French and Belgian keyboards (AZERTY) too: the keys count by their place, not by the character they type. On AZERTY the 6 key no longer also zooms out.
+- Deletions carried out when the window closes count for For you, like the ones during the session.
+- If the index can't be opened, its error stays on screen instead of being replaced by the next hint, and editing is off (its kept originals would be lost track of).
+- `cerno IMG_0042.jpg` started inside the folder opens that photo instead of the first one; paths are stored absolute.
 - A straighten or crop is cancelled (with a hint) when another photo becomes current underneath it, e.g. because a copy finished.
 - No torn reads or copies: reading, copying and writing a photo take turns, so the analysis, the viewer and a copy never see a file halfway through a rating write.
 - A photo rated while it was being analysed is analysed again shortly afterwards instead of staying without values until the folder is reopened, and the index no longer keeps the rating it had before.

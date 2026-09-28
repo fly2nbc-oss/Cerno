@@ -34,7 +34,12 @@ impl Library {
     /// Opens a folder, or the folder containing an image. Returns the library and the index to
     /// start at (the given image, otherwise 0). `subfolders` walks nested folders, skipping
     /// hidden ones (a name starting with `.`) and never following a directory symlink.
+    ///
+    /// Paths are made absolute first: `cerno IMG_0042.jpg` from inside the folder must select
+    /// that photo (a bare name would become `./IMG_0042.jpg` and match nothing), and the index
+    /// keys files by their full path.
     pub fn open(path: &Path, subfolders: bool) -> io::Result<(Library, usize)> {
+        let path = &std::path::absolute(path)?;
         let (dir, selected) = if path.is_dir() {
             (path.to_path_buf(), None)
         } else {
@@ -194,6 +199,17 @@ fn take_digits(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_relative_path_selects_its_photo_and_everything_is_absolute() {
+        // `cargo test` runs in the crate root.
+        let (library, index) = Library::open(Path::new("tests/fixtures/tiny.jpg"), false).unwrap();
+        assert!(library.dir.is_absolute());
+        assert!(library.paths.iter().all(|p| p.is_absolute()));
+        assert!(library.paths[index].ends_with("tiny.jpg"));
+        let (from_dir, _) = Library::open(Path::new("tests/fixtures"), false).unwrap();
+        assert_eq!(from_dir.paths, library.paths);
+    }
 
     #[test]
     fn natural_order() {
