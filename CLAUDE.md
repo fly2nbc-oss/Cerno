@@ -92,7 +92,8 @@ library.rs           folder scan (optional subfolders), supported extensions, na
 loader.rs            prefetch worker pool + texture cache; full-resolution tiles for zoom
 decode.rs            bytes → RGB8 at a target size: JPEG (zune-jpeg) / HEIC (libheif), resize, EXIF orientation
 metadata.rs          rating, colour label, capture time (`taken_ms`), orientation, camera/exposure data from the in-memory file bytes
-analysis/mod.rs      background analysis (only the missing parts per image) + ScoreBoard + model download + taste trainer thread
+analysis/mod.rs      background analysis (only the missing parts per image) + ScoreBoard + taste trainer thread
+analysis/models.rs   `ModelState`, lazily loaded model slots (`run_model`), CLIP download (stall timeout), "Delete models"
 analysis/sharpness.rs  tile-based Laplacian variance, region variance, percentile helper
 analysis/aesthetic.rs  ONNX encoders (DirectML → CPU): CLIP + embedded LAION head, SigLIP + V2.5 head from the models dir
 analysis/attributes.rs CLIP-IQA-style zero-shot attributes from the embedding (embedded prompt vectors)
