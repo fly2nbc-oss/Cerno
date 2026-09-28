@@ -8,6 +8,7 @@ mod decode;
 mod deletion;
 mod exiftool;
 mod filetimes;
+mod histogram;
 mod i18n;
 mod library;
 mod loader;

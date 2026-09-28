@@ -17,6 +17,7 @@ use std::time::Instant;
 use anyhow::{Context as _, Result};
 use eframe::egui::{self, ColorImage, TextureFilter, TextureHandle, TextureOptions};
 
+use crate::histogram::{self, RgbHistogram};
 use crate::metadata::{self, CameraInfo, RatingInfo};
 use crate::thumbs::{self, Thumbs};
 use crate::{decode, library};
@@ -30,6 +31,8 @@ const MAX_TILE: u32 = 4096;
 
 pub struct LoadedImage {
     pub texture: TextureHandle,
+    /// RGB histogram of the display decode.
+    pub histogram: RgbHistogram,
     /// Full image size after orientation.
     pub original_size: [u32; 2],
     /// Rating as stored in the file when it was decoded.
@@ -446,6 +449,7 @@ fn load_display(shared: &Shared, job: &Job) -> Result<LoadedImage> {
 
     Ok(LoadedImage {
         texture,
+        histogram: histogram::compute(&decoded.rgb),
         original_size: decoded.original_size,
         rating: meta.rating,
         camera: meta.camera,

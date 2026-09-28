@@ -358,6 +358,51 @@ impl Analyzer {
 
     /// Downloads the CLIP model in the background, then re-runs the analysis to add the
     /// scores.
+    /// Clears taste feedback in the index; star ratings in the files stay.
+    pub fn reset_taste_learning(&self) {
+        if let Err(err) = self.shared.db.reset_taste_learning() {
+            log::warn!("taste reset: {err:#}");
+            return;
+        }
+        self.taste_changed();
+    }
+
+    /// Removes downloaded ONNX files and drops loaded sessions.
+    pub fn delete_installed_models(&self) -> Result<()> {
+        *lock(&self.shared.clip) = Slot::NotLoaded;
+        *lock(&self.shared.v25) = Slot::NotLoaded;
+        *lock(&self.shared.clip_state) = ModelState::Missing;
+        *lock(&self.shared.v25_state) = ModelState::Missing;
+        if let Ok(dir) = paths::models_dir() {
+            for name in [
+                aesthetic::MODEL_FILE,
+                aesthetic::SIGLIP_FILE,
+                aesthetic::V25_HEAD_FILE,
+            ] {
+                let path = dir.join(name);
+                if path.is_file() {
+                    std::fs::remove_file(&path)
+                        .with_context(|| format!("cannot delete {}", path.display()))?;
+                }
+            }
+            let part = dir.join(format!("{}.part", aesthetic::MODEL_FILE));
+            if part.is_file() {
+                let _ = std::fs::remove_file(part);
+            }
+        }
+        lock(&self.shared.state).done.clear();
+        self.shared.wake.notify_all();
+        self.shared.ctx.request_repaint();
+        Ok(())
+    }
+
+    pub fn clip_model_missing(&self) -> bool {
+        matches!(
+            *lock(&self.shared.clip_state),
+            ModelState::Missing | ModelState::Failed(_)
+        )
+    }
+
     pub fn download_model(&self) {
         {
             let mut state = lock(&self.shared.clip_state);
