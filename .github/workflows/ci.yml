@@ -5,7 +5,7 @@ name: CI
 # into a draft release.
 on:
   push:
-    branches: [main, ci/packaging]
+    branches: [main]
     tags: ["v*"]
     paths-ignore: ["**.md", "docs/**", "screenshots/**"]
   pull_request:
