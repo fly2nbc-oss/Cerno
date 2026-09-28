@@ -60,7 +60,18 @@ cargo build --release --features heic
 
 ```
 main.rs              eframe bootstrap (wgpu renderer), CLI path argument
-app.rs               CernoApp: state, keyboard/mouse model, layout, view (sort/filter) management
+app/mod.rs           CernoApp: the state, start-up, one frame (`ui`), exit; each submodule adds the methods for one part:
+app/browse.rs        opening a folder, building the view (`rebuild_view` / `set_view`, `refresh_marks`), navigation
+app/marks.rs         stars, rejection, colour labels (session maps, then the writer)
+app/files.rs         copy / move of the view, deletion with the countdown
+app/editing.rs       straighten / crop sessions, quarter turns, Ctrl+Z, the edit overlay
+app/gate.rs          one action at a time on a photo (`blocked`, `allowed`, `menu_block`)
+app/keys.rs          `read_keys` (one frame's input → `KeyInput`, pure, tested) and `handle_keys`
+app/photos.rs        photo slots, compare mode, mouse zoom / pan, drawing the photos
+app/frame.rs         `Layout` of the bars and the photo area, filmstrip, info bar, filter bar
+app/menu.rs          burger and action menu entries, help, models card, confirmations (`draw_overlays`)
+app/panels.rs        which bars show, language switch and flag
+app/notice.rs        messages over the photo and the deletion countdown
 view.rs              sorting + filtering, time series and exact duplicates (`View`, pure, unit-tested)
 ui/viewer.rs         fit / zoom / pan geometry and drawing (display texture or full-res tiles)
 ui/filmstrip.rs      thumbnail strip centred on the current photo; marks explained in one tooltip
@@ -107,7 +118,7 @@ theme.rs             design tokens → egui Visuals, `text` font sizes, system U
 - Workers (`available_parallelism - 1`, clamped 2..=4) pick the **most urgent** missing index relative to the *current* index at pick time: `0, full-res of 0 (if zoomed), +1, -1, +2, +3, -2, -3`. Jumping around re-prioritises automatically; nothing is queued ahead of time.
 - Display images are decoded at **monitor resolution** (clamped to `max_texture_side`). Full resolution is loaded only for the current photo while zoomed, split into tiles ≤ 4096 px.
 - Workers upload textures themselves (`egui::Context` is `Send + Sync`). They also downscale the decoded image into the filmstrip thumbnail – the neighbourhood's thumbnails are free.
-- `set_library` carries cached images over by path, so re-sorting or filtering decodes nothing again. A generation counter discards results that finish after the list changed.
+- `set_library` carries cached images over by path, so re-sorting or filtering decodes nothing again. A generation counter discards results that finish after the list changed; the same list again (compare mode on or off) keeps the decodes in flight (`State::switch`).
 
 ### Analysis
 
@@ -136,7 +147,7 @@ theme.rs             design tokens → egui Visuals, `text` font sizes, system U
 
 ### One action at a time
 
-- `app::blocked(change, writing, editing, transfer)` is pure and unit-tested. Every action that changes a photo asks `allowed()` first (a hint says why not); menu rows ask `menu_block()` and are greyed out with the reason as tooltip. A new action that changes a photo must go through `allowed`.
+- `app::gate::blocked(change, activity)` is pure and unit-tested. Every action that changes a photo asks `allowed()` first (a hint says why not); menu rows ask `menu_block()` and are greyed out with the reason as tooltip. A new action that changes a photo must go through `allowed`.
 - Rules: a photo being moved takes nothing; one being copied still takes marks (the file lock keeps the rating write and the copy apart); an edit in the writer (`edit_busy`) blocks everything but marks; an open straighten/crop session blocks quarter turns, `Ctrl+Z` and copy/move until `Enter` or `Esc`.
 - An `EditSession` remembers its path. `set_view` ends the session (hint) when another photo becomes current, and `confirm_edit` checks the path again.
 - `filelock::FileLocks` is shared by the writer, the loader, the analysis, the edit render and the copy/move worker. Each holds a path only around the I/O itself (one read, one ExifTool call, one copy – never a decode) and never two paths at once. The UI thread never waits there.
@@ -166,7 +177,8 @@ theme.rs             design tokens → egui Visuals, `text` font sizes, system U
 ### Keyboard details
 
 - `Tab` never reaches egui: `raw_input_hook` removes it and queues it for `handle_keys`. egui would otherwise move keyboard focus to the next widget with `Tab`, and `Space` ("next photo") would then also click that widget.
-- Digits – plain and with Shift – are recognised by the **physical** key (`app::digit_key`, `Event::Key::physical_key`; the logical key only when there is none): with Shift the logical key is `!`, `"`, `§` … depending on the layout, and on AZERTY even the plain keys type `&`, `é`, `'`, `-` …. On German layouts `Shift+0` types `=`, which is also a zoom key – zoom-in is suppressed in a frame with a shifted digit; on AZERTY the 6 key types `-`, so zoom-out is suppressed in a frame with a colour digit. Key repeats don't rate.
+- Key tests run `read_keys` in a headless frame (`app::keys::tests::read`). egui takes `InputState::modifiers` from `Event::ModifiersChanged`, not from the key event, so the helper sends both.
+- Digits – plain and with Shift – are recognised by the **physical** key (`app::keys::digit_key`, `Event::Key::physical_key`; the logical key only when there is none): with Shift the logical key is `!`, `"`, `§` … depending on the layout, and on AZERTY even the plain keys type `&`, `é`, `'`, `-` …. On German layouts `Shift+0` types `=`, which is also a zoom key – zoom-in is suppressed in a frame with a shifted digit; on AZERTY the 6 key types `-`, so zoom-out is suppressed in a frame with a colour digit. Key repeats don't rate.
 - `Ctrl+←/→` turn the photo; next/previous ignore Ctrl (they used to step as well, so a following `Ctrl+Z` looked at the neighbour).
 - Texts show modifiers with the language's key names (`i18n::with_ctrl("K")` → `Strg+K` / `Ctrl+K`); help rows are literal per language.
 
