@@ -3,8 +3,8 @@
 use std::collections::HashSet;
 
 use eframe::egui::{
-    Align, Color32, FontId, Id, Layout, Rect, RichText, ScrollArea, Sense, Stroke, Ui, UiBuilder,
-    vec2,
+    Align, Color32, FontId, Id, Label, Layout, Rect, RichText, ScrollArea, Sense, Stroke, Ui,
+    UiBuilder, vec2,
 };
 
 use crate::analysis::{ModelState, Status, aesthetic, exposure};
@@ -279,6 +279,7 @@ fn content(
 
     ui.add_space(8.0);
     ui.horizontal(|ui| {
+        ui.add_space(PAD);
         if ui.button(t.btn_reset_taste).clicked() {
             out.reset_taste = true;
         }
@@ -331,11 +332,14 @@ fn histogram(ui: &mut Ui, hist: &RgbHistogram) {
 
 fn section(ui: &mut Ui, title: &str) {
     ui.add_space(6.0);
-    ui.label(
-        RichText::new(title.to_uppercase())
-            .font(FontId::proportional(10.5))
-            .color(tokens::ACCENT),
-    );
+    ui.horizontal(|ui| {
+        ui.add_space(PAD);
+        ui.label(
+            RichText::new(title.to_uppercase())
+                .font(FontId::proportional(10.5))
+                .color(tokens::ACCENT),
+        );
+    });
     ui.add_space(2.0);
 }
 
@@ -536,23 +540,24 @@ fn value_bar(ui: &mut Ui, _id: Id, value: &Value) {
     );
 }
 
+/// Muted text that wraps inside the panel. A label in a left-to-right layout never wraps in
+/// egui – it would widen the scroll area and push the values of every later row out of view.
 fn explanation(ui: &mut Ui, text: &str) {
     let width = (ui.available_width() - 2.0 * PAD).max(40.0);
-    let job = eframe::egui::text::LayoutJob::simple(
-        i18n::keep_together(text),
-        FontId::proportional(13.0),
-        tokens::MUTED,
-        width,
-    );
-    ui.allocate_ui_with_layout(
-        vec2(ui.available_width(), 0.0),
-        Layout::left_to_right(Align::TOP),
-        |ui| {
-            ui.add_space(PAD);
-            ui.set_max_width(PAD + width);
-            ui.label(job);
-        },
-    );
+    ui.horizontal(|ui| {
+        ui.add_space(PAD);
+        ui.allocate_ui_with_layout(vec2(width, 0.0), Layout::top_down(Align::Min), |ui| {
+            ui.set_max_width(width);
+            ui.add(
+                Label::new(
+                    RichText::new(i18n::keep_together(text))
+                        .font(FontId::proportional(13.0))
+                        .color(tokens::MUTED),
+                )
+                .wrap(),
+            );
+        });
+    });
 }
 
 fn stars_value(stars: f32) -> Value {
@@ -632,6 +637,70 @@ mod tests {
             )
         });
         assert!(has_quality, "CLIP attributes visible when expanded");
+    }
+
+    /// `I` expands every row: the explanations wrap inside the panel and every value stays
+    /// visible.
+    #[test]
+    fn expanded_rows_stay_inside_the_panel() {
+        let ctx = Context::default();
+        let status = status();
+        let details = Details {
+            scores: Some(Scores {
+                sharpness: Some(1.0),
+                aesthetic: Some(5.0),
+                aesthetic25: Some(6.0),
+                highlights: Some(0.0),
+                shadows: Some(0.0),
+                eyes: None,
+                faces: Some(0),
+            }),
+            personal: Some(2.8),
+            frame_percentile: Some(0.62),
+            eyes_percentile: None,
+            attributes: Some([0.5; 6]),
+            histogram: None,
+            status: &status,
+        };
+        let mut expanded = HashSet::new();
+        set_all_expanded(&mut expanded, true);
+        let panel = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 2400.0));
+        let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH * 3.0, 2400.0));
+        let mut output = ctx.run_ui(
+            RawInput {
+                screen_rect: Some(screen),
+                ..Default::default()
+            },
+            |ui| {
+                draw(ui, panel, &details, &mut expanded);
+            },
+        );
+        output.textures_delta.clear();
+        let texts: Vec<(String, Rect)> = output
+            .shapes
+            .iter()
+            .filter_map(|clipped| match &clipped.shape {
+                Shape::Text(text) => {
+                    Some((text.galley.text().to_owned(), text.visual_bounding_rect()))
+                }
+                _ => None,
+            })
+            .collect();
+        let v25 = format!("{:.1} ★", aesthetic::as_stars(6.0));
+        for value in [v25.as_str(), "2.8 ★", "62 %", "50 %"] {
+            assert!(
+                texts.iter().any(|(text, _)| text == value),
+                "value {value} is drawn"
+            );
+        }
+        for (text, rect) in &texts {
+            assert!(
+                rect.right() <= panel.right() + 0.5,
+                "{text:?} ends at {} beyond the panel ({})",
+                rect.right(),
+                panel.right()
+            );
+        }
     }
 
     #[test]
