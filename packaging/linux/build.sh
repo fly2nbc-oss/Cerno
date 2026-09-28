@@ -87,9 +87,9 @@ bundled() { # elf soname-regex
     path=$(ldd "$1" | awk -v lib="$2" '$1 ~ lib { print $3; exit }')
     [[ -n $path && $(readlink -f "$path") == "$root"/usr/lib/* ]]
 }
-bundled "$appdir/usr/bin/cerno" '^libheif\.so' ||
+bundled "$appdir/usr/bin/cerno" '^libheif[.]so' ||
     { echo "cerno does not load the bundled libheif" >&2; exit 1; }
-bundled "$plugins/libheif-libde265.so" '^libde265\.so' ||
+bundled "$plugins/libheif-libde265.so" '^libde265[.]so' ||
     { echo "the HEVC plugin does not load the bundled libde265" >&2; exit 1; }
 
 # The LGPL libraries' versions, so their source can be found (Ubuntu source packages).

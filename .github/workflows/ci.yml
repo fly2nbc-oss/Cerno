@@ -1,7 +1,8 @@
 name: CI
 
 # Pull requests: lint and tests only. Pushes to main, tags and manual runs also
-# build the four packages; a `v*` tag turns them into a draft release.
+# build the four packages (kept 14 days as run artifacts); a `v*` tag turns them
+# into a draft release.
 on:
   push:
     branches: [main, ci/packaging]
@@ -97,13 +98,15 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: windows-installer
-          path: dist/windows/cerno_*_x64-setup.exe
+          path: 
           if-no-files-found: error
+          retention-days: 14
       - uses: actions/upload-artifact@v7
         with:
           name: windows-portable
-          path: dist/windows/cerno_*_x64-portable.zip
+          path: 
           if-no-files-found: error
+          retention-days: 14
 
   package-linux:
     name: Package (Linux AppImage, deb)
@@ -134,13 +137,15 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: linux-appimage
-          path: dist/linux/cerno_*_x86_64.AppImage
+          path: 
           if-no-files-found: error
+          retention-days: 14
       - uses: actions/upload-artifact@v7
         with:
           name: linux-deb
-          path: dist/linux/cerno_*_amd64.deb
+          path: 
           if-no-files-found: error
+          retention-days: 14
       - uses: actions/upload-artifact@v7
         with:
           name: smoke-photo

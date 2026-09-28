@@ -75,7 +75,7 @@ Cerno (Latin *cerno* – "I sift, discern, see clearly") is a native Rust deskto
 
 ## Quick Start
 
-**Download** from [Releases](https://github.com/fly2nbc-oss/Cerno/releases) (drafted by CI for every `v*` tag; each push to `main` leaves the same four files as run artifacts):
+**Download** from [Releases](https://github.com/fly2nbc-oss/Cerno/releases) (drafted by CI for every `v*` tag; each push to `main` leaves the same four files as run artifacts for 14 days):
 
 | File | Platform |
 |---|---|
