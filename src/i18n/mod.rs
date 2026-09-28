@@ -88,6 +88,19 @@ pub fn t() -> &'static Texts {
     current().texts()
 }
 
+/// The colour's name in the current language. The file still stores the English XMP name.
+pub fn label_name(label: crate::metadata::Label) -> &'static str {
+    use crate::metadata::Label;
+    let t = t();
+    match label {
+        Label::Red => t.label_red,
+        Label::Yellow => t.label_yellow,
+        Label::Green => t.label_green,
+        Label::Blue => t.label_blue,
+        Label::Purple => t.label_purple,
+    }
+}
+
 /// The system language if Cerno speaks it, otherwise English.
 pub fn system_default() -> Lang {
     sys_locale::get_locale()
@@ -198,11 +211,19 @@ pub struct Texts {
     pub sort_v25: &'static str,
     pub sort_personal: &'static str,
     pub sort_sharpness: &'static str,
+    pub sort_taken: &'static str,
     pub filter_all: &'static str,
     pub filter_five: &'static str,
     pub filter_at_least: fn(u8) -> String,
     pub filter_unrated: &'static str,
     pub filter_rejected: &'static str,
+    pub filter_label_all: &'static str,
+    pub label_filter: fn(&str) -> String,
+    pub label_red: &'static str,
+    pub label_yellow: &'static str,
+    pub label_green: &'static str,
+    pub label_blue: &'static str,
+    pub label_purple: &'static str,
 
     // Info bar.
     pub meter_aesthetics: &'static str,
@@ -212,6 +233,13 @@ pub struct Texts {
     pub probably_blurry: &'static str,
     pub analyzing: &'static str,
     pub saving: &'static str,
+    /// Shown while auto-advance is on.
+    pub auto_advance_on: &'static str,
+    /// Position within a series, 1-based, and how many photos the series has.
+    pub series_position: fn(u32, u32) -> String,
+    /// How many further photos the series hides (`+3`).
+    pub series_more: fn(u32) -> String,
+    pub duplicate_of: fn(&str) -> String,
     /// Marks a rejected photo (info bar, compare label).
     pub rejected: &'static str,
     pub star_tooltip: fn(u8) -> String,
@@ -237,6 +265,11 @@ pub struct Texts {
     pub cmd_language: fn(&str) -> String,
     pub cmd_reject: &'static str,
     pub cmd_delete_rejected: fn(usize) -> String,
+    pub cmd_auto_advance: &'static str,
+    pub cmd_subfolders: &'static str,
+    pub cmd_best_of_series: &'static str,
+    pub cmd_only_duplicates: &'static str,
+    pub cmd_label: fn(&str) -> String,
 
     // Photo area, compare mode and deletion.
     pub loading: &'static str,
@@ -314,7 +347,7 @@ pub struct Texts {
     pub help_close: &'static str,
     pub help_sections: [&'static str; 4],
     pub help_browse: [HelpRow; 5],
-    pub help_rate: [HelpRow; 8],
+    pub help_rate: [HelpRow; 10],
     pub help_view: [HelpRow; 9],
     pub help_more: [HelpRow; 4],
 }
@@ -363,6 +396,12 @@ mod tests {
             assert!((t.button_language)(name).contains(name), "{name}");
             assert!((t.cmd_language)(name).contains(name), "{name}");
             assert!((t.cmd_delete_rejected)(7).contains('7'), "{name}");
+            assert!((t.label_filter)("Red").contains("Red"), "{name}");
+            assert!((t.cmd_label)("Red").contains("Red"), "{name}");
+            let series = (t.series_position)(3, 7);
+            assert!(series.contains('3') && series.contains('7'), "{name}");
+            assert!((t.series_more)(4).contains('4'), "{name}");
+            assert!((t.duplicate_of)("a.jpg").contains("a.jpg"), "{name}");
             assert!((t.keeps_this)("A").contains('A'), "{name}");
             assert!((t.deleting)(1).contains('1'), "{name}");
             assert!((t.deleting)(12).contains("12"), "{name}");

@@ -10,6 +10,10 @@ use memchr::memmem;
 /// Microsoft's EXIF rating tag (IFD0 0x4746), written by Windows Explorer.
 const EXIF_RATING: exif::Tag = exif::Tag(exif::Context::Tiff, 0x4746);
 
+/// Bumped when capture time or colour-label reading changes, so the analysis re-reads metadata
+/// without decoding the image again.
+pub const VERSION: i64 = 1;
+
 /// A photo's rating field (`xmp:Rating`): the XMP standard defines -1 as "rejected" and 0 (or
 /// no value) as "unrated".
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
@@ -49,6 +53,125 @@ impl Rating {
     }
 }
 
+/// Colour label stored in `xmp:Label`. The file holds the English name Lightroom and Bridge
+/// use; reading also accepts the names a localised Lightroom writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Label {
+    Red,
+    Yellow,
+    Green,
+    Blue,
+    Purple,
+}
+
+impl Label {
+    pub const ALL: [Label; 5] = [
+        Self::Red,
+        Self::Yellow,
+        Self::Green,
+        Self::Blue,
+        Self::Purple,
+    ];
+
+    /// The string written to `xmp:Label`.
+    pub fn xmp_name(self) -> &'static str {
+        match self {
+            Self::Red => "Red",
+            Self::Yellow => "Yellow",
+            Self::Green => "Green",
+            Self::Blue => "Blue",
+            Self::Purple => "Purple",
+        }
+    }
+
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Red => "red",
+            Self::Yellow => "yellow",
+            Self::Green => "green",
+            Self::Blue => "blue",
+            Self::Purple => "purple",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|l| l.id() == id)
+    }
+
+    /// `red` (the settings id) or `Red` (the XMP name).
+    pub fn from_stored(value: &str) -> Option<Self> {
+        Self::from_id(value).or_else(|| {
+            Self::ALL
+                .into_iter()
+                .find(|label| label.xmp_name().eq_ignore_ascii_case(value))
+        })
+    }
+}
+
+/// What `xmp:Label` held. `Other` is a text Cerno does not use as a colour; it is left alone
+/// until the user sets a colour of their own.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum LabelInfo {
+    #[default]
+    None,
+    Known(Label),
+    Other,
+}
+
+impl LabelInfo {
+    pub fn known(self) -> Option<Label> {
+        match self {
+            Self::Known(label) => Some(label),
+            _ => None,
+        }
+    }
+
+    pub fn parse(text: &str) -> Self {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return Self::None;
+        }
+        let folded = trimmed.to_lowercase();
+        LABEL_NAMES
+            .iter()
+            .find(|(name, _)| *name == folded)
+            .map(|(_, label)| Self::Known(*label))
+            .unwrap_or(Self::Other)
+    }
+}
+
+/// English names plus the colour names of a German, French, Spanish or Italian Lightroom.
+const LABEL_NAMES: &[(&str, Label)] = &[
+    ("red", Label::Red),
+    ("rot", Label::Red),
+    ("rouge", Label::Red),
+    ("rojo", Label::Red),
+    ("rosso", Label::Red),
+    ("yellow", Label::Yellow),
+    ("gelb", Label::Yellow),
+    ("jaune", Label::Yellow),
+    ("amarillo", Label::Yellow),
+    ("giallo", Label::Yellow),
+    ("green", Label::Green),
+    ("grün", Label::Green),
+    ("gruen", Label::Green),
+    ("vert", Label::Green),
+    ("verde", Label::Green),
+    ("blue", Label::Blue),
+    ("blau", Label::Blue),
+    ("bleu", Label::Blue),
+    ("azul", Label::Blue),
+    ("blu", Label::Blue),
+    ("purple", Label::Purple),
+    ("lila", Label::Purple),
+    ("violet", Label::Purple),
+    ("violett", Label::Purple),
+    ("morado", Label::Purple),
+    ("púrpura", Label::Purple),
+    ("purpura", Label::Purple),
+    ("viola", Label::Purple),
+];
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct RatingInfo {
     pub value: Rating,
@@ -61,6 +184,7 @@ pub struct RatingInfo {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FileMetadata {
     pub rating: RatingInfo,
+    pub label: LabelInfo,
     /// EXIF orientation 1..=8 (1 = as stored).
     pub orientation: u16,
     pub camera: CameraInfo,
@@ -78,6 +202,9 @@ pub struct CameraInfo {
     pub iso: Option<u32>,
     /// `YYYY-MM-DD HH:MM`
     pub taken: Option<String>,
+    /// `DateTimeOriginal` (else `DateTimeDigitized`) as local wall-clock milliseconds, with
+    /// sub-seconds when the file has them. Compared only with other photos, never with UTC.
+    pub taken_ms: Option<i64>,
     /// Latitude and longitude in degrees (south and west negative).
     pub gps: Option<(f64, f64)>,
     /// EXIF `DigitalZoomRatio`, only when a digital zoom was used (> 1).
@@ -142,6 +269,11 @@ pub fn read(bytes: &[u8]) -> FileMetadata {
         .map(i64::from)
         .or(exif_rating.map(i64::from))
         .map_or(Rating::Unrated, Rating::from_value);
+    let label = xmp
+        .as_deref()
+        .and_then(parse_xmp_label)
+        .as_deref()
+        .map_or(LabelInfo::None, LabelInfo::parse);
 
     FileMetadata {
         rating: RatingInfo {
@@ -149,6 +281,7 @@ pub fn read(bytes: &[u8]) -> FileMetadata {
             has_exif_rating: exif_rating.is_some(),
             has_ms_photo_rating: xmp.is_some_and(|x| x.contains("MicrosoftPhoto:Rating")),
         },
+        label,
         orientation,
         camera,
     }
@@ -199,6 +332,10 @@ fn camera_info(exif: &Exif) -> CameraInfo {
         exposure_s: number(Tag::ExposureTime),
         iso: uint(Tag::PhotographicSensitivity),
         taken: text(Tag::DateTimeOriginal).and_then(|t| format_datetime(&t)),
+        taken_ms: capture_millis(text(Tag::DateTimeOriginal), text(Tag::SubSecTimeOriginal))
+            .or_else(|| {
+                capture_millis(text(Tag::DateTimeDigitized), text(Tag::SubSecTimeDigitized))
+            }),
         gps: gps(exif),
         digital_zoom: number(Tag::DigitalZoomRatio).filter(|z| *z > 1.01),
     }
@@ -235,6 +372,78 @@ fn gps(exif: &Exif) -> Option<(f64, f64)> {
 /// The position in Google Maps.
 pub fn maps_url((lat, lon): (f64, f64)) -> String {
     format!("https://www.google.com/maps/search/?api=1&query={lat:.6},{lon:.6}")
+}
+
+/// `2026:09:12 14:03:22` plus an optional sub-second string (`"42"` → 420 ms) → Unix-style
+/// milliseconds of that wall clock. Years before 1 and impossible dates give `None`.
+fn capture_millis(date: Option<String>, subsec: Option<String>) -> Option<i64> {
+    let date = date?;
+    let (day, time) = date.split_once(' ')?;
+    let mut parts = day.split(':');
+    let year: i32 = parts.next()?.parse().ok()?;
+    let month: u32 = parts.next()?.parse().ok()?;
+    let day: u32 = parts.next()?.parse().ok()?;
+    let mut clock = time.split(':');
+    let hour: u32 = clock.next()?.parse().ok()?;
+    let minute: u32 = clock.next()?.parse().ok()?;
+    let second: u32 = clock.next()?.parse().ok()?;
+    if !(1..=12).contains(&month)
+        || !(1..=31).contains(&day)
+        || hour > 23
+        || minute > 59
+        || second > 60
+    {
+        return None;
+    }
+    let days = days_from_civil(year, month, day)?;
+    let mut millis = days * 86_400_000
+        + i64::from(hour) * 3_600_000
+        + i64::from(minute) * 60_000
+        + i64::from(second) * 1000;
+    if let Some(sub) = subsec {
+        let digits: String = sub.chars().filter(|c| c.is_ascii_digit()).take(3).collect();
+        if !digits.is_empty() {
+            let mut fraction: i64 = digits.parse().ok()?;
+            for _ in digits.len()..3 {
+                fraction *= 10;
+            }
+            millis += fraction;
+        }
+    }
+    Some(millis)
+}
+
+/// Days since 1970-01-01 (Howard Hinnant's `days_from_civil`). `None` for a day the month
+/// does not have.
+fn days_from_civil(year: i32, month: u32, day: u32) -> Option<i64> {
+    if !(1..=12).contains(&month) || day == 0 || day > days_in_month(year, month) {
+        return None;
+    }
+    let mut y = i64::from(year);
+    let m = i64::from(month);
+    let d = i64::from(day);
+    y -= i64::from(m <= 2);
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = (y - era * 400) as u64;
+    let mp = if m > 2 { m - 3 } else { m + 9 };
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy as u64;
+    Some(era * 146_097 + doe as i64 - 719_468)
+}
+
+fn days_in_month(year: i32, month: u32) -> u32 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if is_leap(year) => 29,
+        2 => 28,
+        _ => 0,
+    }
+}
+
+fn is_leap(year: i32) -> bool {
+    let y = year;
+    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
 }
 
 /// `2026:09:12 14:03:22` → `2026-09-12 14:03`
@@ -284,7 +493,19 @@ fn find_xmp_packet(bytes: &[u8]) -> Option<Cow<'_, str>> {
 /// `xmp:Rating` as attribute (`xmp:Rating="4"`) or element (`<xmp:Rating>4</xmp:Rating>`).
 /// Old files use the `xap` prefix for the same namespace.
 fn parse_xmp_rating(xmp: &str) -> Option<i32> {
-    for name in ["xmp:Rating", "xap:Rating"] {
+    parse_xmp_text(xmp, &["xmp:Rating", "xap:Rating"])
+        .and_then(|v| v.parse::<f64>().ok())
+        .map(|v| v.round() as i32)
+}
+
+fn parse_xmp_label(xmp: &str) -> Option<String> {
+    parse_xmp_text(xmp, &["xmp:Label", "xap:Label"])
+}
+
+/// The text of the first matching XMP attribute or element. A longer tag that only starts
+/// with the name (`xmp:RatingPercent`) is skipped.
+fn parse_xmp_text(xmp: &str, names: &[&str]) -> Option<String> {
+    for name in names {
         let mut rest = xmp;
         while let Some(pos) = rest.find(name) {
             rest = &rest[pos + name.len()..];
@@ -295,8 +516,8 @@ fn parse_xmp_rating(xmp: &str) -> Option<i32> {
             } else {
                 rest.strip_prefix('>').and_then(|el| el.split('<').next())
             };
-            if let Some(v) = value.and_then(|v| v.trim().parse::<f64>().ok()) {
-                return Some(v.round() as i32);
+            if let Some(value) = value {
+                return Some(value.trim().to_owned());
             }
         }
     }
@@ -452,6 +673,73 @@ mod tests {
         assert_eq!(info.exposure_line(), "4 mm (26 mm eq.)  ·  f/1.8");
         assert_eq!(info.gear_line(), "Sony ILCE-7M4");
         assert_eq!(CameraInfo::default().exposure_line(), "");
+    }
+
+    #[test]
+    fn labels_round_trip_including_localised_names() {
+        assert_eq!(LabelInfo::parse("Red"), LabelInfo::Known(Label::Red));
+        assert_eq!(LabelInfo::parse("  gelb "), LabelInfo::Known(Label::Yellow));
+        assert_eq!(LabelInfo::parse("Grün"), LabelInfo::Known(Label::Green));
+        assert_eq!(LabelInfo::parse("Violet"), LabelInfo::Known(Label::Purple));
+        assert_eq!(LabelInfo::parse("Púrpura"), LabelInfo::Known(Label::Purple));
+        assert_eq!(LabelInfo::parse(""), LabelInfo::None);
+        assert_eq!(LabelInfo::parse("Selects"), LabelInfo::Other);
+        for label in Label::ALL {
+            assert_eq!(Label::from_id(label.id()), Some(label));
+            assert_eq!(LabelInfo::parse(label.xmp_name()), LabelInfo::Known(label));
+        }
+        let meta = read(br#"<x:xmpmeta><a xmp:Label="Rouge" xmp:Rating="2"/></x:xmpmeta>"#);
+        assert_eq!(meta.label, LabelInfo::Known(Label::Red));
+        assert_eq!(meta.rating.value, Rating::Stars(2));
+        let meta = read(br#"<x:xmpmeta><xmp:Label>Blue</xmp:Label></x:xmpmeta>"#);
+        assert_eq!(meta.label, LabelInfo::Known(Label::Blue));
+        let meta = read(br#"<x:xmpmeta><a xmp:Label="Kundenauswahl"/></x:xmpmeta>"#);
+        assert_eq!(meta.label, LabelInfo::Other);
+    }
+
+    #[test]
+    fn capture_time_uses_subseconds_and_falls_back() {
+        assert_eq!(days_from_civil(1970, 1, 1), Some(0));
+        assert_eq!(days_from_civil(2000, 1, 1), Some(10_957));
+        assert_eq!(days_from_civil(2024, 2, 29), Some(19_782));
+        assert_eq!(days_from_civil(2023, 2, 29), None);
+        assert_eq!(
+            capture_millis(Some("1970:01:01 00:00:00".into()), None),
+            Some(0)
+        );
+        assert_eq!(
+            capture_millis(Some("1970:01:01 00:00:01".into()), Some("42".into())),
+            Some(1_420)
+        );
+        assert_eq!(
+            capture_millis(Some("1970:01:01 00:00:01".into()), Some("4".into())),
+            Some(1_400)
+        );
+        assert_eq!(
+            capture_millis(Some("0000:00:00 00:00:00".into()), None),
+            None
+        );
+
+        let exif = exif_from(&[
+            field(
+                Tag::DateTimeOriginal,
+                Value::Ascii(vec![b"2026:09:12 14:03:22".to_vec()]),
+            ),
+            field(Tag::SubSecTimeOriginal, Value::Ascii(vec![b"5".to_vec()])),
+        ]);
+        let info = camera_info(&exif);
+        let again = capture_millis(Some("2026:09:12 14:03:22".into()), Some("5".into()));
+        assert_eq!(info.taken_ms, again);
+        assert!(info.taken_ms.unwrap() % 1000 == 500);
+
+        let exif = exif_from(&[field(
+            Tag::DateTimeDigitized,
+            Value::Ascii(vec![b"2026:09:12 14:03:22".to_vec()]),
+        )]);
+        assert_eq!(
+            camera_info(&exif).taken_ms,
+            capture_millis(Some("2026:09:12 14:03:22".into()), None)
+        );
     }
 
     #[test]

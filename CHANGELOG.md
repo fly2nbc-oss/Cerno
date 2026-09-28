@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ---
 
+## [0.9.0] – 2026-09-28
+
+### Added
+
+- Sort by capture time (ascending). The time comes from `DateTimeOriginal` plus sub-seconds, or `DateTimeDigitized` when the original is missing. Photos without a time stay at the end.
+- Colour labels Red, Yellow, Green, Blue and Purple, written as the English `xmp:Label` (`6`–`9`, purple from the command palette; the same key again clears the label, `Shift+6`–`9` sets it and moves on). Names that a German, French, Spanish or Italian Lightroom wrote are recognised. A dot in the info bar and a stripe on the filmstrip show the colour; the top bar can filter by it.
+- Series: photos at most two seconds apart belong together. Capture-time order puts the sharpest non-rejected photo first. The filmstrip separates series, and the info bar shows the position inside the current one. "Best of each series" (command palette) keeps only that photo, with a `+n` count of the rest.
+- Optional subfolders (command palette, off by default). Hidden folders are skipped, directory shortcuts are not followed. A photo in a subfolder is shown as `100CANON/IMG_0001.JPG`.
+- Exact duplicates (same pixels and size) are marked: a badge on the filmstrip, "Duplicate of …" in the info bar, and a "Only duplicates" filter. Nothing is rejected or deleted on its own.
+- Auto-advance (command palette, off by default): `0`–`9` and `X` then move to the next photo, the same way their `Shift` variants already did. A short hint in the info bar shows while it is on.
+
+### Changed
+
+- An existing index picks up capture times by re-reading the file only – photos that were already analysed are not decoded again.
+
 ## [0.8.1] – 2026-09-27
 
 ### Changed

@@ -13,7 +13,7 @@ use std::time::{Duration, UNIX_EPOCH};
 use anyhow::{Context as _, Result};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
-use crate::metadata::Rating;
+use crate::metadata::{Label, Rating};
 
 const SCHEMA: &str = "
     CREATE TABLE IF NOT EXISTS files (
@@ -54,12 +54,18 @@ const ADDED_IMAGE_COLUMNS: &[(&str, &str)] = &[
     ("eyes", "REAL"),
     ("faces", "INTEGER"),
     ("faces_version", "INTEGER NOT NULL DEFAULT 0"),
+    ("taken_ms", "INTEGER"),
+    ("metadata_version", "INTEGER NOT NULL DEFAULT 0"),
 ];
+
+/// Columns added to `files` after the first release.
+const ADDED_FILE_COLUMNS: &[(&str, &str)] = &[("label", "TEXT")];
 
 /// Everything `ImageRecord` needs, in the order `image_from_row` reads it.
 const IMAGE_COLUMNS: &str = "i.sharpness, i.sharpness_version, i.aesthetic, i.aesthetic_model,
     i.aesthetic25, i.aesthetic25_model, i.highlights, i.shadows, i.exposure_version,
-    i.eyes, i.faces, i.faces_version, i.thumbnail IS NOT NULL, i.embedding";
+    i.eyes, i.faces, i.faces_version, i.thumbnail IS NOT NULL, i.embedding,
+    i.taken_ms, i.metadata_version";
 
 /// Cheap identity check for a file: if size or mtime changed, the fingerprint is recomputed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,7 +105,8 @@ pub struct Scores {
     pub faces: Option<u8>,
 }
 
-/// What was computed from an image's pixels.
+/// What was computed from an image's pixels. Capture time lives here too, so a renamed file
+/// keeps it.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct ImageRecord {
     pub scores: Scores,
@@ -110,6 +117,10 @@ pub struct ImageRecord {
     pub faces_version: i64,
     pub has_thumbnail: bool,
     pub embedding: Option<Vec<f32>>,
+    /// Local wall-clock milliseconds; `None` until metadata of `metadata_version` was read,
+    /// or when the file has no capture time.
+    pub taken_ms: Option<i64>,
+    pub metadata_version: i64,
 }
 
 /// What the index knows about one path.
@@ -119,6 +130,8 @@ pub struct FileRecord {
     /// Rating read from the file when it was indexed (kept current by the rating writer).
     /// Stored as in the file: 1–5, -1 for rejected, NULL for unrated.
     pub rating: Rating,
+    /// Colour label Cerno understands (`Red` …). A foreign `xmp:Label` is stored as none.
+    pub label: Option<Label>,
     pub image: ImageRecord,
 }
 
@@ -157,6 +170,8 @@ fn image_from_row(row: &Row<'_>, at: usize) -> rusqlite::Result<ImageRecord> {
         embedding: row
             .get::<_, Option<Vec<u8>>>(at + 13)?
             .map(|b| blob_to_f32(&b)),
+        taken_ms: row.get(at + 14)?,
+        metadata_version: row.get::<_, Option<i64>>(at + 15)?.unwrap_or(0),
     })
 }
 
@@ -196,7 +211,7 @@ impl Db {
     pub fn lookup(&self, path: &str, stamp: FileStamp) -> Result<Option<FileRecord>> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(&format!(
-            "SELECT f.fingerprint, f.rating, {IMAGE_COLUMNS}
+            "SELECT f.fingerprint, f.rating, f.label, {IMAGE_COLUMNS}
              FROM files f LEFT JOIN images i ON i.fingerprint = f.fingerprint
              WHERE f.path = ?1 AND f.size = ?2 AND f.mtime_ns = ?3"
         ))?;
@@ -207,7 +222,11 @@ impl Db {
                     rating: row
                         .get::<_, Option<i64>>(1)?
                         .map_or(Rating::Unrated, Rating::from_value),
-                    image: image_from_row(row, 2)?,
+                    label: row
+                        .get::<_, Option<String>>(2)?
+                        .as_deref()
+                        .and_then(Label::from_stored),
+                    image: image_from_row(row, 3)?,
                 })
             })
             .optional()?;
@@ -232,40 +251,59 @@ impl Db {
         stamp: FileStamp,
         fingerprint: u64,
         rating: Rating,
+        label: Option<Label>,
     ) -> Result<()> {
         self.conn()
             .prepare_cached(
-                "INSERT OR REPLACE INTO files (path, size, mtime_ns, fingerprint, rating)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                "INSERT OR REPLACE INTO files (path, size, mtime_ns, fingerprint, rating, label)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             )?
             .execute(params![
                 path,
                 stamp.size as i64,
                 stamp.mtime_ns,
                 fingerprint as i64,
-                rating.value()
+                rating.value(),
+                label.map(|l| l.xmp_name()),
             ])?;
         Ok(())
     }
 
-    /// After Cerno wrote a rating: the size changed, the mtime deliberately did not. Updating
-    /// the stamp here avoids re-fingerprinting the file.
-    pub fn update_after_rating_write(
+    /// After Cerno wrote a rating or colour label: the size changed, the mtime deliberately did
+    /// not. Updating the stamp here avoids re-fingerprinting the file.
+    pub fn update_after_write(
         &self,
         path: &str,
         stamp: FileStamp,
         rating: Rating,
+        label: Option<Label>,
     ) -> Result<()> {
         self.conn()
             .prepare_cached(
-                "UPDATE files SET size = ?2, mtime_ns = ?3, rating = ?4 WHERE path = ?1",
+                "UPDATE files SET size = ?2, mtime_ns = ?3, rating = ?4, label = ?5 WHERE path = ?1",
             )?
             .execute(params![
                 path,
                 stamp.size as i64,
                 stamp.mtime_ns,
-                rating.value()
+                rating.value(),
+                label.map(|l| l.xmp_name()),
             ])?;
+        Ok(())
+    }
+
+    /// Capture time for a fingerprint. The images row already exists (the thumbnail does).
+    pub fn put_metadata(
+        &self,
+        fingerprint: u64,
+        taken_ms: Option<i64>,
+        version: i64,
+    ) -> Result<()> {
+        self.conn()
+            .prepare_cached(
+                "UPDATE images SET taken_ms = ?2, metadata_version = ?3 WHERE fingerprint = ?1",
+            )?
+            .execute(params![fingerprint as i64, taken_ms, version])?;
         Ok(())
     }
 
@@ -450,16 +488,22 @@ impl Db {
 
 /// Adds columns introduced after an index was created.
 fn migrate(conn: &Connection) -> Result<()> {
+    add_columns(conn, "images", ADDED_IMAGE_COLUMNS)?;
+    add_columns(conn, "files", ADDED_FILE_COLUMNS)?;
+    Ok(())
+}
+
+fn add_columns(conn: &Connection, table: &str, columns: &[(&str, &str)]) -> Result<()> {
     let existing: HashSet<String> = conn
-        .prepare("PRAGMA table_info(images)")?
+        .prepare(&format!("PRAGMA table_info({table})"))?
         .query_map([], |row| row.get::<_, String>(1))?
         .collect::<rusqlite::Result<_>>()?;
-    for (name, declaration) in ADDED_IMAGE_COLUMNS {
+    for (name, declaration) in columns {
         if !existing.contains(*name) {
             conn.execute_batch(&format!(
-                "ALTER TABLE images ADD COLUMN {name} {declaration}"
+                "ALTER TABLE {table} ADD COLUMN {name} {declaration}"
             ))?;
-            log::info!("index: added column images.{name}");
+            log::info!("index: added column {table}.{name}");
         }
     }
     Ok(())
@@ -477,8 +521,14 @@ mod tests {
     #[test]
     fn lookup_requires_matching_stamp() {
         let db = Db::open_in_memory().unwrap();
-        db.put_file("a.jpg", STAMP, u64::MAX - 7, Rating::Stars(3))
-            .unwrap();
+        db.put_file(
+            "a.jpg",
+            STAMP,
+            u64::MAX - 7,
+            Rating::Stars(3),
+            Some(Label::Red),
+        )
+        .unwrap();
         let record = db.lookup("a.jpg", STAMP).unwrap().unwrap();
         assert_eq!(
             record.fingerprint,
@@ -486,6 +536,7 @@ mod tests {
             "u64 survives the i64 column"
         );
         assert_eq!(record.rating, Rating::Stars(3));
+        assert_eq!(record.label, Some(Label::Red));
         assert_eq!(record.image, ImageRecord::default());
 
         let changed = FileStamp {
@@ -493,12 +544,11 @@ mod tests {
             ..STAMP
         };
         assert!(db.lookup("a.jpg", changed).unwrap().is_none());
-        db.update_after_rating_write("a.jpg", changed, Rating::Rejected)
+        db.update_after_write("a.jpg", changed, Rating::Rejected, None)
             .unwrap();
-        assert_eq!(
-            db.lookup("a.jpg", changed).unwrap().unwrap().rating,
-            Rating::Rejected
-        );
+        let updated = db.lookup("a.jpg", changed).unwrap().unwrap();
+        assert_eq!(updated.rating, Rating::Rejected);
+        assert_eq!(updated.label, None);
     }
 
     #[test]
@@ -511,7 +561,7 @@ mod tests {
         db.put_faces(7, Some(88.0), 2, 1).unwrap();
         db.put_thumbnail(7, &[1, 2, 3]).unwrap();
         // A renamed file pointing at the same pixels sees the same scores.
-        db.put_file("renamed.jpg", STAMP, 7, Rating::Unrated)
+        db.put_file("renamed.jpg", STAMP, 7, Rating::Unrated, None)
             .unwrap();
         let image = db.lookup("renamed.jpg", STAMP).unwrap().unwrap().image;
         assert_eq!(image.scores.sharpness, Some(123.5));
@@ -561,6 +611,11 @@ mod tests {
         assert_eq!(record.rating, Rating::Stars(4));
         assert_eq!(record.image.scores.sharpness, Some(50.0));
         assert_eq!(record.image.exposure_version, 0);
+        assert_eq!(record.image.metadata_version, 0);
+        assert_eq!(record.label, None);
+        db.put_metadata(9, Some(1_000), 1).unwrap();
+        assert_eq!(db.image(9).unwrap().taken_ms, Some(1_000));
+        assert_eq!(db.image(9).unwrap().metadata_version, 1);
         db.put_faces(9, None, 0, 1).unwrap();
         assert_eq!(db.image(9).unwrap().scores.faces, Some(0));
     }
@@ -575,7 +630,7 @@ mod tests {
             (4, "unrated.jpg", Rating::Unrated),
         ] {
             db.put_aesthetic(fp, 5.0, "m", &[fp as f32; 768]).unwrap();
-            db.put_file(path, STAMP, fp, rating).unwrap();
+            db.put_file(path, STAMP, fp, rating, None).unwrap();
         }
         db.record_deletion("binned.jpg").unwrap();
         assert!(db.lookup("binned.jpg", STAMP).unwrap().is_none());

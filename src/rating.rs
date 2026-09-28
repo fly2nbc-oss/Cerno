@@ -14,7 +14,7 @@ use eframe::egui;
 use crate::db::{Db, FileStamp};
 use crate::exiftool::ExifTool;
 use crate::filetimes;
-use crate::metadata::{self, Rating, RatingInfo};
+use crate::metadata::{self, Label, LabelInfo, Rating, RatingInfo};
 
 /// Pressing 3 and then 4 within this time results in a single write.
 const DEBOUNCE: Duration = Duration::from_millis(400);
@@ -26,8 +26,16 @@ pub struct WriterStatus {
 }
 
 enum Message {
-    Set { path: PathBuf, rating: Rating },
+    SetRating { path: PathBuf, rating: Rating },
+    SetLabel { path: PathBuf, label: Option<Label> },
     Shutdown,
+}
+
+struct Pending {
+    rating: Option<Rating>,
+    /// `Some` means the user set a label (`None` inside clears it).
+    label: Option<Option<Label>>,
+    at: Instant,
 }
 
 pub struct RatingWriter {
@@ -54,7 +62,12 @@ impl RatingWriter {
 
     /// `Rating::Unrated` removes the rating.
     pub fn set(&self, path: PathBuf, rating: Rating) {
-        let _ = self.tx.send(Message::Set { path, rating });
+        let _ = self.tx.send(Message::SetRating { path, rating });
+    }
+
+    /// `None` removes the colour label.
+    pub fn set_label(&self, path: PathBuf, label: Option<Label>) {
+        let _ = self.tx.send(Message::SetLabel { path, label });
     }
 
     pub fn status(&self) -> WriterStatus {
@@ -78,7 +91,7 @@ impl Drop for RatingWriter {
 
 fn run(rx: &mpsc::Receiver<Message>, status: &Mutex<WriterStatus>, ctx: &egui::Context, db: &Db) {
     let mut exiftool: Option<ExifTool> = None;
-    let mut pending: HashMap<PathBuf, (Rating, Instant)> = HashMap::new();
+    let mut pending: HashMap<PathBuf, Pending> = HashMap::new();
     let mut shutting_down = false;
 
     while !shutting_down {
@@ -88,8 +101,23 @@ fn run(rx: &mpsc::Receiver<Message>, status: &Mutex<WriterStatus>, ctx: &egui::C
             Duration::from_millis(50)
         };
         match rx.recv_timeout(timeout) {
-            Ok(Message::Set { path, rating }) => {
-                pending.insert(path, (rating, Instant::now()));
+            Ok(Message::SetRating { path, rating }) => {
+                let entry = pending.entry(path).or_insert_with(|| Pending {
+                    rating: None,
+                    label: None,
+                    at: Instant::now(),
+                });
+                entry.rating = Some(rating);
+                entry.at = Instant::now();
+            }
+            Ok(Message::SetLabel { path, label }) => {
+                let entry = pending.entry(path).or_insert_with(|| Pending {
+                    rating: None,
+                    label: None,
+                    at: Instant::now(),
+                });
+                entry.label = Some(label);
+                entry.at = Instant::now();
             }
             Ok(Message::Shutdown) | Err(RecvTimeoutError::Disconnected) => shutting_down = true,
             Err(RecvTimeoutError::Timeout) => {}
@@ -97,20 +125,25 @@ fn run(rx: &mpsc::Receiver<Message>, status: &Mutex<WriterStatus>, ctx: &egui::C
 
         let due: Vec<PathBuf> = pending
             .iter()
-            .filter(|(_, (_, changed))| shutting_down || changed.elapsed() >= DEBOUNCE)
+            .filter(|(_, pending)| shutting_down || pending.at.elapsed() >= DEBOUNCE)
             .map(|(path, _)| path.clone())
             .collect();
         for path in due {
-            let Some((rating, _)) = pending.remove(&path) else {
+            let Some(marks) = pending.remove(&path) else {
                 continue;
             };
-            let result = write_rating(&mut exiftool, &path, rating);
-            if result.is_ok() {
+            let result = write_marks(&mut exiftool, &path, marks.rating, marks.label);
+            if let Ok(Some(written)) = &result {
                 // The size changed, the mtime didn't: keep the index valid without rehashing.
                 let updated = FileStamp::of(&path)
                     .map_err(anyhow::Error::from)
                     .and_then(|stamp| {
-                        db.update_after_rating_write(&path.to_string_lossy(), stamp, rating)
+                        db.update_after_write(
+                            &path.to_string_lossy(),
+                            stamp,
+                            written.rating,
+                            written.label,
+                        )
                     });
                 if let Err(err) = updated {
                     log::warn!("index update for {}: {err:#}", path.display());
@@ -118,7 +151,7 @@ fn run(rx: &mpsc::Receiver<Message>, status: &Mutex<WriterStatus>, ctx: &egui::C
             }
             if let Ok(mut status) = status.lock() {
                 match result {
-                    Ok(()) => status.last_error = None,
+                    Ok(_) => status.last_error = None,
                     Err(err) => {
                         log::error!("rating for {}: {err:#}", path.display());
                         status.last_error = Some(format!(
@@ -138,15 +171,43 @@ fn run(rx: &mpsc::Receiver<Message>, status: &Mutex<WriterStatus>, ctx: &egui::C
     // Dropping `exiftool` ends the stay-open process.
 }
 
-fn write_rating(exiftool: &mut Option<ExifTool>, path: &Path, rating: Rating) -> Result<()> {
+struct Written {
+    rating: Rating,
+    label: Option<Label>,
+}
+
+/// Writes the rating and/or colour label that changed. `Ok(None)` when the file already
+/// matches, so the dates are not touched.
+fn write_marks(
+    exiftool: &mut Option<ExifTool>,
+    path: &Path,
+    rating: Option<Rating>,
+    label: Option<Option<Label>>,
+) -> Result<Option<Written>> {
     let path_str = path.to_str().context("path is not valid Unicode")?;
     // Read what is in the file right now: skips no-op writes and tells which extra rating tags
     // (Windows Explorer's) need to be kept in sync.
     let bytes = std::fs::read(path).context("cannot read file")?;
-    let on_disk = metadata::read(&bytes).rating;
+    let meta = metadata::read(&bytes);
     drop(bytes);
-    if on_disk.value == rating {
-        return Ok(());
+
+    let mut args = Vec::new();
+    let mut written_rating = meta.rating.value;
+    let mut written_label = meta.label.known();
+    if let Some(rating) = rating
+        && rating != meta.rating.value
+    {
+        args.extend(rating_args(rating, &meta.rating));
+        written_rating = rating;
+    }
+    if let Some(label) = label
+        && label_needs_write(meta.label, label)
+    {
+        args.push(label_arg(label));
+        written_label = label;
+    }
+    if args.is_empty() {
+        return Ok(None);
     }
 
     let snapshot = filetimes::Snapshot::capture(path).context("cannot read file times")?;
@@ -154,7 +215,6 @@ fn write_rating(exiftool: &mut Option<ExifTool>, path: &Path, rating: Rating) ->
         Some(tool) => tool,
         None => exiftool.insert(ExifTool::spawn()?),
     };
-    let args = rating_args(rating, &on_disk);
     let mut command: Vec<&str> = args.iter().map(String::as_str).collect();
     command.push(path_str);
     let output = match tool.execute(&command) {
@@ -187,8 +247,31 @@ fn write_rating(exiftool: &mut Option<ExifTool>, path: &Path, rating: Rating) ->
             .unwrap_or("ExifTool did not update the file");
         bail!("{message}");
     }
-    log::info!("rating {:?} written to {}", rating, path.display());
-    Ok(())
+    log::info!(
+        "marks {:?} {:?} written to {}",
+        written_rating,
+        written_label,
+        path.display()
+    );
+    Ok(Some(Written {
+        rating: written_rating,
+        label: written_label,
+    }))
+}
+
+fn label_needs_write(on_disk: LabelInfo, wanted: Option<Label>) -> bool {
+    match (on_disk, wanted) {
+        (LabelInfo::Known(have), Some(want)) => have != want,
+        (LabelInfo::None, None) => false,
+        _ => true,
+    }
+}
+
+fn label_arg(label: Option<Label>) -> String {
+    match label {
+        Some(label) => format!("-XMP-xmp:Label={}", label.xmp_name()),
+        None => "-XMP-xmp:Label=".to_owned(),
+    }
 }
 
 /// An empty value makes ExifTool delete the tag. Windows' own tags know no "rejected"; they are
@@ -323,16 +406,27 @@ mod tests {
             .set_times(FileTimes::new().set_modified(old))
             .unwrap();
         let before = fs::metadata(&path).unwrap();
-        let on_disk = || metadata::read(&fs::read(&path).unwrap()).rating.value;
         let mut exiftool = None;
 
-        write_rating(&mut exiftool, &path, Rating::Stars(4)).unwrap();
+        let read = || metadata::read(&fs::read(&path).unwrap());
+        let on_disk = || read().rating.value;
+        let on_label = || read().label;
+        write_marks(
+            &mut exiftool,
+            &path,
+            Some(Rating::Stars(4)),
+            Some(Some(Label::Red)),
+        )
+        .unwrap();
         assert_eq!(on_disk(), Rating::Stars(4));
-        write_rating(&mut exiftool, &path, Rating::Stars(4)).unwrap(); // no-op
-        write_rating(&mut exiftool, &path, Rating::Rejected).unwrap();
+        assert_eq!(on_label(), LabelInfo::Known(Label::Red));
+        write_marks(&mut exiftool, &path, Some(Rating::Stars(4)), None).unwrap(); // no-op
+        write_marks(&mut exiftool, &path, Some(Rating::Rejected), None).unwrap();
         assert_eq!(on_disk(), Rating::Rejected);
-        write_rating(&mut exiftool, &path, Rating::Unrated).unwrap();
+        assert_eq!(on_label(), LabelInfo::Known(Label::Red));
+        write_marks(&mut exiftool, &path, Some(Rating::Unrated), Some(None)).unwrap();
         assert_eq!(on_disk(), Rating::Unrated);
+        assert_eq!(on_label(), LabelInfo::None);
 
         let after = fs::metadata(&path).unwrap();
         assert_eq!(after.modified().unwrap(), before.modified().unwrap());

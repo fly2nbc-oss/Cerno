@@ -16,7 +16,7 @@ use crate::deletion::{self, DeleteQueue};
 use crate::i18n::{self, Lang};
 use crate::library::{self, Library};
 use crate::loader::{LoadedImage, Loader, Lookup};
-use crate::metadata::Rating;
+use crate::metadata::{Label, Rating};
 use crate::paths;
 use crate::rating::RatingWriter;
 use crate::theme::tokens;
@@ -26,7 +26,7 @@ use crate::ui::details::DetailsMode;
 use crate::ui::icons::Panel;
 use crate::ui::{bars, details, filmstrip, help, palette, viewer};
 use crate::view::{
-    self, BLURRY_PERCENTILE, Facts, Percentiles, RatingFilter, SortKey, ViewOptions,
+    self, BLURRY_PERCENTILE, Facts, Percentiles, RatingFilter, SortKey, View, ViewOptions,
 };
 
 /// Decode size before the window exists, so the first photo decodes while the GPU starts up.
@@ -42,6 +42,13 @@ const STAR_KEYS: [(Key, Rating); 6] = [
     (Key::Num3, Rating::Stars(3)),
     (Key::Num4, Rating::Stars(4)),
     (Key::Num5, Rating::Stars(5)),
+];
+/// Lightroom's colour keys. Purple has no digit; it lives in the command palette.
+const LABEL_KEYS: [(Key, Label); 4] = [
+    (Key::Num6, Label::Red),
+    (Key::Num7, Label::Yellow),
+    (Key::Num8, Label::Green),
+    (Key::Num9, Label::Blue),
 ];
 /// Zoom step for `+`/`-`.
 const ZOOM_STEP: f32 = 1.25;
@@ -66,7 +73,7 @@ pub struct CernoApp {
     all: Arc<Vec<PathBuf>>,
     all_index: HashMap<PathBuf, usize>,
     /// What is shown, after sorting, filtering and hiding pending deletions.
-    view: Arc<Vec<PathBuf>>,
+    view: View,
     current: usize,
     /// Compare mode: the photo pinned on the left. The current photo is shown on the right.
     pinned: Option<PathBuf>,
@@ -79,6 +86,12 @@ pub struct CernoApp {
     /// Ratings given in this session; they win over the value read from the file, whose
     /// write may still be pending.
     session_ratings: HashMap<PathBuf, Rating>,
+    /// Colour labels given in this session (`None` clears). They win over the file the same way.
+    session_labels: HashMap<PathBuf, Option<Label>>,
+    /// `0`–`5`, `X` and `6`–`9` also move to the next photo.
+    auto_advance: bool,
+    /// The open folder includes nested folders.
+    subfolders: bool,
     target: Option<[u32; 2]>,
     zoom: viewer::Zoom,
     /// Top bar (`T`), filmstrip (`F6`) and details panel (`Tab`, stages with `I`); the info
@@ -114,6 +127,9 @@ struct KeyInput {
     /// `X` (toggles), `Shift+X` rejects and moves on – like Lightroom.
     reject: bool,
     reject_and_next: bool,
+    label: Option<Label>,
+    /// `Shift+6…9`: set the colour and move on.
+    label_and_next: Option<Label>,
     delete: bool,
     compare: bool,
     keep_left: bool,
@@ -154,13 +170,18 @@ enum Action {
     Last,
     Reject,
     DeleteRejected,
+    Label(Option<Label>),
+    AutoAdvance,
+    Subfolders,
+    BestOfSeries,
+    OnlyDuplicates,
     Language(Lang),
     Help,
 }
 
-/// `Shift+0…5` as stars. Found by the physical key: with Shift the typed character is `!`,
-/// `"`, `§` … depending on the keyboard layout.
-fn shifted_digit(events: &[egui::Event]) -> Option<Rating> {
+/// `Shift` plus a physical key. With Shift the typed character depends on the layout
+/// (`!`, `"`, `§`, `=` …), so the key itself is what counts.
+fn shifted_key<T: Copy>(events: &[egui::Event], keys: &[(Key, T)]) -> Option<T> {
     events.iter().find_map(|event| match event {
         egui::Event::Key {
             physical_key: Some(key),
@@ -168,12 +189,19 @@ fn shifted_digit(events: &[egui::Event]) -> Option<Rating> {
             repeat: false,
             modifiers,
             ..
-        } if modifiers.shift_only() => STAR_KEYS
-            .iter()
-            .find(|(k, _)| k == key)
-            .map(|(_, stars)| *stars),
+        } if modifiers.shift_only() => keys.iter().find(|(k, _)| k == key).map(|(_, value)| *value),
         _ => None,
     })
+}
+
+/// `Shift+0…5` as stars. Found by the physical key: with Shift the typed character is `!`,
+/// `"`, `§` … depending on the keyboard layout.
+fn shifted_digit(events: &[egui::Event]) -> Option<Rating> {
+    shifted_key(events, &STAR_KEYS)
+}
+
+fn shifted_label(events: &[egui::Event]) -> Option<Label> {
+    shifted_key(events, &LABEL_KEYS)
 }
 
 /// One photo slot on screen: which photo, where, and which side (compare mode).
@@ -222,7 +250,15 @@ impl CernoApp {
                 .and_then(|s| RatingFilter::from_id(&s))
                 .unwrap_or(RatingFilter::All),
             hide_blurry: db.setting("hide_blurry").as_deref() == Some("1"),
+            label: db
+                .setting("label_filter")
+                .as_deref()
+                .and_then(Label::from_stored),
+            best_of_series: db.setting("best_of_series").as_deref() == Some("1"),
+            only_duplicates: db.setting("only_duplicates").as_deref() == Some("1"),
         };
+        let auto_advance = db.setting("auto_advance").as_deref() == Some("1");
+        let subfolders = db.setting("subfolders").as_deref() == Some("1");
         // Only the photo, the filmstrip and the info bar by default.
         let show_toolbar = db.setting("top_bar").as_deref() == Some("1");
         let show_filmstrip = db.setting("filmstrip").as_deref() != Some("0");
@@ -247,13 +283,16 @@ impl CernoApp {
             dir: None,
             all: Arc::new(Vec::new()),
             all_index: HashMap::new(),
-            view: Arc::new(Vec::new()),
+            view: View::default(),
             current: 0,
             pinned: None,
             options,
             view_version: 0,
             percentiles: (u64::MAX, Percentiles::default()),
             session_ratings: HashMap::new(),
+            session_labels: HashMap::new(),
+            auto_advance,
+            subfolders,
             target: None,
             zoom: viewer::Zoom::default(),
             show_toolbar,
@@ -301,7 +340,7 @@ impl CernoApp {
     }
 
     fn open(&mut self, ctx: &egui::Context, path: &Path) {
-        let (library, index) = match Library::open(path) {
+        let (library, index) = match Library::open(path, self.subfolders) {
             Ok(opened) => opened,
             Err(err) => {
                 let path = path.display().to_string();
@@ -330,7 +369,7 @@ impl CernoApp {
             self.analyzer.preload(&self.all);
         }
         self.analyzer.set_library(Arc::clone(&self.all), index);
-        self.view = Arc::new(Vec::new());
+        self.view = View::default();
         self.rebuild_view(ctx, start);
     }
 
@@ -338,13 +377,14 @@ impl CernoApp {
     /// photo) if it is still shown.
     fn rebuild_view(&mut self, ctx: &egui::Context, keep: Option<PathBuf>) {
         let keep = keep.or_else(|| self.view.get(self.current).cloned());
-        let mut view = view::build(
+        let view = view::build(
             &self.all,
             self.options,
             |p| self.facts(p),
             &self.session_ratings,
+            &self.session_labels,
+            |p| self.deletions.is_hidden(p),
         );
-        view.retain(|p| !self.deletions.is_hidden(p));
 
         // Comparing needs the pinned photo plus at least one other.
         if self.pinned.as_ref().is_some_and(|p| !view.contains(p)) || view.len() < 2 {
@@ -358,10 +398,10 @@ impl CernoApp {
             .and_then(|k| view.iter().position(|p| *p == k))
             .unwrap_or(0);
         self.current = view::skip_pinned(view.len(), current, pinned, 1).unwrap_or(current);
-        self.view = Arc::new(view);
+        self.view = view;
         self.view_version = self.board.version();
         self.loader
-            .set_library(Arc::clone(&self.view), self.current, pinned);
+            .set_library(Arc::clone(&self.view.paths), self.current, pinned);
         self.sync_analyzer();
         self.update_title(ctx);
     }
@@ -377,6 +417,26 @@ impl CernoApp {
         self.db.put_setting(
             "hide_blurry",
             if self.options.hide_blurry { "1" } else { "0" },
+        );
+        self.db.put_setting(
+            "label_filter",
+            self.options.label.map(|l| l.id()).unwrap_or(""),
+        );
+        self.db.put_setting(
+            "best_of_series",
+            if self.options.best_of_series {
+                "1"
+            } else {
+                "0"
+            },
+        );
+        self.db.put_setting(
+            "only_duplicates",
+            if self.options.only_duplicates {
+                "1"
+            } else {
+                "0"
+            },
         );
     }
 
@@ -422,7 +482,7 @@ impl CernoApp {
             self.loader.set_current(index);
             self.sync_analyzer();
             self.update_title(ctx);
-            let (view, current) = (Arc::clone(&self.view), self.current);
+            let (view, current) = (Arc::clone(&self.view.paths), self.current);
             self.thumbs.retain(|p| {
                 view.iter()
                     .position(|q| q == p)
@@ -444,27 +504,109 @@ impl CernoApp {
 
     fn update_title(&self, ctx: &egui::Context) {
         let title = match self.view.get(self.current) {
-            Some(path) => format!("{} – Cerno", library::file_name_lossy(path)),
+            Some(path) => format!(
+                "{} – Cerno",
+                self.dir
+                    .as_ref()
+                    .map(|dir| library::display_name(dir, path))
+                    .unwrap_or_else(|| library::file_name_lossy(path))
+            ),
             None => "Cerno".to_owned(),
         };
         ctx.send_viewport_cmd(ViewportCommand::Title(title));
     }
 
-    /// Rates the current photo.
-    fn set_rating(&mut self, rating: Rating) {
+    /// Rates the current photo. `advance` moves on afterwards, unless the photo itself
+    /// dropped out of the view (a filter or "best of series") – that already lands on the next one.
+    fn set_rating(&mut self, ctx: &egui::Context, rating: Rating, advance: bool) {
         if let Some(path) = self.view.get(self.current).cloned() {
-            self.rate(path, rating);
+            self.rate(ctx, path, rating, advance);
         }
     }
 
-    fn rate(&mut self, path: PathBuf, rating: Rating) {
+    fn rate(&mut self, ctx: &egui::Context, path: PathBuf, rating: Rating, advance: bool) {
+        let next = self.next_path();
         self.session_ratings.insert(path.clone(), rating);
-        self.writer.set(path, rating);
+        self.writer.set(path.clone(), rating);
         self.analyzer.taste_changed();
+        self.finish_mark(ctx, &path, next, advance, self.rating_affects_view());
+    }
+
+    fn set_label(&mut self, ctx: &egui::Context, label: Option<Label>, advance: bool) {
+        if let Some(path) = self.view.get(self.current).cloned() {
+            self.apply_label(ctx, path, label, advance);
+        }
+    }
+
+    /// Sets the colour, or removes it when the photo already has that colour.
+    fn toggle_label(&mut self, ctx: &egui::Context, label: Label, advance: bool) {
+        if let Some(path) = self.view.get(self.current).cloned() {
+            let image = match self.loader.get(self.current) {
+                Lookup::Ready(image) => Some(image),
+                _ => None,
+            };
+            let next = if self.label_of(&path, image.as_deref()) == Some(label) {
+                None
+            } else {
+                Some(label)
+            };
+            self.apply_label(ctx, path, next, advance);
+        }
+    }
+
+    fn apply_label(
+        &mut self,
+        ctx: &egui::Context,
+        path: PathBuf,
+        label: Option<Label>,
+        advance: bool,
+    ) {
+        let next = self.next_path();
+        self.session_labels.insert(path.clone(), label);
+        self.writer.set_label(path.clone(), label);
+        self.finish_mark(ctx, &path, next, advance, self.options.label.is_some());
+    }
+
+    /// The photo after the current one, remembered before a rebuild moves things around.
+    fn next_path(&self) -> Option<PathBuf> {
+        self.view.get(self.current.saturating_add(1)).cloned()
+    }
+
+    /// Rebuilds when the mark changes which photos are shown or in which order, then optionally
+    /// steps to `next` (the photo that followed this one before the rebuild).
+    fn finish_mark(
+        &mut self,
+        ctx: &egui::Context,
+        path: &Path,
+        next: Option<PathBuf>,
+        advance: bool,
+        rebuild: bool,
+    ) {
+        if rebuild {
+            self.rebuild_view(ctx, Some(path.to_path_buf()));
+        }
+        let still_here = self.view.get(self.current).is_some_and(|p| p == path);
+        if still_here && !advance {
+            return;
+        }
+        if let Some(next) = next.as_ref()
+            && let Some(index) = self.view.iter().position(|p| p == next)
+        {
+            self.go_to(ctx, index, 1);
+        } else if !still_here && next.is_none() && !self.view.is_empty() {
+            // It was the last photo and left the view: stay at the new end.
+            self.go_to(ctx, self.view.len() - 1, -1);
+        }
+    }
+
+    fn rating_affects_view(&self) -> bool {
+        self.options.best_of_series
+            || self.options.filter != RatingFilter::All
+            || matches!(self.options.sort, SortKey::Rating | SortKey::Taken)
     }
 
     /// `X`: rejects the current photo, or takes the rejection back.
-    fn toggle_reject(&mut self) {
+    fn toggle_reject(&mut self, ctx: &egui::Context, advance: bool) {
         if let Some(path) = self.view.get(self.current).cloned() {
             let image = match self.loader.get(self.current) {
                 Lookup::Ready(image) => Some(image),
@@ -474,7 +616,7 @@ impl CernoApp {
                 Rating::Rejected => Rating::Unrated,
                 _ => Rating::Rejected,
             };
-            self.rate(path, rating);
+            self.rate(ctx, path, rating, advance);
         }
     }
 
@@ -518,9 +660,29 @@ impl CernoApp {
         let known = self.board.get(path)?;
         Some(Facts {
             rating: known.rating,
+            label: known.label,
+            taken_ms: known.taken_ms,
+            fingerprint: known.fingerprint,
             scores: known.scores,
             personal: self.analyzer.personal(path),
         })
+    }
+
+    fn label_of(&self, path: &Path, image: Option<&LoadedImage>) -> Option<Label> {
+        if let Some(label) = self.session_labels.get(path) {
+            return *label;
+        }
+        if let Some(known) = self.board.get(path) {
+            return known.label;
+        }
+        image.and_then(|image| image.label.known())
+    }
+
+    fn photo_name(&self, path: &Path) -> String {
+        self.dir
+            .as_ref()
+            .map(|dir| library::display_name(dir, path))
+            .unwrap_or_else(|| library::file_name_lossy(path))
     }
 
     /// Sharpness percentiles of the folder, recomputed when scores changed.
@@ -647,7 +809,7 @@ impl CernoApp {
             return;
         };
         let next = self.neighbour(self.current, &[&right]);
-        self.rate(right, Rating::Rejected);
+        self.rate(ctx, right, Rating::Rejected, false);
         self.rebuild_view(ctx, next);
     }
 
@@ -658,7 +820,7 @@ impl CernoApp {
             return;
         };
         let next = self.neighbour(self.current, &[&left, &right]);
-        self.rate(left, Rating::Rejected);
+        self.rate(ctx, left, Rating::Rejected, false);
         self.pinned = Some(right);
         self.rebuild_view(ctx, next);
     }
@@ -782,7 +944,37 @@ impl CernoApp {
                 Command::new(Action::First, t.cmd_first, None),
                 Command::new(Action::Last, t.cmd_last, None),
                 Command::new(Action::Reject, t.cmd_reject, key("X")),
+                Command::new(Action::AutoAdvance, t.cmd_auto_advance, None)
+                    .checked(self.auto_advance),
+                Command::new(Action::Subfolders, t.cmd_subfolders, None).checked(self.subfolders),
+                Command::new(Action::BestOfSeries, t.cmd_best_of_series, None)
+                    .checked(self.options.best_of_series),
+                Command::new(Action::OnlyDuplicates, t.cmd_only_duplicates, None)
+                    .checked(self.options.only_duplicates),
             ]);
+            let current_label = self.view.get(self.current).and_then(|path| {
+                let image = match self.loader.get(self.current) {
+                    Lookup::Ready(image) => Some(image),
+                    _ => None,
+                };
+                self.label_of(path, image.as_deref())
+            });
+            for (label, shortcut) in [
+                (Label::Red, Some("6")),
+                (Label::Yellow, Some("7")),
+                (Label::Green, Some("8")),
+                (Label::Blue, Some("9")),
+                (Label::Purple, None),
+            ] {
+                list.push(
+                    Command::new(
+                        Action::Label(Some(label)),
+                        (t.cmd_label)(i18n::label_name(label)),
+                        shortcut.map(str::to_owned),
+                    )
+                    .checked(current_label == Some(label)),
+                );
+            }
             let rejected = self.rejected().len();
             if rejected > 0 {
                 list.push(Command::new(
@@ -841,8 +1033,31 @@ impl CernoApp {
             }
             Action::First => self.go_to(ctx, 0, 1),
             Action::Last => self.go_to(ctx, usize::MAX, -1),
-            Action::Reject => self.toggle_reject(),
+            Action::Reject => self.toggle_reject(ctx, false),
             Action::DeleteRejected => self.delete_rejected(ctx),
+            Action::Label(label) => match label {
+                Some(label) => self.toggle_label(ctx, label, false),
+                None => self.set_label(ctx, None, false),
+            },
+            Action::AutoAdvance => {
+                self.auto_advance = !self.auto_advance;
+                self.db
+                    .put_setting("auto_advance", if self.auto_advance { "1" } else { "0" });
+            }
+            Action::Subfolders => {
+                self.subfolders = !self.subfolders;
+                self.db
+                    .put_setting("subfolders", if self.subfolders { "1" } else { "0" });
+                if let Some(dir) = self.dir.clone() {
+                    self.open(ctx, &dir);
+                }
+            }
+            Action::BestOfSeries => {
+                self.change_options(ctx, |o| o.best_of_series = !o.best_of_series);
+            }
+            Action::OnlyDuplicates => {
+                self.change_options(ctx, |o| o.only_duplicates = !o.only_duplicates);
+            }
             Action::Language(lang) => self.set_language(ctx, lang),
             Action::Help => self.help_open = !self.all.is_empty(),
         }
@@ -942,6 +1157,11 @@ impl CernoApp {
                 rate_and_next,
                 reject: plain && i.key_pressed(Key::X),
                 reject_and_next: i.modifiers.shift_only() && i.key_pressed(Key::X),
+                label: LABEL_KEYS
+                    .iter()
+                    .find(|(k, _)| plain && i.key_pressed(*k))
+                    .map(|(_, label)| *label),
+                label_and_next: shifted_label(&i.events),
                 delete: plain && i.key_pressed(Key::Delete),
                 compare: plain && i.key_pressed(Key::C),
                 keep_left: plain && i.key_pressed(Key::A),
@@ -1010,18 +1230,22 @@ impl CernoApp {
             self.go_to(ctx, usize::MAX, -1);
         }
         if let Some(stars) = keys.rating {
-            self.set_rating(stars);
+            self.set_rating(ctx, stars, self.auto_advance);
         }
         if let Some(stars) = keys.rate_and_next {
-            self.set_rating(stars);
-            self.go_to(ctx, self.current.saturating_add(1), 1);
+            self.set_rating(ctx, stars, true);
         }
         if keys.reject {
-            self.toggle_reject();
+            self.toggle_reject(ctx, self.auto_advance);
         }
         if keys.reject_and_next {
-            self.set_rating(Rating::Rejected);
-            self.go_to(ctx, self.current.saturating_add(1), 1);
+            self.set_rating(ctx, Rating::Rejected, true);
+        }
+        if let Some(label) = keys.label {
+            self.toggle_label(ctx, label, self.auto_advance);
+        }
+        if let Some(label) = keys.label_and_next {
+            self.set_label(ctx, Some(label), true);
         }
         if keys.compare {
             self.toggle_compare(ctx);
@@ -1252,27 +1476,44 @@ impl eframe::App for CernoApp {
         }
 
         if let Some(rect) = strip_rect {
-            let view = Arc::clone(&self.view);
+            let paths = Arc::clone(&self.view.paths);
+            let series = Arc::clone(&self.view.series);
+            let duplicates = Arc::clone(&self.view.duplicate_of);
+            let grouped = self.view.grouped;
             let pinned = self.pinned_index();
+            let current_series = series
+                .get(self.current)
+                .and_then(|place| *place)
+                .map(|p| p.id);
             // Percentiles need `&mut self`; take them before borrowing `self` in the closure.
             let percentiles = self.percentiles().clone();
-            let strip = filmstrip::draw(ui, rect, &view, self.current, &self.thumbs, |i| {
-                let path = &view[i];
-                let known = self.board.get(path);
-                let blurry = known
-                    .and_then(|k| percentiles.subject(&k.scores))
-                    .filter(|(p, _)| *p < BLURRY_PERCENTILE)
-                    .map(|(p, eyes)| (i18n::t().blurry_tooltip)(eyes, p * 100.0));
-                let rating = match self.session_ratings.get(path) {
-                    Some(rating) => *rating,
-                    None => known.map(|k| k.rating).unwrap_or_default(),
-                };
-                filmstrip::CellInfo {
-                    rating,
-                    blurry,
-                    pinned: pinned == Some(i),
-                }
-            });
+            let strip =
+                filmstrip::draw(ui, rect, &paths, self.current, &self.thumbs, grouped, |i| {
+                    let path = &paths[i];
+                    let known = self.board.get(path);
+                    let blurry = known
+                        .and_then(|k| percentiles.subject(&k.scores))
+                        .filter(|(p, _)| *p < BLURRY_PERCENTILE)
+                        .map(|(p, eyes)| (i18n::t().blurry_tooltip)(eyes, p * 100.0));
+                    let rating = match self.session_ratings.get(path) {
+                        Some(rating) => *rating,
+                        None => known.map(|k| k.rating).unwrap_or_default(),
+                    };
+                    let place = series.get(i).and_then(|place| *place);
+                    let more = (self.options.best_of_series && place.is_some_and(|p| p.len > 1))
+                        .then(|| place.map(|p| p.len - 1))
+                        .flatten();
+                    filmstrip::CellInfo {
+                        rating,
+                        blurry,
+                        pinned: pinned == Some(i),
+                        label: self.label_of(path, None),
+                        series_id: place.map(|p| p.id),
+                        in_current_series: place.is_some_and(|p| Some(p.id) == current_series),
+                        more,
+                        duplicate: duplicates.get(i).is_some_and(|p| p.is_some()),
+                    }
+                });
             if let Some(index) = strip.clicked {
                 self.go_to(&ctx, index, 1);
             }
@@ -1292,11 +1533,28 @@ impl eframe::App for CernoApp {
             let scores = self.board.get(&path).map(|k| k.scores);
             let percentiles = self.percentiles().clone();
             let personal = self.analyzer.personal(&path);
+            let name = self.photo_name(&path);
+            let series = self
+                .view
+                .series
+                .get(self.current)
+                .and_then(|place| *place)
+                .map(|place| (place.index, place.len));
+            let duplicate_of = self
+                .view
+                .duplicate_of
+                .get(self.current)
+                .and_then(|p| p.as_ref())
+                .map(|original| self.photo_name(original));
             let bar = bars::InfoBar {
-                name: &library::file_name_lossy(&path),
+                name: &name,
                 position: (self.current + 1, self.view.len()),
                 image: image.as_deref(),
                 rating: self.rating_of(&path, image.as_deref()),
+                label: self.label_of(&path, image.as_deref()),
+                series,
+                duplicate_of,
+                auto_advance: self.auto_advance,
                 analysed: scores.is_some(),
                 aesthetics: [
                     scores.and_then(|s| s.aesthetic),
@@ -1310,7 +1568,7 @@ impl eframe::App for CernoApp {
             };
             let out = bars::info_bar(ui, rect, &bar);
             if let Some(stars) = out.rating {
-                self.set_rating(stars);
+                self.set_rating(&ctx, stars, false);
             }
             if let Some(panel) = out.toggle {
                 self.toggle_panel(panel);

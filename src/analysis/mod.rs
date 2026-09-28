@@ -25,7 +25,7 @@ use anyhow::{Context as _, Result, bail};
 use eframe::egui;
 
 use crate::db::{Db, FileStamp, ImageRecord, Scores};
-use crate::metadata::Rating;
+use crate::metadata::{Label, Rating};
 use crate::{decode, library, metadata, paths, thumbs};
 use aesthetic::{AestheticModel, V25Model};
 use faces::FaceDetector;
@@ -43,6 +43,10 @@ const WORKERS: usize = 2;
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct Known {
     pub rating: Rating,
+    pub label: Option<Label>,
+    pub taken_ms: Option<i64>,
+    /// `None` until the file has been indexed.
+    pub fingerprint: Option<u64>,
     pub scores: Scores,
 }
 
@@ -185,8 +189,9 @@ struct Capabilities {
     v25: bool,
 }
 
-/// Everything the current analysis would compute is already stored.
-fn is_complete(image: &ImageRecord, caps: Capabilities) -> bool {
+/// Scores and thumbnail are current. Capture time is checked separately so a metadata bump
+/// does not decode the image again.
+fn scores_complete(image: &ImageRecord, caps: Capabilities) -> bool {
     image.has_thumbnail
         && image.scores.sharpness.is_some()
         && image.sharpness_version == sharpness::VERSION
@@ -194,6 +199,21 @@ fn is_complete(image: &ImageRecord, caps: Capabilities) -> bool {
         && image.faces_version == faces::VERSION
         && (!caps.clip || image.aesthetic_model.as_deref() == Some(aesthetic::MODEL_ID))
         && (!caps.v25 || image.aesthetic25_model.as_deref() == Some(aesthetic::V25_MODEL_ID))
+}
+
+/// Everything the current analysis would compute is already stored.
+fn is_complete(image: &ImageRecord, caps: Capabilities) -> bool {
+    scores_complete(image, caps) && image.metadata_version == metadata::VERSION
+}
+
+fn known_from(record: &crate::db::FileRecord) -> Known {
+    Known {
+        rating: record.rating,
+        label: record.label,
+        taken_ms: record.image.taken_ms,
+        fingerprint: Some(record.fingerprint),
+        scores: record.image.scores,
+    }
 }
 
 pub struct Analyzer {
@@ -290,13 +310,7 @@ impl Analyzer {
             };
             if let Ok(Some(record)) = self.shared.db.lookup(&path.to_string_lossy(), stamp) {
                 remember_embedding(&self.shared, path, record.image.embedding.as_deref());
-                self.shared.board.set(
-                    path,
-                    Known {
-                        rating: record.rating,
-                        scores: record.image.scores,
-                    },
-                );
+                self.shared.board.set(path, known_from(&record));
             }
         }
         log::info!(
@@ -498,10 +512,30 @@ fn analyze(shared: &Shared, path: &Path) -> Result<()> {
     if let Some(record) = shared.db.lookup(&key, stamp)? {
         remember_embedding(shared, path, record.image.embedding.as_deref());
         if is_complete(&record.image, caps) {
+            shared.board.set(path, known_from(&record));
+            return Ok(());
+        }
+        // Scores are done; only the capture time (and a fresh read of rating/label) is missing.
+        if scores_complete(&record.image, caps) {
+            let bytes = std::fs::read(path).context("cannot read file")?;
+            let meta = metadata::read(&bytes);
+            shared.db.put_file(
+                &key,
+                stamp,
+                record.fingerprint,
+                meta.rating.value,
+                meta.label.known(),
+            )?;
+            shared
+                .db
+                .put_metadata(record.fingerprint, meta.camera.taken_ms, metadata::VERSION)?;
             shared.board.set(
                 path,
                 Known {
-                    rating: record.rating,
+                    rating: meta.rating.value,
+                    label: meta.label.known(),
+                    taken_ms: meta.camera.taken_ms,
+                    fingerprint: Some(record.fingerprint),
                     scores: record.image.scores,
                 },
             );
@@ -532,9 +566,13 @@ fn analyze(shared: &Shared, path: &Path) -> Result<()> {
     let (tw, th, thumb) = thumbs::downscale(rgb, w, h)?;
     let fingerprint = fingerprint(&thumb, image.original_size);
     let mut record = shared.db.image(fingerprint)?;
-    shared
-        .db
-        .put_file(&key, stamp, fingerprint, meta.rating.value)?;
+    shared.db.put_file(
+        &key,
+        stamp,
+        fingerprint,
+        meta.rating.value,
+        meta.label.known(),
+    )?;
     if !record.has_thumbnail {
         shared
             .db
@@ -615,12 +653,18 @@ fn analyze(shared: &Shared, path: &Path) -> Result<()> {
         record.scores.aesthetic25 = Some(value);
         lap("v2.5", &mut timings);
     }
+    shared
+        .db
+        .put_metadata(fingerprint, meta.camera.taken_ms, metadata::VERSION)?;
     log::debug!("analysed {}: {timings:?} ms", path.display());
 
     shared.board.set(
         path,
         Known {
             rating: meta.rating.value,
+            label: meta.label.known(),
+            taken_ms: meta.camera.taken_ms,
+            fingerprint: Some(fingerprint),
             scores: record.scores,
         },
     );
@@ -825,6 +869,8 @@ mod tests {
             faces_version: faces::VERSION,
             has_thumbnail: true,
             embedding: None,
+            metadata_version: metadata::VERSION,
+            ..ImageRecord::default()
         }
     }
 
@@ -835,7 +881,7 @@ mod tests {
             v25: true,
         };
         assert!(is_complete(&complete_record(), all));
-        let missing: [fn(&mut ImageRecord); 7] = [
+        let missing: [fn(&mut ImageRecord); 8] = [
             |r| r.has_thumbnail = false,
             |r| r.scores.sharpness = None,
             |r| r.sharpness_version = 0,
@@ -843,6 +889,7 @@ mod tests {
             |r| r.faces_version = 0,
             |r| r.aesthetic_model = None,
             |r| r.aesthetic25_model = Some("old".into()),
+            |r| r.metadata_version = 0,
         ];
         for (i, strip) in missing.iter().enumerate() {
             let mut record = complete_record();

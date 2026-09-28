@@ -9,7 +9,7 @@ use eframe::egui::{
 };
 
 use crate::i18n;
-use crate::metadata::Rating;
+use crate::metadata::{Label, Rating};
 use crate::theme::tokens;
 use crate::thumbs::Thumbs;
 use crate::ui::icons;
@@ -18,6 +18,8 @@ use crate::ui::stars;
 pub const HEIGHT: f32 = 96.0;
 const CELL: f32 = 104.0;
 const GAP: f32 = 6.0;
+/// Extra space where one series ends and the next begins (capture-time order).
+const SERIES_GAP: f32 = 16.0;
 const THUMB_HEIGHT: f32 = 66.0;
 
 /// What the strip shows about one photo besides its thumbnail.
@@ -27,6 +29,14 @@ pub struct CellInfo {
     pub blurry: Option<String>,
     /// The photo pinned on the left in compare mode.
     pub pinned: bool,
+    pub label: Option<Label>,
+    /// Set when this photo belongs to a series.
+    pub series_id: Option<u32>,
+    /// Same series as the photo in the middle of the strip.
+    pub in_current_series: bool,
+    /// Further photos of the series hidden by "best of each series".
+    pub more: Option<u32>,
+    pub duplicate: bool,
 }
 
 /// Touchpads scroll in points: this many make one photo.
@@ -40,13 +50,15 @@ pub struct StripOutput {
     pub step: isize,
 }
 
-/// Draws the strip and reads clicks and the wheel over it.
+/// Draws the strip and reads clicks and the wheel over it. `grouped` separates neighbouring
+/// series; only capture-time order keeps a series together, so pass it then.
 pub fn draw(
     ui: &Ui,
     rect: Rect,
     paths: &[PathBuf],
     current: usize,
     thumbs: &Thumbs,
+    grouped: bool,
     info: impl Fn(usize) -> CellInfo,
 ) -> StripOutput {
     let painter = ui.painter().with_clip_rect(rect);
@@ -62,12 +74,26 @@ pub fn draw(
     let first = current.saturating_sub(side);
     let last = (current + side).min(paths.len().saturating_sub(1));
     let mut clicked = None;
+    let visible: Vec<(usize, CellInfo)> = (first..=last).map(|i| (i, info(i))).collect();
+    let mut shift = vec![0.0; visible.len()];
+    if grouped {
+        for i in 1..visible.len() {
+            let boundary = series_boundary(visible[i - 1].1.series_id, visible[i].1.series_id);
+            shift[i] = shift[i - 1] + if boundary { SERIES_GAP } else { 0.0 };
+        }
+    }
+    let current_shift = visible
+        .iter()
+        .position(|(index, _)| *index == current)
+        .map(|i| shift[i])
+        .unwrap_or(0.0);
 
-    for (index, path) in paths.iter().enumerate().take(last + 1).skip(first) {
-        let offset = index as f32 - current as f32;
+    for (n, (index, cell_info)) in visible.iter().enumerate() {
+        let path = &paths[*index];
+        let offset = *index as f32 - current as f32;
         let cell = Rect::from_center_size(
             pos2(
-                rect.center().x + offset * step,
+                rect.center().x + offset * step + shift[n] - current_shift,
                 rect.top() + 6.0 + THUMB_HEIGHT / 2.0,
             ),
             vec2(CELL, THUMB_HEIGHT),
@@ -76,13 +102,12 @@ pub fn draw(
             continue;
         }
         let response = ui
-            .interact(cell, ui.id().with(("filmstrip", index)), Sense::click())
+            .interact(cell, ui.id().with(("filmstrip", *index)), Sense::click())
             .on_hover_cursor(CursorIcon::PointingHand);
         if response.clicked() {
-            clicked = Some(index);
+            clicked = Some(*index);
         }
 
-        let cell_info = info(index);
         painter.rect_filled(cell, 4.0, tokens::SURFACE_MUTED);
         if let Some(texture) = thumbs.get_or_request(path) {
             let size = texture.size_vec2();
@@ -100,7 +125,7 @@ pub fn draw(
         if cell_info.rating == Rating::Rejected {
             painter.rect_filled(cell, 4.0, Color32::from_black_alpha(150));
         }
-        if index == current {
+        if *index == current {
             painter.rect_stroke(
                 cell,
                 4.0,
@@ -150,7 +175,7 @@ pub fn draw(
             }
             Rating::Unrated => {}
         }
-        if let Some(reason) = cell_info.blurry {
+        if let Some(reason) = &cell_info.blurry {
             let marker = pos2(cell.right() - 8.0, cell.top() + 8.0);
             painter.circle_filled(marker, 5.0, tokens::STATUS_WARN);
             painter.text(
@@ -160,12 +185,54 @@ pub fn draw(
                 FontId::proportional(9.0),
                 Color32::BLACK,
             );
-            response.on_hover_text(reason);
+            response.clone().on_hover_text(reason);
+        }
+        if let Some(label) = cell_info.label {
+            let stripe = Rect::from_min_max(
+                pos2(cell.left() + 4.0, cell.bottom() - 4.0),
+                pos2(cell.right() - 4.0, cell.bottom() - 1.0),
+            );
+            painter.rect_filled(stripe, 1.0, crate::theme::label_color(label));
+        }
+        if cell_info.in_current_series {
+            painter.hline(
+                (cell.left() + 8.0)..=(cell.right() - 8.0),
+                rect.bottom() - 3.0,
+                Stroke::new(2.0, tokens::ACCENT),
+            );
+        }
+        if cell_info.duplicate && !cell_info.pinned {
+            let badge = Rect::from_min_size(cell.min + vec2(4.0, 4.0), vec2(14.0, 14.0));
+            painter.rect_filled(badge, 3.0, tokens::SURFACE);
+            painter.text(
+                badge.center(),
+                Align2::CENTER_CENTER,
+                "2",
+                FontId::proportional(10.0),
+                tokens::TEXT,
+            );
+        }
+        if let Some(more) = cell_info.more {
+            painter.text(
+                pos2(cell.right() - 4.0, cell.bottom() + 11.0),
+                Align2::RIGHT_CENTER,
+                (i18n::t().series_more)(more),
+                FontId::proportional(10.0),
+                tokens::MUTED,
+            );
         }
     }
     StripOutput {
         clicked,
         step: wheel_steps(ui, rect),
+    }
+}
+
+fn series_boundary(prev: Option<u32>, next: Option<u32>) -> bool {
+    match (prev, next) {
+        (Some(a), Some(b)) => a != b,
+        (Some(_), None) | (None, Some(_)) => true,
+        (None, None) => false,
     }
 }
 

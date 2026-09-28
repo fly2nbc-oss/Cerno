@@ -23,6 +23,24 @@ pub mod tokens {
     /// Neutral grey behind photos – deliberately not `BG`: its blue tint would bias colour
     /// judgement.
     pub const CANVAS: Color32 = Color32::from_rgb(0x16, 0x16, 0x16);
+    /// Colour labels. The only hues besides the accent and status colours: they are the
+    /// mark itself, not chrome around the photo.
+    pub const LABEL_RED: Color32 = Color32::from_rgb(0xE2, 0x4B, 0x4B);
+    pub const LABEL_YELLOW: Color32 = Color32::from_rgb(0xE6, 0xC2, 0x29);
+    pub const LABEL_GREEN: Color32 = Color32::from_rgb(0x3D, 0xAB, 0x6E);
+    pub const LABEL_BLUE: Color32 = Color32::from_rgb(0x4C, 0x8F, 0xE0);
+    pub const LABEL_PURPLE: Color32 = Color32::from_rgb(0xA5, 0x6B, 0xC7);
+}
+
+pub fn label_color(label: crate::metadata::Label) -> Color32 {
+    use crate::metadata::Label;
+    match label {
+        Label::Red => tokens::LABEL_RED,
+        Label::Yellow => tokens::LABEL_YELLOW,
+        Label::Green => tokens::LABEL_GREEN,
+        Label::Blue => tokens::LABEL_BLUE,
+        Label::Purple => tokens::LABEL_PURPLE,
+    }
 }
 
 pub fn apply(ctx: &egui::Context) {

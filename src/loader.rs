@@ -17,7 +17,7 @@ use std::time::Instant;
 use anyhow::{Context as _, Result};
 use eframe::egui::{self, ColorImage, TextureFilter, TextureHandle, TextureOptions};
 
-use crate::metadata::{self, CameraInfo, RatingInfo};
+use crate::metadata::{self, CameraInfo, LabelInfo, RatingInfo};
 use crate::thumbs::{self, Thumbs};
 use crate::{decode, library};
 
@@ -34,6 +34,8 @@ pub struct LoadedImage {
     pub original_size: [u32; 2],
     /// Rating as stored in the file when it was decoded.
     pub rating: RatingInfo,
+    /// Colour label as stored in the file when it was decoded.
+    pub label: LabelInfo,
     pub camera: CameraInfo,
     pub load_ms: u128,
 }
@@ -448,6 +450,7 @@ fn load_display(shared: &Shared, job: &Job) -> Result<LoadedImage> {
         texture,
         original_size: decoded.original_size,
         rating: meta.rating,
+        label: meta.label,
         camera: meta.camera,
         load_ms: started.elapsed().as_millis(),
     })
