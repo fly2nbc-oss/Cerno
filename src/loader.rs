@@ -107,6 +107,40 @@ impl State {
         self.full.retain(|&i, _| on_screen(i));
         self.want_full.retain(|&i| on_screen(i));
     }
+
+    /// See [`Loader::set_library`]. The same list again (compare mode on or off) keeps the
+    /// decodes in flight: their indices still mean the same photos.
+    fn switch(&mut self, paths: Arc<Vec<PathBuf>>, current: usize, pinned: Option<usize>) {
+        if *paths == *self.paths {
+            self.paths = paths;
+            self.current = current;
+            self.pinned = pinned;
+            self.prune();
+            return;
+        }
+        let old_paths = std::mem::replace(&mut self.paths, paths);
+        let positions: HashMap<&PathBuf, usize> =
+            self.paths.iter().enumerate().map(|(i, p)| (p, i)).collect();
+        let remap = |old: usize| old_paths.get(old).and_then(|p| positions.get(p)).copied();
+        let cache: Vec<_> = std::mem::take(&mut self.cache).into_iter().collect();
+        let full: Vec<_> = std::mem::take(&mut self.full).into_iter().collect();
+        self.cache = cache
+            .into_iter()
+            .filter_map(|(old, slot)| Some((remap(old)?, slot)))
+            .collect();
+        self.full = full
+            .into_iter()
+            .filter_map(|(old, image)| Some((remap(old)?, image)))
+            .collect();
+        drop(positions);
+        self.generation += 1;
+        self.current = current;
+        self.pinned = pinned;
+        self.in_flight.clear();
+        self.want_full.clear();
+        self.full_in_flight.clear();
+        self.prune();
+    }
 }
 
 struct Shared {
@@ -190,35 +224,7 @@ impl Loader {
     /// Switches to a new list. Images that are in both lists stay cached (re-sorting,
     /// filtering or deleting doesn't decode anything again).
     pub fn set_library(&self, paths: Arc<Vec<PathBuf>>, current: usize, pinned: Option<usize>) {
-        let mut guard = self.shared.lock();
-        let state = &mut *guard;
-        let old_paths = std::mem::replace(&mut state.paths, paths);
-        let positions: HashMap<&PathBuf, usize> = state
-            .paths
-            .iter()
-            .enumerate()
-            .map(|(i, p)| (p, i))
-            .collect();
-        let remap = |old: usize| old_paths.get(old).and_then(|p| positions.get(p)).copied();
-        let cache: Vec<_> = std::mem::take(&mut state.cache).into_iter().collect();
-        let full: Vec<_> = std::mem::take(&mut state.full).into_iter().collect();
-        state.cache = cache
-            .into_iter()
-            .filter_map(|(old, slot)| Some((remap(old)?, slot)))
-            .collect();
-        state.full = full
-            .into_iter()
-            .filter_map(|(old, image)| Some((remap(old)?, image)))
-            .collect();
-        drop(positions);
-        state.generation += 1;
-        state.current = current;
-        state.pinned = pinned;
-        state.in_flight.clear();
-        state.want_full.clear();
-        state.full_in_flight.clear();
-        state.prune();
-        drop(guard);
+        self.shared.lock().switch(paths, current, pinned);
         self.shared.wake.notify_all();
     }
 
@@ -554,6 +560,24 @@ mod tests {
 
     fn order(state: &mut State) -> Vec<(usize, bool)> {
         std::iter::from_fn(|| next_job(state).map(|j| (j.index, j.kind == Kind::Full))).collect()
+    }
+
+    #[test]
+    fn the_same_list_keeps_decodes_in_flight_a_new_one_drops_them() {
+        let mut s = state(20, 3, None);
+        s.in_flight.extend([3, 4]);
+        let same = Arc::clone(&s.paths);
+        s.switch(Arc::new(same.to_vec()), 4, Some(3));
+        assert_eq!((s.generation, s.current, s.pinned), (0, 4, Some(3)));
+        assert_eq!(
+            s.in_flight,
+            HashSet::from([3, 4]),
+            "compare mode keeps them"
+        );
+        let fewer: Vec<PathBuf> = same.iter().skip(1).cloned().collect();
+        s.switch(Arc::new(fewer), 2, None);
+        assert_eq!(s.generation, 1);
+        assert!(s.in_flight.is_empty(), "indices mean other photos now");
     }
 
     #[test]
