@@ -1,24 +1,43 @@
 # Cerno
 
-**Fast photo viewer and culling tool – instant switching, 1–5 star ratings from the keyboard, automatic sharpness and aesthetics scores, file dates untouched.**
+**Fast photo viewer and culling tool – instant switching, keyboard ratings, local sharpness and aesthetics scores, file dates untouched.**
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/fly2nbc-oss/Cerno/ci.yml?branch=main&label=CI&logo=github)](https://github.com/fly2nbc-oss/Cerno/actions/workflows/ci.yml)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-blue.svg)](#supported-platforms--formats)
 
-Cerno (Latin *cerno* – "I sift, discern, see clearly") is a native Rust desktop app built on **egui + wgpu**. It decodes photos in the background at screen resolution and keeps the neighbours of the current photo ready as GPU textures, so switching feels instant. Ratings go straight into the file as `xmp:Rating`, which Lightroom, Bridge, digiKam and Windows Explorer read – without changing the file's modification or creation date. Sharpness and aesthetics are computed locally (GPU via DirectML on Windows) and kept in Cerno's own database, never in your photos.
+Cerno (Latin *cerno* – "I sift, discern, see clearly") is a native Rust desktop app built on **egui + wgpu**. Neighbours of the current photo are decoded in the background and kept as GPU textures, so switching feels instant. Ratings go straight into the file as `xmp:Rating`, which Lightroom, Bridge, digiKam and Windows Explorer read – without changing modification or creation dates. Sharpness and aesthetics run locally (DirectML on Windows) and live in Cerno's database, never in your photos.
 
 ---
 
 ## Table of Contents
 
+- [Screenshots](#screenshots)
 - [Features](#features)
 - [Quick Start](#quick-start)
 - [Usage](#usage)
 - [Scores](#scores)
 - [Supported Platforms & Formats](#supported-platforms--formats)
 - [Development & Build](#development--build)
+- [Project Structure](#project-structure)
+- [Tech Stack](#tech-stack)
 - [Roadmap & Known Issues](#roadmap--known-issues)
+- [Contributing](#contributing)
 - [License](#license)
+
+---
+
+## Screenshots
+
+<p align="center">
+  <img src="./screenshots/cerno-details.png" alt="Cerno with details panel open" width="720" />
+</p>
+
+<p align="center">
+  <img src="./screenshots/cerno-help.png" alt="Cerno help page with keyboard shortcuts" width="720" />
+</p>
+
+---
 
 ## Features
 
@@ -32,24 +51,28 @@ Cerno (Latin *cerno* – "I sift, discern, see clearly") is a native Rust deskto
 - **Delete without dialogs** – `Delete` hides the photo at once and moves it to the trash after a 5-second countdown; every further deletion restarts it, `Esc` brings all waiting photos back. Nothing blocks meanwhile.
 - **Filmstrip** – thumbnails with your stars, a colour stripe, a marker for probably blurry shots, and a wider gap between series.
 - **Sharpness, aesthetics and your own taste** – see [Scores](#scores). Sort by name, capture time, rating, either aesthetics score, personal taste or sharpness; filter by stars or colour; hide the blurriest shots; show only duplicates.
-- **Details panel** – `Tab` shows every value Cerno measured for the current photo, `I` steps through values → values with a short explanation in plain words → off: both aesthetics scores, personal taste, whole-frame and eye sharpness, clipped highlights and shadows, CLIP attributes and the state of each model.
+- **Details panel** – `Tab` shows every value Cerno measured for the current photo, `I` steps through values → values with a short explanation in plain words → off: both aesthetics scores, personal taste, whole-frame and eye sharpness, clipped highlights and shadows, CLIP attributes, a histogram and the state of each model. Rows fold open, and the personal taste model can be reset from here.
 - **Info bar** – always visible: stars, the three aesthetics scores side by side (`L 6.1 / V 6.5 / ★ 2.4` = LAION / V2.5 / personal), sharpness, capture data incl. digital zoom, the current zoom level, and a map pin for photos with GPS coordinates (click opens Google Maps). Buttons at its right end show or hide the top bar, details panel and filmstrip; by default only the photo, the filmstrip and the info bar are visible.
 - **Five languages** – German, English, French, Spanish, Italian. Cerno starts in your system language; `Ctrl+L` switches, a flag briefly shows the new one.
 - **Help** – `H`, `F1` or `?` lists all shortcuts with a short explanation; the start screen shows the same page.
 - **Capture info** – camera, lens, focal length, aperture, shutter speed, ISO and capture date.
 - **Correct orientation**, natural sort order (`IMG_2` before `IMG_10`, umlauts next to their base letter).
 
+---
+
 ## Quick Start
 
-There are no binary releases yet – build from source (see [Development & Build](#development--build)), then:
+No binary releases yet – build from source:
 
 ```bash
 cargo run --release --features heic -- "D:/Photos/2026-09 Trip"
 ```
 
-You can also start without an argument and drop a folder or photo onto the window, or press `Ctrl+O`. When copying `target/release/cerno.exe` elsewhere, copy `DirectML.dll` from the same folder along with it.
+Or drop a folder onto the window / `Ctrl+O`. Copy `DirectML.dll` next to `cerno.exe` when moving the binary.
 
 **Requirement:** [ExifTool](https://exiftool.org/) on `PATH` for writing ratings and colour labels (Windows: `winget install OliverBetz.ExifTool`, Debian/Ubuntu: `apt install libimage-exiftool-perl`). Viewing works without it. `CERNO_EXIFTOOL` can point to a specific executable.
+
+---
 
 ## Usage
 
@@ -82,59 +105,82 @@ You can also start without an argument and drop a folder or photo onto the windo
 | `Esc` | Close help or palette, undo pending deletions, then leave zoom, compare mode, fullscreen |
 | `Ctrl+O` | Open folder |
 
+---
+
 ## Scores
 
-Cerno analyses every photo of the open folder in the background (nearest first, paused while you browse). Results are stored in `%LOCALAPPDATA%\Cerno\data\cerno.db` (Linux: `~/.local/share/cerno/cerno.db`), keyed by the image content, so renamed photos keep their scores.
+Background analysis (nearest first) is stored in `%LOCALAPPDATA%\Cerno\data\cerno.db` (Linux: `~/.local/share/cerno/cerno.db`); models under `…/models`. Scores never set your stars.
 
-- **Sharpness** – variance of the Laplacian on the sharpest tiles, so a blurred background doesn't penalise a sharp subject. Shown as a percentile *within the folder*: "Sharpness 87 %" means sharper than 87 % of this series. The blurriest 20 % are marked "probably blurry".
-- **Eye sharpness** – for portraits, a small face detector ([YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet), built in) finds the eyes and Cerno measures sharpness right there. When a face is found, this value decides "blurry or not" instead of the whole frame – a sharp face in front of a soft background is not penalised.
-- **Aesthetics (LAION)** – CLIP ViT-L/14 image embedding scored by the [LAION improved aesthetic predictor](https://github.com/christophschuhmann/improved-aesthetic-predictor), roughly 1–10 (ordinary photos around 4–6). Cerno shows it on the star scale 0–5 (2 → 0, 8 → 5, linear), so it reads like your own stars; sorting uses the same order. It judges the overall impression, not technical quality. Click **Enable aesthetics…** in the toolbar once to download the model (1.2 GB, Hugging Face). It runs on the GPU via DirectML on Windows (any DX12 GPU incl. AMD), otherwise on the CPU.
-- **Aesthetics (V2.5)** – SigLIP so400m scored by [Aesthetic Predictor V2.5](https://github.com/discus0434/aesthetic-predictor-v2-5), same 1–10 scale, noticeably better on real-world photos. When present, the info bar shows it instead of LAION. There is no download button yet: put `siglip-so400m-patch14-384-vision.onnx` and `aesthetic-predictor-v2.5-head.bin` (made with the scripts in `tools/`) into the models folder next to the CLIP model and restart. The V2.5 head is AGPL-3.0 and therefore not part of Cerno.
-- **Personal taste** – learns from your own decisions: every rated photo (1–5 stars) and every photo you deleted (0 stars) is an example. From 15 examples on, Cerno predicts stars for the rest of your photos, retrained a few seconds after every change. The details panel shows how many photos it learned from and how far off it typically is (e.g. "±0.7 ★").
-- **Exposure** – share of blown highlights (all channels ≥ 250) and crushed shadows (all ≤ 2); highlighted in orange above 1 % and 5 %.
-- **CLIP attributes** – quality, sharpness, lighting, composition, noise and colourfulness judged zero-shot from the same CLIP embedding (CLIP-IQA style), 0–100 %. Rough indicators, useful for spotting outliers.
+- **Sharpness** – Laplacian on the sharpest tiles; folder percentile; optional eye sharpness via built-in [YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet).
+- **Aesthetics** – LAION (CLIP, download from the toolbar, ~1.2 GB) and optional V2.5 (SigLIP files in the models folder; AGPL head not bundled). Shown as stars 0–5 (`L … / V … / ★ …`).
+- **Personal taste** – ridge regression on your ratings and deletions (from 15 examples).
+- **Exposure & CLIP attributes** – blown/crushed pixels; zero-shot quality cues 0–100 %.
 
-Everything runs locally. Scores never change your star ratings.
+---
 
 ## Supported Platforms & Formats
 
 | | Windows | Linux |
 |---|---|---|
-| Rendering | wgpu (DX12 / Vulkan) | wgpu (Vulkan), X11 and Wayland |
+| Rendering | wgpu (DX12 / Vulkan) | wgpu (Vulkan), X11 / Wayland |
 | JPEG | ✓ | ✓ |
-| HEIC / HEIF | ✓ with `--features heic` (libheif via vcpkg) | ✓ with `--features heic` (system libheif ≥ 1.17) |
-| Aesthetics model | DirectML (GPU), CPU fallback | CPU; WebGPU with `--features webgpu` (experimental) |
+| HEIC | `--features heic` (vcpkg libheif) | `--features heic` (libheif ≥ 1.17) |
+| Aesthetics GPU | DirectML, CPU fallback | CPU; experimental `--features webgpu` |
+
+---
 
 ## Development & Build
 
-Prerequisites: Rust stable, a C/C++ toolchain (Windows: Visual Studio Build Tools with the C++ workload). The first build downloads prebuilt ONNX Runtime binaries (`ort` crate).
+Rust stable + C/C++ toolchain. First build downloads ONNX Runtime.
 
 ```bash
-cargo run -- <folder>                 # debug build; dependencies are optimised, so decoding stays fast
+git clone https://github.com/fly2nbc-oss/Cerno.git
+cd Cerno
+cargo run -- <folder>
 cargo build --release --features heic
 cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
-cargo test                            # the ExifTool round-trip test is skipped without ExifTool
+cargo clippy --all-targets --features heic -- -D warnings
+cargo test
+cargo test --features heic
 ```
 
-### HEIC support
-
-**Windows** – build libheif once with vcpkg (takes a while; the tree lands in `target/vcpkg`). [cargo-vcpkg](https://crates.io/crates/cargo-vcpkg) clones the pinned vcpkg revision; its bootstrap step currently fails, so the last two vcpkg steps run by hand:
+**HEIC (Windows)** – vcpkg bootstrap may need a manual finish:
 
 ```bash
-cargo install cargo-vcpkg
-cargo vcpkg build
+cargo install cargo-vcpkg && cargo vcpkg build
 target\vcpkg\bootstrap-vcpkg.bat -disableMetrics
 target\vcpkg\vcpkg.exe install "libheif[core]:x64-windows-static-md"
-cargo build --release --features heic
 ```
 
-**Linux** – install the system library, then build with the feature:
+**HEIC (Linux):** `sudo apt install libheif-dev`
 
-```bash
-sudo apt install libheif-dev
-cargo build --release --features heic
+---
+
+## Project Structure
+
 ```
+Cerno/
+├── src/           # app, loader, decode, analysis, ui, i18n
+├── tools/         # model prep scripts
+├── tests/fixtures/
+├── screenshots/
+├── .github/workflows/ci.yml
+├── Cargo.toml
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+├── CODE_OF_CONDUCT.md
+├── THIRD_PARTY.md
+└── README.md
+```
+
+---
+
+## Tech Stack
+
+egui/eframe + wgpu · zune-jpeg / optional libheif · ONNX Runtime (DirectML) · SQLite · ExifTool for ratings
+
+---
 
 ## Roadmap & Known Issues
 
@@ -151,6 +197,18 @@ cargo build --release --features heic
 - Truncated JPEGs are shown partially, with the missing part in grey.
 - Deleted photos go to the system trash (Recycle Bin / freedesktop trash), not straight to oblivion. Closing Cerno during the countdown carries the deletion out.
 
+---
+
+## Contributing
+
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md). Changelog: [`CHANGELOG.md`](./CHANGELOG.md).
+
+---
+
 ## License
 
-[Apache-2.0](./LICENSE). Third-party components and model weights: [THIRD_PARTY.md](./THIRD_PARTY.md).
+Licensed under the Apache License, Version 2.0. See [`LICENSE`](./LICENSE). Third-party components: [`THIRD_PARTY.md`](./THIRD_PARTY.md).
+
+---
+
+**Repository:** <https://github.com/fly2nbc-oss/Cerno>
