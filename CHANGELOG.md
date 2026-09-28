@@ -10,7 +10,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 ### Added
 
 - **Packages**, built by CI with HEIC support: a Windows installer (per user, no admin rights, in the five UI languages; uninstalling keeps Cerno's data unless asked), a Windows portable zip (VC++ runtime included), a Linux AppImage (HEIC libraries included, glibc 2.39+) and a `.deb` for Ubuntu 24.04+ / Debian 13+. A `v*` tag drafts a GitHub release with all four and `SHA256SUMS.txt`.
-
 - Straighten (`S`, fine grid, wheel or arrows, `Shift` finer) and crop (`R`: Original, 3:2, 4:3, 16:9, 1:1; `A` changes the ratio, `X` flips) for JPEGs, `Ctrl+←` / `Ctrl+→` for lossless quarter turns via the EXIF orientation. `Enter` applies, `Esc` cancels.
 - **Originals are kept**: before any of these edits the file is copied into Cerno's data folder (`backups`), and `Ctrl+Z` (also Edit › Undo) writes the newest copy of the current photo back – same file, same dates, with the rating and colour label given since. Copies are deleted after 30 days, or with the photo when it is deleted in Cerno.
 - Action menu (`Ctrl+M`, "Action" in the filter bar): copy or move every photo the filter shows to another folder, or delete them with the usual countdown.
@@ -23,7 +22,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 ### Changed
 
 - The burger menu is grouped (view, sort, filter, edit, photo, colour labels, models & data, language, help) and fully keyboard-operated: arrows, `Enter`, `→`/`←` for submenus, a letter jumps, `Esc` closes the submenu first. Switches show a box, choices a tick; long rows end in "…".
-- Keys: `F` and `F11` full screen, `T` the filter bar (Lightroom: F full screen, T toolbar). "Sort and filter" is called "Filter bar" everywhere.
+- Keys: `F` and `F11` full screen, `T` the filter bar. "Sort and filter" is called "Filter bar" everywhere.
 - Info bar: `L / V / ☆` without the "Aesthetics" label – For you has an outline star, filled stars are only your rating. Size and load time left for the details panel; parts that don't fit are left out whole, and the side columns no longer move while browsing. Buttons are 32 px. The map pin is gone – the position and its map links are in Details › File.
 - Compare mode: after `A` or `D` the comparison ends and the kept photo is shown alone. Before, the winner stayed pinned and the next photo moved in.
 - Filter bar: one line; the status only shows while something needs attention (analysis running, model missing, loading or failed); hidden boxes fade at the edge.
@@ -49,13 +48,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 - No torn reads or copies: reading, copying and writing a photo take turns, so the analysis, the viewer and a copy never see a file halfway through a rating write.
 - A tiny defective file whose header claims a gigantic size no longer crashes or freezes Cerno each time its folder opens: photos over 200 megapixels are refused with "photo too large" before anything is allocated for them.
 - A file that crashes a decoder shows an error instead of "Loading…" forever, and the viewer, the analysis and straighten/crop keep working. Before, a few such files stopped all loading until a restart.
-
-### Security
-
-- The CLIP model is downloaded from a fixed commit of its Hugging Face repository instead of the moving `main` branch, and checked by SHA-256 as well as by size before it is used. A changed or swapped file is rejected and removed.
-- ExifTool is only looked up in absolute `PATH` entries, and Cerno starts exactly the file it found – an empty entry no longer points into the working folder.
-- The temporary JPEG that straighten and crop write is always a new file; a file or link already there under its name is never written through.
-- `Ctrl+Z` and the 30-day clean-up only read, restore or delete kept originals in Cerno's own backup folder; an index entry pointing at any other file is ignored and dropped.
 - A photo rated while it was being analysed is analysed again shortly afterwards instead of staying without values until the folder is reopened, and the index no longer keeps the rating it had before.
 - The explanations in the details panel (`I`) wrap inside the panel; before, they ran out of it and pushed every value out of view.
 - The window fills the screen at start (it stayed at its restored size while flagged as maximized on scaled displays).
@@ -65,6 +57,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 - That refresh no longer restarts decoding every 2 s: a 100 % zoom on a large photo finishes again, and the analysis no longer pauses each time.
 - The menu no longer crashes when it gets shorter while it is open (e.g. a deletion runs out) and a key is pressed.
 - Filmstrip thumbnails stay at 400 textures while the analysis runs through a large folder; before, every analysed photo kept one in graphics memory.
+
+### Security
+
+- The CLIP model is downloaded from a fixed commit of its Hugging Face repository instead of the moving `main` branch, and checked by SHA-256 as well as by size before it is used. A changed or swapped file is rejected and removed.
+- ExifTool is only looked up in absolute `PATH` entries, and Cerno starts exactly the file it found – an empty entry no longer points into the working folder.
+- The temporary JPEG that straighten and crop write is always a new file; a file or link already there under its name is never written through.
+- `Ctrl+Z` and the 30-day clean-up only read, restore or delete kept originals in Cerno's own backup folder; an index entry pointing at any other file is ignored and dropped.
 
 ## [0.9.0] – 2026-09-28
 
