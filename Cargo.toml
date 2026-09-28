@@ -4,6 +4,7 @@ version = "0.9.0"
 edition = "2024"
 description = "Fast photo viewer and culling tool: instant switching, 1-5 star ratings, automatic sharpness and aesthetics scoring"
 license = "Apache-2.0"
+repository = "https://github.com/fly2nbc-oss/Cerno"
 readme = "README.md"
 keywords = ["photo", "viewer", "culling", "rating", "heic"]
 categories = ["multimedia::images"]
@@ -98,8 +99,11 @@ and sorts or filters them by local sharpness and aesthetics scores. Ratings and 
 colour labels are written into the file as XMP without changing its dates."""
 section = "graphics"
 priority = "optional"
+# The package version is the crate version, like the file name.
+revision = ""
 depends = "$auto, libheif-plugin-libde265, libxkbcommon0, libxkbcommon-x11-0, libwayland-client0, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxcb1, libvulkan1 | libegl1"
-recommends = "libimage-exiftool-perl, mesa-vulkan-drivers, xdg-desktop-portal"
+# ExifTool writes the ratings; the UI font is read from the system (egui's own lacks ← →).
+recommends = "libimage-exiftool-perl, mesa-vulkan-drivers, xdg-desktop-portal, fonts-dejavu-core | fonts-noto-core"
 assets = [
     ["target/release/cerno", "usr/bin/", "755"],
     ["packaging/linux/cerno.desktop", "usr/share/applications/", "644"],
