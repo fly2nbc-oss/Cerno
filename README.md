@@ -68,7 +68,7 @@ No binary releases yet – build from source:
 cargo run --release --features heic -- "D:/Photos/2026-09 Trip"
 ```
 
-Or drop a folder onto the window / `Ctrl+O`. Copy `DirectML.dll` next to `cerno.exe` when moving the binary.
+Or drop a folder onto the window / `Ctrl+O`. When moving the binary, keep beside `cerno.exe`: `DirectML.dll`, and from a `--features heic` build the HEIC DLLs (`heif.dll`, `libde265.dll`) and the `licenses/` folder.
 
 **Requirement:** [ExifTool](https://exiftool.org/) on `PATH` for writing ratings and colour labels (Windows: `winget install OliverBetz.ExifTool`, Debian/Ubuntu: `apt install libimage-exiftool-perl`). Viewing works without it. `CERNO_EXIFTOOL` can point to a specific executable.
 
@@ -150,8 +150,11 @@ cargo test --features heic
 ```bash
 cargo install cargo-vcpkg && cargo vcpkg build
 target\vcpkg\bootstrap-vcpkg.bat -disableMetrics
-target\vcpkg\vcpkg.exe install "libheif[core]:x64-windows-static-md"
+target\vcpkg\vcpkg.exe install "libheif[core]:x64-windows"
+cargo clean -p libheif-sys
 ```
+
+`cargo clean -p libheif-sys` is only needed once, if this tree was previously built against the static triplet. libheif-sys does not rebuild when `VCPKGRS_DYNAMIC` changes.
 
 **HEIC (Linux):** `sudo apt install libheif-dev`
 
@@ -170,6 +173,8 @@ Cerno/
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
 ├── CODE_OF_CONDUCT.md
+├── licenses/      # GPL, LGPL and the HEIC replacement notice
+├── NOTICE
 ├── THIRD_PARTY.md
 └── README.md
 ```

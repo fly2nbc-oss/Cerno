@@ -15,16 +15,17 @@ cargo test natural_order                                   # single test
 CERNO_TEST_HEIC=<file.heic> cargo test --features heic -- --include-ignored   # + HEIC rating round trip
 ```
 
-On Windows, `cargo` lives in `%USERPROFILE%\.cargo\bin` (rustup default location). The release build puts `DirectML.dll` next to `target\release\cerno.exe` (ort's `copy-dylibs`); the exe needs it beside it when copied elsewhere.
+On Windows, `cargo` lives in `%USERPROFILE%\.cargo\bin` (rustup default location). The release build puts `DirectML.dll` next to `target\release\cerno.exe` (ort's `copy-dylibs`). A `--features heic` build also puts `heif.dll`, `libde265.dll` and a `licenses/` folder there (`build.rs`). The exe needs those files beside it when copied elsewhere.
 
 Unit tests live in-module (`#[cfg(test)]`). `rating::tests::writes_stars_and_keeps_file_dates` is a real round trip through ExifTool (umlaut file name, mtime + creation time compared) and silently skips when ExifTool isn't on `PATH` – make sure it actually ran before trusting a change to the write path. Fixture: `tests/fixtures/tiny.jpg`.
 
-HEIC on Windows needs libheif from vcpkg in `target/vcpkg` (static triplet `x64-windows-static-md`, found automatically by the `vcpkg` crate). `cargo vcpkg build` clones the pinned vcpkg revision but its bootstrap step fails on current Rust (it spawns `bootstrap-vcpkg.bat` by relative name), so finish by hand:
+HEIC on Windows needs libheif from vcpkg in `target/vcpkg` (dynamic triplet `x64-windows`). `.cargo/config.toml` sets `VCPKGRS_DYNAMIC=1`; without it the `vcpkg` crate links statically and `build.rs` aborts. libheif-sys does not notice that variable on its own: a tree already built against `x64-windows-static-md` keeps the static link until `cargo clean -p libheif-sys`. `cargo vcpkg build` clones the pinned vcpkg revision but its bootstrap step fails on current Rust (it spawns `bootstrap-vcpkg.bat` by relative name), so finish by hand:
 
 ```bash
 cargo install cargo-vcpkg && cargo vcpkg build     # clones target/vcpkg, then fails at bootstrap
 target\vcpkg\bootstrap-vcpkg.bat -disableMetrics
-target\vcpkg\vcpkg.exe install "libheif[core]:x64-windows-static-md"
+target\vcpkg\vcpkg.exe install "libheif[core]:x64-windows"
+cargo clean -p libheif-sys
 cargo build --release --features heic
 ```
 
@@ -165,7 +166,7 @@ theme.rs             design tokens → egui Visuals, system UI font
 5. Host SigLIP vision + V2.5 head in the user's own Hugging Face repo and add the download button (like CLIP).
 6. Verify face detection / eye sharpness on real portraits (so far only unit tests and a run on photos without faces).
 7. Linux verification (build, libheif, WebGPU on AMD/Vulkan).
-8. Packaging with `cargo-packager` (`.msi`/NSIS, `.deb`, `.AppImage`) + updater; ship `DirectML.dll`; resolve the libde265 LGPL question first (see Gotchas).
+8. Packaging with `cargo-packager` (`.msi`/NSIS, `.deb`, `.AppImage`) + updater; ship `DirectML.dll`, the HEIC DLLs and the `licenses/` folder that `build.rs` already places next to the exe.
 
 ## Gotchas
 
@@ -183,7 +184,7 @@ theme.rs             design tokens → egui Visuals, system UI font
 - Scripted smoke tests can't use the mouse: posted `WM_MOUSEMOVE`/`WM_MOUSEWHEEL` had no effect in testing (not even wheel-zoom over the photo), while posted keys work. Test pointer behaviour headless (`Context::run_ui` with `RawInput` events, see `ui::details::tests`); remember `textures_delta.clear()` or egui panics on drop.
 - The index at `%LOCALAPPDATA%\Cerno\data\cerno.db` is the user's live data (ratings history, taste feedback). Never delete it to "start clean" – DB tests use in-memory databases.
 - zune-jpeg decodes truncated JPEGs leniently (missing part grey) instead of failing – intended, other viewers do the same.
-- `libheif[core]` is linked statically, which pulls in libde265 (**LGPL-3.0**). Before publishing binaries, switch to the dynamic triplet (`x64-windows` + `VCPKGRS_DYNAMIC=1`) and ship the DLLs, or otherwise satisfy the LGPL relinking terms. The x265 encoder (GPL) is deliberately excluded.
+- **HEIC on Windows is dynamically linked** (vcpkg triplet `x64-windows`, `VCPKGRS_DYNAMIC=1` in `.cargo/config.toml`). `libheif` and `libde265` are LGPL-3.0; `build.rs` copies their DLLs and `licenses/` next to the executable. Do not switch the triplet back to `x64-windows-static-md`. The x265 encoder (GPL) stays excluded via `libheif[core]`. Linux links the system libheif; a package depends on the distro library instead of bundling a static copy. ExifTool stays a separate program and is not distributed. The V2.5 head (AGPL-3.0) stays out of the binary.
 - `rfd` dialogs (folder picker, model download confirmation) block the UI thread while open – fine for modal dialogs.
 - Help page and command palette are modal: `handle_keys` returns early while one is open (help: only `H`/`F1`/`?`/`Esc`, `Ctrl+L`, `Ctrl+K`; the palette consumes its own arrows/Enter/Esc before its text field sees them) and the photo's mouse handling is skipped. It is an `egui::Area` in `Order::Foreground`, so the details panel's scroll area below doesn't react either. Its card height is the content height remembered from the previous frame – not `ScrollArea`'s `content_size`, which with `auto_shrink(false)` is at least the visible area.
 - Clicking the map pin sends the photo's coordinates to Google. Don't click it in scripted tests; `metadata::maps_url` is unit-tested.

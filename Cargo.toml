@@ -27,6 +27,7 @@ kamadak-exif = "0.6.1"
 libheif-rs = { version = "3.0.0", optional = true, default-features = false, features = ["v1_17"] }
 log = "0.4.34"
 memchr = "2.8.3"
+moxcms = "0.7"
 # Prebuilt ONNX Runtime is downloaded at build time; rustls instead of native TLS avoids
 # openssl on Linux.
 ort = { version = "2.0.0-rc.13", default-features = false, features = ["std", "download-binaries", "copy-dylibs", "tls-rustls", "api-27"] }
@@ -44,14 +45,16 @@ zune-jpeg = "0.5.15"
 ort = { version = "2.0.0-rc.13", default-features = false, features = ["directml"] }
 
 # Windows: `cargo install cargo-vcpkg && cargo vcpkg build` builds libheif into target/vcpkg.
-# `core` leaves out the default x265 *encoder* (GPL); decoding uses libde265 (LGPL).
+# Dynamic triplet so libheif and libde265 (LGPL-3.0) stay replaceable DLLs next to the exe.
+# `core` leaves out the default x265 *encoder* (GPL); decoding uses libde265.
+# `VCPKGRS_DYNAMIC=1` is set in `.cargo/config.toml`; `build.rs` copies the DLLs.
 [package.metadata.vcpkg]
 git = "https://github.com/microsoft/vcpkg"
 rev = "c76c06644034521fb761a39f8f52d8e87d1103d5" # tag 2026.07.29
 dependencies = ["libheif[core]"]
 
 [package.metadata.vcpkg.target]
-x86_64-pc-windows-msvc = { triplet = "x64-windows-static-md" }
+x86_64-pc-windows-msvc = { triplet = "x64-windows" }
 
 # Decoding and resizing are painfully slow unoptimised; keep only our own code debuggable.
 [profile.dev.package."*"]

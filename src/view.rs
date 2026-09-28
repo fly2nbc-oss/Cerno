@@ -69,82 +69,205 @@ impl SortKey {
     }
 }
 
+/// One checkbox in the filter menu. Several may be on at once.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RatingFilter {
-    All,
-    AtLeast(u8),
+pub enum FilterKind {
+    /// 1..=5.
+    Stars(u8),
     Unrated,
     Rejected,
+    Blurry,
+    /// A later copy of an earlier photo. The first path in folder order stays out.
+    Duplicate,
 }
 
-impl RatingFilter {
-    pub const ALL: [RatingFilter; 8] = [
-        Self::All,
-        Self::AtLeast(1),
-        Self::AtLeast(2),
-        Self::AtLeast(3),
-        Self::AtLeast(4),
-        Self::AtLeast(5),
+impl FilterKind {
+    pub const ALL: [FilterKind; 9] = [
+        Self::Stars(1),
+        Self::Stars(2),
+        Self::Stars(3),
+        Self::Stars(4),
+        Self::Stars(5),
         Self::Unrated,
         Self::Rejected,
+        Self::Blurry,
+        Self::Duplicate,
     ];
 
     pub fn label(self) -> String {
         let t = i18n::t();
         match self {
-            Self::All => t.filter_all.to_owned(),
-            Self::AtLeast(5) => t.filter_five.to_owned(),
-            Self::AtLeast(n) => (t.filter_at_least)(n),
+            Self::Stars(n) => (t.filter_stars)(n),
             Self::Unrated => t.filter_unrated.to_owned(),
             Self::Rejected => t.filter_rejected.to_owned(),
+            Self::Blurry => t.filter_blurry.to_owned(),
+            Self::Duplicate => t.filter_duplicate.to_owned(),
         }
     }
 
+    fn token(self) -> &'static str {
+        match self {
+            Self::Stars(1) => "1",
+            Self::Stars(2) => "2",
+            Self::Stars(3) => "3",
+            Self::Stars(4) => "4",
+            Self::Stars(5) => "5",
+            Self::Stars(_) => "",
+            Self::Unrated => "unrated",
+            Self::Rejected => "rejected",
+            Self::Blurry => "blurry",
+            Self::Duplicate => "duplicate",
+        }
+    }
+
+    fn from_token(token: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| kind.token() == token)
+    }
+}
+
+/// Which photos stay visible. Nothing ticked means every photo. Otherwise a photo stays when
+/// it matches any ticked category.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PhotoFilter {
+    /// Index 0 is 1 star.
+    stars: [bool; 5],
+    unrated: bool,
+    rejected: bool,
+    blurry: bool,
+    duplicate: bool,
+}
+
+impl PhotoFilter {
+    pub fn is_all(self) -> bool {
+        !self.stars.iter().any(|on| *on)
+            && !self.unrated
+            && !self.rejected
+            && !self.blurry
+            && !self.duplicate
+    }
+
+    pub fn contains(self, kind: FilterKind) -> bool {
+        match kind {
+            FilterKind::Stars(n) if (1..=5).contains(&n) => self.stars[n as usize - 1],
+            FilterKind::Unrated => self.unrated,
+            FilterKind::Rejected => self.rejected,
+            FilterKind::Blurry => self.blurry,
+            FilterKind::Duplicate => self.duplicate,
+            FilterKind::Stars(_) => false,
+        }
+    }
+
+    pub fn set(&mut self, kind: FilterKind, on: bool) {
+        match kind {
+            FilterKind::Stars(n) if (1..=5).contains(&n) => self.stars[n as usize - 1] = on,
+            FilterKind::Unrated => self.unrated = on,
+            FilterKind::Rejected => self.rejected = on,
+            FilterKind::Blurry => self.blurry = on,
+            FilterKind::Duplicate => self.duplicate = on,
+            FilterKind::Stars(_) => {}
+        }
+    }
+
+    pub fn toggle(&mut self, kind: FilterKind) {
+        let on = !self.contains(kind);
+        self.set(kind, on);
+    }
+
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
+
+    /// Button text inside "Filter: …". An empty selection reads as "all".
+    pub fn summary(self) -> String {
+        if self.is_all() {
+            return i18n::t().filter_all.to_owned();
+        }
+        FilterKind::ALL
+            .into_iter()
+            .filter(|kind| self.contains(*kind))
+            .map(FilterKind::label)
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
+    /// A photo matches when its rating is ticked, or when it is blurry or a copy and that box
+    /// is ticked.
+    pub fn accepts(self, rating: Rating, is_blurry: bool, is_duplicate: bool) -> bool {
+        if self.is_all() {
+            return true;
+        }
+        let by_rating = match rating {
+            Rating::Stars(n) if (1..=5).contains(&n) => self.stars[n as usize - 1],
+            Rating::Unrated => self.unrated,
+            Rating::Rejected => self.rejected,
+            Rating::Stars(_) => false,
+        };
+        by_rating || (self.blurry && is_blurry) || (self.duplicate && is_duplicate)
+    }
+
+    /// Stored setting. A leading `*` marks the exact set, so an old `"3"` (at least 3 stars)
+    /// still reads as 3, 4 and 5. Empty means every photo.
     pub fn id(self) -> String {
-        match self {
-            Self::All => "all".to_owned(),
-            Self::AtLeast(n) => n.to_string(),
-            Self::Unrated => "unrated".to_owned(),
-            Self::Rejected => "rejected".to_owned(),
+        if self.is_all() {
+            return String::new();
         }
+        let tokens: Vec<&str> = FilterKind::ALL
+            .into_iter()
+            .filter(|kind| self.contains(*kind))
+            .map(FilterKind::token)
+            .filter(|token| !token.is_empty())
+            .collect();
+        format!("*{}", tokens.join(","))
     }
 
-    pub fn from_id(id: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|f| f.id() == id)
-    }
-
-    fn accepts(self, rating: Rating) -> bool {
-        match self {
-            Self::All => true,
-            Self::AtLeast(n) => rating.stars().is_some_and(|r| r >= n),
-            Self::Unrated => rating == Rating::Unrated,
-            Self::Rejected => rating == Rating::Rejected,
+    pub fn from_stored(id: &str) -> Self {
+        let mut filter = Self::default();
+        if id.is_empty() || id == "all" {
+            return filter;
         }
+        if let Some(rest) = id.strip_prefix('*') {
+            for token in rest.split(',').filter(|token| !token.is_empty()) {
+                if let Some(kind) = FilterKind::from_token(token) {
+                    filter.set(kind, true);
+                }
+            }
+            return filter;
+        }
+        // Saved before checkboxes: one choice, and a digit meant "at least".
+        if let Some(kind) = FilterKind::from_token(id)
+            && !matches!(kind, FilterKind::Stars(_))
+        {
+            filter.set(kind, true);
+            return filter;
+        }
+        if let Ok(n) = id.parse::<u8>()
+            && (1..=5).contains(&n)
+        {
+            for star in n..=5 {
+                filter.set(FilterKind::Stars(star), true);
+            }
+        }
+        filter
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ViewOptions {
     pub sort: SortKey,
-    pub filter: RatingFilter,
+    pub filter: PhotoFilter,
     /// `None` shows every colour.
     pub label: Option<Label>,
-    pub hide_blurry: bool,
     /// One photo per series: the sharpest that is not rejected.
     pub best_of_series: bool,
-    /// Only photos whose pixels already appear earlier in the folder.
-    pub only_duplicates: bool,
 }
 
 impl Default for ViewOptions {
     fn default() -> Self {
         Self {
             sort: SortKey::Name,
-            filter: RatingFilter::All,
+            filter: PhotoFilter::default(),
             label: None,
-            hide_blurry: false,
             best_of_series: false,
-            only_duplicates: false,
         }
     }
 }
@@ -312,13 +435,13 @@ pub fn build(
             entry
         })
         .filter(|entry| {
-            if hidden(entry.path) || copies_only_misses(options, &copies, entry.path) {
+            if hidden(entry.path) {
                 return false;
             }
-            let blurry = options.hide_blurry && entry.sharp.is_some_and(|p| p < BLURRY_PERCENTILE);
-            options.filter.accepts(entry.rating)
+            let blurry = entry.sharp.is_some_and(|p| p < BLURRY_PERCENTILE);
+            let is_duplicate = copies.contains_key(entry.path.as_path());
+            options.filter.accepts(entry.rating, blurry, is_duplicate)
                 && options.label.is_none_or(|label| entry.label == Some(label))
-                && !blurry
         })
         .collect();
 
@@ -368,14 +491,6 @@ pub fn build(
         duplicate_of: Arc::new(duplicate_of),
         grouped: options.sort == SortKey::Taken,
     }
-}
-
-fn copies_only_misses(
-    options: ViewOptions,
-    copies: &HashMap<PathBuf, PathBuf>,
-    path: &Path,
-) -> bool {
-    options.only_duplicates && !copies.contains_key(path)
 }
 
 /// First path in folder order is the original; every later photo with the same fingerprint
@@ -603,42 +718,72 @@ mod tests {
             (PathBuf::from("c"), Rating::Unrated),
             (PathBuf::from("a"), Rating::Rejected),
         ]);
-        let filtered = |filter| {
+        let filtered = |kinds: &[FilterKind]| {
+            let mut filter = PhotoFilter::default();
+            for kind in kinds {
+                filter.set(*kind, true);
+            }
             let options = ViewOptions {
                 filter,
                 ..ViewOptions::default()
             };
             names(&build(&all, options, lookup, &session, &HashMap::new(), |_| false).paths)
         };
-        assert_eq!(filtered(RatingFilter::AtLeast(3)), "bd");
-        assert_eq!(filtered(RatingFilter::AtLeast(1)), "bd");
-        assert_eq!(filtered(RatingFilter::Unrated), "ce");
-        assert_eq!(filtered(RatingFilter::Rejected), "a");
-        assert_eq!(filtered(RatingFilter::All), "abcde");
+        // Session: a rejected, b 4 stars, c unrated, d stays 3 stars, e not analysed (unrated).
+        assert_eq!(
+            filtered(&[FilterKind::Stars(3), FilterKind::Stars(4)]),
+            "bd"
+        );
+        assert_eq!(filtered(&[FilterKind::Stars(1), FilterKind::Stars(2)]), "");
+        assert_eq!(filtered(&[FilterKind::Unrated]), "ce");
+        assert_eq!(filtered(&[FilterKind::Rejected]), "a");
+        assert_eq!(filtered(&[]), "abcde");
     }
 
     #[test]
-    fn hides_the_blurriest_but_keeps_unanalysed() {
+    fn blurry_is_one_more_category() {
         let (all, known) = fixture();
         let lookup = |p: &Path| known.get(p).copied();
-        let options = ViewOptions {
-            hide_blurry: true,
-            ..ViewOptions::default()
-        };
-        assert_eq!(
+        let names_of = |kinds: &[FilterKind]| {
+            let mut filter = PhotoFilter::default();
+            for kind in kinds {
+                filter.set(*kind, true);
+            }
             names(
                 &build(
                     &all,
-                    options,
+                    ViewOptions {
+                        filter,
+                        ..ViewOptions::default()
+                    },
                     lookup,
                     &HashMap::new(),
                     &HashMap::new(),
-                    |_| false
+                    |_| false,
                 )
-                .paths
-            ),
-            "bcde"
-        );
+                .paths,
+            )
+        };
+        // "a" is the least sharp; "e" is not measured, so it is not blurry.
+        assert_eq!(names_of(&[FilterKind::Blurry]), "a");
+        assert_eq!(names_of(&[FilterKind::Stars(5), FilterKind::Blurry]), "ac");
+    }
+
+    #[test]
+    fn stored_filter_keeps_old_at_least_values() {
+        assert!(PhotoFilter::from_stored("").is_all());
+        assert!(PhotoFilter::from_stored("all").is_all());
+        let legacy = PhotoFilter::from_stored("3");
+        assert!(legacy.contains(FilterKind::Stars(3)));
+        assert!(legacy.contains(FilterKind::Stars(5)));
+        assert!(!legacy.contains(FilterKind::Stars(2)));
+        let exact = PhotoFilter::from_stored("*3");
+        assert!(exact.contains(FilterKind::Stars(3)));
+        assert!(!exact.contains(FilterKind::Stars(4)));
+        let mixed = PhotoFilter::from_stored("*1,2,unrated,blurry,duplicate");
+        assert_eq!(mixed.id(), "*1,2,unrated,blurry,duplicate");
+        assert_eq!(PhotoFilter::from_stored("rejected").id(), "*rejected");
+        assert_eq!(PhotoFilter::default().id(), "");
     }
 
     #[test]
@@ -766,13 +911,19 @@ mod tests {
         assert_eq!(view.duplicate_of[1], None);
         assert_eq!(view.duplicate_of[2].as_deref(), Some(all[0].as_path()));
 
-        let only = ViewOptions {
-            only_duplicates: true,
-            ..ViewOptions::default()
-        };
-        let view = build(&all, only, lookup, &HashMap::new(), &HashMap::new(), |_| {
-            false
-        });
+        let mut only = PhotoFilter::default();
+        only.set(FilterKind::Duplicate, true);
+        let view = build(
+            &all,
+            ViewOptions {
+                filter: only,
+                ..ViewOptions::default()
+            },
+            lookup,
+            &HashMap::new(),
+            &HashMap::new(),
+            |_| false,
+        );
         assert_eq!(names(&view.paths), "c");
     }
 
@@ -781,8 +932,10 @@ mod tests {
         for key in SortKey::ALL {
             assert_eq!(SortKey::from_id(key.id()), Some(key));
         }
-        for filter in RatingFilter::ALL {
-            assert_eq!(RatingFilter::from_id(&filter.id()), Some(filter));
+        let mut filter = PhotoFilter::default();
+        for kind in FilterKind::ALL {
+            filter.set(kind, true);
         }
+        assert_eq!(PhotoFilter::from_stored(&filter.id()), filter);
     }
 }

@@ -55,7 +55,6 @@ pub enum DetailRow {
     Eyes,
     Highlights,
     Shadows,
-    ClipModel,
 }
 
 pub const EXPANDABLE_ROWS: &[DetailRow] = &[
@@ -66,7 +65,6 @@ pub const EXPANDABLE_ROWS: &[DetailRow] = &[
     DetailRow::Eyes,
     DetailRow::Highlights,
     DetailRow::Shadows,
-    DetailRow::ClipModel,
 ];
 
 pub fn all_expanded(expanded: &HashSet<DetailRow>) -> bool {
@@ -175,6 +173,9 @@ fn content(
         },
         t.explain_laion,
     );
+    if expanded.contains(&DetailRow::Laion) {
+        clip_details(ui, d);
+    }
     metric_row(
         ui,
         expanded,
@@ -268,15 +269,7 @@ fn content(
         Some((n, _)) => (t.taste_photos)(n),
         None => t.taste_untrained.to_owned(),
     };
-    model_row(
-        ui,
-        expanded,
-        DetailRow::ClipModel,
-        "CLIP",
-        model_note(&status.aesthetics),
-        Some(t.explain_models),
-        d,
-    );
+    plain_model_row(ui, "CLIP", model_note(&status.aesthetics));
     plain_model_row(ui, "V2.5", model_note(&status.v25));
     plain_model_row(ui, t.model_faces, model_note(&status.faces));
     plain_model_row(ui, t.model_personal, personal);
@@ -390,84 +383,39 @@ fn metric_row(
     }
 }
 
-fn model_row(
-    ui: &mut Ui,
-    expanded: &mut HashSet<DetailRow>,
-    id: DetailRow,
-    label: &str,
-    status_text: String,
-    explain: Option<&str>,
-    d: &Details<'_>,
-) {
-    let open = expanded.contains(&id);
-    let response = ui
-        .horizontal(|ui| {
-            ui.add_space(PAD);
-            let (chevron_rect, _) = ui.allocate_exact_size(vec2(14.0, 18.0), Sense::hover());
-            icons::chevron(ui.painter(), chevron_rect.center(), open, tokens::MUTED);
-            ui.label(
-                RichText::new(label)
-                    .font(FontId::proportional(12.0))
-                    .color(tokens::MUTED),
-            );
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                ui.add_space(PAD);
-                ui.label(
-                    RichText::new(status_text)
-                        .font(FontId::proportional(12.0))
-                        .color(tokens::TEXT),
-                );
-            });
-        })
-        .response
-        .interact(Sense::click());
-    if response.clicked() {
-        if open {
-            expanded.remove(&id);
-        } else {
-            expanded.insert(id);
-        }
-    }
-    if open {
-        let t = i18n::t();
-        ui.add_space(ROW_INNER);
-        if let Some(text) = explain {
-            explanation(ui, text);
-            ui.add_space(ROW_INNER);
-        }
-        explanation(ui, t.explain_attributes);
-        ui.add_space(4.0);
+fn clip_details(ui: &mut Ui, d: &Details<'_>) {
+    let t = i18n::t();
+    explanation(ui, t.explain_models);
+    ui.add_space(ROW_INNER);
+    explanation(ui, t.explain_attributes);
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.add_space(PAD + 14.0);
+        ui.label(
+            RichText::new(t.section_attributes.to_uppercase())
+                .font(FontId::proportional(10.5))
+                .color(tokens::ACCENT),
+        );
+    });
+    ui.add_space(ROW_INNER);
+    for (i, name) in t.attributes.iter().enumerate() {
+        let value = match d.attributes {
+            Some(a) => Value::score(format!("{:.0} %", a[i] * 100.0), a[i]),
+            None => Value::note(t.note_needs_clip),
+        };
         ui.horizontal(|ui| {
             ui.add_space(PAD + 14.0);
-            ui.label(
-                RichText::new(t.section_attributes.to_uppercase())
-                    .font(FontId::proportional(10.5))
-                    .color(tokens::ACCENT),
-            );
-        });
-        ui.add_space(ROW_INNER);
-        for (i, name) in t.attributes.iter().enumerate() {
-            let value = match d.attributes {
-                Some(a) => Value::score(format!("{:.0} %", a[i] * 100.0), a[i]),
-                None => Value::note(t.note_needs_clip),
-            };
-            ui.horizontal(|ui| {
-                ui.add_space(PAD + 14.0);
-                ui.label(RichText::new(*name).font(FontId::proportional(12.0)))
-                    .on_hover_text(t.explain_attribute[i]);
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    ui.add_space(PAD);
-                    paint_value(ui, &value);
-                });
+            ui.label(RichText::new(*name).font(FontId::proportional(12.0)))
+                .on_hover_text(t.explain_attribute[i]);
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.add_space(PAD);
+                paint_value(ui, &value);
             });
-            if value.fill.is_some() {
-                value_bar(ui, Id::new(("clip_attr", i)), &value);
-            }
-            ui.add_space(4.0);
+        });
+        if value.fill.is_some() {
+            value_bar(ui, Id::new(("clip_attr", i)), &value);
         }
         ui.add_space(4.0);
-    } else {
-        ui.add_space(2.0);
     }
 }
 
@@ -536,14 +484,22 @@ fn value_bar(ui: &mut Ui, _id: Id, value: &Value) {
 }
 
 fn explanation(ui: &mut Ui, text: &str) {
-    ui.horizontal(|ui| {
-        ui.add_space(PAD);
-        ui.label(
-            RichText::new(i18n::keep_together(text))
-                .font(FontId::proportional(11.0))
-                .color(tokens::MUTED),
-        );
-    });
+    let width = (ui.available_width() - 2.0 * PAD).max(40.0);
+    let job = eframe::egui::text::LayoutJob::simple(
+        i18n::keep_together(text),
+        FontId::proportional(13.0),
+        tokens::MUTED,
+        width,
+    );
+    ui.allocate_ui_with_layout(
+        vec2(ui.available_width(), 0.0),
+        Layout::left_to_right(Align::TOP),
+        |ui| {
+            ui.add_space(PAD);
+            ui.set_max_width(PAD + width);
+            ui.label(job);
+        },
+    );
 }
 
 fn stars_value(stars: f32) -> Value {
@@ -604,7 +560,7 @@ mod tests {
             histogram: None,
             status: &status,
         };
-        let mut expanded = HashSet::from([DetailRow::ClipModel]);
+        let mut expanded = HashSet::from([DetailRow::Laion]);
         let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 800.0));
         let mut output = ctx.run_ui(
             RawInput {

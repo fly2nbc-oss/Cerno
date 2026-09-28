@@ -8,18 +8,20 @@ pub static TEXTS: Texts = Texts {
 
     open: "Ouvrir…",
     open_tooltip: "Ouvrir un dossier (Ctrl+O)",
-    photos: |n| {
+    sort: |key| format!("Tri : {key}"),
+    filter_summary: |list| format!("Filtre : {list}"),
+    filter_stars: |n| {
         if n == 1 {
-            "1 photo".to_owned()
+            "1 étoile".to_owned()
         } else {
-            format!("{n} photos")
+            format!("{n} étoiles")
         }
     },
-    photos_shown: |shown, total| format!("{shown} sur {total} photos"),
-    sort: |key| format!("Tri : {key}"),
-    show: |filter| format!("Afficher : {filter}"),
-    hide_blurry: "Masquer les floues",
-    hide_blurry_tooltip: "Masque les 20 % de photos les plus floues de ce dossier",
+    filter_blurry: "Floues",
+    filter_blurry_tooltip: "Les 20 % de photos les plus floues de ce dossier",
+    filter_duplicate: "Doublons",
+    filter_duplicate_tooltip: "Chaque photo sauf le premier chemin identique",
+    filter_clear: "Tout afficher",
     refresh_order: "Actualiser l'ordre",
     refresh_order_tooltip: "De nouveaux scores ont été calculés depuis le tri et le filtrage",
     analyzing_progress: |done, total| format!("Analyse {done} / {total}"),
@@ -41,14 +43,6 @@ pub static TEXTS: Texts = Texts {
     sort_sharpness: "Netteté",
     sort_taken: "Date de prise",
     filter_all: "Toutes",
-    filter_five: "5 étoiles",
-    filter_at_least: |n| {
-        if n == 1 {
-            "1 étoile ou plus".to_owned()
-        } else {
-            format!("{n} étoiles ou plus")
-        }
-    },
     filter_unrated: "Sans étoiles",
 
     filter_rejected: "Rejetées",
@@ -75,16 +69,15 @@ pub static TEXTS: Texts = Texts {
     zoom: |percent| format!("Zoom {percent:.0} %"),
     digital_zoom: |ratio| format!("Zoom numérique {ratio:.1}×"),
     map_tooltip: |place| format!("{place}\nCliquez pour ouvrir dans Google Maps"),
-    button_toolbar: "Barre du haut",
+    button_toolbar: "Trier et filtrer",
     button_details: "Panneau de détails",
     button_filmstrip: "Pellicule",
     button_help: "Aide",
+    button_menu: "Menu",
     button_language: |name| format!("Langue : {name}"),
 
-    palette_placeholder: "Tapez une commande…",
-    palette_empty: "Aucune commande correspondante",
     cmd_explanations: "Déplier ou replier toutes les explications du panneau de détails",
-    cmd_all_panels: "Barre du haut, détails et pellicule",
+    cmd_all_panels: "Trier et filtrer, détails et pellicule",
     cmd_fullscreen: "Plein écran",
     cmd_compare: "Comparer",
     cmd_zoom: "Photo entière ↔ 100 %",
@@ -96,8 +89,12 @@ pub static TEXTS: Texts = Texts {
     cmd_auto_advance: "Avancer automatiquement",
     cmd_subfolders: "Inclure les sous-dossiers",
     cmd_best_of_series: "Meilleure de chaque série",
-    cmd_only_duplicates: "Doublons seulement",
     cmd_label: |name| format!("Couleur : {name}"),
+    menu_sort: "Trier",
+    menu_filter: "Filtre",
+    menu_view: "Affichage",
+    menu_labels: "Couleurs",
+    menu_language: "Langue",
     loading: "Chargement…",
     cannot_show: "Impossible d'afficher cette image",
     no_match: "Aucune photo ne correspond au filtre",
@@ -131,6 +128,21 @@ pub static TEXTS: Texts = Texts {
     no_photos_in: |dir| format!("Aucun fichier JPEG ou HEIC dans {dir}"),
     rating_not_saved: |err| format!("Étoiles non enregistrées – {err}"),
     open_folder: "Ouvrir un dossier",
+    transfer_menu: "Copier ou déplacer tout ce que le filtre actuel affiche vers …",
+    transfer_copy: "Copier",
+    transfer_move: "Déplacer",
+    transfer_copy_cmd: "Copier tout ce que le filtre actuel affiche vers …",
+    transfer_move_cmd: "Déplacer tout ce que le filtre actuel affiche vers …",
+    transfer_same_folder: "C'est déjà le dossier ouvert",
+    transfer_busy: "Une copie ou un déplacement est déjà en cours",
+    transfer_done: |moved, done, skipped, name, err| {
+        let verb = if moved { "déplacées" } else { "copiées" };
+        let mut text = format!("{done} {verb}, {skipped} ignorées");
+        if !name.is_empty() {
+            text.push_str(&format!(" – {name} : {err}"));
+        }
+        text
+    },
     download_title: "Activer l'évaluation esthétique",
     download_text: |gb| {
         format!(
@@ -222,7 +234,7 @@ pub static TEXTS: Texts = Texts {
     crop_portrait: "Portrait",
 
     help_title: "Aide",
-    help_intro: "Cerno affiche vos photos instantanément et vous aide à faire le tri. Les étoiles sont écrites directement dans le fichier photo, pour que les autres logiciels les voient aussi – la date du fichier reste inchangée. Tout le reste est conservé dans la base de données de Cerno. La netteté et la beauté sont évaluées automatiquement en arrière-plan ; Tab ouvre le panneau de détails, I déplie ou replie toutes les explications, Ctrl+K trouve n'importe quelle commande.",
+    help_intro: "Cerno affiche vos photos instantanément et vous aide à faire le tri. Les étoiles sont écrites directement dans le fichier photo, pour que les autres logiciels les voient aussi – la date du fichier reste inchangée. Tout le reste est conservé dans la base de données de Cerno. La netteté et la beauté sont évaluées automatiquement en arrière-plan ; Tab ouvre le panneau de détails, I déplie ou replie toutes les explications, Ctrl+K ouvre le menu.",
     help_drop: "Déposez un dossier ou une photo sur la fenêtre, ou appuyez sur Ctrl+O.",
     help_close: "Esc, H ou F1 ferme cette page",
     help_sections: ["Parcourir", "Noter et trier", "Affichage", "Divers"],
@@ -273,12 +285,12 @@ pub static TEXTS: Texts = Texts {
         ("Z, Double-clic", "Photo entière ↔ 100 %"),
         ("+, −, Molette", "Zoom avant / arrière"),
         ("Glisser", "Déplacer la photo zoomée"),
-        ("F11, F", "Plein écran"),
-        ("T", "Barre du haut"),
+        ("F11", "Plein écran"),
+        ("F", "Trier et filtrer"),
         ("Tab", "Panneau de détails"),
         ("I", "Détails : déplier ou replier toutes les explications"),
         ("F6", "Pellicule"),
-        ("Maj+Tab", "Barre du haut, détails et pellicule ensemble"),
+        ("Maj+Tab", "Trier et filtrer, détails et pellicule ensemble"),
         (
             "S",
             "Redresser : grille, molette et flèches tournent, Maj plus fin, Entrée applique",
@@ -297,10 +309,7 @@ pub static TEXTS: Texts = Texts {
         ),
     ],
     help_more: [
-        (
-            "Ctrl+K",
-            "Palette de commandes : trouver et lancer n'importe quelle commande",
-        ),
+        ("Ctrl+K", "Menu : toutes les fonctions"),
         ("Ctrl+L", "Changer de langue"),
         ("H, F1, ?", "Cette aide"),
         ("Esc", "Revenir en arrière : zoom, comparaison, plein écran"),

@@ -185,12 +185,16 @@ pub struct Texts {
     // Toolbar.
     pub open: &'static str,
     pub open_tooltip: &'static str,
-    pub photos: fn(usize) -> String,
-    pub photos_shown: fn(usize, usize) -> String,
     pub sort: fn(&str) -> String,
-    pub show: fn(&str) -> String,
-    pub hide_blurry: &'static str,
-    pub hide_blurry_tooltip: &'static str,
+    /// "Filter: 1 star, Blurry" — the argument is the joined selection, or "all".
+    pub filter_summary: fn(&str) -> String,
+    pub filter_stars: fn(u8) -> String,
+    pub filter_blurry: &'static str,
+    pub filter_blurry_tooltip: &'static str,
+    /// The later copy, not the first identical photo.
+    pub filter_duplicate: &'static str,
+    pub filter_duplicate_tooltip: &'static str,
+    pub filter_clear: &'static str,
     pub refresh_order: &'static str,
     pub refresh_order_tooltip: &'static str,
     pub analyzing_progress: fn(usize, usize) -> String,
@@ -213,8 +217,6 @@ pub struct Texts {
     pub sort_sharpness: &'static str,
     pub sort_taken: &'static str,
     pub filter_all: &'static str,
-    pub filter_five: &'static str,
-    pub filter_at_least: fn(u8) -> String,
     pub filter_unrated: &'static str,
     pub filter_rejected: &'static str,
     pub filter_label_all: &'static str,
@@ -250,11 +252,10 @@ pub struct Texts {
     pub button_details: &'static str,
     pub button_filmstrip: &'static str,
     pub button_help: &'static str,
+    pub button_menu: &'static str,
     pub button_language: fn(&str) -> String,
 
-    // Command palette (`Ctrl+K`).
-    pub palette_placeholder: &'static str,
-    pub palette_empty: &'static str,
+    // Command menu (`Ctrl+K`).
     pub cmd_explanations: &'static str,
     pub cmd_all_panels: &'static str,
     pub cmd_fullscreen: &'static str,
@@ -268,8 +269,12 @@ pub struct Texts {
     pub cmd_auto_advance: &'static str,
     pub cmd_subfolders: &'static str,
     pub cmd_best_of_series: &'static str,
-    pub cmd_only_duplicates: &'static str,
     pub cmd_label: fn(&str) -> String,
+    pub menu_sort: &'static str,
+    pub menu_filter: &'static str,
+    pub menu_view: &'static str,
+    pub menu_labels: &'static str,
+    pub menu_language: &'static str,
 
     // Straighten and crop.
     pub cmd_straighten: &'static str,
@@ -307,6 +312,17 @@ pub struct Texts {
     pub no_photos_in: fn(&str) -> String,
     pub rating_not_saved: fn(&str) -> String,
     pub open_folder: &'static str,
+    /// Menu title: copy or move everything the current filter shows.
+    pub transfer_menu: &'static str,
+    pub transfer_copy: &'static str,
+    pub transfer_move: &'static str,
+    pub transfer_copy_cmd: &'static str,
+    pub transfer_move_cmd: &'static str,
+    pub transfer_same_folder: &'static str,
+    pub transfer_busy: &'static str,
+    /// `moved`: the verb; then how many succeeded, how many were skipped, and the first
+    /// failure (`name` and `error` empty when every file worked).
+    pub transfer_done: fn(bool, usize, usize, &str, &str) -> String,
     pub download_title: &'static str,
     /// Download size in GB.
     pub download_text: fn(f64) -> String,
@@ -396,11 +412,10 @@ mod tests {
         for lang in Lang::ALL {
             let t = lang.texts();
             let name = lang.name();
-            assert!((t.photos)(17).contains("17"), "{name}");
-            let shown = (t.photos_shown)(3, 17);
-            assert!(shown.contains('3') && shown.contains("17"), "{name}");
             assert!((t.sort)("X").contains('X'), "{name}");
-            assert!((t.show)("X").contains('X'), "{name}");
+            assert!((t.filter_summary)("X").contains('X'), "{name}");
+            assert!((t.filter_stars)(1).contains('1'), "{name}");
+            assert!((t.filter_stars)(3).contains('3'), "{name}");
             let progress = (t.analyzing_progress)(4, 9);
             assert!(progress.contains('4') && progress.contains('9'), "{name}");
             assert!((t.analyzed)(9).contains('9'), "{name}");
@@ -409,7 +424,16 @@ mod tests {
                 (t.aesthetics_backend)("DirectML").contains("DirectML"),
                 "{name}"
             );
-            assert!((t.filter_at_least)(3).contains('3'), "{name}");
+            let moved = (t.transfer_done)(true, 4, 2, "a.jpg", "busy");
+            assert!(
+                moved.contains('4')
+                    && moved.contains('2')
+                    && moved.contains("a.jpg")
+                    && moved.contains("busy"),
+                "{name}"
+            );
+            let copied = (t.transfer_done)(false, 1, 0, "", "");
+            assert!(copied.contains('1') && copied.contains('0'), "{name}");
             assert!((t.star_tooltip)(4).contains('4'), "{name}");
             assert!((t.zoom)(250.0).contains("250"), "{name}");
             assert!((t.digital_zoom)(2.0).contains('2'), "{name}");

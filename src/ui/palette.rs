@@ -1,29 +1,26 @@
-//! Command palette (`Ctrl+K`): type a few letters of any command, arrows choose, Enter runs.
-//! Everything the toolbar offers is reachable here without the mouse.
+//! Burger menu (`Ctrl+K` and the button at the bottom right). No search field: groups with
+//! several values open a submenu, everything else is a row. Shortcuts sit on the right.
 
 use eframe::egui::{
-    Align2, Area, Color32, Context, CursorIcon, FontId, Frame, Id, Key, Modifiers, Order, Rect,
-    Sense, Stroke, StrokeKind, TextEdit, pos2, vec2,
+    Align2, Area, Color32, Context, CursorIcon, FontId, Id, Key, Modifiers, Order, Rect, Sense,
+    Stroke, StrokeKind, pos2, vec2,
 };
 
-use crate::i18n;
 use crate::theme::tokens;
+use crate::ui::icons;
 
-const WIDTH: f32 = 560.0;
-const INPUT_HEIGHT: f32 = 46.0;
+const WIDTH: f32 = 340.0;
 const ROW_HEIGHT: f32 = 32.0;
-/// Rows shown at once; the list scrolls with the selection.
-const MAX_ROWS: usize = 10;
 
-pub struct Command<A> {
+pub struct Row<A> {
     pub action: A,
     pub label: String,
     pub shortcut: Option<String>,
-    /// `Some(true)` shows a check mark (active toggle or current choice).
+    /// `Some` marks a toggle or the current choice. Clicking it leaves the menu open.
     pub checked: Option<bool>,
 }
 
-impl<A> Command<A> {
+impl<A> Row<A> {
     pub fn new(action: A, label: impl Into<String>, shortcut: Option<String>) -> Self {
         Self {
             action,
@@ -39,11 +36,31 @@ impl<A> Command<A> {
     }
 }
 
-/// Query and selection while the palette is open.
+pub struct Group<A> {
+    pub label: String,
+    pub shortcut: Option<String>,
+    pub rows: Vec<Row<A>>,
+}
+
+impl<A> Group<A> {
+    pub fn new(label: impl Into<String>, shortcut: Option<String>, rows: Vec<Row<A>>) -> Self {
+        Self {
+            label: label.into(),
+            shortcut,
+            rows,
+        }
+    }
+}
+
+pub enum Entry<A> {
+    Row(Row<A>),
+    Group(Group<A>),
+}
+
+/// Which submenu is open.
 #[derive(Debug, Default)]
 pub struct State {
-    query: String,
-    selected: usize,
+    open: Option<usize>,
 }
 
 pub struct Output<A> {
@@ -55,250 +72,215 @@ pub fn show<A: Copy>(
     ctx: &Context,
     window: Rect,
     state: &mut State,
-    commands: &[Command<A>],
+    entries: &[Entry<A>],
 ) -> Output<A> {
-    let t = i18n::t();
     let mut out = Output {
         run: None,
         close: false,
     };
-    let found: Vec<&Command<A>> = commands
-        .iter()
-        .filter(|c| matches(&c.label, &state.query))
-        .collect();
-
-    // Taken before the text field sees them.
-    let (up, down, enter, escape) = ctx.input_mut(|i| {
-        (
-            i.consume_key(Modifiers::NONE, Key::ArrowUp),
-            i.consume_key(Modifiers::NONE, Key::ArrowDown),
-            i.consume_key(Modifiers::NONE, Key::Enter),
-            i.consume_key(Modifiers::NONE, Key::Escape),
-        )
-    });
-    out.close = escape;
-    if let Some(last) = found.len().checked_sub(1) {
-        if down {
-            state.selected = if state.selected >= last {
-                0
-            } else {
-                state.selected + 1
-            };
-        }
-        if up {
-            state.selected = if state.selected == 0 {
-                last
-            } else {
-                state.selected - 1
-            };
-        }
-        state.selected = state.selected.min(last);
-        if enter {
-            out.run = Some(found[state.selected].action);
-        }
+    if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
+        out.close = true;
     }
 
-    Area::new(Id::new("palette"))
+    let height = entries.len() as f32 * ROW_HEIGHT + 8.0;
+    let menu = Rect::from_min_size(
+        pos2(
+            window.right() - WIDTH - 12.0,
+            (window.bottom() - height - 12.0).max(window.top() + 8.0),
+        ),
+        vec2(WIDTH, height.min(window.height() - 24.0)),
+    );
+
+    Area::new(Id::new("burger"))
         .order(Order::Foreground)
         .fixed_pos(window.min)
         .show(ctx, |ui| {
             let backdrop = ui.allocate_rect(window, Sense::click());
             ui.painter()
-                .rect_filled(window, 0.0, Color32::from_black_alpha(120));
+                .rect_filled(window, 0.0, Color32::from_black_alpha(80));
+            paint_card(ui.painter(), menu);
 
-            let width = (window.width() - 48.0).clamp(240.0, WIDTH);
-            let rows = found.len().clamp(1, MAX_ROWS);
-            let card = Rect::from_min_size(
-                pos2(
-                    window.center().x - width / 2.0,
-                    window.top() + (window.height() * 0.14).max(24.0),
-                ),
-                vec2(width, INPUT_HEIGHT + rows as f32 * ROW_HEIGHT + 10.0),
-            );
-            ui.interact(card, Id::new("palette-card"), Sense::click());
-            let painter = ui.painter();
-            painter.rect_filled(card, 8.0, tokens::SURFACE);
-            painter.rect_stroke(
-                card,
-                8.0,
-                Stroke::new(1.0, tokens::LINE),
-                StrokeKind::Inside,
-            );
-
-            let input = Rect::from_min_size(card.min + vec2(16.0, 8.0), vec2(width - 32.0, 30.0));
-            let edit = ui.put(
-                input,
-                TextEdit::singleline(&mut state.query)
-                    .id(Id::new("palette-input"))
-                    .hint_text(t.palette_placeholder)
-                    .font(FontId::proportional(15.0))
-                    .frame(Frame::NONE)
-                    .desired_width(input.width()),
-            );
-            edit.request_focus();
-            if edit.changed() {
-                state.selected = 0;
-            }
-            let divider = card.top() + INPUT_HEIGHT - 2.0;
-            ui.painter()
-                .hline(card.x_range(), divider, Stroke::new(1.0, tokens::LINE));
-
-            if found.is_empty() {
-                ui.painter().text(
-                    pos2(card.left() + 16.0, divider + 4.0 + ROW_HEIGHT / 2.0),
-                    Align2::LEFT_CENTER,
-                    t.palette_empty,
-                    FontId::proportional(13.0),
-                    tokens::MUTED,
-                );
-            }
-            let first = (state.selected + 1).saturating_sub(MAX_ROWS);
-            let pointer_moved = ui.input(|i| i.pointer.delta() != vec2(0.0, 0.0));
-            for (slot, (index, command)) in found
-                .iter()
-                .enumerate()
-                .skip(first)
-                .take(MAX_ROWS)
-                .enumerate()
-            {
+            let mut submenu: Option<(usize, Rect)> = None;
+            for (index, entry) in entries.iter().enumerate() {
                 let row = Rect::from_min_size(
-                    pos2(card.left() + 6.0, divider + 4.0 + slot as f32 * ROW_HEIGHT),
-                    vec2(width - 12.0, ROW_HEIGHT),
+                    pos2(
+                        menu.left() + 4.0,
+                        menu.top() + 4.0 + index as f32 * ROW_HEIGHT,
+                    ),
+                    vec2(menu.width() - 8.0, ROW_HEIGHT),
                 );
-                let response = ui
-                    .interact(row, Id::new(("palette-row", index)), Sense::click())
-                    .on_hover_cursor(CursorIcon::PointingHand);
-                if response.hovered() && pointer_moved {
-                    state.selected = index;
-                }
-                if response.clicked() {
-                    out.run = Some(command.action);
-                }
-                let painter = ui.painter();
-                if index == state.selected {
-                    painter.rect_filled(row, 5.0, tokens::ACCENT_SUBTLE);
-                }
-                let y = row.center().y;
-                if command.checked == Some(true) {
-                    // Painted: Segoe UI has no check mark glyph.
-                    let c = pos2(row.left() + 16.0, y);
-                    let stroke = Stroke::new(1.6, tokens::ACCENT_STRONG);
-                    painter.line_segment([c + vec2(-4.5, 0.0), c + vec2(-1.5, 3.5)], stroke);
-                    painter.line_segment([c + vec2(-1.5, 3.5), c + vec2(4.5, -4.0)], stroke);
-                }
-                painter.text(
-                    pos2(row.left() + 30.0, y),
-                    Align2::LEFT_CENTER,
-                    &command.label,
-                    FontId::proportional(13.5),
-                    tokens::TEXT,
-                );
-                if let Some(shortcut) = &command.shortcut {
-                    painter.text(
-                        pos2(row.right() - 10.0, y),
-                        Align2::RIGHT_CENTER,
-                        shortcut,
-                        FontId::proportional(12.0),
-                        tokens::MUTED,
-                    );
+                match entry {
+                    Entry::Row(item) => {
+                        if row_button(
+                            ui,
+                            row,
+                            Id::new(("menu-row", index)),
+                            &item.label,
+                            item.shortcut.as_deref(),
+                            item.checked,
+                            false,
+                        ) && let Some(action) = clicked_action(item)
+                        {
+                            out.run = Some(action);
+                            if item.checked.is_none() {
+                                out.close = true;
+                            }
+                        }
+                    }
+                    Entry::Group(group) => {
+                        let open = state.open == Some(index);
+                        if row_button(
+                            ui,
+                            row,
+                            Id::new(("menu-group", index)),
+                            &group.label,
+                            group.shortcut.as_deref(),
+                            None,
+                            true,
+                        ) {
+                            state.open = if open { None } else { Some(index) };
+                        }
+                        if state.open == Some(index) {
+                            let sub_h = group.rows.len() as f32 * ROW_HEIGHT + 8.0;
+                            let sub = Rect::from_min_size(
+                                pos2(menu.left() - WIDTH - 4.0, row.top() - 4.0),
+                                vec2(WIDTH, sub_h),
+                            );
+                            submenu = Some((index, sub));
+                        }
+                    }
                 }
             }
-            out.close |= backdrop.clicked();
+
+            if let Some((index, sub)) = submenu
+                && let Entry::Group(group) = &entries[index]
+            {
+                paint_card(ui.painter(), sub);
+                for (j, item) in group.rows.iter().enumerate() {
+                    let row = Rect::from_min_size(
+                        pos2(sub.left() + 4.0, sub.top() + 4.0 + j as f32 * ROW_HEIGHT),
+                        vec2(sub.width() - 8.0, ROW_HEIGHT),
+                    );
+                    if row_button(
+                        ui,
+                        row,
+                        Id::new(("menu-sub", index, j)),
+                        &item.label,
+                        item.shortcut.as_deref(),
+                        item.checked,
+                        false,
+                    ) && let Some(action) = clicked_action(item)
+                    {
+                        out.run = Some(action);
+                        if item.checked.is_none() {
+                            out.close = true;
+                        }
+                    }
+                }
+            }
+
+            if backdrop.clicked() {
+                let pos = ui.input(|i| i.pointer.interact_pos());
+                let on_card = pos.is_some_and(|p| {
+                    menu.contains(p) || submenu.is_some_and(|(_, rect)| rect.contains(p))
+                });
+                if !on_card {
+                    out.close = true;
+                }
+            }
         });
     out
 }
 
-/// Every word of the query occurs in the label – case- and accent-insensitive, so "ast"
-/// finds "Ästhetik" and "fenetre" finds "fenêtre".
-pub fn matches(label: &str, query: &str) -> bool {
-    let label = fold(label);
-    fold(query)
-        .split_whitespace()
-        .all(|word| label.contains(word))
+fn clicked_action<A: Copy>(item: &Row<A>) -> Option<A> {
+    Some(item.action)
 }
 
-fn fold(text: &str) -> String {
-    text.chars()
-        .flat_map(char::to_lowercase)
-        .map(|c| match c {
-            'ä' | 'à' | 'á' | 'â' => 'a',
-            'é' | 'è' | 'ê' | 'ë' => 'e',
-            'í' | 'ì' | 'î' | 'ï' => 'i',
-            'ö' | 'ó' | 'ò' | 'ô' => 'o',
-            'ü' | 'ú' | 'ù' | 'û' => 'u',
-            'ñ' => 'n',
-            'ç' => 'c',
-            other => other,
-        })
-        .collect()
+fn paint_card(painter: &eframe::egui::Painter, rect: Rect) {
+    painter.rect_filled(rect, 8.0, tokens::SURFACE);
+    painter.rect_stroke(
+        rect,
+        8.0,
+        Stroke::new(1.0, tokens::LINE),
+        StrokeKind::Inside,
+    );
+}
+
+fn row_button(
+    ui: &mut eframe::egui::Ui,
+    row: Rect,
+    id: Id,
+    label: &str,
+    shortcut: Option<&str>,
+    checked: Option<bool>,
+    submenu: bool,
+) -> bool {
+    let response = ui
+        .interact(row, id, Sense::click())
+        .on_hover_cursor(CursorIcon::PointingHand);
+    let painter = ui.painter();
+    if response.hovered() {
+        painter.rect_filled(row, 5.0, tokens::ACCENT_SUBTLE);
+    }
+    let y = row.center().y;
+    if checked == Some(true) {
+        let c = pos2(row.left() + 16.0, y);
+        let stroke = Stroke::new(1.6, tokens::ACCENT_STRONG);
+        painter.line_segment([c + vec2(-4.5, 0.0), c + vec2(-1.5, 3.5)], stroke);
+        painter.line_segment([c + vec2(-1.5, 3.5), c + vec2(4.5, -4.0)], stroke);
+    }
+    painter.text(
+        pos2(row.left() + 30.0, y),
+        Align2::LEFT_CENTER,
+        label,
+        FontId::proportional(13.5),
+        tokens::TEXT,
+    );
+    let right_reserve = if submenu { 22.0 } else { 10.0 };
+    if let Some(shortcut) = shortcut {
+        painter.text(
+            pos2(row.right() - right_reserve, y),
+            Align2::RIGHT_CENTER,
+            shortcut,
+            FontId::proportional(12.0),
+            tokens::MUTED,
+        );
+    }
+    if submenu {
+        icons::chevron(painter, pos2(row.right() - 12.0, y), false, tokens::MUTED);
+    }
+    response.clicked()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use eframe::egui::{Context, RawInput};
 
-    fn press(key: Key) -> eframe::egui::Event {
-        eframe::egui::Event::Key {
-            key,
-            physical_key: None,
-            pressed: true,
-            repeat: false,
-            modifiers: Modifiers::NONE,
-        }
-    }
-
-    /// Runs the palette for one frame per event list; returns the last output's action.
-    fn run(frames: Vec<Vec<eframe::egui::Event>>) -> Option<u8> {
+    #[test]
+    fn escape_closes() {
         let ctx = Context::default();
-        let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
-        let commands = [
-            Command::new(1, "Vollbild", Some("F11".into())),
-            Command::new(2, "Vergleichen", Some("C".into())),
-            Command::new(3, "Sprache: Deutsch", None).checked(true),
-        ];
+        let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 700.0));
+        let entries = [Entry::Row(Row::new(1u8, "Vollbild", Some("F11".into())))];
         let mut state = State::default();
-        let mut run = None;
-        for (i, events) in frames.into_iter().enumerate() {
-            let input = eframe::egui::RawInput {
+        let mut output = ctx.run_ui(
+            RawInput {
                 screen_rect: Some(window),
-                time: Some(i as f64 * 0.1),
-                events,
+                events: vec![eframe::egui::Event::Key {
+                    key: Key::Escape,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: Modifiers::NONE,
+                }],
                 ..Default::default()
-            };
-            let mut output = ctx.run_ui(input, |ui| {
-                run = show(ui.ctx(), window, &mut state, &commands).run;
-            });
-            output.textures_delta.clear();
-        }
-        run
-    }
-
-    #[test]
-    fn typing_filters_and_enter_runs() {
-        let typed = eframe::egui::Event::Text("verg".into());
-        // The text field takes focus in the first frame.
-        assert_eq!(
-            run(vec![vec![], vec![typed], vec![press(Key::Enter)]]),
-            Some(2)
+            },
+            |ui| {
+                let out = show(ui.ctx(), window, &mut state, &entries);
+                assert!(out.close);
+                assert!(out.run.is_none());
+            },
         );
-        assert_eq!(
-            run(vec![vec![], vec![press(Key::ArrowDown), press(Key::Enter)]]),
-            Some(2)
-        );
-        // Up from the first entry wraps to the last.
-        assert_eq!(
-            run(vec![vec![], vec![press(Key::ArrowUp), press(Key::Enter)]]),
-            Some(3)
-        );
-        assert_eq!(run(vec![vec![], vec![]]), None);
-    }
-
-    #[test]
-    fn words_match_in_any_order_ignoring_case_and_accents() {
-        assert!(matches("Sortierung: Ästhetik (V2.5)", "ast v2"));
-        assert!(matches("Sortierung: Ästhetik (V2.5)", "V2 SORT"));
-        assert!(matches("Plein écran", "ecran"));
-        assert!(matches("Anything", ""));
-        assert!(!matches("Vollbild", "voll x"));
+        output.textures_delta.clear();
     }
 }

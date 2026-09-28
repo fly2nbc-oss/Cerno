@@ -17,15 +17,12 @@ Cerno's own code is licensed under Apache-2.0 (see [LICENSE](./LICENSE)). It use
 | Component | Use | License |
 |---|---|---|
 | [DirectML](https://github.com/microsoft/DirectML) (`DirectML.dll`, Windows) | GPU backend of ONNX Runtime | MIT |
+| [libheif](https://github.com/strukturag/libheif) (`heif.dll`, Windows, `--features heic`) | HEIC/HEIF container | LGPL-3.0 |
+| [libde265](https://github.com/strukturag/libde265) (`libde265.dll`, Windows, `--features heic`) | HEVC decoding | LGPL-3.0 |
 
-## Only with `--features heic`
+On Windows the HEIC libraries are loaded at run time (vcpkg triplet `x64-windows`, `VCPKGRS_DYNAMIC=1`). `build.rs` copies `heif.dll`, `libde265.dll` and the `licenses/` folder next to `cerno.exe`. The folder contains the GPL-3.0 and LGPL-3.0 texts and [licenses/heic.txt](licenses/heic.txt), which names the versions and how to replace the DLLs. The GPL x265 encoder is not included (`libheif[core]`). HEVC is patent-encumbered; these terms cover copyright only.
 
-| Component | Use | License |
-|---|---|---|
-| [libheif](https://github.com/strukturag/libheif) | HEIC/HEIF container | LGPL-3.0 |
-| [libde265](https://github.com/strukturag/libde265) | HEVC decoding | LGPL-3.0 |
-
-The Windows build links these statically (vcpkg `x64-windows-static-md`). Before distributing such binaries, satisfy the LGPL (e.g. link dynamically and ship the DLLs). HEVC is patent-encumbered; check the situation for your distribution. The GPL x265 encoder is not included.
+On Linux, `--features heic` links the system libheif. A package should depend on the distribution's libheif and libde265 rather than bundling static copies.
 
 ## Model files in the models folder (not distributed with Cerno)
 

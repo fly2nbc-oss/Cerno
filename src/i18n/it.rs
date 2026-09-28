@@ -8,12 +8,20 @@ pub static TEXTS: Texts = Texts {
 
     open: "Apri…",
     open_tooltip: "Apri cartella (Ctrl+O)",
-    photos: |n| format!("{n} foto"),
-    photos_shown: |shown, total| format!("{shown} di {total} foto"),
     sort: |key| format!("Ordina: {key}"),
-    show: |filter| format!("Mostra: {filter}"),
-    hide_blurry: "Nascondi sfocate",
-    hide_blurry_tooltip: "Nasconde il 20 % delle foto più sfocate di questa cartella",
+    filter_summary: |list| format!("Filtro: {list}"),
+    filter_stars: |n| {
+        if n == 1 {
+            "1 stella".to_owned()
+        } else {
+            format!("{n} stelle")
+        }
+    },
+    filter_blurry: "Sfocate",
+    filter_blurry_tooltip: "Il 20 % delle foto più sfocate di questa cartella",
+    filter_duplicate: "Duplicati",
+    filter_duplicate_tooltip: "Ogni foto tranne il primo percorso identico",
+    filter_clear: "Mostra tutte",
     refresh_order: "Aggiorna ordine",
     refresh_order_tooltip: "Dopo l'ordinamento e il filtro sono arrivati nuovi punteggi",
     analyzing_progress: |done, total| format!("Analisi {done} / {total}"),
@@ -35,8 +43,6 @@ pub static TEXTS: Texts = Texts {
     sort_sharpness: "Nitidezza",
     sort_taken: "Ora di scatto",
     filter_all: "Tutte",
-    filter_five: "5 stelle",
-    filter_at_least: |n| format!("{n}+ stelle"),
     filter_unrated: "Senza stelle",
 
     filter_rejected: "Rifiutate",
@@ -63,16 +69,15 @@ pub static TEXTS: Texts = Texts {
     zoom: |percent| format!("Zoom {percent:.0} %"),
     digital_zoom: |ratio| format!("Zoom digitale {ratio:.1}×"),
     map_tooltip: |place| format!("{place}\nClicca per aprire in Google Maps"),
-    button_toolbar: "Barra superiore",
+    button_toolbar: "Ordina e filtra",
     button_details: "Pannello dettagli",
     button_filmstrip: "Striscia di miniature",
     button_help: "Aiuto",
+    button_menu: "Menu",
     button_language: |name| format!("Lingua: {name}"),
 
-    palette_placeholder: "Digita un comando…",
-    palette_empty: "Nessun comando corrispondente",
     cmd_explanations: "Espandi o comprimi tutte le spiegazioni nel pannello dettagli",
-    cmd_all_panels: "Barra superiore, dettagli e striscia di miniature",
+    cmd_all_panels: "Ordina e filtra, dettagli e striscia di miniature",
     cmd_fullscreen: "Schermo intero",
     cmd_compare: "Confronta",
     cmd_zoom: "Foto intera ↔ 100 %",
@@ -84,8 +89,12 @@ pub static TEXTS: Texts = Texts {
     cmd_auto_advance: "Avanza automaticamente",
     cmd_subfolders: "Includi sottocartelle",
     cmd_best_of_series: "La migliore di ogni serie",
-    cmd_only_duplicates: "Solo duplicati",
     cmd_label: |name| format!("Colore: {name}"),
+    menu_sort: "Ordina",
+    menu_filter: "Filtro",
+    menu_view: "Vista",
+    menu_labels: "Colori",
+    menu_language: "Lingua",
     loading: "Caricamento…",
     cannot_show: "Impossibile mostrare questa immagine",
     no_match: "Nessuna foto corrisponde al filtro",
@@ -111,6 +120,21 @@ pub static TEXTS: Texts = Texts {
     no_photos_in: |dir| format!("Nessun file JPEG o HEIC in {dir}"),
     rating_not_saved: |err| format!("Stelle non salvate – {err}"),
     open_folder: "Apri cartella",
+    transfer_menu: "Copia o sposta tutto ciò che mostra il filtro attuale in …",
+    transfer_copy: "Copia",
+    transfer_move: "Sposta",
+    transfer_copy_cmd: "Copia tutto ciò che mostra il filtro attuale in …",
+    transfer_move_cmd: "Sposta tutto ciò che mostra il filtro attuale in …",
+    transfer_same_folder: "È già la cartella aperta",
+    transfer_busy: "Una copia o uno spostamento è già in corso",
+    transfer_done: |moved, done, skipped, name, err| {
+        let verb = if moved { "spostate" } else { "copiate" };
+        let mut text = format!("{done} {verb}, {skipped} saltate");
+        if !name.is_empty() {
+            text.push_str(&format!(" – {name}: {err}"));
+        }
+        text
+    },
     download_title: "Attiva la valutazione estetica",
     download_text: |gb| {
         format!(
@@ -201,7 +225,7 @@ pub static TEXTS: Texts = Texts {
     crop_portrait: "Verticale",
 
     help_title: "Aiuto",
-    help_intro: "Cerno mostra subito le tue foto e ti aiuta a fare una selezione. Le stelle vengono scritte direttamente nel file della foto, così le vedono anche gli altri programmi – la data del file non cambia. Tutto il resto resta nel database di Cerno. Nitidezza e bellezza vengono valutate automaticamente in background; Tab apre il pannello dettagli, I espande o comprime tutte le spiegazioni, Ctrl+K trova qualsiasi comando.",
+    help_intro: "Cerno mostra subito le tue foto e ti aiuta a fare una selezione. Le stelle vengono scritte direttamente nel file della foto, così le vedono anche gli altri programmi – la data del file non cambia. Tutto il resto resta nel database di Cerno. Nitidezza e bellezza vengono valutate automaticamente in background; Tab apre il pannello dettagli, I espande o comprime tutte le spiegazioni, Ctrl+K apre il menu.",
     help_drop: "Trascina una cartella o una foto sulla finestra, oppure premi Ctrl+O.",
     help_close: "Esc, H o F1 chiude questa pagina",
     help_sections: [
@@ -260,14 +284,14 @@ pub static TEXTS: Texts = Texts {
         ("Z, Doppio clic", "Foto intera ↔ 100 %"),
         ("+, −, Rotellina", "Ingrandisci / riduci"),
         ("Trascina", "Sposta la foto ingrandita"),
-        ("F11, F", "Schermo intero"),
-        ("T", "Barra superiore"),
+        ("F11", "Schermo intero"),
+        ("F", "Ordina e filtra"),
         ("Tab", "Pannello dettagli"),
         ("I", "Dettagli: espandi o comprimi tutte le spiegazioni"),
         ("F6", "Striscia di miniature"),
         (
             "Maiusc+Tab",
-            "Barra superiore, dettagli e striscia di miniature insieme",
+            "Ordina e filtra, dettagli e striscia di miniature insieme",
         ),
         (
             "S",
@@ -284,10 +308,7 @@ pub static TEXTS: Texts = Texts {
         ("Invio, Esc", "Applica o annulla raddrizzamento e ritaglio"),
     ],
     help_more: [
-        (
-            "Ctrl+K",
-            "Tavolozza comandi: cerca ed esegui qualsiasi comando",
-        ),
+        ("Ctrl+K", "Menu: tutte le funzioni"),
         ("Ctrl+L", "Cambia lingua"),
         ("H, F1, ?", "Questa guida"),
         ("Esc", "Torna indietro: zoom, confronto, schermo intero"),

@@ -125,8 +125,9 @@ pub enum Panel {
     Bottom,
 }
 
-/// Window outline with the panel's strip, filled when the panel is shown (like Lucide's
-/// `panel-top` / `panel-right` / `panel-bottom`).
+/// Window outline with the panel's strip. Kept for the view commands; the info bar no longer
+/// paints these buttons.
+#[allow(dead_code)]
 pub fn panel(painter: &Painter, center: Pos2, panel: Panel, shown: bool, color: Color32) {
     let frame = Rect::from_center_size(center, vec2(16.0, 13.0));
     let strip = match panel {
@@ -162,6 +163,14 @@ pub fn reject_mark(painter: &Painter, center: Pos2, size: f32, color: Color32) {
     let stroke = Stroke::new((size / 6.0).max(1.4), color);
     painter.line_segment([center + vec2(-d, -d), center + vec2(d, d)], stroke);
     painter.line_segment([center + vec2(-d, d), center + vec2(d, -d)], stroke);
+}
+
+/// Three bars, the menu button at the bottom right.
+pub fn menu(painter: &Painter, center: Pos2, color: Color32) {
+    let stroke = Stroke::new(1.6, color);
+    for dy in [-5.0, 0.0, 5.0] {
+        painter.line_segment([center + vec2(-6.0, dy), center + vec2(6.0, dy)], stroke);
+    }
 }
 
 /// Circled question mark.

@@ -8,18 +8,20 @@ pub static TEXTS: Texts = Texts {
 
     open: "Open…",
     open_tooltip: "Open folder (Ctrl+O)",
-    photos: |n| {
+    sort: |key| format!("Sort: {key}"),
+    filter_summary: |list| format!("Filter: {list}"),
+    filter_stars: |n| {
         if n == 1 {
-            "1 photo".to_owned()
+            "1 star".to_owned()
         } else {
-            format!("{n} photos")
+            format!("{n} stars")
         }
     },
-    photos_shown: |shown, total| format!("{shown} of {total} photos"),
-    sort: |key| format!("Sort: {key}"),
-    show: |filter| format!("Show: {filter}"),
-    hide_blurry: "Hide blurry",
-    hide_blurry_tooltip: "Hides the blurriest 20 % of this folder",
+    filter_blurry: "Blurry",
+    filter_blurry_tooltip: "The blurriest 20 % of this folder",
+    filter_duplicate: "Duplicates",
+    filter_duplicate_tooltip: "Every photo except the first identical path",
+    filter_clear: "Show all",
     refresh_order: "Refresh order",
     refresh_order_tooltip: "New scores arrived since sorting and filtering",
     analyzing_progress: |done, total| format!("Analyzing {done} / {total}"),
@@ -41,8 +43,6 @@ pub static TEXTS: Texts = Texts {
     sort_sharpness: "Sharpness",
     sort_taken: "Capture time",
     filter_all: "All",
-    filter_five: "5 stars",
-    filter_at_least: |n| format!("{n}+ stars"),
     filter_unrated: "Unrated",
 
     filter_rejected: "Rejected",
@@ -69,16 +69,15 @@ pub static TEXTS: Texts = Texts {
     zoom: |percent| format!("Zoom {percent:.0} %"),
     digital_zoom: |ratio| format!("{ratio:.1}× digital zoom"),
     map_tooltip: |place| format!("{place}\nClick to open in Google Maps"),
-    button_toolbar: "Top bar",
+    button_toolbar: "Sort and filter",
     button_details: "Details panel",
     button_filmstrip: "Filmstrip",
     button_help: "Help",
+    button_menu: "Menu",
     button_language: |name| format!("Language: {name}"),
 
-    palette_placeholder: "Type a command…",
-    palette_empty: "No matching command",
     cmd_explanations: "Expand or collapse all explanations in the details panel",
-    cmd_all_panels: "Top bar, details and filmstrip",
+    cmd_all_panels: "Sort and filter, details and filmstrip",
     cmd_fullscreen: "Full screen",
     cmd_compare: "Compare",
     cmd_zoom: "Whole photo ↔ 100 %",
@@ -90,8 +89,12 @@ pub static TEXTS: Texts = Texts {
     cmd_auto_advance: "Auto advance",
     cmd_subfolders: "Include subfolders",
     cmd_best_of_series: "Best of each series",
-    cmd_only_duplicates: "Only duplicates",
     cmd_label: |name| format!("Colour: {name}"),
+    menu_sort: "Sort",
+    menu_filter: "Filter",
+    menu_view: "View",
+    menu_labels: "Colour labels",
+    menu_language: "Language",
     loading: "Loading…",
     cannot_show: "Cannot show this image",
     no_match: "No photos match the filter",
@@ -119,6 +122,21 @@ pub static TEXTS: Texts = Texts {
     no_photos_in: |dir| format!("No JPEG or HEIC files in {dir}"),
     rating_not_saved: |err| format!("Rating not saved – {err}"),
     open_folder: "Open folder",
+    transfer_menu: "Copy or move everything the current filter shows to …",
+    transfer_copy: "Copy",
+    transfer_move: "Move",
+    transfer_copy_cmd: "Copy everything the current filter shows to …",
+    transfer_move_cmd: "Move everything the current filter shows to …",
+    transfer_same_folder: "That is already the open folder",
+    transfer_busy: "A copy or move is already running",
+    transfer_done: |moved, done, skipped, name, err| {
+        let verb = if moved { "moved" } else { "copied" };
+        let mut text = format!("{done} {verb}, {skipped} skipped");
+        if !name.is_empty() {
+            text.push_str(&format!(" – {name}: {err}"));
+        }
+        text
+    },
     download_title: "Enable aesthetics scoring",
     download_text: |gb| {
         format!(
@@ -209,7 +227,7 @@ pub static TEXTS: Texts = Texts {
     crop_portrait: "Portrait",
 
     help_title: "Help",
-    help_intro: "Cerno shows your photos instantly and helps you sort them out. Stars go straight into the photo file, so other programs see them too – the file date stays untouched. Everything else stays in Cerno's own database. Sharpness and beauty are rated automatically in the background; Tab opens the details panel, I expands or collapses all explanations, Ctrl+K finds any command.",
+    help_intro: "Cerno shows your photos instantly and helps you sort them out. Stars go straight into the photo file, so other programs see them too – the file date stays untouched. Everything else stays in Cerno's own database. Sharpness and beauty are rated automatically in the background; Tab opens the details panel, I expands or collapses all explanations, Ctrl+K opens the menu.",
     help_drop: "Drop a folder or photo onto the window, or press Ctrl+O.",
     help_close: "Esc, H or F1 closes this page",
     help_sections: ["Browse", "Rate and sort out", "View", "More"],
@@ -251,12 +269,15 @@ pub static TEXTS: Texts = Texts {
         ("Z, Double-click", "Whole photo ↔ 100 %"),
         ("+, −, Mouse wheel", "Zoom in / out"),
         ("Drag", "Move the zoomed photo"),
-        ("F11, F", "Full screen"),
-        ("T", "Top bar"),
+        ("F11", "Full screen"),
+        ("F", "Sort and filter"),
         ("Tab", "Details panel"),
         ("I", "Details: expand or collapse all explanations"),
         ("F6", "Filmstrip"),
-        ("Shift+Tab", "Top bar, details and filmstrip together"),
+        (
+            "Shift+Tab",
+            "Sort and filter, details and filmstrip together",
+        ),
         (
             "S",
             "Straighten: grid, wheel and arrows rotate, Shift is finer, Enter applies",
@@ -272,7 +293,7 @@ pub static TEXTS: Texts = Texts {
         ("Enter, Esc", "Apply or cancel straighten and crop"),
     ],
     help_more: [
-        ("Ctrl+K", "Command palette: find and run any command"),
+        ("Ctrl+K", "Menu: every function"),
         ("Ctrl+L", "Switch language"),
         ("H, F1, ?", "This help"),
         ("Esc", "Step back: zoom, compare mode, full screen"),

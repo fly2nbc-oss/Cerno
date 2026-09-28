@@ -18,6 +18,7 @@ mod paths;
 mod rating;
 mod theme;
 mod thumbs;
+mod transfer;
 mod ui;
 mod view;
 
@@ -50,6 +51,7 @@ fn main() -> eframe::Result {
             .with_app_id("cerno")
             .with_inner_size([1280.0, 860.0])
             .with_min_inner_size([480.0, 320.0])
+            .with_maximized(true)
             .with_drag_and_drop(true),
         renderer: eframe::Renderer::Wgpu,
         wgpu_options: wgpu_options(),

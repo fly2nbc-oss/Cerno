@@ -282,6 +282,29 @@ impl Db {
         Ok(())
     }
 
+    /// The file moved. Scores stay on the fingerprint; only the path changes. A stale row at
+    /// the destination is removed first so the primary key is free.
+    pub fn retarget_path(&self, from: &str, to: &str) -> Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let found: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM files WHERE path = ?1",
+            [from],
+            |row| row.get(0),
+        )?;
+        if found == 0 {
+            tx.commit()?;
+            return Ok(());
+        }
+        tx.execute("DELETE FROM files WHERE path = ?1", [to])?;
+        tx.execute(
+            "UPDATE files SET path = ?1 WHERE path = ?2",
+            params![to, from],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
     /// After Cerno wrote a rating or colour label: the size changed, the mtime deliberately did
     /// not. Updating the stamp here avoids re-fingerprinting the file.
     pub fn update_after_write(
@@ -706,5 +729,21 @@ mod tests {
         db.put_file("a.jpg", STAMP, 1, Rating::Stars(3), None)
             .unwrap();
         assert_eq!(db.taste_examples().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn retarget_path_keeps_the_fingerprint() {
+        let db = Db::open_in_memory().unwrap();
+        db.put_file("old.jpg", STAMP, 9, Rating::Stars(4), Some(Label::Red))
+            .unwrap();
+        db.put_file("stale.jpg", STAMP, 1, Rating::Unrated, None)
+            .unwrap();
+        db.retarget_path("old.jpg", "stale.jpg").unwrap();
+        assert!(db.lookup("old.jpg", STAMP).unwrap().is_none());
+        let moved = db.lookup("stale.jpg", STAMP).unwrap().unwrap();
+        assert_eq!(moved.fingerprint, 9);
+        assert_eq!(moved.rating, Rating::Stars(4));
+        assert_eq!(moved.label, Some(Label::Red));
+        db.retarget_path("missing.jpg", "other.jpg").unwrap();
     }
 }

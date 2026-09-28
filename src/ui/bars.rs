@@ -2,8 +2,9 @@
 
 use eframe::egui::text::{LayoutJob, TextFormat};
 use eframe::egui::{
-    Align, Align2, Color32, ComboBox, CursorIcon, FontId, Galley, Layout, Painter, Pos2, Rect,
-    RichText, Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2, pos2, vec2,
+    Align, Align2, Color32, ComboBox, CursorIcon, FontId, Galley, Layout, Painter,
+    PopupCloseBehavior, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2, pos2,
+    vec2,
 };
 use std::sync::Arc;
 
@@ -14,7 +15,7 @@ use crate::metadata::{self, Label, Rating};
 use crate::theme::tokens;
 use crate::ui::icons::{self, Panel};
 use crate::ui::stars;
-use crate::view::{BLURRY_PERCENTILE, RatingFilter, SortKey, ViewOptions};
+use crate::view::{BLURRY_PERCENTILE, FilterKind, SortKey, ViewOptions};
 
 pub const TOOLBAR_HEIGHT: f32 = 40.0;
 pub const INFO_HEIGHT: f32 = 60.0;
@@ -23,12 +24,16 @@ const STAR_GAP: f32 = 6.0;
 const BUTTON: f32 = 28.0;
 
 pub struct ToolbarInfo<'a> {
-    pub folder: Option<&'a str>,
-    pub shown: usize,
-    pub total: usize,
     /// New scores arrived since the view was sorted/filtered.
     pub stale: bool,
     pub status: &'a Status,
+}
+
+/// Copy or move every photo the current filter shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransferChoice {
+    Copy,
+    Move,
 }
 
 #[derive(Default)]
@@ -37,6 +42,7 @@ pub struct ToolbarOutput {
     pub open: bool,
     pub refresh: bool,
     pub download_model: bool,
+    pub transfer: Option<TransferChoice>,
 }
 
 pub fn toolbar(
@@ -63,15 +69,6 @@ pub fn toolbar(
             if ui.button(t.open).on_hover_text(t.open_tooltip).clicked() {
                 out.open = true;
             }
-            if let Some(folder) = info.folder {
-                ui.label(RichText::new(folder).color(tokens::TEXT));
-                let count = if info.shown == info.total {
-                    (t.photos)(info.total)
-                } else {
-                    (t.photos_shown)(info.shown, info.total)
-                };
-                ui.label(RichText::new(count).color(tokens::MUTED));
-            }
             ui.separator();
             ComboBox::from_id_salt("sort")
                 .selected_text((t.sort)(options.sort.label()))
@@ -81,12 +78,36 @@ pub fn toolbar(
                     }
                 });
             ComboBox::from_id_salt("filter")
-                .selected_text((t.show)(&options.filter.label()))
+                .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
+                .selected_text((t.filter_summary)(&options.filter.summary()))
                 .show_ui(ui, |ui| {
-                    for filter in RatingFilter::ALL {
-                        ui.selectable_value(&mut options.filter, filter, filter.label());
+                    if ui.button(t.filter_clear).clicked() {
+                        options.filter.clear();
+                    }
+                    for kind in FilterKind::ALL {
+                        let mut on = options.filter.contains(kind);
+                        let mut response = ui.checkbox(&mut on, kind.label());
+                        if kind == FilterKind::Blurry {
+                            response = response.on_hover_text(t.filter_blurry_tooltip);
+                        }
+                        if kind == FilterKind::Duplicate {
+                            response = response.on_hover_text(t.filter_duplicate_tooltip);
+                        }
+                        if response.changed() {
+                            options.filter.set(kind, on);
+                        }
                     }
                 });
+            ui.menu_button(t.transfer_menu, |ui| {
+                if ui.button(t.transfer_copy).clicked() {
+                    out.transfer = Some(TransferChoice::Copy);
+                    ui.close();
+                }
+                if ui.button(t.transfer_move).clicked() {
+                    out.transfer = Some(TransferChoice::Move);
+                    ui.close();
+                }
+            });
             let colour = options
                 .label
                 .map(i18n::label_name)
@@ -103,8 +124,6 @@ pub fn toolbar(
                         );
                     }
                 });
-            ui.checkbox(&mut options.hide_blurry, t.hide_blurry)
-                .on_hover_text(t.hide_blurry_tooltip);
             if info.stale
                 && ui
                     .button(t.refresh_order)
@@ -197,7 +216,6 @@ pub struct InfoBar<'a> {
     pub saving: bool,
     /// Viewer zoom in percent while zoomed in.
     pub zoom: Option<f32>,
-    pub panels: Panels,
 }
 
 #[derive(Default)]
@@ -206,6 +224,7 @@ pub struct InfoBarOutput {
     pub rating: Option<Rating>,
     pub toggle: Option<Panel>,
     pub help: bool,
+    pub menu: bool,
     /// Google Maps link of the photo's position.
     pub open_map: Option<String>,
 }
@@ -478,13 +497,12 @@ fn meters(bar: &InfoBar<'_>) -> Vec<Meter> {
     meters
 }
 
-/// Buttons at the right end, laid out from the right edge: panel toggles, then help, then
-/// the map pin if the photo has a position. Returns their left edge.
+/// Buttons at the right end, laid out from the right edge: the menu, then help, then the map
+/// pin if the photo has a position. Returns their left edge.
 fn buttons(ui: &Ui, rect: Rect, bar: &InfoBar<'_>, out: &mut InfoBarOutput) -> f32 {
     let t = i18n::t();
     let y = rect.center().y;
     let mut x = rect.right() - 8.0;
-    // The next button to the left of `x`.
     let next = |x: &mut f32| {
         *x -= BUTTON;
         let area = Rect::from_min_size(pos2(*x, y - BUTTON / 2.0), Vec2::splat(BUTTON));
@@ -492,24 +510,11 @@ fn buttons(ui: &Ui, rect: Rect, bar: &InfoBar<'_>, out: &mut InfoBarOutput) -> f
         area
     };
 
-    for (panel, shown, label, key) in [
-        (
-            Panel::Bottom,
-            bar.panels.filmstrip,
-            t.button_filmstrip,
-            "F6",
-        ),
-        (Panel::Right, bar.panels.details, t.button_details, "Tab"),
-        (Panel::Top, bar.panels.toolbar, t.button_toolbar, "T"),
-    ] {
-        let area = next(&mut x);
-        let tooltip = format!("{label} ({key})");
-        if icon_button(ui, area, &tooltip, shown, |p, c, color| {
-            icons::panel(p, c, panel, shown, color);
-        }) {
-            out.toggle = Some(panel);
-        }
-    }
+    let area = next(&mut x);
+    let tooltip = format!("{} ({})", t.button_menu, i18n::with_ctrl("K"));
+    out.menu = icon_button(ui, area, &tooltip, false, |p, c, color| {
+        icons::menu(p, c, color);
+    });
     x -= 8.0;
     let area = next(&mut x);
     let tooltip = format!("{} (H)", t.button_help);
@@ -727,6 +732,59 @@ pub fn compare_label(ui: &Ui, area: Rect, side: &str, name: &str, rating: Rating
     }
     x += stars_width;
     painter.galley(pos2(x + 2.0, y - hint.size().y / 2.0), hint, tokens::MUTED);
+}
+
+/// Compare mode: aesthetics and sharpness under the photo, just below the side label.
+pub fn compare_scores(
+    ui: &Ui,
+    area: Rect,
+    aesthetics: [Option<f32>; 2],
+    personal: Option<f32>,
+    sharpness: Option<(f32, bool)>,
+) {
+    if aesthetics.iter().all(Option::is_none) && personal.is_none() && sharpness.is_none() {
+        return;
+    }
+    let t = i18n::t();
+    let star = |v: Option<f32>| {
+        v.map(|v| format!("{:.1}", aesthetic::as_stars(v)))
+            .unwrap_or_else(|| "–".to_owned())
+    };
+    let personal = personal
+        .map(|v| format!("{v:.1}"))
+        .unwrap_or_else(|| "–".to_owned());
+    let mut text = format!(
+        "L {} / V {} / ★ {}",
+        star(aesthetics[0]),
+        star(aesthetics[1]),
+        personal
+    );
+    if let Some((p, eyes)) = sharpness {
+        let name = if eyes {
+            t.meter_eyes
+        } else {
+            t.meter_sharpness
+        };
+        text.push_str(&format!("   {name} {:.0} %", p * 100.0));
+    }
+    let painter = ui.painter().with_clip_rect(area);
+    let galley = painter.layout_no_wrap(text, FontId::proportional(12.5), tokens::TEXT);
+    let pill = Rect::from_min_size(
+        area.min + vec2(10.0, 44.0),
+        vec2(galley.size().x + 24.0, 26.0),
+    );
+    painter.rect_filled(pill, 6.0, tokens::SURFACE.gamma_multiply(0.92));
+    painter.rect_stroke(
+        pill,
+        6.0,
+        Stroke::new(1.0, tokens::LINE),
+        StrokeKind::Inside,
+    );
+    painter.galley(
+        pos2(pill.left() + 12.0, pill.center().y - galley.size().y / 2.0),
+        galley,
+        tokens::TEXT,
+    );
 }
 
 /// Countdown for pending deletions, bottom centre of the photo area. The bar runs out, Esc

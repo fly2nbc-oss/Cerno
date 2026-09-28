@@ -8,18 +8,20 @@ pub static TEXTS: Texts = Texts {
 
     open: "Abrir…",
     open_tooltip: "Abrir carpeta (Ctrl+O)",
-    photos: |n| {
+    sort: |key| format!("Orden: {key}"),
+    filter_summary: |list| format!("Filtro: {list}"),
+    filter_stars: |n| {
         if n == 1 {
-            "1 foto".to_owned()
+            "1 estrella".to_owned()
         } else {
-            format!("{n} fotos")
+            format!("{n} estrellas")
         }
     },
-    photos_shown: |shown, total| format!("{shown} de {total} fotos"),
-    sort: |key| format!("Orden: {key}"),
-    show: |filter| format!("Mostrar: {filter}"),
-    hide_blurry: "Ocultar borrosas",
-    hide_blurry_tooltip: "Oculta las fotos más borrosas (el 20 % de esta carpeta)",
+    filter_blurry: "Borrosas",
+    filter_blurry_tooltip: "Las fotos más borrosas (el 20 % de esta carpeta)",
+    filter_duplicate: "Duplicados",
+    filter_duplicate_tooltip: "Cada foto salvo la primera ruta idéntica",
+    filter_clear: "Mostrar todas",
     refresh_order: "Actualizar orden",
     refresh_order_tooltip: "Hay puntuaciones nuevas desde que ordenaste y filtraste",
     analyzing_progress: |done, total| format!("Analizando {done} / {total}"),
@@ -41,8 +43,6 @@ pub static TEXTS: Texts = Texts {
     sort_sharpness: "Nitidez",
     sort_taken: "Hora de captura",
     filter_all: "Todas",
-    filter_five: "5 estrellas",
-    filter_at_least: |n| format!("{n}+ estrellas"),
     filter_unrated: "Sin estrellas",
 
     filter_rejected: "Rechazadas",
@@ -69,16 +69,15 @@ pub static TEXTS: Texts = Texts {
     zoom: |percent| format!("Zoom {percent:.0} %"),
     digital_zoom: |ratio| format!("Zoom digital {ratio:.1}×"),
     map_tooltip: |place| format!("{place}\nHaz clic para abrirlo en Google Maps"),
-    button_toolbar: "Barra superior",
+    button_toolbar: "Ordenar y filtrar",
     button_details: "Panel de detalles",
     button_filmstrip: "Tira de miniaturas",
     button_help: "Ayuda",
+    button_menu: "Menú",
     button_language: |name| format!("Idioma: {name}"),
 
-    palette_placeholder: "Escribe un comando…",
-    palette_empty: "Ningún comando coincide",
     cmd_explanations: "Desplegar o plegar todas las explicaciones del panel de detalles",
-    cmd_all_panels: "Barra superior, detalles y tira de miniaturas",
+    cmd_all_panels: "Ordenar y filtrar, detalles y tira de miniaturas",
     cmd_fullscreen: "Pantalla completa",
     cmd_compare: "Comparar",
     cmd_zoom: "Foto completa ↔ 100 %",
@@ -90,8 +89,12 @@ pub static TEXTS: Texts = Texts {
     cmd_auto_advance: "Avanzar automáticamente",
     cmd_subfolders: "Incluir subcarpetas",
     cmd_best_of_series: "La mejor de cada serie",
-    cmd_only_duplicates: "Solo duplicados",
     cmd_label: |name| format!("Color: {name}"),
+    menu_sort: "Ordenar",
+    menu_filter: "Filtro",
+    menu_view: "Vista",
+    menu_labels: "Colores",
+    menu_language: "Idioma",
     loading: "Cargando…",
     cannot_show: "No se puede mostrar esta imagen",
     no_match: "Ninguna foto coincide con el filtro",
@@ -123,6 +126,21 @@ pub static TEXTS: Texts = Texts {
     no_photos_in: |dir| format!("No hay archivos JPEG ni HEIC en {dir}"),
     rating_not_saved: |err| format!("Estrellas no guardadas – {err}"),
     open_folder: "Abrir carpeta",
+    transfer_menu: "Copia o mueve todo lo que muestra el filtro actual a …",
+    transfer_copy: "Copiar",
+    transfer_move: "Mover",
+    transfer_copy_cmd: "Copia todo lo que muestra el filtro actual a …",
+    transfer_move_cmd: "Mueve todo lo que muestra el filtro actual a …",
+    transfer_same_folder: "Esa ya es la carpeta abierta",
+    transfer_busy: "Ya hay una copia o un movimiento en curso",
+    transfer_done: |moved, done, skipped, name, err| {
+        let verb = if moved { "movidas" } else { "copiadas" };
+        let mut text = format!("{done} {verb}, {skipped} omitidas");
+        if !name.is_empty() {
+            text.push_str(&format!(" – {name}: {err}"));
+        }
+        text
+    },
     download_title: "Activar la puntuación estética",
     download_text: |gb| {
         format!(
@@ -213,7 +231,7 @@ pub static TEXTS: Texts = Texts {
     crop_portrait: "Vertical",
 
     help_title: "Ayuda",
-    help_intro: "Cerno muestra tus fotos al instante y te ayuda a seleccionarlas. Las estrellas se guardan directamente en el archivo de la foto, así que otros programas también las ven – la fecha del archivo no cambia. Todo lo demás se queda en la base de datos propia de Cerno. La nitidez y la belleza se valoran automáticamente en segundo plano; Tab abre el panel de detalles, I despliega o pliega todas las explicaciones, Ctrl+K encuentra cualquier comando.",
+    help_intro: "Cerno muestra tus fotos al instante y te ayuda a seleccionarlas. Las estrellas se guardan directamente en el archivo de la foto, así que otros programas también las ven – la fecha del archivo no cambia. Todo lo demás se queda en la base de datos propia de Cerno. La nitidez y la belleza se valoran automáticamente en segundo plano; Tab abre el panel de detalles, I despliega o pliega todas las explicaciones, Ctrl+K abre el menú.",
     help_drop: "Arrastra una carpeta o una foto a la ventana, o pulsa Ctrl+O.",
     help_close: "Esc, H o F1 cierra esta página",
     help_sections: ["Navegar", "Valorar y descartar", "Vista", "Más"],
@@ -261,14 +279,14 @@ pub static TEXTS: Texts = Texts {
         ("Z, Doble clic", "Foto completa ↔ 100 %"),
         ("+, −, Rueda del ratón", "Acercar / alejar"),
         ("Arrastrar", "Mover la foto ampliada"),
-        ("F11, F", "Pantalla completa"),
-        ("T", "Barra superior"),
+        ("F11", "Pantalla completa"),
+        ("F", "Ordenar y filtrar"),
         ("Tab", "Panel de detalles"),
         ("I", "Detalles: desplegar o plegar todas las explicaciones"),
         ("F6", "Tira de miniaturas"),
         (
             "Mayús+Tab",
-            "Barra superior, detalles y tira de miniaturas a la vez",
+            "Ordenar y filtrar, detalles y tira de miniaturas a la vez",
         ),
         (
             "S",
@@ -285,10 +303,7 @@ pub static TEXTS: Texts = Texts {
         ("Intro, Esc", "Aplicar o cancelar enderezar y recorte"),
     ],
     help_more: [
-        (
-            "Ctrl+K",
-            "Paleta de comandos: busca y ejecuta cualquier comando",
-        ),
+        ("Ctrl+K", "Menú: todas las funciones"),
         ("Ctrl+L", "Cambiar idioma"),
         ("H, F1, ?", "Esta ayuda"),
         (

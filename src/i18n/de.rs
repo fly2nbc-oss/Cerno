@@ -8,18 +8,20 @@ pub static TEXTS: Texts = Texts {
 
     open: "Öffnen…",
     open_tooltip: "Ordner öffnen (Strg+O)",
-    photos: |n| {
+    sort: |key| format!("Sortierung: {key}"),
+    filter_summary: |list| format!("Filter: {list}"),
+    filter_stars: |n| {
         if n == 1 {
-            "1 Foto".to_owned()
+            "1 Stern".to_owned()
         } else {
-            format!("{n} Fotos")
+            format!("{n} Sterne")
         }
     },
-    photos_shown: |shown, total| format!("{shown} von {total} Fotos"),
-    sort: |key| format!("Sortierung: {key}"),
-    show: |filter| format!("Anzeigen: {filter}"),
-    hide_blurry: "Unscharfe ausblenden",
-    hide_blurry_tooltip: "Blendet die unschärfsten 20 % dieses Ordners aus",
+    filter_blurry: "Unscharfe",
+    filter_blurry_tooltip: "Die unschärfsten 20 % dieses Ordners",
+    filter_duplicate: "Dubletten",
+    filter_duplicate_tooltip: "Jedes Foto außer dem ersten gleichen Pfad",
+    filter_clear: "Alle anzeigen",
     refresh_order: "Reihenfolge aktualisieren",
     refresh_order_tooltip: "Seit dem Sortieren und Filtern sind neue Bewertungen dazugekommen",
     analyzing_progress: |done, total| format!("Analyse {done} / {total}"),
@@ -41,8 +43,6 @@ pub static TEXTS: Texts = Texts {
     sort_sharpness: "Schärfe",
     sort_taken: "Aufnahmezeit",
     filter_all: "Alle",
-    filter_five: "5 Sterne",
-    filter_at_least: |n| format!("ab {n} Sternen"),
     filter_unrated: "Ohne Sterne",
 
     filter_rejected: "Abgelehnte",
@@ -69,16 +69,15 @@ pub static TEXTS: Texts = Texts {
     zoom: |percent| format!("Zoom {percent:.0} %"),
     digital_zoom: |ratio| format!("{ratio:.1}× Digitalzoom"),
     map_tooltip: |place| format!("{place}\nKlick öffnet Google Maps"),
-    button_toolbar: "Obere Leiste",
+    button_toolbar: "Sortieren & Filtern",
     button_details: "Detailansicht",
     button_filmstrip: "Filmstreifen",
     button_help: "Hilfe",
+    button_menu: "Menü",
     button_language: |name| format!("Sprache: {name}"),
 
-    palette_placeholder: "Befehl eingeben…",
-    palette_empty: "Kein passender Befehl",
     cmd_explanations: "Alle Erklärungen in der Detailansicht auf- oder zuklappen",
-    cmd_all_panels: "Obere Leiste, Details und Filmstreifen",
+    cmd_all_panels: "Sortieren & Filtern, Details und Filmstreifen",
     cmd_fullscreen: "Vollbild",
     cmd_compare: "Vergleichen",
     cmd_zoom: "Ganzes Foto ↔ 100 %",
@@ -90,8 +89,12 @@ pub static TEXTS: Texts = Texts {
     cmd_auto_advance: "Automatisch weiter",
     cmd_subfolders: "Unterordner einlesen",
     cmd_best_of_series: "Nur das beste je Serie",
-    cmd_only_duplicates: "Nur Dubletten",
     cmd_label: |name| format!("Farbe: {name}"),
+    menu_sort: "Sortieren",
+    menu_filter: "Filter",
+    menu_view: "Ansicht",
+    menu_labels: "Farbmarken",
+    menu_language: "Sprache",
     loading: "Wird geladen…",
     cannot_show: "Dieses Bild kann nicht angezeigt werden",
     no_match: "Kein Foto passt zum Filter",
@@ -121,6 +124,21 @@ pub static TEXTS: Texts = Texts {
     no_photos_in: |dir| format!("Keine JPEG- oder HEIC-Dateien in {dir}"),
     rating_not_saved: |err| format!("Sterne nicht gespeichert – {err}"),
     open_folder: "Ordner öffnen",
+    transfer_menu: "Kopiere oder verschiebe alles, was der aktuelle Filter zeigt, nach …",
+    transfer_copy: "Kopieren",
+    transfer_move: "Verschieben",
+    transfer_copy_cmd: "Kopiere alles, was der aktuelle Filter zeigt, nach …",
+    transfer_move_cmd: "Verschiebe alles, was der aktuelle Filter zeigt, nach …",
+    transfer_same_folder: "Das ist schon der geöffnete Ordner",
+    transfer_busy: "Kopieren oder Verschieben läuft schon",
+    transfer_done: |moved, done, skipped, name, err| {
+        let verb = if moved { "verschoben" } else { "kopiert" };
+        let mut text = format!("{done} {verb}, {skipped} übersprungen");
+        if !name.is_empty() {
+            text.push_str(&format!(" – {name}: {err}"));
+        }
+        text
+    },
     download_title: "Ästhetik-Bewertung aktivieren",
     download_text: |gb| {
         format!(
@@ -211,7 +229,7 @@ pub static TEXTS: Texts = Texts {
     crop_portrait: "Hochformat",
 
     help_title: "Hilfe",
-    help_intro: "Cerno zeigt deine Fotos ohne Wartezeit und hilft beim Aussortieren. Sterne landen direkt in der Fotodatei, damit andere Programme sie auch sehen – das Dateidatum bleibt unverändert. Alles andere speichert Cerno in seiner eigenen Datenbank. Schärfe und Schönheit werden im Hintergrund automatisch bewertet; Tab öffnet die Detailansicht, I klappt alle Erklärungen auf oder zu, Strg+K findet jeden Befehl.",
+    help_intro: "Cerno zeigt deine Fotos ohne Wartezeit und hilft beim Aussortieren. Sterne landen direkt in der Fotodatei, damit andere Programme sie auch sehen – das Dateidatum bleibt unverändert. Alles andere speichert Cerno in seiner eigenen Datenbank. Schärfe und Schönheit werden im Hintergrund automatisch bewertet; Tab öffnet die Detailansicht, I klappt alle Erklärungen auf oder zu, Strg+K öffnet das Menü.",
     help_drop: "Ordner oder Foto aufs Fenster ziehen oder Strg+O drücken.",
     help_close: "Esc, H oder F1 schließt diese Seite",
     help_sections: [
@@ -264,14 +282,14 @@ pub static TEXTS: Texts = Texts {
         ("Z, Doppelklick", "Ganzes Foto ↔ 100 %"),
         ("+, −, Mausrad", "Hinein- / herauszoomen"),
         ("Ziehen", "Gezoomtes Foto verschieben"),
-        ("F11, F", "Vollbild"),
-        ("T", "Obere Leiste"),
+        ("F11", "Vollbild"),
+        ("F", "Sortieren & Filtern"),
         ("Tab", "Detailansicht"),
         ("I", "Details: alle Erklärungen auf- oder zuklappen"),
         ("F6", "Filmstreifen"),
         (
             "Umschalt+Tab",
-            "Obere Leiste, Details und Filmstreifen zusammen",
+            "Sortieren & Filtern, Details und Filmstreifen zusammen",
         ),
         (
             "S",
@@ -291,10 +309,7 @@ pub static TEXTS: Texts = Texts {
         ),
     ],
     help_more: [
-        (
-            "Strg+K",
-            "Befehlspalette: jeden Befehl suchen und ausführen",
-        ),
+        ("Strg+K", "Menü: alle Funktionen"),
         ("Strg+L", "Sprache wechseln"),
         ("H, F1, ?", "Diese Hilfe"),
         ("Esc", "Schritt zurück: Zoom, Vergleich, Vollbild"),

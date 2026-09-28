@@ -1,0 +1,34 @@
+Cerno includes third-party components. Their terms are in THIRD_PARTY.md
+in this folder. Cerno's own code is under the Apache License, Version 2.0
+(see LICENSE).
+
+Embedded in the binary:
+
+- LAION improved aesthetic predictor
+  Apache-2.0, Copyright Christoph Schuhmann and contributors
+  https://github.com/christophschuhmann/improved-aesthetic-predictor
+
+- YuNet face detector (OpenCV Zoo)
+  MIT, Copyright Shiqi Yu and contributors
+  https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet
+
+- CLIP prompt vectors, computed with OpenAI CLIP
+  MIT, Copyright OpenAI
+  https://github.com/openai/CLIP
+
+- ONNX Runtime
+  MIT, Copyright Microsoft Corporation
+  https://github.com/microsoft/onnxruntime
+
+Shipped beside the binary on Windows:
+
+- DirectML.dll
+  MIT, Copyright Microsoft Corporation
+  https://github.com/microsoft/DirectML
+
+- heif.dll (libheif) and libde265.dll, only in a build with HEIC support
+  LGPL-3.0. See heic.txt, LGPL-3.0.txt and GPL-3.0.txt.
+  You may replace those DLLs with interface-compatible versions.
+
+The Aesthetic Predictor V2.5 head is AGPL-3.0 and is not part of this
+binary or this repository.

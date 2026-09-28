@@ -1,0 +1,6 @@
+# libheif-sys asks vcpkg for libheif. Without this variable the crate
+# selects the static triplet `x64-windows-static-md` and links LGPL code
+# into cerno.exe. Dynamic linking keeps heif.dll and libde265.dll
+# replaceable. Harmless on Linux: that build uses the system libheif.
+[env]
+VCPKGRS_DYNAMIC = "1"
