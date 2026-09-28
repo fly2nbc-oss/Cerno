@@ -23,7 +23,8 @@ pub fn format_of(path: &Path) -> Option<Format> {
     }
 }
 
-/// The images of one folder, in natural filename order.
+/// The images of one folder, in natural filename order (relative path, when subfolders are
+/// included).
 pub struct Library {
     pub dir: PathBuf,
     pub paths: Arc<Vec<PathBuf>>,
@@ -31,31 +32,28 @@ pub struct Library {
 
 impl Library {
     /// Opens a folder, or the folder containing an image. Returns the library and the index to
-    /// start at (the given image, otherwise 0).
-    pub fn open(path: &Path) -> io::Result<(Library, usize)> {
+    /// start at (the given image, otherwise 0). `subfolders` walks nested folders, skipping
+    /// hidden ones (a name starting with `.`) and never following a directory symlink.
+    pub fn open(path: &Path, subfolders: bool) -> io::Result<(Library, usize)> {
         let (dir, selected) = if path.is_dir() {
             (path.to_path_buf(), None)
         } else {
             let parent = path.parent().filter(|p| !p.as_os_str().is_empty());
             (
                 parent.unwrap_or(Path::new(".")).to_path_buf(),
-                path.file_name(),
+                Some(path.to_path_buf()),
             )
         };
 
-        let mut paths: Vec<PathBuf> = std::fs::read_dir(&dir)?
-            .filter_map(Result::ok)
-            .filter(|entry| entry.file_type().is_ok_and(|t| t.is_file()))
-            .map(|entry| entry.path())
-            .filter(|p| format_of(p).is_some())
-            .collect();
+        let mut paths = Vec::new();
+        collect(&dir, subfolders, &mut paths)?;
         paths.sort_by(|a, b| {
-            let (a, b) = (file_name_lossy(a), file_name_lossy(b));
+            let (a, b) = (relative_key(&dir, a), relative_key(&dir, b));
             natural_cmp(&a, &b).then_with(|| a.cmp(&b))
         });
 
         let index = selected
-            .and_then(|name| paths.iter().position(|p| p.file_name() == Some(name)))
+            .and_then(|selected| paths.iter().position(|p| p == &selected))
             .unwrap_or(0);
         Ok((
             Library {
@@ -65,6 +63,68 @@ impl Library {
             index,
         ))
     }
+}
+
+/// `100CANON/IMG_0001.JPG` when the photo is in a subfolder of `root`, otherwise the file name.
+pub fn display_name(root: &Path, path: &Path) -> String {
+    let relative = relative_key(root, path);
+    if relative.contains('/') {
+        relative
+    } else {
+        file_name_lossy(path)
+    }
+}
+
+fn relative_key(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .map(|rel| {
+            rel.components()
+                .map(|c| c.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/")
+        })
+        .unwrap_or_else(|_| file_name_lossy(path))
+}
+
+fn is_hidden(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.starts_with('.'))
+}
+
+/// Walks `start` with an explicit stack. A failure on the folder the user opened is reported;
+/// a failure deeper down is skipped. Directory symlinks are not followed.
+fn collect(start: &Path, subfolders: bool, out: &mut Vec<PathBuf>) -> io::Result<()> {
+    let mut stack = vec![(start.to_path_buf(), true)];
+    while let Some((dir, is_root)) = stack.pop() {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(err) if is_root => return Err(err),
+            Err(_) => continue,
+        };
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            if is_hidden(&path) {
+                continue;
+            }
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            // `file_type` does not follow symlinks, so a linked folder is not walked.
+            if kind.is_symlink() {
+                if path.is_file() && format_of(&path).is_some() {
+                    out.push(path);
+                }
+                continue;
+            }
+            if kind.is_dir() && subfolders {
+                stack.push((path, false));
+            } else if kind.is_file() && format_of(&path).is_some() {
+                out.push(path);
+            }
+        }
+    }
+    Ok(())
 }
 
 pub fn file_name_lossy(path: &Path) -> String {
@@ -162,6 +222,61 @@ mod tests {
         let mut names = vec!["Zebra.jpg", "Über.jpg", "windows.jpg", "Apfel.jpg"];
         names.sort_by(|a, b| natural_cmp(a, b).then_with(|| a.cmp(b)));
         assert_eq!(names, ["Apfel.jpg", "Über.jpg", "windows.jpg", "Zebra.jpg"]);
+    }
+
+    #[test]
+    fn subfolders_are_optional_and_skip_hidden_dirs() {
+        let root = std::env::temp_dir().join(format!("cerno-lib-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("100CANON")).unwrap();
+        std::fs::create_dir_all(root.join(".hidden")).unwrap();
+        std::fs::create_dir_all(root.join("100CANON").join("sub")).unwrap();
+        for name in [
+            "IMG_10.jpg",
+            "100CANON/IMG_2.jpg",
+            "100CANON/IMG_10.jpg",
+            "100CANON/sub/a.jpg",
+            ".hidden/secret.jpg",
+            "note.txt",
+        ] {
+            let path = root.join(name);
+            std::fs::write(&path, b"x").unwrap();
+        }
+
+        let (flat, _) = Library::open(&root, false).unwrap();
+        assert_eq!(
+            flat.paths
+                .iter()
+                .map(|p| file_name_lossy(p))
+                .collect::<Vec<_>>(),
+            ["IMG_10.jpg"]
+        );
+
+        let (deep, _) = Library::open(&root, true).unwrap();
+        let names: Vec<_> = deep
+            .paths
+            .iter()
+            .map(|p| display_name(&deep.dir, p))
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "100CANON/IMG_2.jpg",
+                "100CANON/IMG_10.jpg",
+                "100CANON/sub/a.jpg",
+                "IMG_10.jpg",
+            ]
+        );
+        assert_eq!(display_name(&deep.dir, &deep.paths[3]), "IMG_10.jpg");
+
+        let (from_file, index) = Library::open(&root.join("100CANON/IMG_2.jpg"), true).unwrap();
+        assert_eq!(index, 0);
+        assert_eq!(
+            display_name(&from_file.dir, &from_file.paths[0]),
+            "IMG_2.jpg"
+        );
+
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]

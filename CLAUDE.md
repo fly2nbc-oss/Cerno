@@ -34,7 +34,7 @@ cargo build --release --features heic
 |---|---|
 | Pure Rust + egui/eframe (wgpu renderer) instead of Tauri | WebViews can't display HEIC (Rust would have to decode *and* re-encode), WebKitGTK is slow on Linux. Decode once → GPU texture. |
 | Formats: **JPEG + HEIC** | User requirement. HEIC via `libheif-rs` (vcpkg on Windows, system libheif ≥ 1.17 on Linux), behind the `heic` feature. |
-| Only the **rating** is written into the original file (`xmp:Rating`: 1–5 stars, or **-1 = rejected** as the XMP standard defines it) | Everything else (scores, thumbnails, CLIP embeddings) lives in a central SQLite DB under the app data dir – never next to or inside the photos. AI scores never set stars. |
+| Only the **rating** and the **colour label** are written into the original file (`xmp:Rating`: 1–5 stars, or **-1 = rejected**; `xmp:Label`: the English names `Red` / `Yellow` / `Green` / `Blue` / `Purple`) | Everything else (scores, thumbnails, CLIP embeddings, capture time) lives in a central SQLite DB under the app data dir – never next to or inside the photos. AI scores never set stars or labels. An unknown label string already in the file is left alone until the user sets a Cerno colour. |
 | **File dates must never change** | ExifTool runs with `-P -overwrite_original_in_place`, and `filetimes.rs` snapshots modified/created time before each write and restores them afterwards. |
 | GPU inference must work on **all vendors, AMD has priority** | Windows: ONNX Runtime + DirectML (any DX12 GPU). Linux: CPU, ORT WebGPU (Vulkan) behind the experimental `webgpu` feature. No CUDA/ROCm-only paths. Same model everywhere so scores stay comparable. |
 | Aesthetics = CLIP ViT-L/14 + LAION improved aesthetic predictor | Established, local, 1–10 scale. The LAION MLP has no activations and is collapsed into one linear layer (`tools/make_aesthetic_head.py` → `src/analysis/aesthetic_head.bin`, 3 KB, embedded). The 1.2 GB ONNX vision model is downloaded on request into `%LOCALAPPDATA%\Cerno\data\models` (`~/.local/share/cerno/models`). |
@@ -42,11 +42,14 @@ cargo build --release --features heic
 | Only the **six modules** below, all local | LAION, V2.5, personal taste, CLIP attributes, exposure, eye sharpness. They share the decoded 2048 px image and the stored embeddings; adding a module means a DB column + version constant + `is_complete` check. |
 | Personal taste model = ridge regression on the stored CLIP embeddings | The user's stars (1–5) are the labels, deleted photos count as 0 (`feedback` table – the file row is gone, the embedding stays). Trained in the background 2 s after ratings/deletions change, from 15 examples; 5-fold CV picks λ and reports the typical error in stars. AI scores still never set stars. |
 | Eye sharpness via YuNet (OpenCV Zoo, MIT, 230 KB, embedded) | Shallow depth of field: a sharp face in a blurred background would otherwise rank low. When a face ≥ 40 px is found, the "subject" sharpness (info bar, filmstrip marker, Hide blurry, sort) uses the eye percentile instead of the whole-frame one. |
-| Design system `ui_design_system_v1.2.md` (see `../MediaFileRenamer/docs/`) | Dark token *structure*, accent `#5B8EC4`, status colours, Segoe UI loaded from the system (egui's bundled font lacks ← →). **Deliberate deviation: all surfaces are neutral grey** (`#141414`/`#202020`/`#2A2A2A`, canvas `#161616`) instead of the system's blue-grey – tinted chrome around a photo biases colour judgement (Lightroom and Capture One are neutral too). Only accent and status colours carry hue. Icons (flags, map pin, panel toggles, the palette's check mark) are painted in `ui/icons.rs` / in place – egui has no flag emoji, no Lucide, and Segoe UI lacks ✓. |
+| Design system `ui_design_system_v1.2.md` (see `../MediaFileRenamer/docs/`) | Dark token *structure*, accent `#5B8EC4`, status colours, Segoe UI loaded from the system (egui's bundled font lacks ← →). **Deliberate deviation: all surfaces are neutral grey** (`#141414`/`#202020`/`#2A2A2A`, canvas `#161616`) instead of the system's blue-grey – tinted chrome around a photo biases colour judgement (Lightroom and Capture One are neutral too). Only accent and status colours carry hue, **plus the five label colours** (a dot in the info bar and a stripe on the filmstrip cell – the photo's own mark, not chrome). Icons (flags, map pin, panel toggles, the palette's check mark) are painted in `ui/icons.rs` / in place – egui has no flag emoji, no Lucide, and Segoe UI lacks ✓. |
 | UI in **German, English, French, Spanish, Italian** | User requirement. Starts in the system language (`sys-locale`, fallback English), `Ctrl+L` cycles, the choice is saved. The flag appears **only while switching** (fade-in); the help header shows the language as a word. Numbers keep the decimal point in every language ("6.1" next to "f/2.8" – a comma would mix notations). |
 | **The info bar always shows**; top bar, details panel and filmstrip are optional | Default: photo, filmstrip and info bar only. Buttons at the bottom right and `T` / `Tab` / `F6` (`Shift+Tab` all three) toggle them; states are saved (`top_bar`, `details_mode`, `filmstrip` – the pre-0.8 keys `toolbar`/`details` are ignored so the new default applied once). The top bar also appears when a filter hides every photo, so the filter can be changed back. |
-| **Keyboard = Lightroom conventions** where Cerno has the same function | `Tab` details panel, `Shift+Tab` all panels, `T` top bar, `F6` filmstrip, `I` detail stages (off → values → with explanations), `X` = reject (toggles; `Shift+X` rejects and moves on), `Delete` = delete, `Shift+0…5` rate and move on, `Z`, `F`, `C`, digits as in Lightroom; `?`/`H`/`F1` help; `Ctrl+K` command palette for everything else (sort, filter, panels, language …); `Ctrl+L` language. `Space` stays "next" and `Backspace` "previous" (Lightroom differs; harmless). |
+| **Keyboard = Lightroom conventions** where Cerno has the same function | `Tab` details panel, `Shift+Tab` all panels, `T` top bar, `F6` filmstrip, `I` detail stages (off → values → with explanations), `X` = reject (toggles; `Shift+X` rejects and moves on), `6`–`9` = red/yellow/green/blue label (again clears; `Shift+6`–`9` sets and moves on; purple is palette-only), `Delete` = delete, `Shift+0…5` rate and move on, `Z`, `F`, `C`, digits as in Lightroom; `?`/`H`/`F1` help; `Ctrl+K` command palette for everything else (sort, filter, panels, language, auto-advance, subfolders, series, duplicates …); `Ctrl+L` language. `Space` stays "next" and `Backspace` "previous" (Lightroom differs; harmless). Auto-advance is a saved palette switch, not Caps Lock – egui does not expose that key reliably. |
 | Three aesthetics values in the info bar, **all on the star scale** | `L 3.4 / V 3.8 / ★ 2.4` – small muted letters say which model. LAION and V2.5 are *displayed* via `aesthetic::as_stars` (2–8 → 0–5, clamped – the range the bars always used), so they compare with the user's stars; the DB keeps the raw 1–10 scores and sorting is unchanged. |
+| **Subfolders stay off** until the user turns them on | A card or a year folder must not be scanned and analysed by accident. The palette command reopens the current folder. Hidden directories (name starts with `.`) are skipped and directory symlinks are not followed. |
+| **Series** are time groups, not collapsed stacks | Consecutive photos at most 2 s apart (`SERIES_GAP_MS`) form a series. Capture-time sort puts the sharpest non-rejected photo first inside the series; "Best of each series" hides the rest, for every sort. Photos without a capture time are never in a series. Two cameras firing together can share a series – there is no camera id in the index yet. |
+| **Duplicates are exact and only marked** | Same fingerprint (FNV-1a of the 256 px thumbnail pixels plus the original size). The first path in folder order is the original; later copies are "duplicate of …". Nothing is rejected or deleted automatically. Near-duplicates (CLIP similarity) are not duplicates. |
 | Version **0.7.0** is the first numbered one | `Cargo.toml` is the only source; the help page and start screen show `CARGO_PKG_VERSION`. |
 
 ## Architecture
@@ -54,7 +57,7 @@ cargo build --release --features heic
 ```
 main.rs              eframe bootstrap (wgpu renderer), CLI path argument
 app.rs               CernoApp: state, keyboard/mouse model, layout, view (sort/filter) management
-view.rs              sorting + filtering of the folder list (pure, unit-tested)
+view.rs              sorting + filtering, time series and exact duplicates (`View`, pure, unit-tested)
 ui/viewer.rs         fit / zoom / pan geometry and drawing (display texture or full-res tiles)
 ui/filmstrip.rs      thumbnail strip centred on the current photo
 ui/bars.rs           toolbar, two-row info bar (meters, zoom, GPS pin, panel buttons), notices, language flash
@@ -64,10 +67,10 @@ ui/palette.rs        command palette (`Ctrl+K`): accent-insensitive word search,
 ui/icons.rs          painted flags, map pin, panel and help icons
 ui/stars.rs          star shapes
 i18n/                `Texts` struct (mod.rs) + one full literal per language (de/en/fr/es/it), date and coordinate formatting
-library.rs           folder scan, supported extensions, natural accent-insensitive order
+library.rs           folder scan (optional subfolders), supported extensions, natural accent-insensitive order
 loader.rs            prefetch worker pool + texture cache; full-resolution tiles for zoom
 decode.rs            bytes → RGB8 at a target size: JPEG (zune-jpeg) / HEIC (libheif), resize, EXIF orientation
-metadata.rs          rating, orientation, camera/exposure data from the in-memory file bytes
+metadata.rs          rating, colour label, capture time (`taken_ms`), orientation, camera/exposure data from the in-memory file bytes
 analysis/mod.rs      background analysis (only the missing parts per image) + ScoreBoard + model download + taste trainer thread
 analysis/sharpness.rs  tile-based Laplacian variance, region variance, percentile helper
 analysis/aesthetic.rs  ONNX encoders (DirectML → CPU): CLIP + embedded LAION head, SigLIP + V2.5 head from the models dir
@@ -77,9 +80,9 @@ analysis/faces.rs      YuNet face detection (CPU, embedded model) + sharpness ar
 analysis/taste.rs      ridge regression (Cholesky, k-fold CV) from embeddings to the user's stars
 thumbs.rs            filmstrip textures from loader / analysis / database
 deletion.rs          delayed deletion queue (countdown, undo, trash worker)
-db.rs                SQLite index: files (path+stamp → fingerprint, rating), images (scores, thumbnail, embedding), feedback (deletions), settings; additive migration
+db.rs                SQLite index: files (path+stamp → fingerprint, rating, label), images (scores, thumbnail, embedding, taken_ms, metadata_version), feedback (deletions), settings; additive migration
 tools/*.py           one-off model preparation (collapse heads, extract the SigLIP tower, CLIP prompt vectors)
-rating.rs            debounced background writer, one long-lived ExifTool process (-stay_open)
+rating.rs            debounced background writer for marks (rating and colour label), one long-lived ExifTool process (-stay_open)
 exiftool.rs          ExifTool stay-open protocol
 filetimes.rs         snapshot / restore of file timestamps
 paths.rs             data, model and database locations
@@ -96,11 +99,12 @@ theme.rs             design tokens → egui Visuals, system UI font
 ### Analysis
 
 - Two workers, nearest-first over the **whole folder** (not the filtered view), paused for 0.9 s after every navigation so display decoding wins.
-- Fast path: `stat` + one query; if `is_complete` holds (thumbnail, sharpness/exposure/faces of their current `VERSION`, LAION/V2.5 of the current model id when that model is available) nothing is decoded.
+- Fast path: `stat` + one query; if `is_complete` holds (thumbnail, sharpness/exposure/faces of their current `VERSION`, LAION/V2.5 of the current model id when that model is available, **and** `metadata_version == metadata::VERSION`) nothing is decoded.
 - Otherwise decode at 2048 px once and compute **only what is missing**: thumbnail (256 px JPEG in the DB) → **fingerprint = FNV-1a over thumbnail pixels + full size** → sharpness → exposure → faces + eye sharpness → CLIP (LAION score + embedding) → SigLIP (V2.5). Bumping one module's version re-runs just that module. Each model has its own lazily loaded session (`Slot`) and `ModelState` for the UI.
+- Metadata fast path: when the scores are already complete and only `metadata_version` is stale, the file is read and `metadata::read` runs – no 2048 px decode. That fills `taken_ms` and refreshes the file's rating and label. `put_metadata` updates the existing images row.
 - Taste trainer: a separate thread retrains from `Db::taste_examples` 2 s after `taste_changed()` (rating set, deletion carried out). Predictions come from the in-memory embeddings map, so `Analyzer::personal` is cheap per frame.
-- DB migration is additive: `migrate()` reads `PRAGMA table_info(images)` and `ALTER TABLE … ADD COLUMN`s what is missing. Never drop or recreate tables – the index holds the user's ratings history and taste feedback.
-- Records are keyed by fingerprint, so renamed files keep their scores. The rating writer updates the file's size in `files` after each write, so our own writes don't trigger re-fingerprinting.
+- DB migration is additive: `migrate()` reads `PRAGMA table_info` for `images` and `files` and `ALTER TABLE … ADD COLUMN`s what is missing. Never drop or recreate tables – the index holds the user's ratings history and taste feedback.
+- Records are keyed by fingerprint, so renamed files keep their scores. The mark writer updates the file's size in `files` after each write, so our own writes don't trigger re-fingerprinting.
 - `Analyzer::preload` fills the ScoreBoard from the DB when a folder opens, so saved sort/filter settings apply immediately. `ScoreBoard::version` only changes on real changes; the toolbar offers "Refresh order" when scores arrived after the view was built.
 
 ### Start-up (measured: photo on screen ~330 ms, first frame ~230 ms after `main`)
@@ -129,31 +133,39 @@ theme.rs             design tokens → egui Visuals, system UI font
 
 - Centre: stars, `AESTHETICS L 6.1 / V 6.5 / ★ 2.4` (LAION / V2.5 / personal; the letters are muted `Piece::Prefix`es of one `LayoutJob`, "–" when missing) and the sharpness meter. The centre width is measured from the laid-out meters, so longer labels (French, Italian) push the side columns instead of overlapping them.
 - Right: exposure line (+ EXIF digital zoom) and camera/lens; when they don't fit, whole parts are left out (focal length first, lens first) instead of clipping mid-word. Then the buttons: map pin (only with GPS; opens Google Maps via `ctx.open_url`, i.e. the default browser), help, the three panel toggles (tooltips carry the keys).
-- Left: name, position, viewer zoom (while zoomed), capture date, size, decode time.
-- The mouse wheel over the filmstrip steps through the photos (one per notch, touchpads per 50 pt); over the photo it zooms.
+- Left: name (relative, `100CANON/IMG_0001.JPG`, when the file is in a subfolder), position, viewer zoom (while zoomed), capture date, size, decode time. While auto-advance is on, the series position (`Series 3 / 7`) and "duplicate of …" share that line. A colour dot sits just left of the stars.
+- The mouse wheel over the filmstrip steps through the photos (one per notch, touchpads per 50 pt); over the photo it zooms. In capture-time order neighbouring series get a wider gap; the current series has an accent line under its cells. "Best of each series" draws `+n` on the photo that stands for the hidden rest. A duplicate draws a small badge.
+
+### View
+
+- `view::build` returns a `View`: the visible paths, a `SeriesPlace` per path (`None` when the photo is not in a series), the original path of each duplicate, and `grouped` (true only for capture-time sort, which is the only order that keeps a series together).
+- Capture time is ascending; photos without a time come last. Inside a series the order is subject sharpness descending, rejected last, not-yet-measured last. Other sorts stay descending with missing values last.
+- Session maps (`session_ratings`, `session_labels`) override the index until the writer has flushed. A mark remembers the next path *before* the rebuild, then steps there when the photo leaves the view or when advance was requested – index+1 after a capture-time reshuffle would skip the wrong photo.
 
 ### Keyboard details
 
 - `Tab` never reaches egui: `raw_input_hook` removes it and queues it for `handle_keys`. egui would otherwise move keyboard focus to the next widget with `Tab`, and `Space` ("next photo") would then also click that widget.
-- `Shift+digit` is recognised by the **physical** key (`Event::Key::physical_key`): with Shift the logical key is `!`, `"`, `§` … depending on the layout. On German layouts `Shift+0` types `=`, which is also a zoom key – zoom-in is suppressed in a frame with a shifted digit.
+- `Shift+digit` and `Shift+6`–`9` are recognised by the **physical** key (`Event::Key::physical_key`): with Shift the logical key is `!`, `"`, `§` … depending on the layout. On German layouts `Shift+0` types `=`, which is also a zoom key – zoom-in is suppressed in a frame with a shifted digit. `6`–`9` use the same physical-key path.
 - Texts show modifiers with the language's key names (`i18n::with_ctrl("K")` → `Strg+K` / `Ctrl+K`); help rows are literal per language.
 
-### Rating writes
+### Mark writes
 
-- The UI updates immediately (session map `path → rating`); the write is queued.
-- The writer debounces per file (pressing 3 then 4 quickly = one write) and skips writes that don't change the value read from the file.
-- Only `XMP-xmp:Rating` is written, plus the Microsoft rating tags (`EXIF:Rating`/`RatingPercent`, `XMP-microsoft:RatingPercent`) **only if the file already has them**, so Windows Explorer never shows a stale value. `0` deletes the tags. Rejected writes `-1` into `xmp:Rating` and clears the Microsoft tags – they have no "rejected", and Explorer then shows no stars.
-- `on_exit` flushes pending writes and joins the writer thread – a rating set just before closing must not be lost.
+- The UI updates immediately (session maps `path → rating` and `path → label`); the write is queued.
+- The writer debounces per file and merges a pending rating and a pending label into **one** ExifTool call. A value that already matches the file is left out of that call; if nothing changed, the dates are not touched.
+- `XMP-xmp:Label` is written with the English name, or deleted (empty value) when the colour is cleared. Localised Lightroom names (`Rot`, `Rouge`, `Púrpura`, …) are recognised on read. Unknown text is not a Cerno colour and is overwritten only when the user sets one.
+- Only `XMP-xmp:Rating` is written for stars, plus the Microsoft rating tags (`EXIF:Rating`/`RatingPercent`, `XMP-microsoft:RatingPercent`) **only if the file already has them**, so Windows Explorer never shows a stale value. `0` deletes the tags. Rejected writes `-1` into `xmp:Rating` and clears the Microsoft tags – they have no "rejected", and Explorer then shows no stars. Explorer ignores `xmp:Label`.
+- `on_exit` flushes pending writes and joins the writer thread – a rating or label set just before closing must not be lost.
 
 ## Roadmap
 
 1. ✅ Viewer, prefetch, star rating, timestamp-preserving writes.
 2. ✅ HEIC (Windows verified with a real sample incl. rating round trip), filmstrip, 100 % zoom with tiles, SQLite index, sharpness, aesthetics on DirectML, sort/filter, camera/exposure info.
 3. ✅ Analysis modules: V2.5, personal taste model, CLIP attributes, exposure, eye sharpness; details panel.
-4. Host SigLIP vision + V2.5 head in the user's Hugging Face repo and add the download button (like CLIP).
-5. Verify face detection / eye sharpness on real portraits (so far only unit tests and a run on photos without faces).
-6. Linux verification (build, libheif, WebGPU on AMD/Vulkan).
-7. Packaging with `cargo-packager` (`.msi`/NSIS, `.deb`, `.AppImage`) + updater; ship `DirectML.dll`; resolve the libde265 LGPL question first (see Gotchas).
+4. ✅ Selection: sort by capture time, colour labels, time series with the sharpest first, optional subfolders, exact duplicate marks, auto-advance.
+5. Host SigLIP vision + V2.5 head in the user's own Hugging Face repo and add the download button (like CLIP).
+6. Verify face detection / eye sharpness on real portraits (so far only unit tests and a run on photos without faces).
+7. Linux verification (build, libheif, WebGPU on AMD/Vulkan).
+8. Packaging with `cargo-packager` (`.msi`/NSIS, `.deb`, `.AppImage`) + updater; ship `DirectML.dll`; resolve the libde265 LGPL question first (see Gotchas).
 
 ## Gotchas
 

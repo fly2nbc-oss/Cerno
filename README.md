@@ -23,13 +23,15 @@ Cerno (Latin *cerno* – "I sift, discern, see clearly") is a native Rust deskto
 ## Features
 
 - **Instant switching** – background workers prefetch the photos around the current one, decoded at monitor resolution and uploaded as GPU textures.
-- **Keyboard-first, Lightroom-style keys** – `1`–`5` set stars, `Shift+1`–`5` rate and move on, `0` clears, `X` marks a photo as rejected (written as `xmp:Rating = -1`, nothing is deleted); `Ctrl+K` opens a command palette that reaches every function without the mouse.
-- **Safe metadata writes** – only the rating is written, in the background and debounced. File modification and creation dates stay bit-exact. Windows Explorer's own rating tags are kept in sync if present.
+- **Keyboard-first, Lightroom-style keys** – `1`–`5` set stars, `Shift+1`–`5` rate and move on, `0` clears, `X` marks a photo as rejected (written as `xmp:Rating = -1`, nothing is deleted), `6`–`9` set a colour label (red, yellow, green, blue; purple is in the command palette). `Ctrl+K` opens a command palette that reaches every function without the mouse, including auto-advance, subfolders, series and duplicate filters.
+- **Safe metadata writes** – only the rating and the colour label (`xmp:Label`, English names) are written, in the background and debounced, in one pass when both change. File modification and creation dates stay bit-exact. Windows Explorer's own rating tags are kept in sync if present.
 - **Zoom** – `Z` or double-click toggles 100 %, mouse wheel zooms around the cursor, drag pans. Full resolution is loaded on demand; zoom and position stay when you switch photos, so a series can be compared at the same spot.
 - **Compare** – `C` pins the current photo on the left, the right side browses the rest. `A` keeps the left one, `D` the right one; the other is marked as rejected and the next photo moves in, so a burst is culled in a few keystrokes. Both sides zoom together. The command palette's "Delete rejected photos" sends all rejects to the trash when you are done.
+- **Series and duplicates** – photos shot within two seconds form a series; sorting by capture time puts the sharpest one first, and "Best of each series" hides the rest. Identical copies (same pixels) are marked as duplicates of the first file, never deleted on their own.
+- **Folders** – open one folder, or turn on "Include subfolders" to read the tree under it (hidden folders stay out).
 - **Delete without dialogs** – `Delete` hides the photo at once and moves it to the trash after a 5-second countdown; every further deletion restarts it, `Esc` brings all waiting photos back. Nothing blocks meanwhile.
-- **Filmstrip** – thumbnails with your stars and a marker for probably blurry shots.
-- **Sharpness, aesthetics and your own taste** – see [Scores](#scores). Sort by rating, either aesthetics score, personal taste or sharpness; filter by stars; hide the blurriest shots.
+- **Filmstrip** – thumbnails with your stars, a colour stripe, a marker for probably blurry shots, and a wider gap between series.
+- **Sharpness, aesthetics and your own taste** – see [Scores](#scores). Sort by name, capture time, rating, either aesthetics score, personal taste or sharpness; filter by stars or colour; hide the blurriest shots; show only duplicates.
 - **Details panel** – `Tab` shows every value Cerno measured for the current photo, `I` steps through values → values with a short explanation in plain words → off: both aesthetics scores, personal taste, whole-frame and eye sharpness, clipped highlights and shadows, CLIP attributes and the state of each model.
 - **Info bar** – always visible: stars, the three aesthetics scores side by side (`L 6.1 / V 6.5 / ★ 2.4` = LAION / V2.5 / personal), sharpness, capture data incl. digital zoom, the current zoom level, and a map pin for photos with GPS coordinates (click opens Google Maps). Buttons at its right end show or hide the top bar, details panel and filmstrip; by default only the photo, the filmstrip and the info bar are visible.
 - **Five languages** – German, English, French, Spanish, Italian. Cerno starts in your system language; `Ctrl+L` switches, a flag briefly shows the new one.
@@ -47,7 +49,7 @@ cargo run --release --features heic -- "D:/Photos/2026-09 Trip"
 
 You can also start without an argument and drop a folder or photo onto the window, or press `Ctrl+O`. When copying `target/release/cerno.exe` elsewhere, copy `DirectML.dll` from the same folder along with it.
 
-**Requirement:** [ExifTool](https://exiftool.org/) on `PATH` for writing ratings (Windows: `winget install OliverBetz.ExifTool`, Debian/Ubuntu: `apt install libimage-exiftool-perl`). Viewing works without it. `CERNO_EXIFTOOL` can point to a specific executable.
+**Requirement:** [ExifTool](https://exiftool.org/) on `PATH` for writing ratings and colour labels (Windows: `winget install OliverBetz.ExifTool`, Debian/Ubuntu: `apt install libimage-exiftool-perl`). Viewing works without it. `CERNO_EXIFTOOL` can point to a specific executable.
 
 ## Usage
 
@@ -60,6 +62,8 @@ You can also start without an argument and drop a folder or photo onto the windo
 | `1`–`5` / `0` | Set star rating / remove it |
 | `1`–`5` with `Shift` | Set stars and go to the next photo |
 | `X` / `Shift+X` | Reject (again: undo) / reject and go to the next photo |
+| `6` / `7` / `8` / `9` | Colour label red / yellow / green / blue (again: remove it) |
+| `Shift+6`–`9` | Set that colour and go to the next photo |
 | `Delete` | Delete (to the trash after 5 s; `Esc` undoes) |
 | `C` | Compare: pin the current photo on the left / leave compare mode |
 | `A` / `D` | Compare: keep left / keep right – the other one is rejected |
@@ -143,7 +147,7 @@ cargo build --release --features heic
 **Known issues**
 
 - No colour management yet: embedded ICC profiles (e.g. Adobe RGB) are ignored.
-- Because the modification date is preserved and XMP padding often keeps the size equal, backup/sync tools that only compare size and date (e.g. `rsync` without `-c`) may not notice a rating change.
+- Because the modification date is preserved and XMP padding often keeps the size equal, backup/sync tools that only compare size and date (e.g. `rsync` without `-c`) may not notice a rating or colour-label change.
 - Truncated JPEGs are shown partially, with the missing part in grey.
 - Deleted photos go to the system trash (Recycle Bin / freedesktop trash), not straight to oblivion. Closing Cerno during the countdown carries the deletion out.
 

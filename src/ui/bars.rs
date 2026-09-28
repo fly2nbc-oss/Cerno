@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::analysis::{ModelState, Status, aesthetic};
 use crate::i18n::{self, Lang};
 use crate::loader::LoadedImage;
-use crate::metadata::{self, Rating};
+use crate::metadata::{self, Label, Rating};
 use crate::theme::tokens;
 use crate::ui::icons::{self, Panel};
 use crate::ui::stars;
@@ -85,6 +85,22 @@ pub fn toolbar(
                 .show_ui(ui, |ui| {
                     for filter in RatingFilter::ALL {
                         ui.selectable_value(&mut options.filter, filter, filter.label());
+                    }
+                });
+            let colour = options
+                .label
+                .map(i18n::label_name)
+                .unwrap_or(t.filter_label_all);
+            ComboBox::from_id_salt("label")
+                .selected_text((t.label_filter)(colour))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut options.label, None, t.filter_label_all);
+                    for label in Label::ALL {
+                        ui.selectable_value(
+                            &mut options.label,
+                            Some(label),
+                            i18n::label_name(label),
+                        );
                     }
                 });
             ui.checkbox(&mut options.hide_blurry, t.hide_blurry)
@@ -164,6 +180,12 @@ pub struct InfoBar<'a> {
     pub position: (usize, usize),
     pub image: Option<&'a LoadedImage>,
     pub rating: Rating,
+    pub label: Option<Label>,
+    /// 1-based position in the series and its length.
+    pub series: Option<(u32, u32)>,
+    /// Display name of the earlier photo with the same pixels.
+    pub duplicate_of: Option<String>,
+    pub auto_advance: bool,
     /// Some analysis result is known for this photo.
     pub analysed: bool,
     /// LAION and V2.5 scores, 1..10.
@@ -244,6 +266,15 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     if let Some(zoom) = bar.zoom {
         facts.push((t.zoom)(zoom));
     }
+    if bar.auto_advance {
+        facts.push(t.auto_advance_on.to_owned());
+    }
+    if let Some((index, len)) = bar.series {
+        facts.push((t.series_position)(index, len));
+    }
+    if let Some(name) = &bar.duplicate_of {
+        facts.push((t.duplicate_of)(name));
+    }
     if let Some(image) = bar.image {
         if let Some(taken) = &image.camera.taken {
             facts.push(i18n::date(taken));
@@ -313,6 +344,12 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
         tokens::MUTED,
     );
     let stars_left = centre - stars_width / 2.0;
+    if let Some(label) = bar.label {
+        let dot = Rect::from_center_size(pos2(stars_left - 14.0, row1), Vec2::splat(12.0));
+        painter.circle_filled(dot.center(), 5.0, crate::theme::label_color(label));
+        ui.interact(dot, ui.id().with("label-dot"), Sense::hover())
+            .on_hover_text(i18n::label_name(label));
+    }
     for n in 1..=5u8 {
         let x = stars_left + f32::from(n - 1) * (STAR_SIZE + STAR_GAP);
         let star = Rect::from_min_size(pos2(x, row1 - STAR_SIZE / 2.0), Vec2::splat(STAR_SIZE));

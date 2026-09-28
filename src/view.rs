@@ -3,10 +3,15 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use std::sync::Arc;
+
 use crate::analysis::sharpness;
 use crate::db::Scores;
 use crate::i18n;
-use crate::metadata::Rating;
+use crate::metadata::{Label, Rating};
+
+/// Photos taken at most this far apart belong to one series.
+pub const SERIES_GAP_MS: i64 = 2_000;
 
 /// Sharpness percentile (within the folder) below which a photo counts as probably blurry.
 pub const BLURRY_PERCENTILE: f32 = 0.2;
@@ -14,6 +19,8 @@ pub const BLURRY_PERCENTILE: f32 = 0.2;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortKey {
     Name,
+    /// Capture time, oldest first. Photos without a time stay at the end.
+    Taken,
     Rating,
     Aesthetics,
     AestheticsV25,
@@ -22,8 +29,9 @@ pub enum SortKey {
 }
 
 impl SortKey {
-    pub const ALL: [SortKey; 6] = [
+    pub const ALL: [SortKey; 7] = [
         Self::Name,
+        Self::Taken,
         Self::Rating,
         Self::Aesthetics,
         Self::AestheticsV25,
@@ -35,6 +43,7 @@ impl SortKey {
         let t = i18n::t();
         match self {
             Self::Name => t.sort_name,
+            Self::Taken => t.sort_taken,
             Self::Rating => t.sort_rating,
             Self::Aesthetics => t.sort_laion,
             Self::AestheticsV25 => t.sort_v25,
@@ -46,6 +55,7 @@ impl SortKey {
     pub fn id(self) -> &'static str {
         match self {
             Self::Name => "name",
+            Self::Taken => "taken",
             Self::Rating => "rating",
             Self::Aesthetics => "aesthetics",
             Self::AestheticsV25 => "aesthetics25",
@@ -117,7 +127,13 @@ impl RatingFilter {
 pub struct ViewOptions {
     pub sort: SortKey,
     pub filter: RatingFilter,
+    /// `None` shows every colour.
+    pub label: Option<Label>,
     pub hide_blurry: bool,
+    /// One photo per series: the sharpest that is not rejected.
+    pub best_of_series: bool,
+    /// Only photos whose pixels already appear earlier in the folder.
+    pub only_duplicates: bool,
 }
 
 impl Default for ViewOptions {
@@ -125,7 +141,10 @@ impl Default for ViewOptions {
         Self {
             sort: SortKey::Name,
             filter: RatingFilter::All,
+            label: None,
             hide_blurry: false,
+            best_of_series: false,
+            only_duplicates: false,
         }
     }
 }
@@ -141,9 +160,46 @@ impl ViewOptions {
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct Facts {
     pub rating: Rating,
+    pub label: Option<Label>,
+    /// Capture time in local wall-clock milliseconds.
+    pub taken_ms: Option<i64>,
+    /// Pixel fingerprint; `None` until the photo has been indexed.
+    pub fingerprint: Option<u64>,
     pub scores: Scores,
     /// Personal taste model, 0..=5.
     pub personal: Option<f32>,
+}
+
+/// Where a photo sits in its series (at least two photos). `index` is 1-based, sharpest
+/// non-rejected first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SeriesPlace {
+    pub id: u32,
+    pub index: u32,
+    pub len: u32,
+    /// Capture time of the earliest photo in the series. Orders series against each other.
+    pub start_ms: i64,
+}
+
+/// The filtered, sorted folder plus what the filmstrip and info bar need beside each path.
+/// Derefs to the paths, so navigation can treat it as the list of photos.
+#[derive(Debug, Clone, Default)]
+pub struct View {
+    pub paths: Arc<Vec<PathBuf>>,
+    /// Parallel to `paths`.
+    pub series: Arc<Vec<Option<SeriesPlace>>>,
+    /// Parallel to `paths`: the earlier photo with the same pixels, when this one is a copy.
+    pub duplicate_of: Arc<Vec<Option<PathBuf>>>,
+    /// Capture-time order keeps each series together, so the filmstrip can separate them.
+    pub grouped: bool,
+}
+
+impl std::ops::Deref for View {
+    type Target = [PathBuf];
+
+    fn deref(&self) -> &[PathBuf] {
+        &self.paths
+    }
 }
 
 /// Sorted values of the folder for percentiles: the whole frame among all photos, the eyes
@@ -185,75 +241,247 @@ impl Percentiles {
     }
 }
 
-/// Filters and sorts `all` (which is in name order). Session ratings win over those read from
-/// the files. Photos without scores yet are kept and sorted last, so nothing disappears just
-/// because the analysis hasn't reached it.
+struct Entry<'a> {
+    path: &'a PathBuf,
+    facts: Option<Facts>,
+    rating: Rating,
+    label: Option<Label>,
+    taken: Option<i64>,
+    /// Subject sharpness percentile, when the photo has been measured.
+    sharp: Option<f32>,
+}
+
+/// Filters and sorts `all` (which is in name order). Session ratings and labels win over those
+/// read from the files. Photos without scores yet are kept and sorted last, so nothing
+/// disappears just because the analysis hasn't reached it. `hidden` drops photos that are
+/// waiting to be deleted.
 pub fn build(
     all: &[PathBuf],
     options: ViewOptions,
     facts: impl Fn(&Path) -> Option<Facts>,
     session_ratings: &HashMap<PathBuf, Rating>,
-) -> Vec<PathBuf> {
-    let entries: Vec<(&PathBuf, Option<Facts>, Rating)> = all
+    session_labels: &HashMap<PathBuf, Option<Label>>,
+    hidden: impl Fn(&Path) -> bool,
+) -> View {
+    let entries: Vec<Entry<'_>> = all
         .iter()
         .map(|path| {
-            let facts = facts(path);
+            let known = facts(path);
             let rating = match session_ratings.get(path) {
                 Some(rating) => *rating,
-                None => facts.map(|f| f.rating).unwrap_or_default(),
+                None => known.map(|f| f.rating).unwrap_or_default(),
             };
-            (path, facts, rating)
+            let label = match session_labels.get(path) {
+                Some(label) => *label,
+                None => known.and_then(|f| f.label),
+            };
+            Entry {
+                path,
+                taken: known.and_then(|f| f.taken_ms),
+                rating,
+                label,
+                facts: known,
+                sharp: None,
+            }
         })
         .collect();
     let percentiles = Percentiles::from_scores(
         entries
             .iter()
-            .filter_map(|(_, f, _)| f.as_ref().map(|f| &f.scores)),
+            .filter_map(|e| e.facts.as_ref().map(|f| &f.scores)),
     );
-    let subject = |facts: &Option<Facts>| {
-        facts
-            .as_ref()
-            .and_then(|f| percentiles.subject(&f.scores))
-            .map(|(p, _)| p)
-    };
-
-    let mut shown: Vec<_> = entries
+    let fingerprints: HashMap<&Path, u64> = entries
         .iter()
-        .filter(|(_, facts, rating)| {
-            let blurry =
-                options.hide_blurry && subject(facts).is_some_and(|p| p < BLURRY_PERCENTILE);
-            options.filter.accepts(*rating) && !blurry
+        .filter_map(|entry| {
+            entry
+                .facts
+                .and_then(|facts| facts.fingerprint)
+                .map(|fp| (entry.path.as_path(), fp))
+        })
+        .collect();
+    let copies = duplicate_originals(all, |path| fingerprints.get(path).copied());
+
+    let shown: Vec<Entry<'_>> = entries
+        .into_iter()
+        .map(|mut entry| {
+            entry.sharp = entry
+                .facts
+                .as_ref()
+                .and_then(|f| percentiles.subject(&f.scores))
+                .map(|(p, _)| p);
+            entry
+        })
+        .filter(|entry| {
+            if hidden(entry.path) || copies_only_misses(options, &copies, entry.path) {
+                return false;
+            }
+            let blurry = options.hide_blurry && entry.sharp.is_some_and(|p| p < BLURRY_PERCENTILE);
+            options.filter.accepts(entry.rating)
+                && options.label.is_none_or(|label| entry.label == Some(label))
+                && !blurry
         })
         .collect();
 
-    // Stable sort, descending, missing values last; ties keep the name order.
-    let key = |(_, facts, rating): &&(&PathBuf, Option<Facts>, Rating)| -> Option<f32> {
-        match options.sort {
-            SortKey::Name => None,
-            // Stars, then unrated, rejected last.
-            SortKey::Rating => Some(match rating {
-                Rating::Stars(n) => f32::from(*n),
-                Rating::Unrated => 0.0,
-                Rating::Rejected => -1.0,
-            }),
-            SortKey::Aesthetics => facts.and_then(|f| f.scores.aesthetic),
-            SortKey::AestheticsV25 => facts.and_then(|f| f.scores.aesthetic25),
-            SortKey::Personal => facts.and_then(|f| f.personal),
-            SortKey::Sharpness => subject(facts),
-        }
-    };
-    if options.sort != SortKey::Name {
-        shown.sort_by(|a, b| match (key(a), key(b)) {
-            (Some(x), Some(y)) => y.total_cmp(&x),
-            (Some(_), None) => std::cmp::Ordering::Less,
-            (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => std::cmp::Ordering::Equal,
-        });
+    let places = series_places(&shown);
+    let mut order: Vec<usize> = (0..shown.len()).collect();
+    if options.best_of_series {
+        order.retain(|&i| places[i].is_none_or(|place| place.index == 1));
     }
-    shown
-        .into_iter()
-        .map(|(path, _, _)| (*path).clone())
-        .collect()
+    match options.sort {
+        SortKey::Name => {}
+        SortKey::Taken => order.sort_by(|&a, &b| taken_order(&shown, &places, a, b)),
+        other => {
+            let key = |entry: &Entry<'_>| -> Option<f32> {
+                match other {
+                    SortKey::Name | SortKey::Taken => None,
+                    SortKey::Rating => Some(match entry.rating {
+                        Rating::Stars(n) => f32::from(n),
+                        Rating::Unrated => 0.0,
+                        Rating::Rejected => -1.0,
+                    }),
+                    SortKey::Aesthetics => entry.facts.and_then(|f| f.scores.aesthetic),
+                    SortKey::AestheticsV25 => entry.facts.and_then(|f| f.scores.aesthetic25),
+                    SortKey::Personal => entry.facts.and_then(|f| f.personal),
+                    SortKey::Sharpness => entry.sharp,
+                }
+            };
+            order.sort_by(|&a, &b| match (key(&shown[a]), key(&shown[b])) {
+                (Some(x), Some(y)) => y.total_cmp(&x),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+            });
+        }
+    }
+
+    let mut paths = Vec::with_capacity(order.len());
+    let mut series = Vec::with_capacity(order.len());
+    let mut duplicate_of = Vec::with_capacity(order.len());
+    for index in order {
+        paths.push(shown[index].path.clone());
+        series.push(places[index]);
+        duplicate_of.push(copies.get(shown[index].path).cloned());
+    }
+    View {
+        paths: Arc::new(paths),
+        series: Arc::new(series),
+        duplicate_of: Arc::new(duplicate_of),
+        grouped: options.sort == SortKey::Taken,
+    }
+}
+
+fn copies_only_misses(
+    options: ViewOptions,
+    copies: &HashMap<PathBuf, PathBuf>,
+    path: &Path,
+) -> bool {
+    options.only_duplicates && !copies.contains_key(path)
+}
+
+/// First path in folder order is the original; every later photo with the same fingerprint
+/// points at it.
+fn duplicate_originals(
+    all: &[PathBuf],
+    fingerprint: impl Fn(&Path) -> Option<u64>,
+) -> HashMap<PathBuf, PathBuf> {
+    let mut groups: HashMap<u64, Vec<&PathBuf>> = HashMap::new();
+    for path in all {
+        if let Some(fp) = fingerprint(path) {
+            groups.entry(fp).or_default().push(path);
+        }
+    }
+    let mut copies = HashMap::new();
+    for paths in groups.into_values() {
+        if paths.len() < 2 {
+            continue;
+        }
+        let original = paths[0];
+        for dup in paths.into_iter().skip(1) {
+            copies.insert(dup.clone(), original.clone());
+        }
+    }
+    copies
+}
+
+/// Series of photos that follow each other by at most [`SERIES_GAP_MS`]. A single photo is
+/// not a series. Within a series the sharpest non-rejected photo is index 1; rejected and
+/// not-yet-measured photos come last.
+fn series_places(shown: &[Entry<'_>]) -> Vec<Option<SeriesPlace>> {
+    let mut timed: Vec<usize> = shown
+        .iter()
+        .enumerate()
+        .filter(|(_, entry)| entry.taken.is_some())
+        .map(|(index, _)| index)
+        .collect();
+    timed.sort_by(|&a, &b| shown[a].taken.cmp(&shown[b].taken).then(a.cmp(&b)));
+
+    let mut groups: Vec<Vec<usize>> = Vec::new();
+    for index in timed {
+        let taken = shown[index].taken.unwrap_or(0);
+        if let Some(group) = groups.last_mut()
+            && let Some(&prev) = group.last()
+            && taken - shown[prev].taken.unwrap_or(0) <= SERIES_GAP_MS
+        {
+            group.push(index);
+            continue;
+        }
+        groups.push(vec![index]);
+    }
+
+    let mut places = vec![None; shown.len()];
+    let mut id = 0u32;
+    for mut group in groups {
+        if group.len() < 2 {
+            continue;
+        }
+        let start_ms = group
+            .iter()
+            .filter_map(|&index| shown[index].taken)
+            .min()
+            .unwrap_or(0);
+        group.sort_by(|&a, &b| series_rank(&shown[a], &shown[b]).then(a.cmp(&b)));
+        let len = group.len() as u32;
+        id += 1;
+        for (rank, index) in group.into_iter().enumerate() {
+            places[index] = Some(SeriesPlace {
+                id,
+                index: rank as u32 + 1,
+                len,
+                start_ms,
+            });
+        }
+    }
+    places
+}
+
+/// Rejected last, then unmeasured, then the sharpest first.
+fn series_rank(a: &Entry<'_>, b: &Entry<'_>) -> std::cmp::Ordering {
+    let key = |entry: &Entry<'_>| (entry.rating == Rating::Rejected, entry.sharp.is_none());
+    key(a).cmp(&key(b)).then_with(|| match (a.sharp, b.sharp) {
+        (Some(x), Some(y)) => y.total_cmp(&x),
+        _ => std::cmp::Ordering::Equal,
+    })
+}
+
+fn taken_order(
+    shown: &[Entry<'_>],
+    places: &[Option<SeriesPlace>],
+    a: usize,
+    b: usize,
+) -> std::cmp::Ordering {
+    let key = |index: usize| -> Option<(i64, u32)> {
+        let taken = shown[index].taken?;
+        let (start, rank) = places[index]
+            .map(|place| (place.start_ms, place.index))
+            .unwrap_or((taken, 0));
+        Some((start, rank))
+    };
+    match (key(a), key(b)) {
+        (Some(x), Some(y)) => x.cmp(&y).then(a.cmp(&b)),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => a.cmp(&b),
+    }
 }
 
 /// `index`, or – if that is the pinned photo (compare mode) – its neighbour in `direction`,
@@ -305,6 +533,7 @@ mod tests {
                 ..Scores::default()
             },
             personal,
+            ..Facts::default()
         }
     }
 
@@ -345,7 +574,17 @@ mod tests {
                 sort,
                 ..ViewOptions::default()
             };
-            names(&build(&all, options, lookup, &HashMap::new()))
+            names(
+                &build(
+                    &all,
+                    options,
+                    lookup,
+                    &HashMap::new(),
+                    &HashMap::new(),
+                    |_| false,
+                )
+                .paths,
+            )
         };
         assert_eq!(sorted(SortKey::Name), "abcde");
         assert_eq!(sorted(SortKey::Aesthetics), "bcade");
@@ -369,7 +608,7 @@ mod tests {
                 filter,
                 ..ViewOptions::default()
             };
-            names(&build(&all, options, lookup, &session))
+            names(&build(&all, options, lookup, &session, &HashMap::new(), |_| false).paths)
         };
         assert_eq!(filtered(RatingFilter::AtLeast(3)), "bd");
         assert_eq!(filtered(RatingFilter::AtLeast(1)), "bd");
@@ -387,7 +626,17 @@ mod tests {
             ..ViewOptions::default()
         };
         assert_eq!(
-            names(&build(&all, options, lookup, &HashMap::new())),
+            names(
+                &build(
+                    &all,
+                    options,
+                    lookup,
+                    &HashMap::new(),
+                    &HashMap::new(),
+                    |_| false
+                )
+                .paths
+            ),
             "bcde"
         );
     }
@@ -409,6 +658,122 @@ mod tests {
         assert_eq!(p.subject(&all[1]), Some((1.0, true)));
         assert_eq!(p.subject(&all[2]), Some((0.0, true)));
         assert_eq!(p.subject(&all[0]), Some((1.0, false)));
+    }
+
+    fn timed(
+        name: &str,
+        taken: Option<i64>,
+        sharp: Option<f32>,
+        rating: Rating,
+    ) -> (PathBuf, Facts) {
+        (
+            PathBuf::from(name),
+            Facts {
+                rating,
+                taken_ms: taken,
+                scores: Scores {
+                    sharpness: sharp,
+                    ..Scores::default()
+                },
+                ..Facts::default()
+            },
+        )
+    }
+
+    #[test]
+    fn series_follow_capture_time_and_put_the_sharpest_first() {
+        let rows = [
+            timed("a", Some(0), Some(10.0), Rating::Unrated),
+            timed("b", Some(1_000), Some(90.0), Rating::Unrated),
+            timed("c", Some(1_800), Some(40.0), Rating::Rejected),
+            timed("d", Some(5_000), Some(5.0), Rating::Unrated),
+            timed("e", Some(6_000), Some(70.0), Rating::Unrated),
+            timed("f", None, Some(100.0), Rating::Unrated),
+        ];
+        let all: Vec<_> = rows.iter().map(|(p, _)| p.clone()).collect();
+        let known: HashMap<_, _> = rows.into_iter().collect();
+        let lookup = |p: &Path| known.get(p).copied();
+        let options = ViewOptions {
+            sort: SortKey::Taken,
+            ..ViewOptions::default()
+        };
+        let view = build(
+            &all,
+            options,
+            lookup,
+            &HashMap::new(),
+            &HashMap::new(),
+            |_| false,
+        );
+        // b is the sharpest of the first burst, c is rejected so last; e beats d; f has no time.
+        assert_eq!(names(&view.paths), "bacedf");
+        assert_eq!(view.series[0].unwrap().index, 1);
+        assert_eq!(view.series[0].unwrap().len, 3);
+        assert_eq!(view.series[2].unwrap().index, 3);
+        assert_eq!(view.series[3].unwrap().len, 2);
+        assert!(view.series[5].is_none());
+        assert!(view.grouped);
+
+        let best = ViewOptions {
+            sort: SortKey::Taken,
+            best_of_series: true,
+            ..ViewOptions::default()
+        };
+        let view = build(&all, best, lookup, &HashMap::new(), &HashMap::new(), |_| {
+            false
+        });
+        assert_eq!(names(&view.paths), "bef");
+        assert_eq!(view.series[0].unwrap().len, 3);
+        assert_eq!(view.series[1].unwrap().index, 1);
+    }
+
+    #[test]
+    fn duplicates_keep_the_first_path_as_original() {
+        let all: Vec<PathBuf> = ["a", "b", "c"].map(PathBuf::from).to_vec();
+        let known = HashMap::from([
+            (
+                all[0].clone(),
+                Facts {
+                    fingerprint: Some(1),
+                    ..Facts::default()
+                },
+            ),
+            (
+                all[1].clone(),
+                Facts {
+                    fingerprint: Some(2),
+                    ..Facts::default()
+                },
+            ),
+            (
+                all[2].clone(),
+                Facts {
+                    fingerprint: Some(1),
+                    ..Facts::default()
+                },
+            ),
+        ]);
+        let lookup = |p: &Path| known.get(p).copied();
+        let view = build(
+            &all,
+            ViewOptions::default(),
+            lookup,
+            &HashMap::new(),
+            &HashMap::new(),
+            |_| false,
+        );
+        assert_eq!(view.duplicate_of[0], None);
+        assert_eq!(view.duplicate_of[1], None);
+        assert_eq!(view.duplicate_of[2].as_deref(), Some(all[0].as_path()));
+
+        let only = ViewOptions {
+            only_duplicates: true,
+            ..ViewOptions::default()
+        };
+        let view = build(&all, only, lookup, &HashMap::new(), &HashMap::new(), |_| {
+            false
+        });
+        assert_eq!(names(&view.paths), "c");
     }
 
     #[test]
