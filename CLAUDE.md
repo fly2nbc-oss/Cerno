@@ -15,7 +15,7 @@ cargo test natural_order                                   # single test
 CERNO_TEST_HEIC=<file.heic> cargo test --features heic -- --include-ignored   # + HEIC rating round trip
 ```
 
-On Windows, `cargo` lives in `%USERPROFILE%\.cargo\bin` (rustup default location). The release build puts `DirectML.dll` next to `target\release\cerno.exe` (ort's `copy-dylibs`). A `--features heic` build also puts `heif.dll`, `libde265.dll` and a `licenses/` folder there (`build.rs`). The exe needs those files beside it when copied elsewhere.
+On Windows, `cargo` lives in `%USERPROFILE%\.cargo\bin` (rustup default location). The release build puts `DirectML.dll` next to `target\release\cerno.exe` (ort's `copy-dylibs`). A `--features heic` build also puts `heif.dll`, `libde265.dll` and a `licenses/` folder there (`build.rs`). The exe needs those files beside it when copied elsewhere. On Windows `build.rs` also embeds `assets/icon.ico` and the version info into the exe (`winresource`, which runs the Windows SDK's `rc.exe`).
 
 Unit tests live in-module (`#[cfg(test)]`). `rating::tests::writes_stars_and_keeps_file_dates` is a real round trip through ExifTool (umlaut file name, mtime + creation time compared) and silently skips when ExifTool isn't on `PATH` – make sure it actually ran before trusting a change to the write path. Fixture: `tests/fixtures/tiny.jpg`.
 
@@ -107,7 +107,8 @@ backup.rs            originals kept before an edit (data/backups, 30 days) for C
 transfer.rs          copy / move of the photos the filter shows (background thread)
 deletion.rs          delayed deletion queue (countdown, undo, trash worker)
 db.rs                SQLite index: files (path+stamp → fingerprint, rating, label), images (scores, thumbnail, embedding, taken_ms, metadata_version), feedback (deletions), backups (kept originals), settings; additive migration
-tools/*.py           one-off model preparation (collapse heads, extract the SigLIP tower, CLIP prompt vectors); `i18n_edit.py` for texts
+tools/*.py           one-off model preparation (collapse heads, extract the SigLIP tower, CLIP prompt vectors); `i18n_edit.py` for texts; `make_icon.py` for the app icon
+assets/              app icon: `icon-source.jpg` (image-model output) → `tools/make_icon.py` → `icon.png` (256 px, window and taskbar, `main.rs`) and `icon.ico` (16–256 px, the exe, `build.rs`)
 rating.rs            debounced background writer for marks (rating and colour label), quarter turns, pixel edits and Ctrl+Z restores; one long-lived ExifTool process (-stay_open)
 exiftool.rs          ExifTool stay-open protocol
 filelock.rs          who reads or writes which photo right now (holds around file I/O, write generations)
@@ -202,7 +203,7 @@ theme.rs             design tokens → egui Visuals, `text` font sizes, system U
 5. Host SigLIP vision + V2.5 head in the user's own Hugging Face repo and add the download button (like CLIP).
 6. Verify face detection / eye sharpness on real portraits (so far only unit tests and a run on photos without faces).
 7. Linux verification (build, libheif, WebGPU on AMD/Vulkan).
-8. Packaging with `cargo-packager` (`.msi`/NSIS, `.deb`, `.AppImage`) + updater; ship `DirectML.dll`, the HEIC DLLs and the `licenses/` folder that `build.rs` already places next to the exe.
+8. Packaging with `cargo-packager` (`.msi`/NSIS, `.deb`, `.AppImage`) + updater; ship `DirectML.dll`, the HEIC DLLs and the `licenses/` folder that `build.rs` already places next to the exe. The icons are in `assets/` (`icon.ico` for the installer, `icon.png` for the Linux `.desktop` entry – on Wayland the window icon comes from there via the app id `cerno`, not from `with_icon`).
 
 ## Gotchas
 
@@ -238,3 +239,4 @@ theme.rs             design tokens → egui Visuals, `text` font sizes, system U
 - `ViewportBuilder::with_maximized(true)` on a scaled Windows display leaves the window flagged as maximized at its restored size, and the first frame's `Maximized(true)` is then a no-op. Only the command is used; the restored window shows for ~13 ms.
 - Posted `WM_KEYDOWN`s also produce text input, so scripted tests can use the menus' letter jump.
 - `Ctrl+Z` restores with `write_in_place` plus a file-time snapshot (like a pixel edit), then writes the marks the file had just before, so a star given after the edit survives the undo.
+- The icon source is a JPEG with the "transparent" checkerboard baked into the pixels; `tools/make_icon.py` cuts the blue tile out by colour (blue minus red > 45), so a new JPEG source must keep a blue tile on a light border (a PNG with real transparency keeps its alpha). Change the icon there and regenerate both files – never edit `icon.png` / `icon.ico` by hand. Explorer caches exe icons: after a change it may show the old one until `ie4uinit.exe -show` or a new sign-in.

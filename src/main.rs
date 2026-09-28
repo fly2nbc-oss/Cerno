@@ -51,6 +51,7 @@ fn main() -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_title("Cerno")
             .with_app_id("cerno")
+            .with_icon(icon())
             .with_inner_size([1280.0, 860.0])
             .with_min_inner_size([480.0, 320.0])
             // No `with_maximized`: on a scaled Windows display it leaves the window flagged as
@@ -73,6 +74,14 @@ fn main() -> eframe::Result {
     )
 }
 
+/// Window and taskbar icon (eframe scales it to the system sizes); without it eframe shows its
+/// own "e". The exe's icon in Explorer is `assets/icon.ico`, embedded by `build.rs`. Both come
+/// from `tools/make_icon.py`.
+fn icon() -> egui::IconData {
+    eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png"))
+        .expect("assets/icon.png is a valid PNG")
+}
+
 /// One graphics backend instead of probing all of them saves ~90 ms at start-up (OpenGL even
 /// opens a helper window). DX12 on Windows – DirectML runs on it anyway; Vulkan with an OpenGL
 /// fallback elsewhere. `WGPU_BACKEND` still overrides it.
@@ -87,5 +96,18 @@ fn wgpu_options() -> WgpuConfiguration {
     WgpuConfiguration {
         wgpu_setup: WgpuSetup::CreateNew(setup),
         ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn icon_is_square_with_transparent_corners() {
+        let icon = super::icon();
+        assert_eq!((icon.width, icon.height), (256, 256));
+        assert_eq!(icon.rgba.len(), 256 * 256 * 4);
+        assert_eq!(icon.rgba[3], 0, "top-left corner is transparent");
+        let centre = (128 * 256 + 128) * 4;
+        assert_eq!(icon.rgba[centre + 3], 255, "the tile is opaque");
     }
 }

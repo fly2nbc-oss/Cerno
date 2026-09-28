@@ -44,6 +44,10 @@ zune-jpeg = "0.5.15"
 # DirectML runs on every DX12 GPU (AMD, Intel, NVIDIA).
 ort = { version = "2.0.0-rc.13", default-features = false, features = ["directml"] }
 
+[target.'cfg(windows)'.build-dependencies]
+# Embeds assets/icon.ico and the version info into the exe (uses the Windows SDK's rc.exe).
+winresource = "0.1.31"
+
 # Windows: `cargo install cargo-vcpkg && cargo vcpkg build` builds libheif into target/vcpkg.
 # Dynamic triplet so libheif and libde265 (LGPL-3.0) stay replaceable DLLs next to the exe.
 # `core` leaves out the default x265 *encoder* (GPL); decoding uses libde265.

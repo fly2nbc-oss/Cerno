@@ -1,5 +1,6 @@
 //! Copies the license bundle next to the executable, and on a Windows HEIC
-//! build the LGPL DLLs as well.
+//! build the LGPL DLLs as well. On Windows it also embeds the icon and the
+//! version info into the exe.
 //!
 //! libheif and libde265 are LGPL-3.0. They must stay shared libraries the
 //! recipient can replace, with the GPL and LGPL texts beside the program.
@@ -19,6 +20,10 @@ fn main() {
     let profile = profile_dir();
     copy_licenses(&profile.join("licenses"));
 
+    if target_windows() {
+        embed_icon();
+    }
+
     if heic_enabled() && target_windows() {
         if std::env::var_os("VCPKGRS_DYNAMIC").is_none() {
             panic!(
@@ -29,6 +34,26 @@ fn main() {
         copy_heic_dlls(&profile);
     }
 }
+
+/// The exe's icon in Explorer (the window icon is set in `main.rs`). winresource adds the
+/// version from Cargo.toml; the description is what Task Manager shows as the name, so it
+/// is "Cerno" rather than the package description.
+#[cfg(windows)]
+fn embed_icon() {
+    println!("cargo:rerun-if-changed=assets/icon.ico");
+    let root = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+    let icon = root.join("assets").join("icon.ico");
+    let mut res = winresource::WindowsResource::new();
+    res.set_icon(&icon.to_string_lossy());
+    res.set("FileDescription", "Cerno");
+    res.set("ProductName", "Cerno");
+    res.compile()
+        .unwrap_or_else(|err| panic!("failed to embed {}: {err}", icon.display()));
+}
+
+/// Cross-compiling for Windows from another system: no rc.exe, the exe keeps the default icon.
+#[cfg(not(windows))]
+fn embed_icon() {}
 
 fn heic_enabled() -> bool {
     std::env::var_os("CARGO_FEATURE_HEIC").is_some()
