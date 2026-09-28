@@ -1,5 +1,5 @@
 //! The info bar at the bottom: name and facts, stars and scores, exposure and camera, the
-//! map pin, help and menu buttons.
+//! help and menu buttons.
 
 use std::sync::Arc;
 
@@ -12,7 +12,7 @@ use eframe::egui::{
 use crate::analysis::aesthetic;
 use crate::i18n;
 use crate::loader::LoadedImage;
-use crate::metadata::{self, Label, Rating};
+use crate::metadata::{Label, Rating};
 use crate::theme::{text, tokens};
 use crate::ui::{icons, stars};
 
@@ -55,8 +55,6 @@ pub struct InfoBarOutput {
     pub rating: Option<Rating>,
     pub help: bool,
     pub menu: bool,
-    /// Google Maps link of the photo's position.
-    pub open_map: Option<String>,
 }
 
 /// Two rows: name / position · date · size (left), stars / scores (centre), exposure / camera
@@ -73,7 +71,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     let mut out = InfoBarOutput::default();
     let (row1, row2) = (rect.top() + 19.0, rect.top() + 42.0);
 
-    let buttons_left = buttons(ui, rect, bar, &mut out);
+    let buttons_left = buttons(ui, rect, &mut out);
 
     // Centre: scores as value (+ bar) below the stars; its width decides the side columns.
     let meters = if bar.analysed {
@@ -360,9 +358,9 @@ fn widest_centre(painter: &Painter) -> f32 {
         .fold(0.0, f32::max)
 }
 
-/// Buttons at the right end, laid out from the right edge: the menu, then help, then the map
-/// pin if the photo has a position. Returns their left edge.
-fn buttons(ui: &Ui, rect: Rect, bar: &InfoBar<'_>, out: &mut InfoBarOutput) -> f32 {
+/// Buttons at the right end, laid out from the right edge: the menu, then help. Returns their
+/// left edge.
+fn buttons(ui: &Ui, rect: Rect, out: &mut InfoBarOutput) -> f32 {
     let t = i18n::t();
     let y = rect.center().y;
     let mut x = rect.right() - 8.0;
@@ -384,15 +382,6 @@ fn buttons(ui: &Ui, rect: Rect, bar: &InfoBar<'_>, out: &mut InfoBarOutput) -> f
     out.help = icon_button(ui, area, &tooltip, false, |p, c, color| {
         icons::help(p, c, color);
     });
-    if let Some(position) = bar.image.and_then(|i| i.camera.gps) {
-        let area = next(&mut x);
-        let tooltip = (t.map_tooltip)(&i18n::coordinates(position.0, position.1));
-        if icon_button(ui, area, &tooltip, false, |p, c, color| {
-            icons::map_pin(p, c, 17.0, color, tokens::SURFACE);
-        }) {
-            out.open_map = Some(metadata::maps_url(position));
-        }
-    }
     x
 }
 

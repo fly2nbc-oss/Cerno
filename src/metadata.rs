@@ -374,6 +374,11 @@ pub fn maps_url((lat, lon): (f64, f64)) -> String {
     format!("https://www.google.com/maps/search/?api=1&query={lat:.6},{lon:.6}")
 }
 
+/// The position in OpenStreetMap, with a marker, at street level.
+pub fn osm_url((lat, lon): (f64, f64)) -> String {
+    format!("https://www.openstreetmap.org/?mlat={lat:.6}&mlon={lon:.6}#map=16/{lat:.6}/{lon:.6}")
+}
+
 /// `2026:09:12 14:03:22` plus an optional sub-second string (`"42"` → 420 ms) → Unix-style
 /// milliseconds of that wall clock. Years before 1 and impossible dates give `None`.
 fn capture_millis(date: Option<String>, subsec: Option<String>) -> Option<i64> {
@@ -639,6 +644,11 @@ mod tests {
         assert_eq!(
             maps_url((lat, lon)),
             "https://www.google.com/maps/search/?api=1&query=48.521600,-9.057600"
+        );
+        assert_eq!(
+            osm_url((lat, lon)),
+            "https://www.openstreetmap.org/?mlat=48.521600&mlon=-9.057600\
+             #map=16/48.521600/-9.057600"
         );
 
         // No fix, a broken rational and "no digital zoom" (1/1 or 0/0) give nothing.

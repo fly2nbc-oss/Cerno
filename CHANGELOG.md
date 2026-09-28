@@ -15,13 +15,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 - "Models & data" in the menu: where each model runs, the models folder, download, reset For you and delete the models – no longer part of the details panel.
 - Colour labels are part of the filter (small squares in the filter bar, rows with a colour dot in the menu); "Show all" resets them too.
 - The details panel shows the photo's size and load time.
+- Details › File shows the GPS position with a link to OpenStreetMap next to Google Maps.
 - JPEGs are converted to sRGB on decode (Adobe RGB, Display P3 by a fixed matrix, other profiles through a colour engine).
 
 ### Changed
 
 - The burger menu is grouped (view, sort, filter, edit, photo, colour labels, models & data, language, help) and fully keyboard-operated: arrows, `Enter`, `→`/`←` for submenus, a letter jumps, `Esc` closes the submenu first. Switches show a box, choices a tick; long rows end in "…".
 - Keys: `F` and `F11` full screen, `T` the filter bar (Lightroom: F full screen, T toolbar). "Sort and filter" is called "Filter bar" everywhere.
-- Info bar: `L / V / ☆` without the "Aesthetics" label – For you has an outline star, filled stars are only your rating. Size and load time left for the details panel; parts that don't fit are left out whole, and the side columns no longer move while browsing. Buttons are 32 px.
+- Info bar: `L / V / ☆` without the "Aesthetics" label – For you has an outline star, filled stars are only your rating. Size and load time left for the details panel; parts that don't fit are left out whole, and the side columns no longer move while browsing. Buttons are 32 px. The map pin is gone – the position and its map links are in Details › File.
 - Filter bar: one line; the status only shows while something needs attention (analysis running, model missing, loading or failed); hidden boxes fade at the edge.
 - "Probably blurry" needs the folder's blurriest 20 % **and** an absolute ceiling, so a folder of sharp photos gets no warnings. The filmstrip mark is a painted icon; every mark of a cell is named in its tooltip.
 - Duplicates: the original is the file whose name the others extend ("IMG_1.jpg" for "IMG_1 - Kopie.jpg"), else the only marked one, else the first in folder order. Before, the copy often counted as the original.

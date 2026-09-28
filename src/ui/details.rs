@@ -3,14 +3,15 @@
 use std::collections::HashSet;
 
 use eframe::egui::{
-    Align, Color32, FontId, Id, Label, Layout, Rect, RichText, ScrollArea, Sense, Stroke, Ui,
-    UiBuilder, vec2,
+    Align, Color32, FontId, Hyperlink, Id, Label, Layout, Rect, RichText, ScrollArea, Sense,
+    Stroke, Ui, UiBuilder, vec2,
 };
 
 use crate::analysis::{ModelState, Status, aesthetic, exposure};
 use crate::db::Scores;
 use crate::histogram::RgbHistogram;
 use crate::i18n;
+use crate::metadata;
 use crate::theme::{text, tokens};
 use crate::ui::icons;
 use crate::view::is_blurry;
@@ -88,6 +89,8 @@ pub struct Details<'a> {
     pub status: &'a Status,
     /// Original size in pixels and how long the display image took to load.
     pub file: Option<([u32; 2], u128)>,
+    /// GPS position (latitude, longitude) from the EXIF data.
+    pub position: Option<(f64, f64)>,
 }
 
 struct Value {
@@ -254,6 +257,10 @@ fn content(ui: &mut Ui, d: &Details<'_>, expanded: &mut HashSet<DetailRow>) {
         section(ui, t.section_file);
         plain_row(ui, t.row_size, format!("{w} × {h}"));
         plain_row(ui, t.row_load_time, format!("{load_ms} ms"));
+        if let Some((lat, lon)) = d.position {
+            plain_row(ui, t.row_location, i18n::coordinates(lat, lon));
+            map_links(ui, (lat, lon));
+        }
     }
 }
 
@@ -413,6 +420,31 @@ fn plain_row(ui: &mut Ui, label: &str, value: String) {
     ui.add_space(2.0);
 }
 
+/// `Google Maps · OpenStreetMap` under the coordinates, right-aligned like the values. A click
+/// opens the browser – and sends the position to that service.
+fn map_links(ui: &mut Ui, position: (f64, f64)) {
+    let link = |label: &str, url: String| {
+        Hyperlink::from_label_and_url(
+            RichText::new(label).font(FontId::proportional(text::SMALL)),
+            url,
+        )
+        .open_in_new_tab(true)
+    };
+    ui.horizontal(|ui| {
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.add_space(PAD);
+            ui.add(link("OpenStreetMap", metadata::osm_url(position)));
+            ui.label(
+                RichText::new("·")
+                    .font(FontId::proportional(text::SMALL))
+                    .color(tokens::MUTED),
+            );
+            ui.add(link("Google Maps", metadata::maps_url(position)));
+        });
+    });
+    ui.add_space(2.0);
+}
+
 fn paint_value(ui: &mut Ui, value: &Value) {
     let colour = if value.warn {
         tokens::STATUS_WARN
@@ -505,7 +537,9 @@ pub fn model_note(state: &ModelState) -> String {
 mod tests {
     use super::*;
     use crate::analysis::TasteStatus;
-    use eframe::egui::{Context, RawInput, Shape, pos2, vec2};
+    use eframe::egui::{
+        Context, Event, Modifiers, OutputCommand, PointerButton, RawInput, Shape, pos2, vec2,
+    };
 
     fn status() -> Status {
         Status {
@@ -541,6 +575,7 @@ mod tests {
             histogram: None,
             status: &status,
             file: None,
+            position: None,
         };
         let mut expanded = HashSet::from([DetailRow::Laion]);
         let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 800.0));
@@ -586,6 +621,7 @@ mod tests {
             histogram: None,
             status: &status,
             file: None,
+            position: None,
         };
         let mut expanded = HashSet::new();
         set_all_expanded(&mut expanded, true);
@@ -626,6 +662,86 @@ mod tests {
                 panel.right()
             );
         }
+    }
+
+    /// The File section shows the coordinates and links them to both maps; a click opens the
+    /// browser with that map (egui reports it, nothing is opened in a test).
+    #[test]
+    fn file_section_links_the_position_to_both_maps() {
+        let ctx = Context::default();
+        let status = status();
+        let position = (48.5216, -9.0576);
+        let details = Details {
+            scores: None,
+            personal: None,
+            frame_percentile: None,
+            eyes_percentile: None,
+            attributes: None,
+            histogram: None,
+            status: &status,
+            file: Some(([6000, 4000], 120)),
+            position: Some(position),
+        };
+        let panel = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 1200.0));
+        let frame = |events: Vec<Event>| {
+            let mut output = ctx.run_ui(
+                RawInput {
+                    screen_rect: Some(panel),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    draw(ui, panel, &details, &mut HashSet::new());
+                },
+            );
+            output.textures_delta.clear();
+            output
+        };
+        let output = frame(Vec::new());
+        let texts: Vec<(String, Rect)> = output
+            .shapes
+            .iter()
+            .filter_map(|clipped| match &clipped.shape {
+                Shape::Text(text) => {
+                    Some((text.galley.text().to_owned(), text.visual_bounding_rect()))
+                }
+                _ => None,
+            })
+            .collect();
+        let find = |wanted: &str| {
+            texts
+                .iter()
+                .find(|(text, _)| text == wanted)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{wanted:?} is drawn"))
+        };
+        find("48.52160° N, 9.05760° W");
+        find("Google Maps");
+        let osm = find("OpenStreetMap");
+        assert!(
+            osm.right() <= panel.right(),
+            "the link stays inside the panel"
+        );
+
+        let at = osm.center();
+        let button = |pressed| Event::PointerButton {
+            pos: at,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        };
+        frame(vec![Event::PointerMoved(at)]);
+        frame(vec![button(true)]);
+        let opened: Vec<String> = frame(vec![button(false)])
+            .platform_output
+            .commands
+            .into_iter()
+            .filter_map(|command| match command {
+                OutputCommand::OpenUrl(open) => Some(open.url),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(opened, [metadata::osm_url(position)]);
     }
 
     #[test]
