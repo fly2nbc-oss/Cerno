@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 
+use crate::backup;
 use crate::i18n;
 use crate::library;
 use crate::transfer::{Mode as TransferMode, Outcome as TransferOutcome};
@@ -197,6 +198,19 @@ impl CernoApp {
         }
     }
 
+    /// A photo really went to the trash: it teaches the taste model what the user doesn't
+    /// like, and its kept originals go with it (no copies left behind in the data folder).
+    pub(super) fn forget_deleted(&self, path: &Path) {
+        if let Err(err) = self.db.record_deletion(&path.to_string_lossy()) {
+            log::warn!("index: {err:#}");
+        }
+        if let Ok(dir) = backup::dir()
+            && let Err(err) = backup::discard(&self.db, &dir, path)
+        {
+            log::warn!("kept originals of {}: {err:#}", path.display());
+        }
+    }
+
     /// Starts due deletions and applies finished ones.
     pub(super) fn process_deletions(&mut self, ctx: &egui::Context) {
         let repaint = ctx.clone();
@@ -213,10 +227,7 @@ impl CernoApp {
                     .collect();
                 for path in &done.deleted {
                     self.session_ratings.remove(path);
-                    // Deleted photos teach the taste model what the user doesn't like.
-                    if let Err(err) = self.db.record_deletion(&path.to_string_lossy()) {
-                        log::warn!("index: {err:#}");
-                    }
+                    self.forget_deleted(path);
                 }
                 self.analyzer.taste_changed();
                 self.all_index = index_of(&all);

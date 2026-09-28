@@ -107,12 +107,12 @@ impl RatingWriter {
         let thread = std::thread::Builder::new()
             .name("cerno-rating-writer".into())
             .spawn(move || {
-                match crate::backup::prune(&db) {
-                    Ok(0) => {}
-                    Ok(n) => log::info!("deleted {n} originals older than 30 days"),
-                    Err(err) => log::warn!("backups: {err:#}"),
-                }
                 let backups = crate::backup::dir().ok();
+                match backups.as_deref().map(|dir| crate::backup::prune(&db, dir)) {
+                    None | Some(Ok(0)) => {}
+                    Some(Ok(n)) => log::info!("deleted {n} originals older than 30 days"),
+                    Some(Err(err)) => log::warn!("backups: {err:#}"),
+                }
                 run(
                     &rx,
                     &Shared {
@@ -266,7 +266,7 @@ fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
             Ok(Message::Restore { path }) => {
                 let held = files.hold_write(&path);
                 let result = flush_pending(&mut pending, &mut exiftool, &path, status, files)
-                    .and_then(|()| restore_original(&mut exiftool, &path, db));
+                    .and_then(|()| restore_original(&mut exiftool, &path, db, backups));
                 drop(held);
                 push_outcome(outcomes, path, result, Done::Restored);
             }
@@ -522,11 +522,16 @@ fn keep_original(db: &Db, backups: Option<&Path>, path: &Path) -> Result<()> {
 /// `Ctrl+Z`: writes the newest kept original back into the file – in place, so the file keeps
 /// its identity and dates – then the rating and colour label the file has now, so marks set
 /// after the edit stay. The copy is used up.
-fn restore_original(exiftool: &mut Option<ExifTool>, path: &Path, db: &Db) -> Result<()> {
+fn restore_original(
+    exiftool: &mut Option<ExifTool>,
+    path: &Path,
+    db: &Db,
+    backups: Option<&Path>,
+) -> Result<()> {
     let key = path.to_string_lossy();
-    let (id, copy) = db
-        .latest_backup(&key)?
-        .context("no original kept for this photo")?;
+    let dir = backups.context("no folder for the kept originals")?;
+    let (id, copy) =
+        crate::backup::latest(db, dir, path)?.context("no original kept for this photo")?;
     let original = std::fs::read(&copy).context("cannot read the kept original")?;
     let now = metadata::read(&std::fs::read(path).context("cannot read file")?);
     let label = match now.label {
@@ -544,7 +549,7 @@ fn restore_original(exiftool: &mut Option<ExifTool>, path: &Path, db: &Db) -> Re
     db.forget_file(&key).context("cannot drop the index row")?;
     db.drop_backup(id)?;
     if let Err(err) = std::fs::remove_file(&copy) {
-        log::warn!("kept original {copy}: {err}");
+        log::warn!("kept original {}: {err}", copy.display());
     }
     log::info!("original restored: {}", path.display());
     Ok(())
@@ -898,19 +903,20 @@ mod tests {
         let read = || metadata::read(&fs::read(&path).unwrap());
         let before = read().orientation;
 
-        keep_original(&db, Some(&dir.join("backups")), &path).unwrap();
+        let backups = dir.join("backups");
+        keep_original(&db, Some(&backups), &path).unwrap();
         apply_quarter_turn(&mut exiftool, &path, true, &db).unwrap();
         assert_ne!(read().orientation, before);
         write_marks(&mut exiftool, &path, Some(Rating::Stars(4)), None).unwrap();
 
-        restore_original(&mut exiftool, &path, &db).unwrap();
+        restore_original(&mut exiftool, &path, &db, Some(&backups)).unwrap();
         let after = read();
         assert_eq!(after.orientation, before);
         assert_eq!(after.rating.value, Rating::Stars(4));
         assert_eq!(fs::metadata(&path).unwrap().modified().unwrap(), old);
         assert!(db.latest_backup(&path.to_string_lossy()).unwrap().is_none());
         assert!(
-            restore_original(&mut exiftool, &path, &db).is_err(),
+            restore_original(&mut exiftool, &path, &db, Some(&backups)).is_err(),
             "used up"
         );
         drop(exiftool);

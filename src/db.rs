@@ -577,6 +577,16 @@ impl Db {
             .optional()?)
     }
 
+    /// Every copy of `path`, newest first: row id and the copy's file.
+    pub fn backups_of(&self, path: &str) -> Result<Vec<(i64, String)>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT id, backup FROM backups WHERE path = ?1 ORDER BY at_ms DESC, id DESC",
+        )?;
+        let rows = stmt.query_map([path], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
     pub fn drop_backup(&self, id: i64) -> Result<()> {
         self.conn()
             .execute("DELETE FROM backups WHERE id = ?1", [id])?;

@@ -405,11 +405,10 @@ impl eframe::App for CernoApp {
         for outcome in self.transfers.finish_now() {
             self.retarget_moved(&outcome);
         }
-        // Photos that really went to the trash teach For you, as during the session.
+        // Photos that really went to the trash teach For you and take their kept originals
+        // along, as during the session.
         for path in self.deletions.finish_now().deleted {
-            if let Err(err) = self.db.record_deletion(&path.to_string_lossy()) {
-                log::warn!("index: {err:#}");
-            }
+            self.forget_deleted(&path);
         }
     }
 }

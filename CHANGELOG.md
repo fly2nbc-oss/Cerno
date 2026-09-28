@@ -10,7 +10,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 ### Added
 
 - Straighten (`S`, fine grid, wheel or arrows, `Shift` finer) and crop (`R`: Original, 3:2, 4:3, 16:9, 1:1; `A` changes the ratio, `X` flips) for JPEGs, `Ctrl+←` / `Ctrl+→` for lossless quarter turns via the EXIF orientation. `Enter` applies, `Esc` cancels.
-- **Originals are kept**: before any of these edits the file is copied into Cerno's data folder (`backups`), and `Ctrl+Z` (also Edit › Undo) writes the newest copy of the current photo back – same file, same dates, with the rating and colour label given since. Copies are deleted after 30 days.
+- **Originals are kept**: before any of these edits the file is copied into Cerno's data folder (`backups`), and `Ctrl+Z` (also Edit › Undo) writes the newest copy of the current photo back – same file, same dates, with the rating and colour label given since. Copies are deleted after 30 days, or with the photo when it is deleted in Cerno.
 - Action menu (`Ctrl+M`, "Action" in the filter bar): copy or move every photo the filter shows to another folder, or delete them with the usual countdown.
 - "Models & data" in the menu: where each model runs, the models folder, download, reset For you and delete the models – no longer part of the details panel.
 - Colour labels are part of the filter (small squares in the filter bar, rows with a colour dot in the menu); "Show all" resets them too.
@@ -50,6 +50,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 - The CLIP model is downloaded from a fixed commit of its Hugging Face repository instead of the moving `main` branch, and checked by SHA-256 as well as by size before it is used. A changed or swapped file is rejected and removed.
 - ExifTool is only looked up in absolute `PATH` entries, and Cerno starts exactly the file it found – an empty entry no longer points into the working folder.
+- `Ctrl+Z` and the 30-day clean-up only read, restore or delete kept originals in Cerno's own backup folder; an index entry pointing at any other file is ignored and dropped.
 - A photo rated while it was being analysed is analysed again shortly afterwards instead of staying without values until the folder is reopened, and the index no longer keeps the rating it had before.
 - The explanations in the details panel (`I`) wrap inside the panel; before, they ran out of it and pushed every value out of view.
 - The window fills the screen at start (it stayed at its restored size while flagged as maximized on scaled displays).
