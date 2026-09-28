@@ -86,7 +86,7 @@ analysis/attributes.rs CLIP-IQA-style zero-shot attributes from the embedding (e
 analysis/exposure.rs   share of blown highlights / crushed shadows
 analysis/faces.rs      YuNet face detection (CPU, embedded model) + sharpness around the eyes
 analysis/taste.rs      ridge regression (Cholesky, k-fold CV) from embeddings to the user's stars
-thumbs.rs            filmstrip textures from loader / analysis / database
+thumbs.rs            filmstrip textures from loader / analysis / database; at most 400, the least recently drawn go first
 histogram.rs         RGB histogram of the display image
 edit.rs              straighten / crop geometry and the pixel work that writes a new JPEG
 backup.rs            originals kept before an edit (data/backups, 30 days) for Ctrl+Z
@@ -117,7 +117,7 @@ theme.rs             design tokens → egui Visuals, `text` font sizes, system U
 - Taste trainer: a separate thread retrains from `Db::taste_examples` 2 s after `taste_changed()` (rating set, deletion carried out). Predictions come from the in-memory embeddings map, so `Analyzer::personal` is cheap per frame.
 - DB migration is additive: `migrate()` reads `PRAGMA table_info` for `images` and `files` and `ALTER TABLE … ADD COLUMN`s what is missing. Never drop or recreate tables – the index holds the user's ratings history and taste feedback.
 - Records are keyed by fingerprint, so renamed files keep their scores. The mark writer updates the file's size in `files` after each write, so our own writes don't trigger re-fingerprinting.
-- `Analyzer::preload` fills the ScoreBoard from the DB when a folder opens, so saved sort/filter settings apply immediately. `ScoreBoard::version` only changes on real changes; with a score-dependent sort or filter the filter bar offers "Refresh order" when scores arrived after the view was built. In name order without filters the view rebuilds itself, at most every 2 s (`refresh_marks`) – nothing moves, but duplicate marks and series need the new fingerprints and capture times.
+- `Analyzer::preload` fills the ScoreBoard from the DB when a folder opens, so saved sort/filter settings apply immediately. `ScoreBoard::version` only changes on real changes; with a score-dependent sort or filter the filter bar offers "Refresh order" when scores arrived after the view was built. In name order without filters the marks refresh themselves, at most every 2 s (`refresh_marks`) – nothing moves, but duplicate marks and series need the new fingerprints and capture times. With the same photos in the same order only `series` and `duplicate_of` are swapped: a full `rebuild_view` restarts the loader (decodes in flight are discarded) and pauses the analysis.
 
 ### Start-up (measured: photo on screen ~330 ms, first frame ~230 ms after `main`)
 

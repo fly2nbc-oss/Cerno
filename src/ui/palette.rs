@@ -114,6 +114,24 @@ pub struct State {
     sub_cursor: Option<usize>,
 }
 
+impl State {
+    /// The menu is rebuilt every frame and can shrink while it is open (a deletion ran out,
+    /// "Refresh order" went away). Indices that no longer point at a row are dropped.
+    fn fit<A>(&mut self, entries: &[Entry<A>]) {
+        self.cursor = self.cursor.filter(|&i| i < entries.len());
+        self.open = self
+            .open
+            .filter(|&i| matches!(entries.get(i), Some(Entry::Group(_))));
+        let sub_rows = self.open.and_then(|i| match &entries[i] {
+            Entry::Group(group) => Some(group.rows.len()),
+            Entry::Row(_) => None,
+        });
+        self.sub_cursor = self
+            .sub_cursor
+            .filter(|&j| sub_rows.is_some_and(|len| j < len));
+    }
+}
+
 pub struct Output<A> {
     pub run: Option<A>,
     pub close: bool,
@@ -130,6 +148,7 @@ pub fn show<A: Copy>(
         run: None,
         close: false,
     };
+    state.fit(entries);
     keyboard(ctx, state, entries, &mut out);
 
     let (menu, id) = match placement {
@@ -294,9 +313,9 @@ fn keyboard<A: Copy>(ctx: &Context, state: &mut State, entries: &[Entry<A>], out
     });
 
     for key in keys {
-        let sub_rows = state.open.and_then(|index| match &entries[index] {
-            Entry::Group(group) => Some(&group.rows),
-            Entry::Row(_) => None,
+        let sub_rows = state.open.and_then(|index| match entries.get(index) {
+            Some(Entry::Group(group)) => Some(&group.rows),
+            _ => None,
         });
         match (key, sub_rows) {
             (Key::Escape, Some(_)) | (Key::ArrowLeft, Some(_)) => {
@@ -315,24 +334,26 @@ fn keyboard<A: Copy>(ctx: &Context, state: &mut State, entries: &[Entry<A>], out
                     run_row(row, out);
                 }
             }
-            (Key::Enter | Key::ArrowRight, None) => match state.cursor.map(|i| (i, &entries[i])) {
-                Some((index, Entry::Group(group))) => {
-                    state.open = Some(index);
-                    state.sub_cursor = group
-                        .rows
-                        .iter()
-                        .position(|row| matches!(row.mark, Mark::Choice(true)))
-                        .or(Some(0));
+            (Key::Enter | Key::ArrowRight, None) => {
+                match state.cursor.and_then(|i| Some((i, entries.get(i)?))) {
+                    Some((index, Entry::Group(group))) => {
+                        state.open = Some(index);
+                        state.sub_cursor = group
+                            .rows
+                            .iter()
+                            .position(|row| matches!(row.mark, Mark::Choice(true)))
+                            .or(Some(0));
+                    }
+                    Some((_, Entry::Row(row))) if key == Key::Enter => run_row(row, out),
+                    _ => {}
                 }
-                Some((_, Entry::Row(row))) if key == Key::Enter => run_row(row, out),
-                _ => {}
-            },
+            }
             _ => {}
         }
     }
 
     for letter in letters {
-        match state.open.map(|index| &entries[index]) {
+        match state.open.and_then(|index| entries.get(index)) {
             Some(Entry::Group(group)) => {
                 let labels: Vec<&str> = group.rows.iter().map(|r| r.label.as_str()).collect();
                 if let Some(j) = jump(&labels, state.sub_cursor, letter) {
@@ -613,6 +634,28 @@ mod tests {
         // "o" matches "Ordner öffnen" regardless of the accent on "ö" further in.
         frame(&mut state, &entries, vec![Event::Text("O".into())]);
         assert_eq!(state.cursor, Some(0));
+    }
+
+    #[test]
+    fn a_menu_that_shrinks_while_open_does_not_panic() {
+        let entries = entries();
+        let mut state = State::default();
+        // Cursor on the last row, then the submenu of the group open.
+        frame(&mut state, &entries, vec![key(Key::ArrowUp)]);
+        assert_eq!(state.cursor, Some(2));
+        let short = vec![Entry::Row(Row::new(1, "Ordner öffnen", None))];
+        for key_event in [Key::ArrowDown, Key::Enter, Key::ArrowRight, Key::Escape] {
+            let mut state = State {
+                open: Some(1),
+                cursor: Some(2),
+                sub_cursor: Some(1),
+            };
+            frame(&mut state, &short, vec![key(key_event)]);
+            frame(&mut state, &short, vec![Event::Text("x".into())]);
+        }
+        let out = frame(&mut state, &short, vec![key(Key::Enter)]);
+        assert!(out.run.is_none(), "the old cursor points nowhere now");
+        assert_eq!(state.cursor, None);
     }
 
     #[test]

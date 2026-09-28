@@ -610,16 +610,23 @@ impl CernoApp {
     /// Re-applies sorting, filtering and pending deletions, staying on `keep` (or the current
     /// photo) if it is still shown.
     fn rebuild_view(&mut self, ctx: &egui::Context, keep: Option<PathBuf>) {
-        let keep = keep.or_else(|| self.view.get(self.current).cloned());
-        let view = view::build(
+        let view = self.build_view();
+        self.set_view(ctx, view, keep);
+    }
+
+    fn build_view(&self) -> View {
+        view::build(
             &self.all,
             self.options,
             |p| self.facts(p),
             &self.session_ratings,
             &self.session_labels,
             |p| self.deletions.is_hidden(p),
-        );
+        )
+    }
 
+    fn set_view(&mut self, ctx: &egui::Context, view: View, keep: Option<PathBuf>) {
+        let keep = keep.or_else(|| self.view.get(self.current).cloned());
         // Comparing needs the pinned photo plus at least one other.
         if self.pinned.as_ref().is_some_and(|p| !view.contains(p)) || view.len() < 2 {
             self.pinned = None;
@@ -642,19 +649,30 @@ impl CernoApp {
     }
 
     /// Name order without filters: new scores cannot move a photo, but they bring the
-    /// fingerprints and capture times behind duplicate marks and series. Rebuild quietly, at
-    /// most every 2 s. (With a score-dependent sort or filter the filter bar offers "Refresh
+    /// fingerprints and capture times behind duplicate marks and series. Refresh them quietly,
+    /// at most every 2 s. (With a score-dependent sort or filter the filter bar offers "Refresh
     /// order" instead – rebuilding there would move photos under the user.)
+    ///
+    /// With the same photos in the same order only the marks are swapped: a full rebuild
+    /// would restart the loader (discarding decodes in flight) and pause the analysis.
     fn refresh_marks(&mut self, ctx: &egui::Context) {
         const EVERY: Duration = Duration::from_secs(2);
         if self.options.depends_on_scores() || self.board.version() == self.view_version {
             return;
         }
         let since = self.view_built.elapsed();
-        if since >= EVERY {
-            self.rebuild_view(ctx, None);
-        } else {
+        if since < EVERY {
             ctx.request_repaint_after(EVERY - since);
+            return;
+        }
+        let version = self.board.version();
+        let view = self.build_view();
+        if *view.paths == *self.view.paths {
+            self.view = view;
+            self.view_version = version;
+            self.view_built = Instant::now();
+        } else {
+            self.set_view(ctx, view, None);
         }
     }
 
@@ -875,12 +893,6 @@ impl CernoApp {
             self.loader.set_current(index);
             self.sync_analyzer();
             self.update_title(ctx);
-            let (view, current) = (Arc::clone(&self.view.paths), self.current);
-            self.thumbs.retain(|p| {
-                view.iter()
-                    .position(|q| q == p)
-                    .is_some_and(|i| i.abs_diff(current) < 150)
-            });
         }
     }
 

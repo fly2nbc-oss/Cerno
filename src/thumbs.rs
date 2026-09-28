@@ -22,8 +22,11 @@ use crate::decode;
 
 /// Longest side of a thumbnail in pixels.
 pub const THUMB_SIZE: u32 = 256;
-/// Textures kept at most; the filmstrip shows a few dozen.
+/// Textures kept at most; the filmstrip shows a few dozen. The analysis adds one for every
+/// photo of the folder, so the least recently drawn ones go once there are more.
 const MAX_TEXTURES: usize = 400;
+/// Evicting in batches keeps the sort off the per-photo path.
+const EVICT_SLACK: usize = MAX_TEXTURES / 4;
 
 pub struct Thumbs {
     inner: Arc<Inner>,
@@ -33,10 +36,40 @@ pub struct Thumbs {
 struct Inner {
     ctx: egui::Context,
     db: Arc<Db>,
-    textures: Mutex<HashMap<PathBuf, TextureHandle>>,
+    textures: Mutex<Textures>,
     queue: Mutex<Queue>,
     wake: Condvar,
     shutdown: AtomicBool,
+}
+
+/// Textures with the time they were last asked for (a counter, not a clock).
+#[derive(Default)]
+struct Textures {
+    map: HashMap<PathBuf, (TextureHandle, u64)>,
+    tick: u64,
+}
+
+impl Textures {
+    fn get(&mut self, path: &Path) -> Option<TextureHandle> {
+        self.tick += 1;
+        let tick = self.tick;
+        self.map.get_mut(path).map(|(texture, used)| {
+            *used = tick;
+            texture.clone()
+        })
+    }
+
+    fn insert(&mut self, path: PathBuf, texture: TextureHandle) {
+        self.tick += 1;
+        self.map.insert(path, (texture, self.tick));
+        if self.map.len() > MAX_TEXTURES + EVICT_SLACK {
+            let mut ticks: Vec<u64> = self.map.values().map(|(_, used)| *used).collect();
+            let cut = ticks.len() - MAX_TEXTURES;
+            let (_, oldest_kept, _) = ticks.select_nth_unstable(cut);
+            let oldest_kept = *oldest_kept;
+            self.map.retain(|_, (_, used)| *used >= oldest_kept);
+        }
+    }
 }
 
 #[derive(Default)]
@@ -77,7 +110,7 @@ impl Thumbs {
     /// The texture, or `None` after queueing a database lookup.
     pub fn get_or_request(&self, path: &Path) -> Option<TextureHandle> {
         if let Some(texture) = lock(&self.inner.textures).get(path) {
-            return Some(texture.clone());
+            return Some(texture);
         }
         let mut queue = lock(&self.inner.queue);
         if !queue.misses.contains(path) && queue.queued.insert(path.to_path_buf()) {
@@ -88,7 +121,7 @@ impl Thumbs {
     }
 
     pub fn contains(&self, path: &Path) -> bool {
-        lock(&self.inner.textures).contains_key(path)
+        lock(&self.inner.textures).map.contains_key(path)
     }
 
     /// Adds a thumbnail from RGB8 pixels of at most `THUMB_SIZE`.
@@ -99,22 +132,14 @@ impl Thumbs {
     /// Forgets the texture. A database load already running for this path is ignored, so the
     /// filmstrip doesn't flash the pre-edit thumbnail.
     pub fn invalidate(&self, path: &Path) {
-        lock(&self.inner.textures).remove(path);
+        lock(&self.inner.textures).map.remove(path);
         let mut queue = lock(&self.inner.queue);
         *queue.fresh.entry(path.to_path_buf()).or_insert(0) += 1;
         queue.misses.remove(path);
     }
 
-    /// Drops textures the filmstrip no longer needs.
-    pub fn retain(&self, keep: impl Fn(&Path) -> bool) {
-        let mut textures = lock(&self.inner.textures);
-        if textures.len() > MAX_TEXTURES {
-            textures.retain(|path, _| keep(path));
-        }
-    }
-
     pub fn clear(&self) {
-        lock(&self.inner.textures).clear();
+        lock(&self.inner.textures).map.clear();
         let mut queue = lock(&self.inner.queue);
         queue.pending.clear();
         queue.queued.clear();
@@ -164,7 +189,7 @@ fn worker(inner: &Inner) {
                 queue = inner.wake.wait(queue).unwrap_or_else(|p| p.into_inner());
             }
         };
-        if lock(&inner.textures).contains_key(&path) {
+        if lock(&inner.textures).map.contains_key(&path) {
             continue;
         }
         let loaded = load_from_db(&inner.db, &path);
@@ -239,6 +264,29 @@ mod tests {
         let options = DecoderOptions::default().jpeg_set_out_colorspace(ColorSpace::RGB);
         let mut decoder = JpegDecoder::new_with_options(ZCursor::new(&jpeg), options);
         assert_eq!(decoder.decode().unwrap().len(), 64 * 40 * 3);
+    }
+
+    #[test]
+    fn textures_stay_bounded_and_keep_the_ones_in_use() {
+        let ctx = egui::Context::default();
+        let texture = |i: usize| {
+            ctx.load_texture(
+                format!("t{i}"),
+                ColorImage::from_rgb([1, 1], &[0, 0, 0]),
+                TextureOptions::LINEAR,
+            )
+        };
+        let mut textures = Textures::default();
+        let visible = PathBuf::from("visible.jpg");
+        textures.insert(visible.clone(), texture(0));
+        for i in 1..=2_000 {
+            textures.insert(PathBuf::from(format!("{i}.jpg")), texture(i));
+            // The filmstrip asks for the photo on screen every frame.
+            assert!(textures.get(&visible).is_some());
+            assert!(textures.map.len() <= MAX_TEXTURES + EVICT_SLACK);
+        }
+        assert!(textures.map.contains_key(Path::new("2000.jpg")));
+        assert!(!textures.map.contains_key(Path::new("1.jpg")));
     }
 
     #[test]

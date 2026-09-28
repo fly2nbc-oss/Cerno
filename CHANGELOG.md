@@ -36,6 +36,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 - The window fills the screen at start (it stayed at its restored size while flagged as maximized on scaled displays).
 - `Ctrl+←` / `Ctrl+→` no longer also step to the neighbouring photo.
 - In name order without filters, duplicate marks and series appear as the analysis finds them, not only after sorting or filtering.
+- That refresh no longer restarts decoding every 2 s: a 100 % zoom on a large photo finishes again, and the analysis no longer pauses each time.
+- The menu no longer crashes when it gets shorter while it is open (e.g. a deletion runs out) and a key is pressed.
+- Filmstrip thumbnails stay at 400 textures while the analysis runs through a large folder; before, every analysed photo kept one in graphics memory.
 
 ## [0.9.0] – 2026-09-28
 
