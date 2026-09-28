@@ -21,15 +21,33 @@ pub struct DecodedImage {
 
 /// Decodes and scales the image down to fit `max_size` (never up). `orientation` is the EXIF
 /// value and only honoured for JPEG: libheif already applies the HEIF `irot`/`imir` transforms.
+/// JPEG pixels come out in sRGB (see [`to_srgb`]).
 pub fn decode_for_display(
     bytes: &[u8],
     format: Format,
     orientation: u16,
     max_size: [u32; 2],
 ) -> Result<DecodedImage> {
+    decode(bytes, format, orientation, max_size, true)
+}
+
+/// A JPEG at full size and in display orientation, with the pixels left in the file's own
+/// colour space: straighten and crop write them back under the original ICC profile, so a
+/// Display P3 or Adobe RGB photo keeps its colours.
+pub fn decode_for_edit(bytes: &[u8], orientation: u16) -> Result<DecodedImage> {
+    decode(bytes, Format::Jpeg, orientation, [u32::MAX; 2], false)
+}
+
+fn decode(
+    bytes: &[u8],
+    format: Format,
+    orientation: u16,
+    max_size: [u32; 2],
+    srgb: bool,
+) -> Result<DecodedImage> {
     let (width, height, rgb, orientation) = match format {
         Format::Jpeg => {
-            let (w, h, rgb) = decode_jpeg(bytes)?;
+            let (w, h, rgb) = decode_jpeg(bytes, srgb)?;
             (w, h, rgb, orientation)
         }
         Format::Heif => {
@@ -66,7 +84,7 @@ pub fn decode_for_display(
     })
 }
 
-fn decode_jpeg(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>)> {
+fn decode_jpeg(bytes: &[u8], srgb: bool) -> Result<(u32, u32, Vec<u8>)> {
     let options = DecoderOptions::default()
         .jpeg_set_out_colorspace(ColorSpace::RGB)
         .set_max_width(usize::from(u16::MAX))
@@ -76,7 +94,7 @@ fn decode_jpeg(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>)> {
         .decode()
         .map_err(|e| anyhow!("JPEG decoding failed: {e:?}"))?;
     let mut pixels = pixels;
-    if let Some(profile) = decoder.icc_profile() {
+    if srgb && let Some(profile) = decoder.icc_profile() {
         to_srgb(&mut pixels, &profile);
     }
     let info = decoder.info().context("JPEG header missing")?;
@@ -362,15 +380,24 @@ mod tests {
     }
 
     #[test]
+    fn edit_decode_keeps_the_stored_colours() {
+        let plain = fixtures::jpeg(1, 1, &[200, 40, 40]);
+        let mut adobe = plain.clone();
+        fixtures::insert_icc(&mut adobe, &fixtures::adobe_rgb_profile());
+        let bare = decode_for_edit(&plain, 1).unwrap();
+        let kept = decode_for_edit(&adobe, 1).unwrap();
+        assert_eq!(bare.rgb, kept.rgb, "no conversion for an edit");
+        let shown = decode_for_display(&adobe, crate::library::Format::Jpeg, 1, [8, 8]).unwrap();
+        assert_ne!(shown.rgb, kept.rgb, "the display converts");
+    }
+
+    #[test]
     fn adobe_rgb_jpeg_changes_the_pixel_and_srgb_does_not() {
-        let plain = tiny_jpeg(&[200, 40, 40]);
+        let plain = fixtures::jpeg(1, 1, &[200, 40, 40]);
         let bare = decode_for_display(&plain, crate::library::Format::Jpeg, 1, [8, 8]).unwrap();
 
-        let adobe_profile = moxcms::ColorProfile::new_adobe_rgb()
-            .encode()
-            .expect("adobe profile");
         let mut adobe_jpeg = plain.clone();
-        insert_icc(&mut adobe_jpeg, &adobe_profile);
+        fixtures::insert_icc(&mut adobe_jpeg, &fixtures::adobe_rgb_profile());
         let adobe =
             decode_for_display(&adobe_jpeg, crate::library::Format::Jpeg, 1, [8, 8]).unwrap();
         assert_ne!(
@@ -382,21 +409,31 @@ mod tests {
             .encode()
             .expect("srgb profile");
         let mut srgb_jpeg = plain.clone();
-        insert_icc(&mut srgb_jpeg, &srgb_profile);
+        fixtures::insert_icc(&mut srgb_jpeg, &srgb_profile);
         let srgb = decode_for_display(&srgb_jpeg, crate::library::Format::Jpeg, 1, [8, 8]).unwrap();
         assert_eq!(bare.rgb, srgb.rgb);
     }
+}
 
-    fn tiny_jpeg(rgb: &[u8]) -> Vec<u8> {
+/// Small JPEGs with or without an ICC profile, for tests here and in `rating`.
+#[cfg(test)]
+pub mod fixtures {
+    pub fn jpeg(width: u16, height: u16, rgb: &[u8]) -> Vec<u8> {
         let mut out = Vec::new();
         jpeg_encoder::Encoder::new(&mut out, 100)
-            .encode(rgb, 1, 1, jpeg_encoder::ColorType::Rgb)
+            .encode(rgb, width, height, jpeg_encoder::ColorType::Rgb)
             .unwrap();
         out
     }
 
+    pub fn adobe_rgb_profile() -> Vec<u8> {
+        moxcms::ColorProfile::new_adobe_rgb()
+            .encode()
+            .expect("adobe profile")
+    }
+
     /// One APP2 `ICC_PROFILE` segment right after the JPEG start marker.
-    fn insert_icc(jpeg: &mut Vec<u8>, profile: &[u8]) {
+    pub fn insert_icc(jpeg: &mut Vec<u8>, profile: &[u8]) {
         assert_eq!(&jpeg[..2], &[0xFF, 0xD8]);
         let mut segment = Vec::new();
         segment.extend_from_slice(b"ICC_PROFILE\0");

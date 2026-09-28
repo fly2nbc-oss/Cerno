@@ -598,6 +598,9 @@ fn apply_pixels(exiftool: &mut Option<ExifTool>, path: &Path, jpeg: &[u8], db: &
             path_str.to_owned(),
             "-all:all".to_owned(),
             "-unsafe".to_owned(),
+            // Not part of `-all:all`: the pixels stay in the file's colour space
+            // (`decode::decode_for_edit`), so its profile must come along.
+            "-ICC_Profile".to_owned(),
             "-Orientation#=1".to_owned(),
             "-ThumbnailImage=".to_owned(),
             "-PreviewImage=".to_owned(),
@@ -876,6 +879,56 @@ mod tests {
         );
         drop(exiftool);
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A re-encode keeps the ICC profile and the stored colours: an Adobe RGB photo must not
+    /// come back as untagged sRGB.
+    #[test]
+    fn reencode_keeps_the_colour_profile() {
+        use crate::decode::fixtures;
+        use zune_core::bytestream::ZCursor;
+        use zune_jpeg::JpegDecoder;
+
+        if crate::exiftool::locate().is_none() {
+            eprintln!("ExifTool not found – skipped");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("cerno-icc-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("adobe.jpg");
+        let rgb: Vec<u8> = (0..64 * 48).flat_map(|_| [30, 200, 60]).collect();
+        let mut jpeg = fixtures::jpeg(64, 48, &rgb);
+        let profile = fixtures::adobe_rgb_profile();
+        fixtures::insert_icc(&mut jpeg, &profile);
+        std::fs::write(&path, &jpeg).unwrap();
+        let before = crate::decode::decode_for_edit(&jpeg, 1).unwrap();
+
+        let db = Db::open_in_memory().unwrap();
+        let mut exiftool = None;
+        let rect = crate::edit::PixelRect {
+            x: 8,
+            y: 8,
+            w: 40,
+            h: 30,
+        };
+        let cropped = crate::edit::render_crop(&path, rect, &FileLocks::default()).unwrap();
+        apply_pixels(&mut exiftool, &path, &cropped, &db).unwrap();
+
+        let after = std::fs::read(&path).unwrap();
+        let mut decoder = JpegDecoder::new(ZCursor::new(&after));
+        decoder.decode_headers().unwrap();
+        assert_eq!(decoder.icc_profile().as_deref(), Some(profile.as_slice()));
+        let pixels = crate::decode::decode_for_edit(&after, 1).unwrap();
+        let (centre_before, centre_after) = (
+            &before.rgb[((24 * 64 + 32) * 3)..][..3],
+            &pixels.rgb[((15 * 40 + 20) * 3)..][..3],
+        );
+        for (a, b) in centre_before.iter().zip(centre_after) {
+            assert!(a.abs_diff(*b) <= 3, "{centre_before:?} → {centre_after:?}");
+        }
+        drop(exiftool);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     /// Quarter turn via the orientation tag, then a real re-encode. Dates stay put either way.

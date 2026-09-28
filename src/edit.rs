@@ -11,7 +11,6 @@ use anyhow::{Context as _, Result, bail};
 
 use crate::decode;
 use crate::filelock::FileLocks;
-use crate::library::Format;
 use crate::metadata;
 
 /// One wheel notch or arrow press, in radians (0.1°).
@@ -360,8 +359,8 @@ fn decode_jpeg(path: &Path, files: &FileLocks) -> Result<(u32, u32, Vec<u8>)> {
         std::fs::read(path).context("cannot read file")?
     };
     let meta = metadata::read(&bytes);
-    let decoded =
-        decode::decode_for_display(&bytes, Format::Jpeg, meta.orientation, [u32::MAX; 2])?;
+    // In the file's colour space: `rating::apply_pixels` carries its ICC profile over.
+    let decoded = decode::decode_for_edit(&bytes, meta.orientation)?;
     Ok((decoded.width, decoded.height, decoded.rgb))
 }
 
