@@ -98,13 +98,13 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: windows-installer
-          path: 
+          path: dist/windows/cerno_*_x64-setup.exe
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v7
         with:
           name: windows-portable
-          path: 
+          path: dist/windows/cerno_*_x64-portable.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -137,13 +137,13 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: linux-appimage
-          path: 
+          path: dist/linux/cerno_*_x86_64.AppImage
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v7
         with:
           name: linux-deb
-          path: 
+          path: dist/linux/cerno_*_amd64.deb
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v7
