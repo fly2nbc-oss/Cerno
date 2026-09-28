@@ -1,0 +1,20 @@
+[Desktop Entry]
+Type=Application
+Name=Cerno
+GenericName=Photo Viewer
+GenericName[de]=Fotobetrachter
+GenericName[fr]=Visionneuse de photos
+GenericName[es]=Visor de fotos
+GenericName[it]=Visualizzatore di foto
+Comment=Fast photo viewer and culling tool
+Comment[de]=Schneller Fotobetrachter zum Sichten und Bewerten
+Comment[fr]=Visionneuse rapide pour trier et noter vos photos
+Comment[es]=Visor rápido para seleccionar y valorar fotos
+Comment[it]=Visualizzatore veloce per selezionare e valutare foto
+Exec=cerno %f
+Icon=cerno
+Terminal=false
+Categories=Graphics;Photography;Viewer;
+MimeType=image/jpeg;image/heic;image/heif;
+Keywords=photo;viewer;culling;rating;heic;jpeg;
+StartupWMClass=cerno

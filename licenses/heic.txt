@@ -22,8 +22,16 @@ Built with vcpkg revision c76c06644034521fb761a39f8f52d8e87d1103d5
 (tag 2026.07.29), port feature libheif[core]. That feature set does not
 include the x265 encoder (GPL).
 
-On Linux, Cerno links the system's libheif. A Linux package should depend
-on the distribution's libheif and libde265 packages rather than bundling
-static copies.
+On Linux, Cerno links the system's libheif. The .deb package depends on
+the distribution's libheif and libde265 packages. The AppImage bundles
+the shared libraries of Ubuntu 24.04 (libheif1, libheif-plugin-libde265,
+libde265-0) in usr/lib; usr/share/doc/cerno/bundled-libraries.txt names
+their versions. Corresponding source: Ubuntu's source packages,
+
+    https://launchpad.net/ubuntu/+source/libheif
+    https://launchpad.net/ubuntu/+source/libde265
+
+You may replace those files inside an extracted AppImage
+(--appimage-extract) with interface-compatible builds.
 
 HEVC (H.265) is patent-encumbered. These texts cover copyright only.

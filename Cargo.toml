@@ -60,6 +60,54 @@ dependencies = ["libheif[core]"]
 [package.metadata.vcpkg.target]
 x86_64-pc-windows-msvc = { triplet = "x64-windows" }
 
+# Windows installer (NSIS) via cargo-packager. It packs the folder that
+# `packaging/windows/stage.ps1` assembles – the same folder the portable zip holds.
+[package.metadata.packager]
+product-name = "Cerno"
+identifier = "io.github.fly2nbc-oss.cerno"
+publisher = "fly2nbc-oss"
+authors = ["fly2nbc-oss <fly2nbc@gmail.com>"]
+homepage = "https://github.com/fly2nbc-oss/Cerno"
+category = "Photography"
+formats = ["nsis"]
+binaries-dir = "dist/windows/Cerno"
+out-dir = "dist/windows"
+resources = ["dist/windows/Cerno/*.dll", "dist/windows/Cerno/licenses"]
+
+# Per-user install into %LOCALAPPDATA%\Cerno, no admin rights. Cerno's own data is
+# %LOCALAPPDATA%\Cerno\data: the uninstaller deletes only the files it installed and
+# removes the data folder only when the user ticks "Delete the application data".
+[package.metadata.packager.nsis]
+installer-icon = "assets/icon.ico"
+installer-mode = "currentUser"
+languages = ["English", "German", "French", "Spanish", "Italian"]
+custom-language-file = { German = "packaging/windows/German.nsh", Italian = "packaging/windows/Italian.nsh" }
+appdata-paths = ['$LOCALAPPDATA\$PRODUCTNAME\data']
+
+# Linux .deb via cargo-deb (`--no-build` packs the HEIC release binary CI built).
+# `$auto` adds the linked libraries (glibc, libstdc++, libheif1) with their versions.
+# The rest is loaded at run time with dlopen: HEVC decoding is a libheif plugin
+# (Ubuntu 24.04 only suggests it), windowing and graphics come from winit and wgpu.
+[package.metadata.deb]
+maintainer = "fly2nbc-oss <fly2nbc@gmail.com>"
+copyright = "fly2nbc-oss and contributors"
+license-file = ["LICENSE", "0"]
+extended-description = """\
+Cerno switches between photos instantly, rates them 1-5 stars from the keyboard \
+and sorts or filters them by local sharpness and aesthetics scores. Ratings and \
+colour labels are written into the file as XMP without changing its dates."""
+section = "graphics"
+priority = "optional"
+depends = "$auto, libheif-plugin-libde265, libxkbcommon0, libxkbcommon-x11-0, libwayland-client0, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxcb1, libvulkan1 | libegl1"
+recommends = "libimage-exiftool-perl, mesa-vulkan-drivers, xdg-desktop-portal"
+assets = [
+    ["target/release/cerno", "usr/bin/", "755"],
+    ["packaging/linux/cerno.desktop", "usr/share/applications/", "644"],
+    ["assets/icon.png", "usr/share/icons/hicolor/256x256/apps/cerno.png", "644"],
+    ["NOTICE", "usr/share/doc/cerno/", "644"],
+    ["THIRD_PARTY.md", "usr/share/doc/cerno/", "644"],
+]
+
 # Decoding and resizing are painfully slow unoptimised; keep only our own code debuggable.
 [profile.dev.package."*"]
 opt-level = 3

@@ -1,9 +1,18 @@
 name: CI
 
+# Pull requests: lint and tests only. Pushes to main, tags and manual runs also
+# build the four packages; a `v*` tag turns them into a draft release.
 on:
   push:
-    branches: [main]
+    branches: [main, ci/packaging]
+    tags: ["v*"]
+    paths-ignore: ["**.md", "docs/**", "screenshots/**"]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -13,7 +22,7 @@ jobs:
     name: Lint & test (Linux, HEIC)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -30,11 +39,211 @@ jobs:
     name: Test & build (Windows)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
-      - run: cargo build --release
+      # Outside pull requests the packaging job builds the release (with HEIC).
+      - if: github.event_name == 'pull_request'
+        run: cargo build --release
+
+  package-windows:
+    name: Package (Windows installer, portable)
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      # libheif from vcpkg at the revision pinned in Cargo.toml, in target\vcpkg where
+      # build.rs looks for the DLLs. Built packages are cached as vcpkg binary cache.
+      VCPKG_ROOT: ${{ github.workspace }}\target\vcpkg
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}\.vcpkg-cache,readwrite
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: vcpkg revision
+        id: vcpkg
+        shell: bash
+        run: echo "rev=$(sed -n 's/^rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-${{ steps.vcpkg.outputs.rev }}-x64-windows-libheif-core
+      - name: libheif (vcpkg, dynamic triplet)
+        env:
+          REV: ${{ steps.vcpkg.outputs.rev }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          git init -q target/vcpkg
+          git -C target/vcpkg fetch -q --depth 1 https://github.com/microsoft/vcpkg $env:REV
+          git -C target/vcpkg checkout -q FETCH_HEAD
+          New-Item -ItemType Directory -Force .vcpkg-cache | Out-Null
+          target\vcpkg\bootstrap-vcpkg.bat -disableMetrics
+          target\vcpkg\vcpkg.exe install "libheif[core]:x64-windows"
+      - name: cargo-packager
+        run: cargo install cargo-packager --version 0.11.8 --locked
+      - name: Build (release, HEIC)
+        run: cargo build --release --locked --features heic
+      - name: Package
+        run: ./packaging/windows/build.ps1
+      - name: Install, start and uninstall
+        run: >
+          ./packaging/windows/test-installer.ps1
+          -Setup (Get-Item dist/windows/cerno_*_x64-setup.exe).FullName
+          -Photo (Resolve-Path tests/fixtures/tiny.jpg).Path
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-installer
+          path: dist/windows/cerno_*_x64-setup.exe
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-portable
+          path: dist/windows/cerno_*_x64-portable.zip
+          if-no-files-found: error
+
+  package-linux:
+    name: Package (Linux AppImage, deb)
+    if: github.event_name != 'pull_request'
+    # The oldest Ubuntu with libheif >= 1.17; sets the AppImage's glibc floor (2.39).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libheif-dev libheif-plugin-libde265 libxkbcommon-dev libwayland-dev \
+            patchelf desktop-file-utils libheif-examples libheif-plugin-x265
+      - name: cargo-deb
+        run: cargo install cargo-deb --version 3.8.0 --locked
+      - name: Build (release, HEIC)
+        run: cargo build --release --locked --features heic
+      - run: desktop-file-validate packaging/linux/cerno.desktop
+      - name: Package
+        run: packaging/linux/build.sh
+      - name: HEIC photo for the install tests
+        run: |
+          mkdir -p target/smoke
+          heif-enc --quality 80 -o target/smoke/smoke.heic tests/fixtures/tiny.jpg
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-appimage
+          path: dist/linux/cerno_*_x86_64.AppImage
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-deb
+          path: dist/linux/cerno_*_amd64.deb
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: smoke-photo
+          path: target/smoke/smoke.heic
+          if-no-files-found: error
+          retention-days: 3
+
+  # Each package on a clean system: the AppImage before any libheif is installed
+  # (it must bring its own), then the .deb through apt (its dependencies must
+  # resolve). Both open a HEIC photo under Xvfb; Cerno logs when it has drawn it.
+  test-linux-packages:
+    name: Install test (${{ matrix.image }})
+    needs: package-linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["ubuntu:24.04", "debian:trixie"]
+    container: ${{ matrix.image }}
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      RUST_LOG: info
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: "{linux-*,smoke-photo}"
+          merge-multiple: true
+          path: pkg
+      - name: Display server and graphics drivers
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends xvfb xauth mesa-vulkan-drivers libgl1-mesa-dri \
+            libegl1 libvulkan1 libxkbcommon0 libxkbcommon-x11-0 libx11-6 libx11-xcb1 libxcursor1 \
+            libxi6 libxcb1 libwayland-client0
+      - name: AppImage
+        run: |
+          if dpkg-query -W -f='${Status}\n' 'libheif*' 2>/dev/null | grep -q '^install ok'; then
+            echo "libheif is installed - the test would not show that the AppImage brings its own"
+            exit 1
+          fi
+          chmod +x pkg/*.AppImage
+          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a timeout 30 pkg/cerno_*_x86_64.AppImage pkg/smoke.heic \
+            >appimage.log 2>&1 || true
+          cat appimage.log
+          grep -q "start-up: first photo drawn" appimage.log
+      - name: deb
+        run: |
+          apt-get install -y ./pkg/cerno_*_amd64.deb
+          ldd /usr/bin/cerno | tee ldd.txt
+          ! grep -q "not found" ldd.txt
+          xvfb-run -a timeout 30 cerno pkg/smoke.heic >deb.log 2>&1 || true
+          cat deb.log
+          grep -q "start-up: first photo drawn" deb.log
+
+  release:
+    name: Draft release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows, package-windows, package-linux, test-linux-packages]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Tag matches Cargo.toml
+        id: version
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match the version in Cargo.toml ($version)"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: "{windows-*,linux-*}"
+          merge-multiple: true
+          path: release
+      - name: Checksums and release notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          (cd release && sha256sum -- * > SHA256SUMS.txt && cat SHA256SUMS.txt)
+          awk -v v="$VERSION" '
+            /^## \[/ { if (found) exit; found = index($0, "## [" v "]") == 1; next }
+            found' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "See [CHANGELOG.md](CHANGELOG.md)." > notes.md
+          cat >> notes.md <<EOF
+
+          ### Downloads
+
+          | File | For |
+          |---|---|
+          | \`cerno_${VERSION}_x64-setup.exe\` | Windows 10/11 installer – per user, no admin rights |
+          | \`cerno_${VERSION}_x64-portable.zip\` | Windows portable – unzip and run \`Cerno\\cerno.exe\` |
+          | \`cerno_${VERSION}_x86_64.AppImage\` | Linux portable – glibc 2.39 or newer (Ubuntu 24.04, Debian 13, Fedora 40 and later) |
+          | \`cerno_${VERSION}_amd64.deb\` | Ubuntu 24.04+, Debian 13+ |
+
+          Writing ratings and colour labels needs [ExifTool](https://exiftool.org/) (Windows: \`winget install OliverBetz.ExifTool\`; the .deb recommends it).
+          EOF
+      - uses: softprops/action-gh-release@v3
+        with:
+          draft: true
+          name: Cerno ${{ steps.version.outputs.version }}
+          body_path: notes.md
+          files: release/*

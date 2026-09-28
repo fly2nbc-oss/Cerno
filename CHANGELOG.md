@@ -9,6 +9,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ### Added
 
+- **Packages**, built by CI with HEIC support: a Windows installer (per user, no admin rights, in the five UI languages; uninstalling keeps Cerno's data unless asked), a Windows portable zip (VC++ runtime included), a Linux AppImage (HEIC libraries included, glibc 2.39+) and a `.deb` for Ubuntu 24.04+ / Debian 13+. A `v*` tag drafts a GitHub release with all four and `SHA256SUMS.txt`.
+
 - Straighten (`S`, fine grid, wheel or arrows, `Shift` finer) and crop (`R`: Original, 3:2, 4:3, 16:9, 1:1; `A` changes the ratio, `X` flips) for JPEGs, `Ctrl+←` / `Ctrl+→` for lossless quarter turns via the EXIF orientation. `Enter` applies, `Esc` cancels.
 - **Originals are kept**: before any of these edits the file is copied into Cerno's data folder (`backups`), and `Ctrl+Z` (also Edit › Undo) writes the newest copy of the current photo back – same file, same dates, with the rating and colour label given since. Copies are deleted after 30 days.
 - Action menu (`Ctrl+M`, "Action" in the filter bar): copy or move every photo the filter shows to another folder, or delete them with the usual countdown.

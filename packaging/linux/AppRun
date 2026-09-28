@@ -1,0 +1,14 @@
+#!/bin/sh
+# Starts Cerno inside the AppImage.
+#
+# Unlike AppImageKit's AppRun this stays in the caller's directory, so
+# `Cerno.AppImage ./photos` opens the right folder, and it sets no
+# LD_LIBRARY_PATH: cerno finds the bundled libraries through its rpath, and the
+# programs it starts (ExifTool, the browser) keep the system's libraries.
+here="$(dirname "$(readlink -f "$0")")"
+
+# libheif loads HEVC decoding as a plugin. The variable replaces libheif's
+# built-in plugin directory, so the bundled plugin is used, never the host's.
+export LIBHEIF_PLUGIN_PATH="$here/usr/lib/libheif/plugins"
+
+exec "$here/usr/bin/cerno" "$@"

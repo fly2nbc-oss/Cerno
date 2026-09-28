@@ -75,7 +75,18 @@ Cerno (Latin *cerno* – "I sift, discern, see clearly") is a native Rust deskto
 
 ## Quick Start
 
-No binary releases yet – build from source:
+**Download** from [Releases](https://github.com/fly2nbc-oss/Cerno/releases) (drafted by CI for every `v*` tag; each push to `main` leaves the same four files as run artifacts):
+
+| File | Platform |
+|---|---|
+| `cerno_<version>_x64-setup.exe` | Windows 10/11 installer – per user into `%LOCALAPPDATA%\Cerno`, no admin rights; uninstall from Apps & features |
+| `cerno_<version>_x64-portable.zip` | Windows portable – unzip anywhere, run `Cerno\cerno.exe` (VC++ runtime included) |
+| `cerno_<version>_x86_64.AppImage` | Linux portable – `chmod +x`, run; HEIC libraries included; needs glibc 2.39+ (Ubuntu 24.04, Debian 13, Fedora 40 or newer) |
+| `cerno_<version>_amd64.deb` | Ubuntu 24.04+ / Debian 13+ – `sudo apt install ./cerno_<version>_amd64.deb` pulls in libheif's HEVC plugin and ExifTool |
+
+The Windows files are not code-signed yet, so SmartScreen asks once (*More info* → *Run anyway*). Installed or portable, Cerno keeps its index, models and kept originals in `%LOCALAPPDATA%\Cerno\data` (Linux: `~/.local/share/cerno`); uninstalling leaves them unless you tick *Delete the application data*.
+
+Or build from source:
 
 ```bash
 cargo run --release --features heic -- "D:/Photos/2026-09 Trip"
@@ -177,6 +188,13 @@ cargo clean -p libheif-sys
 
 **HEIC (Linux):** `sudo apt install libheif-dev`
 
+**Packages** – the scripts CI runs, after `cargo build --release --features heic`:
+
+```bash
+pwsh packaging/windows/build.ps1   # dist/windows: portable folder + zip, NSIS installer (needs cargo-packager)
+packaging/linux/build.sh           # dist/linux: .deb (needs cargo-deb) and AppImage – on Ubuntu 24.04
+```
+
 ---
 
 ## Project Structure
@@ -185,6 +203,7 @@ cargo clean -p libheif-sys
 Cerno/
 ├── src/           # app, loader, decode, analysis, ui, i18n
 ├── tools/         # model prep scripts
+├── packaging/     # Windows installer + portable zip, Linux .deb + AppImage
 ├── tests/fixtures/
 ├── screenshots/
 ├── .github/workflows/ci.yml
@@ -212,7 +231,7 @@ egui/eframe + wgpu · zune-jpeg / optional libheif · ONNX Runtime (DirectML) ·
 
 1. Download button for the V2.5 model files.
 2. Linux verification (build, HEIC, WebGPU on AMD).
-3. Installers (`.msi`, `.deb`, `.AppImage`) and an updater.
+3. An updater, and code signing for the Windows files.
 
 **Known issues**
 

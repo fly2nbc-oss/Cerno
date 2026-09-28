@@ -30,5 +30,16 @@ Shipped beside the binary on Windows:
   LGPL-3.0. See heic.txt, LGPL-3.0.txt and GPL-3.0.txt.
   You may replace those DLLs with interface-compatible versions.
 
+- MSVCP140.dll, MSVCP140_1.dll, VCRUNTIME140.dll, VCRUNTIME140_1.dll
+  (installer and portable zip)
+  Microsoft Visual C++ runtime, Distributable Code under the Microsoft
+  Visual Studio license terms, Copyright Microsoft Corporation
+
+Bundled in the Linux AppImage (usr/lib):
+
+- libheif, its libde265 plugin and libde265 (LGPL-3.0, see heic.txt),
+  libsharpyuv (BSD-3-Clause), all from Ubuntu 24.04. Their versions are
+  listed in usr/share/doc/cerno/bundled-libraries.txt.
+
 The Aesthetic Predictor V2.5 head is AGPL-3.0 and is not part of this
 binary or this repository.
