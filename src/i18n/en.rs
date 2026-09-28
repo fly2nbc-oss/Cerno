@@ -45,14 +45,6 @@ pub static TEXTS: Texts = Texts {
     actions: "Action",
     actions_tooltip: "Copy, move or delete the photos on screen",
     selection_delete: "Delete",
-    confirm_copy_title: "Copy the selection?",
-    confirm_copy: |n| format!("Copy {n} photos to another folder?"),
-    confirm_move_title: "Move the selection?",
-    confirm_move: |n| format!("Move {n} photos to another folder?"),
-    confirm_delete_selection_title: "Delete the selection?",
-    confirm_delete_selection: |n| {
-        format!("Move {n} photos to the trash? Esc brings them back while the countdown runs.")
-    },
     label_red: "Red",
     label_yellow: "Yellow",
     label_green: "Green",
@@ -102,6 +94,7 @@ pub static TEXTS: Texts = Texts {
     menu_photo: "Photo",
     menu_labels: "Colour labels",
     menu_language: "Language",
+    menu_models: "Models & data",
     loading: "Loading…",
     cannot_show: "Cannot show this image",
     no_match: "No photos match the filter",
@@ -151,13 +144,19 @@ pub static TEXTS: Texts = Texts {
              It is stored in Cerno's data folder and only downloaded once."
         )
     },
+    btn_download: "Download",
+    btn_cancel: "Cancel",
+    btn_close: "Close (Esc)",
+    aesthetics_offer: "Aesthetics scoring needs a model (1.2 GB): Menu → Models & data.",
 
     section_aesthetics: "Aesthetics",
     section_sharpness: "Sharpness (within folder)",
     section_exposure: "Exposure",
     section_attributes: "CLIP attributes",
-    section_models: "Models",
     section_histogram: "Histogram",
+    section_file: "File",
+    row_size: "Size",
+    row_load_time: "Load time",
     row_laion: "LAION (CLIP)",
     row_v25: "V2.5 (SigLIP)",
     row_personal: "For you",

@@ -217,12 +217,6 @@ pub struct Texts {
     pub actions: &'static str,
     pub actions_tooltip: &'static str,
     pub selection_delete: &'static str,
-    pub confirm_copy_title: &'static str,
-    pub confirm_copy: fn(usize) -> String,
-    pub confirm_move_title: &'static str,
-    pub confirm_move: fn(usize) -> String,
-    pub confirm_delete_selection_title: &'static str,
-    pub confirm_delete_selection: fn(usize) -> String,
     pub label_red: &'static str,
     pub label_yellow: &'static str,
     pub label_green: &'static str,
@@ -279,6 +273,7 @@ pub struct Texts {
     pub menu_photo: &'static str,
     pub menu_labels: &'static str,
     pub menu_language: &'static str,
+    pub menu_models: &'static str,
 
     // Straighten and crop.
     pub cmd_straighten: &'static str,
@@ -328,14 +323,21 @@ pub struct Texts {
     pub download_title: &'static str,
     /// Download size in GB.
     pub download_text: fn(f64) -> String,
+    pub btn_download: &'static str,
+    pub btn_cancel: &'static str,
+    pub btn_close: &'static str,
+    /// One-time hint after the first folder opens while the CLIP model is missing.
+    pub aesthetics_offer: &'static str,
 
     // Details panel.
     pub section_aesthetics: &'static str,
     pub section_sharpness: &'static str,
     pub section_exposure: &'static str,
     pub section_attributes: &'static str,
-    pub section_models: &'static str,
     pub section_histogram: &'static str,
+    pub section_file: &'static str,
+    pub row_size: &'static str,
+    pub row_load_time: &'static str,
     pub row_laion: &'static str,
     pub row_v25: &'static str,
     pub row_personal: &'static str,
@@ -446,9 +448,6 @@ mod tests {
             assert!((t.button_language)(name).contains(name), "{name}");
             assert!((t.cmd_language)(name).contains(name), "{name}");
             assert!((t.cmd_delete_rejected)(7).contains('7'), "{name}");
-            assert!((t.confirm_copy)(3).contains('3'), "{name}");
-            assert!((t.confirm_move)(3).contains('3'), "{name}");
-            assert!((t.confirm_delete_selection)(3).contains('3'), "{name}");
             assert!((t.cmd_label)("Red").contains("Red"), "{name}");
             let series = (t.series_position)(3, 7);
             assert!(series.contains('3') && series.contains('7'), "{name}");

@@ -27,7 +27,7 @@ use crate::transfer::{Mode as TransferMode, Outcome as TransferOutcome, Queue as
 use crate::ui::bars::{self, Panels, TransferChoice};
 use crate::ui::details::{self, DetailRow, DetailsMode, all_expanded, set_all_expanded};
 use crate::ui::icons::Panel;
-use crate::ui::{edit as edit_ui, filmstrip, help, palette, viewer};
+use crate::ui::{confirm, edit as edit_ui, filmstrip, help, models, palette, viewer};
 use crate::view::{
     self, BLURRY_PERCENTILE, Facts, FilterKind, Percentiles, PhotoFilter, SortKey, View,
     ViewOptions,
@@ -61,7 +61,17 @@ const COMPARE_GUTTER: f32 = 4.0;
 /// How long the flag stays after switching the language, and how long it fades out.
 const LANGUAGE_FLASH: Duration = Duration::from_millis(1400);
 const LANGUAGE_FADE: Duration = Duration::from_millis(450);
-const CLIP_DOWNLOAD_DECLINED: &str = "clip_download_declined";
+/// Set once the hint about the aesthetics model has been shown. Before 0.10 the same key
+/// meant "the download dialog was declined", which also ends the hint.
+const CLIP_OFFER_SHOWN: &str = "clip_download_declined";
+
+/// What a confirmation card asks about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConfirmAction {
+    DownloadModel,
+    ResetTaste,
+    DeleteModels,
+}
 
 pub struct CernoApp {
     db: Arc<Db>,
@@ -109,10 +119,12 @@ pub struct CernoApp {
     details_last: DetailsMode,
     /// Which detail rows show their explanation (session-wide).
     details_expanded: HashSet<DetailRow>,
-    /// Automatic CLIP download prompt runs once after the first frame.
-    clip_download_offer_done: bool,
     /// Help page over the photos (`H`, `F1`, `?`).
     help_open: bool,
+    /// Models & data card (menu).
+    models_open: bool,
+    /// A confirmation waiting for Enter or Esc; `true` reopens the models card afterwards.
+    confirm: Option<(ConfirmAction, bool)>,
     /// Burger menu (`Ctrl+K` and the button) while open.
     palette: Option<palette::State>,
     /// Action menu in the filter bar (`Ctrl+M`): copy, move or delete the photos on screen.
@@ -203,6 +215,7 @@ enum Action {
     RotateCw,
     Crop,
     Language(Lang),
+    Models,
     Help,
 }
 
@@ -441,8 +454,9 @@ impl CernoApp {
                 details
             },
             details_expanded: HashSet::new(),
-            clip_download_offer_done: false,
             help_open: false,
+            models_open: false,
+            confirm: None,
             palette: None,
             action_menu: false,
             tab_presses: Vec::new(),
@@ -495,6 +509,15 @@ impl CernoApp {
             .paths
             .is_empty()
             .then(|| (i18n::t().no_photos_in)(&library.dir.display().to_string()));
+        // No dialog at start: once the first folder with photos is open, a quiet hint says
+        // where the aesthetics model is downloaded.
+        if !library.paths.is_empty()
+            && self.analyzer.clip_model_missing()
+            && self.db.setting(CLIP_OFFER_SHOWN).as_deref() != Some("1")
+        {
+            self.notice = Some(i18n::t().aesthetics_offer.to_owned());
+            self.db.put_setting(CLIP_OFFER_SHOWN, "1");
+        }
         self.all_index = index_of(&library.paths);
         // A photo that was opened directly stays selected; a folder starts at the top of the
         // (possibly sorted) view.
@@ -578,9 +601,9 @@ impl CernoApp {
         }
     }
 
-    /// Copies or moves every photo the filter currently shows. The folder dialog blocks, like
-    /// opening a folder; the files themselves move on a background thread once pending rating
-    /// writes have finished.
+    /// Copies or moves every photo the filter currently shows. Choosing the folder is the
+    /// confirmation – no extra question. The folder dialog blocks, like opening a folder; the
+    /// files themselves move on a background thread once pending rating writes have finished.
     fn begin_transfer(&mut self, ctx: &egui::Context, mode: TransferMode) {
         let t = i18n::t();
         if self.view.is_empty() {
@@ -589,14 +612,6 @@ impl CernoApp {
         }
         if self.transfers.is_busy() {
             self.notice = Some(t.transfer_busy.to_owned());
-            return;
-        }
-        let n = self.view.len();
-        let (title, text) = match mode {
-            TransferMode::Copy => (t.confirm_copy_title, (t.confirm_copy)(n)),
-            TransferMode::Move => (t.confirm_move_title, (t.confirm_move)(n)),
-        };
-        if !confirm_yes(title, &text) {
             return;
         }
         let title = match mode {
@@ -698,65 +713,58 @@ impl CernoApp {
         }
     }
 
-    fn confirm_model_download(&mut self) {
+    /// Opens a confirmation card. `from_models`: the models card comes back afterwards.
+    fn ask(&mut self, action: ConfirmAction, from_models: bool) {
+        self.palette = None;
+        self.action_menu = false;
+        self.help_open = false;
+        self.models_open = false;
+        self.confirm = Some((action, from_models));
+    }
+
+    fn confirm_card(action: ConfirmAction) -> confirm::Confirm<'static> {
         let t = i18n::t();
-        let answer = rfd::MessageDialog::new()
-            .set_title(t.download_title)
-            .set_description((t.download_text)(
-                crate::analysis::aesthetic::MODEL_BYTES as f64 / 1e9,
-            ))
-            .set_buttons(rfd::MessageButtons::YesNo)
-            .show();
-        if answer == rfd::MessageDialogResult::Yes {
-            self.db.put_setting(CLIP_DOWNLOAD_DECLINED, "0");
-            self.analyzer.download_model();
-        } else {
-            self.db.put_setting(CLIP_DOWNLOAD_DECLINED, "1");
+        match action {
+            ConfirmAction::DownloadModel => confirm::Confirm {
+                title: t.download_title,
+                text: (t.download_text)(crate::analysis::aesthetic::MODEL_BYTES as f64 / 1e9),
+                confirm: t.btn_download,
+                danger: false,
+            },
+            ConfirmAction::ResetTaste => confirm::Confirm {
+                title: t.confirm_reset_taste_title,
+                text: t.confirm_reset_taste_text.to_owned(),
+                confirm: t.btn_reset_taste,
+                danger: true,
+            },
+            ConfirmAction::DeleteModels => confirm::Confirm {
+                title: t.confirm_delete_models_title,
+                text: t.confirm_delete_models_text.to_owned(),
+                confirm: t.btn_delete_models,
+                danger: true,
+            },
         }
     }
 
-    fn should_offer_clip_download(&self) -> bool {
-        self.analyzer.clip_model_missing()
-            && self.db.setting(CLIP_DOWNLOAD_DECLINED).as_deref() != Some("1")
-    }
-
-    fn offer_clip_download_if_needed(&mut self) {
-        if self.should_offer_clip_download() {
-            self.confirm_model_download();
-        }
-    }
-
-    fn confirm_reset_taste(&mut self) {
-        let t = i18n::t();
-        let answer = rfd::MessageDialog::new()
-            .set_title(t.confirm_reset_taste_title)
-            .set_description(t.confirm_reset_taste_text)
-            .set_buttons(rfd::MessageButtons::YesNo)
-            .show();
-        if answer == rfd::MessageDialogResult::Yes {
-            self.analyzer.reset_taste_learning();
-        }
-    }
-
-    fn confirm_delete_models(&mut self) {
-        let t = i18n::t();
-        let answer = rfd::MessageDialog::new()
-            .set_title(t.confirm_delete_models_title)
-            .set_description(t.confirm_delete_models_text)
-            .set_buttons(rfd::MessageButtons::YesNo)
-            .show();
-        if answer == rfd::MessageDialogResult::Yes {
-            match self.analyzer.delete_installed_models() {
-                Ok(()) => {
-                    self.db.put_setting(CLIP_DOWNLOAD_DECLINED, "0");
-                    self.offer_clip_download_if_needed();
-                }
-                Err(err) => {
+    fn carry_out(&mut self, action: ConfirmAction) {
+        match action {
+            ConfirmAction::DownloadModel => {
+                self.db.put_setting(CLIP_OFFER_SHOWN, "1");
+                self.analyzer.download_model();
+            }
+            ConfirmAction::ResetTaste => self.analyzer.reset_taste_learning(),
+            ConfirmAction::DeleteModels => {
+                if let Err(err) = self.analyzer.delete_installed_models() {
                     log::error!("delete models: {err:#}");
                     self.notice = Some(format!("{err:#}"));
                 }
             }
         }
+    }
+
+    /// A card (models, confirmation) is open: keys and the photo's mouse handling pause.
+    fn modal_open(&self) -> bool {
+        self.models_open || self.confirm.is_some()
     }
 
     /// Moves to `index`, stepping over the pinned photo in `direction` in compare mode.
@@ -947,18 +955,11 @@ impl CernoApp {
             .collect()
     }
 
-    /// The photos on screen go to the trash after a yes, then the usual countdown.
+    /// The photos on screen go to the trash with the usual countdown – no question, `Esc`
+    /// brings them all back, like `Delete` for a single photo.
     fn delete_selection(&mut self, ctx: &egui::Context) {
-        let t = i18n::t();
-        let n = self.view.len();
-        if n == 0 {
-            self.notice = Some(t.no_match.to_owned());
-            return;
-        }
-        if !confirm_yes(
-            t.confirm_delete_selection_title,
-            &(t.confirm_delete_selection)(n),
-        ) {
+        if self.view.is_empty() {
+            self.notice = Some(i18n::t().no_match.to_owned());
             return;
         }
         let now = Instant::now();
@@ -1358,6 +1359,7 @@ impl CernoApp {
                     .checked(i18n::current() == lang)
             })
             .collect();
+        entries.push(Entry::Row(Row::new(Action::Models, t.menu_models, None)));
         entries.push(Entry::Group(Group::new(
             t.menu_language,
             Some(i18n::with_ctrl("L")),
@@ -1374,7 +1376,7 @@ impl CernoApp {
             Action::Filter(kind) => self.change_options(ctx, |o| o.filter.toggle(kind)),
             Action::FilterClear => self.change_options(ctx, |o| o.filter.clear()),
             Action::Refresh => self.rebuild_view(ctx, None),
-            Action::EnableAesthetics => self.confirm_model_download(),
+            Action::EnableAesthetics => self.ask(ConfirmAction::DownloadModel, false),
             Action::TopBar => self.toggle_panel(Panel::Top),
             Action::Details => self.toggle_panel(Panel::Right),
             Action::Explanations => self.toggle_explanations(),
@@ -1419,6 +1421,7 @@ impl CernoApp {
                 self.change_options(ctx, |o| o.best_of_series = !o.best_of_series);
             }
             Action::Language(lang) => self.set_language(ctx, lang),
+            Action::Models => self.models_open = true,
             Action::Help => self.help_open = !self.all.is_empty(),
         }
     }
@@ -1868,6 +1871,10 @@ impl CernoApp {
             self.open(ctx, &path);
         }
         let tabs = std::mem::take(&mut self.tab_presses);
+        // The models card and a confirmation read their own Enter and Esc.
+        if self.modal_open() {
+            return;
+        }
 
         let keys = ctx.input(|i| {
             let plain = i.modifiers.is_none();
@@ -2120,7 +2127,11 @@ impl CernoApp {
                         pixels_per_point: ctx.pixels_per_point(),
                     };
                     let editing = self.edit.is_some();
-                    if !self.help_open && self.palette.is_none() && !self.action_menu {
+                    if !self.help_open
+                        && self.palette.is_none()
+                        && !self.action_menu
+                        && !self.modal_open()
+                    {
                         if editing && slot.side == Side::Single {
                             self.handle_edit_pointer(ui, &frame);
                         } else if !editing {
@@ -2237,15 +2248,6 @@ fn same_folder(open: &Path, dest: &Path) -> bool {
     }
 }
 
-fn confirm_yes(title: &str, text: &str) -> bool {
-    rfd::MessageDialog::new()
-        .set_title(title)
-        .set_description(text)
-        .set_buttons(rfd::MessageButtons::YesNo)
-        .show()
-        == rfd::MessageDialogResult::Yes
-}
-
 fn index_of(paths: &[PathBuf]) -> HashMap<PathBuf, usize> {
     paths
         .iter()
@@ -2268,9 +2270,6 @@ impl eframe::App for CernoApp {
                 "start-up: first frame after {} ms",
                 self.started.elapsed().as_millis()
             );
-        } else if !self.clip_download_offer_done {
-            self.clip_download_offer_done = true;
-            self.offer_clip_download_if_needed();
         }
         self.update_target(&ctx, window.size());
         self.process_deletions(&ctx);
@@ -2458,7 +2457,7 @@ impl eframe::App for CernoApp {
             }
             if let Some(rect) = details_rect {
                 let status = self.analyzer.status();
-                let detail_out = details::draw(
+                details::draw(
                     ui,
                     rect,
                     &details::Details {
@@ -2469,15 +2468,10 @@ impl eframe::App for CernoApp {
                         attributes: self.analyzer.attributes(&path),
                         histogram: image.as_deref().map(|i| &i.histogram),
                         status: &status,
+                        file: image.as_deref().map(|i| (i.original_size, i.load_ms)),
                     },
                     &mut self.details_expanded,
                 );
-                if detail_out.reset_taste {
-                    self.confirm_reset_taste();
-                }
-                if detail_out.delete_models {
-                    self.confirm_delete_models();
-                }
             }
         }
 
@@ -2503,7 +2497,7 @@ impl eframe::App for CernoApp {
                 self.rebuild_view(&ctx, None);
             }
             if out.download_model {
-                self.confirm_model_download();
+                self.ask(ConfirmAction::DownloadModel, false);
             }
             if let Some(choice) = out.transfer {
                 self.action_menu = false;
@@ -2546,6 +2540,30 @@ impl eframe::App for CernoApp {
             }
             if let Some(action) = out.run {
                 self.run(&ctx, action, &frames);
+            }
+        }
+        if self.models_open {
+            let out = models::overlay(&ctx, window, &self.analyzer.status());
+            if out.close {
+                self.models_open = false;
+            }
+            for (asked, action) in [
+                (out.download, ConfirmAction::DownloadModel),
+                (out.reset_taste, ConfirmAction::ResetTaste),
+                (out.delete_models, ConfirmAction::DeleteModels),
+            ] {
+                if asked {
+                    self.ask(action, true);
+                }
+            }
+        }
+        if let Some((action, back_to_models)) = self.confirm
+            && let Some(yes) = confirm::show(&ctx, window, &Self::confirm_card(action))
+        {
+            self.confirm = None;
+            self.models_open = back_to_models;
+            if yes {
+                self.carry_out(action);
             }
         }
         self.draw_language_flash(&ctx, if self.all.is_empty() { window } else { area });

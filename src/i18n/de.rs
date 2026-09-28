@@ -45,16 +45,6 @@ pub static TEXTS: Texts = Texts {
     actions: "Aktion",
     actions_tooltip: "Kopieren, Verschieben oder Löschen der angezeigten Fotos",
     selection_delete: "Löschen",
-    confirm_copy_title: "Auswahl kopieren?",
-    confirm_copy: |n| format!("{n} Fotos in einen anderen Ordner kopieren?"),
-    confirm_move_title: "Auswahl verschieben?",
-    confirm_move: |n| format!("{n} Fotos in einen anderen Ordner verschieben?"),
-    confirm_delete_selection_title: "Auswahl löschen?",
-    confirm_delete_selection: |n| {
-        format!(
-            "{n} Fotos in den Papierkorb legen? Esc holt sie zurück, solange der Countdown läuft."
-        )
-    },
     label_red: "Rot",
     label_yellow: "Gelb",
     label_green: "Grün",
@@ -104,6 +94,7 @@ pub static TEXTS: Texts = Texts {
     menu_photo: "Foto",
     menu_labels: "Farbmarken",
     menu_language: "Sprache",
+    menu_models: "Modelle & Daten",
     loading: "Wird geladen…",
     cannot_show: "Dieses Bild kann nicht angezeigt werden",
     no_match: "Kein Foto passt zum Filter",
@@ -155,13 +146,19 @@ pub static TEXTS: Texts = Texts {
              Es wird in Cernos Datenordner gespeichert und nur einmal geladen."
         )
     },
+    btn_download: "Herunterladen",
+    btn_cancel: "Abbrechen",
+    btn_close: "Schließen (Esc)",
+    aesthetics_offer: "Die Ästhetik-Bewertung braucht ein Modell (1.2 GB): Menü → Modelle & Daten.",
 
     section_aesthetics: "Ästhetik",
     section_sharpness: "Schärfe (im Ordner)",
     section_exposure: "Belichtung",
     section_attributes: "CLIP-Merkmale",
-    section_models: "Modelle",
     section_histogram: "Histogramm",
+    section_file: "Datei",
+    row_size: "Größe",
+    row_load_time: "Ladezeit",
     row_laion: "LAION (CLIP)",
     row_v25: "V2.5 (SigLIP)",
     row_personal: "Für dich",

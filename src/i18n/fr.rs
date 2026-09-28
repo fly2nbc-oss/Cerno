@@ -45,16 +45,6 @@ pub static TEXTS: Texts = Texts {
     actions: "Action",
     actions_tooltip: "Copier, déplacer ou supprimer les photos affichées",
     selection_delete: "Supprimer",
-    confirm_copy_title: "Copier la sélection ?",
-    confirm_copy: |n| format!("Copier {n} photos vers un autre dossier ?"),
-    confirm_move_title: "Déplacer la sélection ?",
-    confirm_move: |n| format!("Déplacer {n} photos vers un autre dossier ?"),
-    confirm_delete_selection_title: "Supprimer la sélection ?",
-    confirm_delete_selection: |n| {
-        format!(
-            "Mettre {n} photos à la corbeille ? Échap les ramène tant que le compte à rebours tourne."
-        )
-    },
     label_red: "Rouge",
     label_yellow: "Jaune",
     label_green: "Vert",
@@ -104,6 +94,7 @@ pub static TEXTS: Texts = Texts {
     menu_photo: "Photo",
     menu_labels: "Couleurs",
     menu_language: "Langue",
+    menu_models: "Modèles et données",
     loading: "Chargement…",
     cannot_show: "Impossible d'afficher cette image",
     no_match: "Aucune photo ne correspond au filtre",
@@ -160,13 +151,19 @@ pub static TEXTS: Texts = Texts {
              Il est enregistré dans le dossier de données de Cerno et téléchargé une seule fois."
         )
     },
+    btn_download: "Télécharger",
+    btn_cancel: "Annuler",
+    btn_close: "Fermer (Échap)",
+    aesthetics_offer: "L'évaluation esthétique a besoin d'un modèle (1.2 Go) : Menu → Modèles et données.",
 
     section_aesthetics: "Esthétique",
     section_sharpness: "Netteté (dans le dossier)",
     section_exposure: "Exposition",
     section_attributes: "Critères CLIP",
-    section_models: "Modèles",
     section_histogram: "Histogramme",
+    section_file: "Fichier",
+    row_size: "Taille",
+    row_load_time: "Temps de chargement",
     row_laion: "LAION (CLIP)",
     row_v25: "V2.5 (SigLIP)",
     row_personal: "Pour vous",

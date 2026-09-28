@@ -45,16 +45,6 @@ pub static TEXTS: Texts = Texts {
     actions: "Azione",
     actions_tooltip: "Copia, sposta o elimina le foto in vista",
     selection_delete: "Elimina",
-    confirm_copy_title: "Copiare la selezione?",
-    confirm_copy: |n| format!("Copiare {n} foto in un'altra cartella?"),
-    confirm_move_title: "Spostare la selezione?",
-    confirm_move: |n| format!("Spostare {n} foto in un'altra cartella?"),
-    confirm_delete_selection_title: "Eliminare la selezione?",
-    confirm_delete_selection: |n| {
-        format!(
-            "Spostare {n} foto nel cestino? Esc le riporta finché scorre il conto alla rovescia."
-        )
-    },
     label_red: "Rosso",
     label_yellow: "Giallo",
     label_green: "Verde",
@@ -104,6 +94,7 @@ pub static TEXTS: Texts = Texts {
     menu_photo: "Foto",
     menu_labels: "Colori",
     menu_language: "Lingua",
+    menu_models: "Modelli e dati",
     loading: "Caricamento…",
     cannot_show: "Impossibile mostrare questa immagine",
     no_match: "Nessuna foto corrisponde al filtro",
@@ -151,13 +142,19 @@ pub static TEXTS: Texts = Texts {
              Viene salvato nella cartella dati di Cerno e scaricato una sola volta."
         )
     },
+    btn_download: "Scarica",
+    btn_cancel: "Annulla",
+    btn_close: "Chiudi (Esc)",
+    aesthetics_offer: "La valutazione estetica richiede un modello (1.2 GB): Menu → Modelli e dati.",
 
     section_aesthetics: "Estetica",
     section_sharpness: "Nitidezza (nella cartella)",
     section_exposure: "Esposizione",
     section_attributes: "Caratteristiche CLIP",
-    section_models: "Modelli",
     section_histogram: "Istogramma",
+    section_file: "File",
+    row_size: "Dimensioni",
+    row_load_time: "Tempo di caricamento",
     row_laion: "LAION (CLIP)",
     row_v25: "V2.5 (SigLIP)",
     row_personal: "Per te",

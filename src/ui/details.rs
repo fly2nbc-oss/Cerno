@@ -78,12 +78,6 @@ pub fn set_all_expanded(expanded: &mut HashSet<DetailRow>, on: bool) {
     }
 }
 
-#[derive(Default)]
-pub struct DetailsOutput {
-    pub reset_taste: bool,
-    pub delete_models: bool,
-}
-
 pub struct Details<'a> {
     pub scores: Option<Scores>,
     pub personal: Option<f32>,
@@ -92,6 +86,8 @@ pub struct Details<'a> {
     pub attributes: Option<[f32; 6]>,
     pub histogram: Option<&'a RgbHistogram>,
     pub status: &'a Status,
+    /// Original size in pixels and how long the display image took to load.
+    pub file: Option<([u32; 2], u128)>,
 }
 
 struct Value {
@@ -118,12 +114,7 @@ impl Value {
     }
 }
 
-pub fn draw(
-    ui: &mut Ui,
-    rect: Rect,
-    d: &Details<'_>,
-    expanded: &mut HashSet<DetailRow>,
-) -> DetailsOutput {
+pub fn draw(ui: &mut Ui, rect: Rect, d: &Details<'_>, expanded: &mut HashSet<DetailRow>) {
     let painter = ui.painter().with_clip_rect(rect);
     painter.rect_filled(rect, 0.0, tokens::SURFACE);
     painter.vline(
@@ -132,7 +123,6 @@ pub fn draw(
         Stroke::new(1.0, tokens::LINE),
     );
 
-    let mut out = DetailsOutput::default();
     let mut panel = ui.new_child(UiBuilder::new().max_rect(rect).id_salt("details"));
     ScrollArea::vertical()
         .auto_shrink(false)
@@ -144,18 +134,12 @@ pub fn draw(
                 histogram(ui, hist);
                 ui.add_space(8.0);
             }
-            content(ui, d, expanded, &mut out);
+            content(ui, d, expanded);
             ui.add_space(PAD);
         });
-    out
 }
 
-fn content(
-    ui: &mut Ui,
-    d: &Details<'_>,
-    expanded: &mut HashSet<DetailRow>,
-    out: &mut DetailsOutput,
-) {
+fn content(ui: &mut Ui, d: &Details<'_>, expanded: &mut HashSet<DetailRow>) {
     let t = i18n::t();
     let scores = d.scores.unwrap_or_default();
     let status = d.status;
@@ -265,28 +249,11 @@ fn content(
         t.explain_shadows,
     );
 
-    section(ui, t.section_models);
-    let personal = match taste.model {
-        Some((n, error)) if error.is_finite() => (t.taste_trained)(n, error),
-        Some((n, _)) => (t.taste_photos)(n),
-        None => t.taste_untrained.to_owned(),
-    };
-    plain_model_row(ui, "CLIP", model_note(&status.aesthetics));
-    plain_model_row(ui, "V2.5", model_note(&status.v25));
-    plain_model_row(ui, t.model_faces, model_note(&status.faces));
-    plain_model_row(ui, t.model_personal, personal);
-    models_folder(ui);
-
-    ui.add_space(8.0);
-    ui.horizontal(|ui| {
-        ui.add_space(PAD);
-        if ui.button(t.btn_reset_taste).clicked() {
-            out.reset_taste = true;
-        }
-        if ui.button(t.btn_delete_models).clicked() {
-            out.delete_models = true;
-        }
-    });
+    if let Some(([w, h], load_ms)) = d.file {
+        section(ui, t.section_file);
+        plain_row(ui, t.row_size, format!("{w} × {h}"));
+        plain_row(ui, t.row_load_time, format!("{load_ms} ms"));
+    }
 }
 
 fn histogram(ui: &mut Ui, hist: &RgbHistogram) {
@@ -392,8 +359,6 @@ fn metric_row(
 
 fn clip_details(ui: &mut Ui, d: &Details<'_>) {
     let t = i18n::t();
-    explanation(ui, t.explain_models);
-    ui.add_space(ROW_INNER);
     explanation(ui, t.explain_attributes);
     ui.add_space(4.0);
     ui.horizontal(|ui| {
@@ -426,57 +391,8 @@ fn clip_details(ui: &mut Ui, d: &Details<'_>) {
     }
 }
 
-/// Folder of the downloaded CLIP and V2.5 files, with a button that copies the path.
-fn models_folder(ui: &mut Ui) {
-    let t = i18n::t();
-    let Ok(dir) = crate::paths::models_dir() else {
-        return;
-    };
-    let text = dir.display().to_string();
-    ui.add_space(6.0);
-    let copied_id = Id::new("models_path_copied_until");
-    let now = ui.input(|i| i.time);
-    let copied = ui
-        .data(|data| data.get_temp::<f64>(copied_id))
-        .is_some_and(|until| until > now);
-
-    ui.horizontal(|ui| {
-        ui.add_space(PAD);
-        let button = 22.0;
-        let text_w = (ui.available_width() - button - 8.0).max(40.0);
-        ui.allocate_ui_with_layout(vec2(text_w, 0.0), Layout::top_down(Align::Min), |ui| {
-            ui.set_width(text_w);
-            ui.label(
-                RichText::new(&text)
-                    .font(FontId::proportional(11.0))
-                    .color(tokens::MUTED),
-            );
-        });
-        let (rect, response) = ui.allocate_exact_size(vec2(button, 22.0), Sense::click());
-        let color = if copied || response.hovered() {
-            tokens::ACCENT
-        } else {
-            tokens::MUTED
-        };
-        icons::button_background(ui.painter(), rect, response.hovered(), copied);
-        icons::copy(ui.painter(), rect.center(), color);
-        let tip = if copied {
-            t.models_path_copied
-        } else {
-            t.copy_models_path
-        };
-        response.clone().on_hover_text(tip);
-        if response.clicked() {
-            ui.ctx().copy_text(text);
-            let until = ui.input(|i| i.time) + 1.6;
-            ui.data_mut(|data| data.insert_temp(copied_id, until));
-            ui.ctx()
-                .request_repaint_after(std::time::Duration::from_millis(1700));
-        }
-    });
-}
-
-fn plain_model_row(ui: &mut Ui, label: &str, status_text: String) {
+/// Muted label and a plain value, without a bar or a fold.
+fn plain_row(ui: &mut Ui, label: &str, value: String) {
     ui.horizontal(|ui| {
         ui.add_space(PAD + 14.0);
         ui.label(
@@ -487,7 +403,7 @@ fn plain_model_row(ui: &mut Ui, label: &str, status_text: String) {
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.add_space(PAD);
             ui.label(
-                RichText::new(status_text)
+                RichText::new(value)
                     .font(FontId::proportional(12.0))
                     .color(tokens::TEXT),
             );
@@ -564,7 +480,8 @@ fn stars_value(stars: f32) -> Value {
     Value::score(format!("{stars:.1} ★"), stars / 5.0)
 }
 
-fn model_note(state: &ModelState) -> String {
+/// A model's state as a short word (`bereit`, `DirectML`, `lädt 42 %` …).
+pub fn model_note(state: &ModelState) -> String {
     let t = i18n::t();
     match state {
         ModelState::Missing => t.model_missing.to_owned(),
@@ -617,6 +534,7 @@ mod tests {
             attributes: Some([0.5; 6]),
             histogram: None,
             status: &status,
+            file: None,
         };
         let mut expanded = HashSet::from([DetailRow::Laion]);
         let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 800.0));
@@ -661,6 +579,7 @@ mod tests {
             attributes: Some([0.5; 6]),
             histogram: None,
             status: &status,
+            file: None,
         };
         let mut expanded = HashSet::new();
         set_all_expanded(&mut expanded, true);
