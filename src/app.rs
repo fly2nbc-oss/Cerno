@@ -236,6 +236,8 @@ struct KeyInput {
     crop: bool,
     rotate_cw: bool,
     rotate_ccw: bool,
+    /// `Ctrl+Z`: the kept original comes back.
+    undo: bool,
 }
 
 /// What a palette entry does.
@@ -265,6 +267,7 @@ enum Action {
     RotateCcw,
     RotateCw,
     Crop,
+    Undo,
     Language(Lang),
     Models,
     Help,
@@ -1370,6 +1373,7 @@ impl CernoApp {
                         Some(format!("{}+→", t.key_ctrl)),
                     ),
                     Row::new(Action::Crop, t.cmd_crop, key("R")),
+                    Row::new(Action::Undo, t.cmd_undo, Some(i18n::with_ctrl("Z"))),
                 ],
             )));
             let mut photo = vec![
@@ -1486,6 +1490,7 @@ impl CernoApp {
             Action::RotateCcw => self.rotate_quarter(false),
             Action::RotateCw => self.rotate_quarter(true),
             Action::Crop => self.begin_crop(),
+            Action::Undo => self.undo_edit(),
             Action::Zoom => {
                 if let Some(frame) = frames.last() {
                     self.zoom.toggle(frame, None);
@@ -1760,6 +1765,26 @@ impl CernoApp {
         self.writer.rotate_quarter(path, clockwise);
     }
 
+    /// `Ctrl+Z`: the newest original kept for the current photo goes back into the file
+    /// (straighten, crop and quarter turns keep one, for 30 days). Pressed again, the one
+    /// before that.
+    fn undo_edit(&mut self) {
+        if self.edit_busy || self.pinned.is_some() {
+            return;
+        }
+        let Some(path) = self.view.get(self.current).cloned() else {
+            return;
+        };
+        match self.db.latest_backup(&path.to_string_lossy()) {
+            Ok(Some(_)) => {
+                self.edit_busy = true;
+                self.writer.restore(path);
+            }
+            Ok(None) => self.notice = Some(Notice::hint(i18n::t().undo_nothing)),
+            Err(err) => self.notice = Some(Notice::error(format!("{err:#}"))),
+        }
+    }
+
     fn poll_edits(&mut self) {
         if let Some(thread) = self.edit_thread.take_if(|thread| thread.is_finished()) {
             let _ = thread.join();
@@ -1771,7 +1796,9 @@ impl CernoApp {
                 Some(err) => self.notice = Some(Notice::error((i18n::t().edit_failed)(&err))),
                 None => {
                     self.refresh_edited(&outcome.path);
-                    if outcome.reencoded {
+                    if outcome.restored {
+                        self.notice = Some(Notice::hint(i18n::t().undo_done));
+                    } else if outcome.reencoded {
                         self.notice = Some(Notice::hint(i18n::t().edit_reencoded));
                     } else if self.notice.as_ref().is_some_and(|n| n.text == writing) {
                         self.notice = None;
@@ -2032,6 +2059,7 @@ impl CernoApp {
                 rotate_ccw: i.modifiers.command
                     && !i.modifiers.shift
                     && i.key_pressed(Key::ArrowLeft),
+                undo: i.modifiers.command && !i.modifiers.shift && i.key_pressed(Key::Z),
             }
         });
 
@@ -2092,6 +2120,9 @@ impl CernoApp {
         }
         if keys.rotate_cw {
             self.rotate_quarter(true);
+        }
+        if keys.undo {
+            self.undo_edit();
         }
         if keys.open {
             self.pick_folder(ctx);

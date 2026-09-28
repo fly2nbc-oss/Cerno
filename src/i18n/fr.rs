@@ -222,9 +222,12 @@ pub static TEXTS: Texts = Texts {
     cmd_rotate_ccw: "Pivoter de 90° vers la gauche",
     cmd_rotate_cw: "Pivoter de 90° vers la droite",
     cmd_crop: "Recadrer",
+    cmd_undo: "Annuler la retouche",
     edit_not_jpeg: "Redressement et recadrage uniquement pour les JPEG.",
     edit_writing: "Écriture de la photo…",
-    edit_reencoded: "JPEG réencodé. La qualité a été réécrite une fois.",
+    edit_reencoded: "JPEG réencodé – Ctrl+Z restaure l'original.",
+    undo_done: "Original restauré",
+    undo_nothing: "Aucun original conservé pour cette photo",
     edit_failed: |detail| format!("Pas enregistré : {detail}"),
     edit_hint_straighten: "Molette ou ←/→ pour tourner, Maj plus fin · Entrée applique, Échap annule",
     edit_hint_crop: "A : format · X : paysage/portrait · Entrée applique, Échap annule",
@@ -322,6 +325,10 @@ pub static TEXTS: Texts = Texts {
         (
             "Ctrl+←, Ctrl+→",
             "Pivoter de 90° – sans perte, via l'orientation JPEG",
+        ),
+        (
+            "Ctrl+Z",
+            "Annuler la dernière retouche – les originaux sont gardés 30 jours",
         ),
     ],
     help_more: [

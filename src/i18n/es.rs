@@ -219,9 +219,12 @@ pub static TEXTS: Texts = Texts {
     cmd_rotate_ccw: "Girar 90° a la izquierda",
     cmd_rotate_cw: "Girar 90° a la derecha",
     cmd_crop: "Recorte",
+    cmd_undo: "Deshacer",
     edit_not_jpeg: "Enderezar y recortar solo funciona con JPEG.",
     edit_writing: "Escribiendo la foto…",
-    edit_reencoded: "JPEG recodificado. La calidad se ha fijado de nuevo una vez.",
+    edit_reencoded: "JPEG recodificado – Ctrl+Z recupera el original.",
+    undo_done: "Original recuperado",
+    undo_nothing: "No se guarda ningún original de esta foto",
     edit_failed: |detail| format!("No se ha escrito: {detail}"),
     edit_hint_straighten: "Rueda o ←/→ gira, Mayús más fino · Intro aplica, Esc cancela",
     edit_hint_crop: "A: proporción · X: horizontal/vertical · Intro aplica, Esc cancela",
@@ -310,6 +313,10 @@ pub static TEXTS: Texts = Texts {
         (
             "Ctrl+←, Ctrl+→",
             "Girar 90° – sin pérdida, mediante la orientación JPEG",
+        ),
+        (
+            "Ctrl+Z",
+            "Deshacer el último cambio – los originales se guardan 30 días",
         ),
     ],
     help_more: [

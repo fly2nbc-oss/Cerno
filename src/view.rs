@@ -1,6 +1,6 @@
 //! Which photos are shown and in which order: sorting and filtering of the folder list.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use std::sync::Arc;
@@ -464,7 +464,16 @@ pub fn build(
                 .map(|fp| (entry.path.as_path(), fp))
         })
         .collect();
-    let copies = duplicate_originals(all, |path| fingerprints.get(path).copied());
+    let marked: HashSet<&Path> = entries
+        .iter()
+        .filter(|entry| entry.rating != Rating::Unrated || entry.label.is_some())
+        .map(|entry| entry.path.as_path())
+        .collect();
+    let copies = duplicate_originals(
+        all,
+        |path| fingerprints.get(path).copied(),
+        |path| marked.contains(path),
+    );
 
     let shown: Vec<Entry<'_>> = entries
         .into_iter()
@@ -539,11 +548,12 @@ pub fn build(
     }
 }
 
-/// First path in folder order is the original; every later photo with the same fingerprint
+/// Photos with the same fingerprint: one is the original (`pick_original`), every other one
 /// points at it.
 fn duplicate_originals(
     all: &[PathBuf],
     fingerprint: impl Fn(&Path) -> Option<u64>,
+    marked: impl Fn(&Path) -> bool,
 ) -> HashMap<PathBuf, PathBuf> {
     let mut groups: HashMap<u64, Vec<&PathBuf>> = HashMap::new();
     for path in all {
@@ -556,12 +566,46 @@ fn duplicate_originals(
         if paths.len() < 2 {
             continue;
         }
-        let original = paths[0];
-        for dup in paths.into_iter().skip(1) {
+        let original = pick_original(&paths, &marked);
+        for dup in paths.into_iter().filter(|path| *path != original) {
             copies.insert(dup.clone(), original.clone());
         }
     }
     copies
+}
+
+/// Which of several identical files is the original:
+/// 1. the one whose name the others only extend – `IMG_1.jpg` for `IMG_1 - Kopie.jpg` or
+///    `IMG_1 (1).jpg`, which sort *before* it (a space comes before the dot);
+/// 2. otherwise the only one with stars, a rejection or a colour label;
+/// 3. otherwise the first in folder order.
+fn pick_original<'a>(paths: &[&'a PathBuf], marked: &impl Fn(&Path) -> bool) -> &'a PathBuf {
+    let stem = |path: &Path| -> Vec<char> {
+        path.file_stem()
+            .map(|s| {
+                s.to_string_lossy()
+                    .chars()
+                    .map(crate::library::sort_key)
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let stems: Vec<Vec<char>> = paths.iter().map(|path| stem(path)).collect();
+    let shortest: Vec<usize> = (0..paths.len())
+        .filter(|&i| {
+            (0..paths.len()).all(|j| {
+                j == i || (stems[j].len() > stems[i].len() && stems[j].starts_with(&stems[i]))
+            })
+        })
+        .collect();
+    if let [only] = shortest[..] {
+        return paths[only];
+    }
+    let with_marks: Vec<usize> = (0..paths.len()).filter(|&i| marked(paths[i])).collect();
+    if let [only] = with_marks[..] {
+        return paths[only];
+    }
+    paths[0]
 }
 
 /// Series of photos that follow each other by at most [`SERIES_GAP_MS`]. A single photo is
@@ -962,6 +1006,31 @@ mod tests {
         assert_eq!(names(&view.paths), "bef");
         assert_eq!(view.series[0].unwrap().len, 3);
         assert_eq!(view.series[1].unwrap().index, 1);
+    }
+
+    /// Windows names copies "IMG - Kopie.jpg"; they sort before "IMG.jpg" but are not the
+    /// original. Without a name hint, the only marked copy wins, then folder order.
+    #[test]
+    fn duplicates_pick_the_original_by_name_then_marks() {
+        let refs = |names: &[&str]| -> Vec<PathBuf> { names.iter().map(PathBuf::from).collect() };
+        let pick = |paths: &[PathBuf], marked: &[&str]| {
+            let list: Vec<&PathBuf> = paths.iter().collect();
+            let marked = |p: &Path| marked.iter().any(|m| Path::new(m) == p);
+            pick_original(&list, &marked).to_string_lossy().into_owned()
+        };
+        let copies = refs(&["DSC_0211 Kopie.jpg", "DSC_0211.jpg"]);
+        assert_eq!(pick(&copies, &[]), "DSC_0211.jpg");
+        assert_eq!(
+            pick(&copies, &["DSC_0211 Kopie.jpg"]),
+            "DSC_0211.jpg",
+            "name first"
+        );
+        let numbered = refs(&["IMG_1 (1).JPG", "img_1.jpg", "IMG_1 - Copy.JPG"]);
+        assert_eq!(pick(&numbered, &[]), "img_1.jpg");
+        let folders = refs(&["a/IMG.jpg", "b/IMG.jpg"]);
+        assert_eq!(pick(&folders, &[]), "a/IMG.jpg");
+        assert_eq!(pick(&folders, &["b/IMG.jpg"]), "b/IMG.jpg");
+        assert_eq!(pick(&folders, &["a/IMG.jpg", "b/IMG.jpg"]), "a/IMG.jpg");
     }
 
     #[test]

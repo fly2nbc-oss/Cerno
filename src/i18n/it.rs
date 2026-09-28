@@ -213,9 +213,12 @@ pub static TEXTS: Texts = Texts {
     cmd_rotate_ccw: "Ruota di 90° a sinistra",
     cmd_rotate_cw: "Ruota di 90° a destra",
     cmd_crop: "Ritaglio",
+    cmd_undo: "Annulla modifica",
     edit_not_jpeg: "Raddrizza e ritaglio solo per JPEG.",
     edit_writing: "Scrittura della foto…",
-    edit_reencoded: "JPEG ricodificato. La qualità è stata impostata di nuovo una volta.",
+    edit_reencoded: "JPEG ricodificato – Ctrl+Z ripristina l'originale.",
+    undo_done: "Originale ripristinato",
+    undo_nothing: "Nessun originale conservato per questa foto",
     edit_failed: |detail| format!("Non scritto: {detail}"),
     edit_hint_straighten: "Rotella o ←/→ ruota, Maiusc più fine · Invio applica, Esc annulla",
     edit_hint_crop: "A: proporzioni · X: orizzontale/verticale · Invio applica, Esc annulla",
@@ -316,6 +319,10 @@ pub static TEXTS: Texts = Texts {
         (
             "Ctrl+←, Ctrl+→",
             "Ruota di 90° – senza perdita, tramite l'orientamento JPEG",
+        ),
+        (
+            "Ctrl+Z",
+            "Annulla l'ultima modifica – gli originali restano 30 giorni",
         ),
     ],
     help_more: [

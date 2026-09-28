@@ -215,9 +215,12 @@ pub static TEXTS: Texts = Texts {
     cmd_rotate_ccw: "Rotate 90° counter-clockwise",
     cmd_rotate_cw: "Rotate 90° clockwise",
     cmd_crop: "Crop",
+    cmd_undo: "Undo",
     edit_not_jpeg: "Straighten and crop work on JPEG only.",
     edit_writing: "Writing the photo…",
-    edit_reencoded: "JPEG re-encoded. Quality was set once more.",
+    edit_reencoded: "JPEG re-encoded – Ctrl+Z brings the original back.",
+    undo_done: "Original restored",
+    undo_nothing: "No original kept for this photo",
     edit_failed: |detail| format!("Not written: {detail}"),
     edit_hint_straighten: "Wheel or ←/→ rotates, Shift is finer · Enter applies, Esc cancels",
     edit_hint_crop: "A: ratio · X: landscape/portrait · Enter applies, Esc cancels",
@@ -297,6 +300,10 @@ pub static TEXTS: Texts = Texts {
         (
             "Ctrl+←, Ctrl+→",
             "Rotate 90° – lossless, via the JPEG orientation",
+        ),
+        (
+            "Ctrl+Z",
+            "Undo the last change – originals are kept for 30 days",
         ),
     ],
     help_more: [

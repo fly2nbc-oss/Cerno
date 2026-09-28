@@ -45,6 +45,13 @@ const SCHEMA: &str = "
     CREATE TABLE IF NOT EXISTS taste_skip (
         fingerprint INTEGER PRIMARY KEY
     );
+    -- Copies of originals taken before straighten, crop or a quarter turn (Ctrl+Z).
+    CREATE TABLE IF NOT EXISTS backups (
+        id     INTEGER PRIMARY KEY,
+        path   TEXT NOT NULL,
+        backup TEXT NOT NULL,
+        at_ms  INTEGER NOT NULL
+    );
 ";
 
 /// Columns added after the first release; `migrate` adds whichever an index lacks.
@@ -292,6 +299,11 @@ impl Db {
             [from],
             |row| row.get(0),
         )?;
+        // Ctrl+Z still finds the original of a moved photo.
+        tx.execute(
+            "UPDATE backups SET path = ?1 WHERE path = ?2",
+            params![to, from],
+        )?;
         if found == 0 {
             tx.commit()?;
             return Ok(());
@@ -534,6 +546,47 @@ impl Db {
             })
             .optional()?;
         Ok(thumb.flatten())
+    }
+
+    /// Remembers the copy of `path` taken before an edit.
+    pub fn push_backup(&self, path: &str, backup: &str, at_ms: i64) -> Result<()> {
+        self.conn().execute(
+            "INSERT INTO backups (path, backup, at_ms) VALUES (?1, ?2, ?3)",
+            params![path, backup, at_ms],
+        )?;
+        Ok(())
+    }
+
+    /// The newest copy of `path`: row id and the copy's file.
+    pub fn latest_backup(&self, path: &str) -> Result<Option<(i64, String)>> {
+        Ok(self
+            .conn()
+            .query_row(
+                "SELECT id, backup FROM backups WHERE path = ?1 ORDER BY at_ms DESC, id DESC",
+                [path],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?)
+    }
+
+    pub fn drop_backup(&self, id: i64) -> Result<()> {
+        self.conn()
+            .execute("DELETE FROM backups WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    /// Backups taken before `before_ms`, removed from the table; the caller deletes the files.
+    pub fn take_old_backups(&self, before_ms: i64) -> Result<Vec<String>> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let files = {
+            let mut stmt = tx.prepare("SELECT backup FROM backups WHERE at_ms < ?1")?;
+            let rows = stmt.query_map([before_ms], |row| row.get(0))?;
+            rows.collect::<rusqlite::Result<Vec<String>>>()?
+        };
+        tx.execute("DELETE FROM backups WHERE at_ms < ?1", [before_ms])?;
+        tx.commit()?;
+        Ok(files)
     }
 
     pub fn setting(&self, key: &str) -> Option<String> {

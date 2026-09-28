@@ -3,6 +3,7 @@
 
 mod analysis;
 mod app;
+mod backup;
 mod db;
 mod decode;
 mod deletion;

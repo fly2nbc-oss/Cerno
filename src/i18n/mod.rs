@@ -271,9 +271,12 @@ pub struct Texts {
     pub cmd_rotate_ccw: &'static str,
     pub cmd_rotate_cw: &'static str,
     pub cmd_crop: &'static str,
+    pub cmd_undo: &'static str,
     pub edit_not_jpeg: &'static str,
     pub edit_writing: &'static str,
     pub edit_reencoded: &'static str,
+    pub undo_done: &'static str,
+    pub undo_nothing: &'static str,
     pub edit_failed: fn(&str) -> String,
     /// Banner hints while straightening and cropping.
     pub edit_hint_straighten: &'static str,
@@ -391,7 +394,7 @@ pub struct Texts {
     pub help_browse: [HelpRow; 5],
     pub help_rate: [HelpRow; 10],
     pub help_view: [HelpRow; 9],
-    pub help_edit: [HelpRow; 4],
+    pub help_edit: [HelpRow; 5],
     pub help_more: [HelpRow; 5],
 }
 

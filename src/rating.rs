@@ -48,6 +48,10 @@ enum Message {
         path: PathBuf,
         message: String,
     },
+    /// `Ctrl+Z`: put the newest kept original back.
+    Restore {
+        path: PathBuf,
+    },
     Shutdown,
 }
 
@@ -57,6 +61,8 @@ pub struct EditOutcome {
     pub error: Option<String>,
     /// Pixels were re-encoded, so the quality notice applies. A quarter turn is lossless.
     pub reencoded: bool,
+    /// `Ctrl+Z` put the kept original back.
+    pub restored: bool,
 }
 
 /// Sends a finished pixel edit to the writer thread. Cheap to clone into a worker.
@@ -98,7 +104,22 @@ impl RatingWriter {
         let thread_outcomes = Arc::clone(&outcomes);
         let thread = std::thread::Builder::new()
             .name("cerno-rating-writer".into())
-            .spawn(move || run(&rx, &thread_status, &thread_outcomes, &ctx, &db))
+            .spawn(move || {
+                match crate::backup::prune(&db) {
+                    Ok(0) => {}
+                    Ok(n) => log::info!("deleted {n} originals older than 30 days"),
+                    Err(err) => log::warn!("backups: {err:#}"),
+                }
+                let backups = crate::backup::dir().ok();
+                run(
+                    &rx,
+                    &thread_status,
+                    &thread_outcomes,
+                    &ctx,
+                    &db,
+                    backups.as_deref(),
+                );
+            })
             .expect("failed to spawn rating writer");
         Self {
             tx,
@@ -121,6 +142,11 @@ impl RatingWriter {
     /// Clockwise or counter-clockwise quarter turn, written as EXIF orientation.
     pub fn rotate_quarter(&self, path: PathBuf, clockwise: bool) {
         let _ = self.tx.send(Message::RotateQuarter { path, clockwise });
+    }
+
+    /// Puts the newest kept original of `path` back (after any pending mark write).
+    pub fn restore(&self, path: PathBuf) {
+        let _ = self.tx.send(Message::Restore { path });
     }
 
     /// Handle for a worker that encodes pixels and then hands the JPEG back here.
@@ -163,6 +189,7 @@ fn run(
     outcomes: &Mutex<Vec<EditOutcome>>,
     ctx: &egui::Context,
     db: &Db,
+    backups: Option<&Path>,
 ) {
     let mut exiftool: Option<ExifTool> = None;
     let mut pending: HashMap<PathBuf, Pending> = HashMap::new();
@@ -193,18 +220,31 @@ fn run(
                 entry.label = Some(label);
                 entry.at = Instant::now();
             }
+            // Every edit keeps the original first; without that copy it does not happen.
             Ok(Message::RotateQuarter { path, clockwise }) => {
                 let result = flush_pending(&mut pending, &mut exiftool, &path, status)
+                    .and_then(|()| keep_original(db, backups, &path))
                     .and_then(|()| apply_quarter_turn(&mut exiftool, &path, clockwise, db));
-                push_outcome(outcomes, path, result, false);
+                push_outcome(outcomes, path, result, Done::Rotated);
             }
             Ok(Message::ReplacePixels { path, jpeg }) => {
                 let result = flush_pending(&mut pending, &mut exiftool, &path, status)
+                    .and_then(|()| keep_original(db, backups, &path))
                     .and_then(|()| apply_pixels(&mut exiftool, &path, &jpeg, db));
-                push_outcome(outcomes, path, result, true);
+                push_outcome(outcomes, path, result, Done::Reencoded);
             }
             Ok(Message::EditFailed { path, message }) => {
-                push_outcome(outcomes, path, Err(anyhow::anyhow!("{message}")), false);
+                push_outcome(
+                    outcomes,
+                    path,
+                    Err(anyhow::anyhow!("{message}")),
+                    Done::Rotated,
+                );
+            }
+            Ok(Message::Restore { path }) => {
+                let result = flush_pending(&mut pending, &mut exiftool, &path, status)
+                    .and_then(|()| restore_original(&mut exiftool, &path, db));
+                push_outcome(outcomes, path, result, Done::Restored);
             }
             Ok(Message::Shutdown) | Err(RecvTimeoutError::Disconnected) => shutting_down = true,
             Err(RecvTimeoutError::Timeout) => {}
@@ -416,12 +456,15 @@ fn flush_pending(
     result.map(|_| ())
 }
 
-fn push_outcome(
-    outcomes: &Mutex<Vec<EditOutcome>>,
-    path: PathBuf,
-    result: Result<()>,
-    reencoded: bool,
-) {
+/// What an edit message did, for the notice afterwards.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Done {
+    Rotated,
+    Reencoded,
+    Restored,
+}
+
+fn push_outcome(outcomes: &Mutex<Vec<EditOutcome>>, path: PathBuf, result: Result<()>, done: Done) {
     let error = match &result {
         Ok(()) => None,
         Err(err) => {
@@ -433,9 +476,48 @@ fn push_outcome(
         queue.push(EditOutcome {
             path,
             error,
-            reencoded,
+            reencoded: done == Done::Reencoded,
+            restored: done == Done::Restored,
         });
     }
+}
+
+/// Copies the file into the backup folder before an edit (see `backup`).
+fn keep_original(db: &Db, backups: Option<&Path>, path: &Path) -> Result<()> {
+    let dir = backups.context("no folder for the kept originals")?;
+    crate::backup::keep(db, dir, path)?;
+    Ok(())
+}
+
+/// `Ctrl+Z`: writes the newest kept original back into the file – in place, so the file keeps
+/// its identity and dates – then the rating and colour label the file has now, so marks set
+/// after the edit stay. The copy is used up.
+fn restore_original(exiftool: &mut Option<ExifTool>, path: &Path, db: &Db) -> Result<()> {
+    let key = path.to_string_lossy();
+    let (id, copy) = db
+        .latest_backup(&key)?
+        .context("no original kept for this photo")?;
+    let original = std::fs::read(&copy).context("cannot read the kept original")?;
+    let now = metadata::read(&std::fs::read(path).context("cannot read file")?);
+    let label = match now.label {
+        LabelInfo::Known(label) => Some(Some(label)),
+        LabelInfo::None => Some(None),
+        // Text Cerno does not know is left as the original had it.
+        LabelInfo::Other => None,
+    };
+    let snapshot = filetimes::Snapshot::capture(path).context("cannot read file times")?;
+    write_in_place(path, &original)?;
+    snapshot
+        .restore(path)
+        .context("cannot restore file times")?;
+    write_marks(exiftool, path, Some(now.rating.value), label)?;
+    db.forget_file(&key).context("cannot drop the index row")?;
+    db.drop_backup(id)?;
+    if let Err(err) = std::fs::remove_file(&copy) {
+        log::warn!("kept original {copy}: {err}");
+    }
+    log::info!("original restored: {}", path.display());
+    Ok(())
 }
 
 fn apply_quarter_turn(
@@ -708,6 +790,60 @@ mod tests {
         assert_eq!(after.modified().unwrap(), before.modified().unwrap());
         #[cfg(windows)]
         assert_eq!(after.created().unwrap(), before.created().unwrap());
+        drop(exiftool);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A quarter turn with its original kept, a rating given afterwards, then Ctrl+Z: the
+    /// orientation comes back, the rating stays, the dates never move.
+    #[test]
+    fn restore_brings_back_the_original_and_keeps_later_marks() {
+        use std::fs::{self, File, FileTimes};
+        use std::time::SystemTime;
+
+        if crate::exiftool::locate().is_none() {
+            eprintln!("ExifTool not found – skipped");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("cerno-restore-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("Ärger.jpg");
+        fs::copy(
+            Path::new(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/fixtures/tiny.jpg"
+            )),
+            &path,
+        )
+        .unwrap();
+        let old = SystemTime::now() - Duration::from_secs(86_400 * 400);
+        File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old))
+            .unwrap();
+        let db = Db::open_in_memory().unwrap();
+        let mut exiftool = None;
+        let read = || metadata::read(&fs::read(&path).unwrap());
+        let before = read().orientation;
+
+        keep_original(&db, Some(&dir.join("backups")), &path).unwrap();
+        apply_quarter_turn(&mut exiftool, &path, true, &db).unwrap();
+        assert_ne!(read().orientation, before);
+        write_marks(&mut exiftool, &path, Some(Rating::Stars(4)), None).unwrap();
+
+        restore_original(&mut exiftool, &path, &db).unwrap();
+        let after = read();
+        assert_eq!(after.orientation, before);
+        assert_eq!(after.rating.value, Rating::Stars(4));
+        assert_eq!(fs::metadata(&path).unwrap().modified().unwrap(), old);
+        assert!(db.latest_backup(&path.to_string_lossy()).unwrap().is_none());
+        assert!(
+            restore_original(&mut exiftool, &path, &db).is_err(),
+            "used up"
+        );
         drop(exiftool);
         fs::remove_dir_all(&dir).unwrap();
     }

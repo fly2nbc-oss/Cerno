@@ -217,9 +217,12 @@ pub static TEXTS: Texts = Texts {
     cmd_rotate_ccw: "90° gegen den Uhrzeigersinn",
     cmd_rotate_cw: "90° im Uhrzeigersinn",
     cmd_crop: "Ausschnitt",
+    cmd_undo: "Rückgängig",
     edit_not_jpeg: "Ausrichten und Ausschnitt gibt es nur für JPEG.",
     edit_writing: "Foto wird geschrieben…",
-    edit_reencoded: "JPEG neu kodiert. Die Qualität wurde einmal neu gesetzt.",
+    edit_reencoded: "JPEG neu kodiert – Strg+Z holt das Original zurück.",
+    undo_done: "Original zurückgeholt",
+    undo_nothing: "Für dieses Foto ist kein Original aufbewahrt",
     edit_failed: |detail| format!("Nicht geschrieben: {detail}"),
     edit_hint_straighten: "Mausrad oder ←/→ dreht, Umschalt feiner · Enter übernimmt, Esc verwirft",
     edit_hint_crop: "A: Seitenverhältnis · X: Quer/Hoch · Enter übernimmt, Esc verwirft",
@@ -317,6 +320,10 @@ pub static TEXTS: Texts = Texts {
         (
             "Strg+←, Strg+→",
             "90° drehen – verlustfrei über die JPEG-Orientierung",
+        ),
+        (
+            "Strg+Z",
+            "Letzte Änderung zurücknehmen – Originale bleiben 30 Tage",
         ),
     ],
     help_more: [
