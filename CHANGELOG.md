@@ -32,6 +32,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ### Fixed
 
+- One action at a time on a photo: a photo being moved takes no stars, labels, edits or deletion, one being copied no edit or deletion; while a straighten or crop is open, quarter turns, `Ctrl+Z` and copy/move wait for `Enter` or `Esc`. A short hint says why, and the menu greys those rows out. Before, stars given during a move could be lost and an edit could land on the neighbouring photo.
+- A straighten or crop is cancelled (with a hint) when another photo becomes current underneath it, e.g. because a copy finished.
+- No torn reads or copies: reading, copying and writing a photo take turns, so the analysis, the viewer and a copy never see a file halfway through a rating write.
+- A photo rated while it was being analysed is analysed again shortly afterwards instead of staying without values until the folder is reopened, and the index no longer keeps the rating it had before.
 - The explanations in the details panel (`I`) wrap inside the panel; before, they ran out of it and pushed every value out of view.
 - The window fills the screen at start (it stayed at its restored size while flagged as maximized on scaled displays).
 - `Ctrl+←` / `Ctrl+→` no longer also step to the neighbouring photo.

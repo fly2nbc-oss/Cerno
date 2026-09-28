@@ -2,14 +2,17 @@
 //!
 //! The work runs on a background thread. A move prefers `rename` and falls back to copy plus
 //! delete when the destination is on another volume. An existing file of the same name is
-//! left alone.
+//! left alone. Each file is held in [`FileLocks`] while it is copied or moved, so a rating
+//! written meanwhile never meets a half-copied file.
 
+use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 use std::thread::JoinHandle;
 
+use crate::filelock::FileLocks;
 use crate::filetimes;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,19 +36,24 @@ struct Job {
 }
 
 pub struct Queue {
+    files: Arc<FileLocks>,
     pending: Option<Job>,
     inflight: bool,
+    /// The photos of the job that is waiting or running, until its outcome is collected.
+    involved: Option<(Mode, HashSet<PathBuf>)>,
     tx: mpsc::Sender<Outcome>,
     rx: mpsc::Receiver<Outcome>,
     workers: Vec<JoinHandle<()>>,
 }
 
 impl Queue {
-    pub fn new() -> Self {
+    pub fn new(files: Arc<FileLocks>) -> Self {
         let (tx, rx) = mpsc::channel();
         Self {
+            files,
             pending: None,
             inflight: false,
+            involved: None,
             tx,
             rx,
             workers: Vec::new(),
@@ -56,11 +64,23 @@ impl Queue {
         self.pending.is_some() || self.inflight
     }
 
+    /// Whether `path` belongs to the job that is waiting or running, and how.
+    pub fn involves(&self, path: &Path) -> Option<Mode> {
+        let (mode, paths) = self.involved.as_ref()?;
+        paths.contains(path).then_some(*mode)
+    }
+
+    /// The mode of the job that is waiting or running.
+    pub fn mode(&self) -> Option<Mode> {
+        self.involved.as_ref().map(|(mode, _)| *mode)
+    }
+
     /// Remembers the job until [`Self::kick`] sees that rating writes have finished.
     pub fn push(&mut self, mode: Mode, sources: Vec<PathBuf>, dest: PathBuf) -> bool {
         if self.is_busy() {
             return false;
         }
+        self.involved = Some((mode, sources.iter().cloned().collect()));
         self.pending = Some(Job {
             mode,
             sources,
@@ -79,12 +99,12 @@ impl Queue {
             return false;
         };
         self.inflight = true;
-        let tx = self.tx.clone();
+        let (tx, files) = (self.tx.clone(), Arc::clone(&self.files));
         self.workers.push(
             std::thread::Builder::new()
                 .name("cerno-transfer".into())
                 .spawn(move || {
-                    let _ = tx.send(run(job.mode, &job.sources, &job.dest));
+                    let _ = tx.send(run(job.mode, &job.sources, &job.dest, &files));
                     on_done();
                 })
                 .expect("failed to spawn transfer worker"),
@@ -96,6 +116,7 @@ impl Queue {
         match self.rx.try_recv() {
             Ok(outcome) => {
                 self.inflight = false;
+                self.involved = None;
                 self.workers.retain(|worker| !worker.is_finished());
                 Some(outcome)
             }
@@ -108,7 +129,7 @@ impl Queue {
     pub fn finish_now(&mut self) -> Vec<Outcome> {
         let mut outcomes = Vec::new();
         if let Some(job) = self.pending.take() {
-            outcomes.push(run(job.mode, &job.sources, &job.dest));
+            outcomes.push(run(job.mode, &job.sources, &job.dest, &self.files));
         }
         for worker in self.workers.drain(..) {
             let _ = worker.join();
@@ -117,11 +138,12 @@ impl Queue {
             self.inflight = false;
             outcomes.push(outcome);
         }
+        self.involved = None;
         outcomes
     }
 }
 
-pub fn run(mode: Mode, sources: &[PathBuf], dest_dir: &Path) -> Outcome {
+pub fn run(mode: Mode, sources: &[PathBuf], dest_dir: &Path, files: &FileLocks) -> Outcome {
     let mut outcome = Outcome {
         mode,
         done: Vec::new(),
@@ -140,7 +162,14 @@ pub fn run(mode: Mode, sources: &[PathBuf], dest_dir: &Path) -> Outcome {
             outcome.skipped.push(src.clone());
             continue;
         }
-        match apply(mode, src, &dest) {
+        // A move makes the file disappear, which counts as a write for everyone else.
+        let held = match mode {
+            Mode::Copy => files.hold(src),
+            Mode::Move => files.hold_write(src),
+        };
+        let result = apply(mode, src, &dest);
+        drop(held);
+        match result {
             Ok(()) => {
                 log::info!("{} {} → {}", verb(mode), src.display(), dest.display());
                 outcome.done.push((src.clone(), dest));
@@ -230,7 +259,12 @@ mod tests {
         let src = write_old(&src_dir, "a.jpg", b"photo");
         let modified = fs::metadata(&src).unwrap().modified().unwrap();
 
-        let outcome = run(Mode::Copy, std::slice::from_ref(&src), &dest_dir);
+        let outcome = run(
+            Mode::Copy,
+            std::slice::from_ref(&src),
+            &dest_dir,
+            &FileLocks::default(),
+        );
         assert_eq!(outcome.done.len(), 1);
         assert!(outcome.skipped.is_empty() && outcome.failed.is_empty());
         assert_eq!(fs::read(&src).unwrap(), b"photo");
@@ -248,10 +282,42 @@ mod tests {
         let dest_dir = temp_dir("move-dest");
         let src = write_old(&src_dir, "b.jpg", b"moved");
 
-        let outcome = run(Mode::Move, std::slice::from_ref(&src), &dest_dir);
+        let outcome = run(
+            Mode::Move,
+            std::slice::from_ref(&src),
+            &dest_dir,
+            &FileLocks::default(),
+        );
         assert_eq!(outcome.done.len(), 1);
         assert!(!src.exists());
         assert_eq!(fs::read(&outcome.done[0].1).unwrap(), b"moved");
+
+        fs::remove_dir_all(&src_dir).unwrap();
+        fs::remove_dir_all(&dest_dir).unwrap();
+    }
+
+    #[test]
+    fn the_queue_knows_its_photos_until_the_outcome_is_collected() {
+        let src_dir = temp_dir("involved-src");
+        let dest_dir = temp_dir("involved-dest");
+        let src = write_old(&src_dir, "d.jpg", b"photo");
+        let mut queue = Queue::new(Arc::new(FileLocks::default()));
+        assert!(queue.push(Mode::Move, vec![src.clone()], dest_dir.clone()));
+        assert_eq!(queue.involves(&src), Some(Mode::Move));
+        assert_eq!(queue.involves(&src_dir.join("other.jpg")), None);
+        // Still waiting for rating writes: nothing runs, the photo stays involved.
+        assert!(queue.kick(true, || {}));
+        assert_eq!(queue.mode(), Some(Mode::Move));
+        assert!(!queue.kick(false, || {}));
+        let outcome = loop {
+            if let Some(outcome) = queue.poll() {
+                break outcome;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        assert_eq!(outcome.done.len(), 1);
+        assert_eq!(queue.involves(&src), None);
+        assert!(!queue.is_busy());
 
         fs::remove_dir_all(&src_dir).unwrap();
         fs::remove_dir_all(&dest_dir).unwrap();
@@ -265,7 +331,12 @@ mod tests {
         let dest = dest_dir.join("c.jpg");
         fs::File::create(&dest).unwrap().write_all(b"old").unwrap();
 
-        let outcome = run(Mode::Copy, std::slice::from_ref(&src), &dest_dir);
+        let outcome = run(
+            Mode::Copy,
+            std::slice::from_ref(&src),
+            &dest_dir,
+            &FileLocks::default(),
+        );
         assert!(outcome.done.is_empty());
         assert_eq!(outcome.skipped, vec![src]);
         assert_eq!(fs::read(&dest).unwrap(), b"old");

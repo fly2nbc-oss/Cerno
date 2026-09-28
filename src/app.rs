@@ -15,6 +15,7 @@ use crate::analysis::{Analyzer, ScoreBoard};
 use crate::db::{Db, FileStamp};
 use crate::deletion::{self, DeleteQueue};
 use crate::edit::{self, Ratio};
+use crate::filelock::FileLocks;
 use crate::i18n::{self, Lang};
 use crate::library::{self, Library};
 use crate::loader::{LoadedImage, Loader, Lookup};
@@ -120,8 +121,78 @@ enum ConfirmAction {
     DeleteModels,
 }
 
+/// What an action wants to do to a photo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Change {
+    /// Stars, rejection, colour label.
+    Mark,
+    /// Into the trash (with the countdown).
+    Delete,
+    /// Open straighten or crop.
+    Edit,
+    /// Rewrite the file at once: quarter turn, `Ctrl+Z`.
+    Rewrite,
+    /// Copy or move the photos on screen.
+    Transfer,
+}
+
+/// Why a photo can't be changed right now: one action at a time on a photo. Checked against
+/// in-memory state only – the UI never waits for a file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Blocked {
+    /// A straighten, crop, quarter turn or `Ctrl+Z` is being written.
+    Writing,
+    /// Straighten or crop is open: `Enter` or `Esc` first.
+    Editing,
+    /// The photo is part of a copy that is waiting or running.
+    Copying,
+    /// The photo is being moved to another folder.
+    Moving,
+}
+
+impl Blocked {
+    fn hint(self) -> &'static str {
+        let t = i18n::t();
+        match self {
+            Self::Writing => t.edit_writing,
+            Self::Editing => t.busy_editing,
+            Self::Copying => t.busy_copying,
+            Self::Moving => t.busy_moving,
+        }
+    }
+}
+
+/// `writing`: an edit is in the writer; `editing`: a session is open; `transfer`: how the
+/// photo (or, for several photos, any of them) takes part in a copy or move.
+fn blocked(
+    change: Change,
+    writing: bool,
+    editing: bool,
+    transfer: Option<TransferMode>,
+) -> Option<Blocked> {
+    match (change, transfer) {
+        // A moved file is gone from here: nothing may queue up for its old path.
+        (_, Some(TransferMode::Move)) => return Some(Blocked::Moving),
+        // Marks may wait: the file lock keeps a rating write and the copy apart.
+        (Change::Delete | Change::Edit | Change::Rewrite, Some(TransferMode::Copy)) => {
+            return Some(Blocked::Copying);
+        }
+        _ => {}
+    }
+    match change {
+        Change::Mark => None,
+        Change::Delete | Change::Edit | Change::Rewrite | Change::Transfer if writing => {
+            Some(Blocked::Writing)
+        }
+        Change::Rewrite | Change::Transfer if editing => Some(Blocked::Editing),
+        _ => None,
+    }
+}
+
 pub struct CernoApp {
     db: Arc<Db>,
+    /// Who reads or writes which photo (writer, loader, copy/move, edit render).
+    files: Arc<FileLocks>,
     thumbs: Arc<Thumbs>,
     board: Arc<ScoreBoard>,
     loader: Loader,
@@ -319,6 +390,8 @@ enum Side {
 }
 
 struct EditSession {
+    /// The photo being edited; the session ends if another one becomes current.
+    path: PathBuf,
     zoom: viewer::Zoom,
     kind: EditKind,
 }
@@ -428,6 +501,7 @@ impl CernoApp {
             i18n::set(lang);
         }
         let db = Arc::new(db);
+        let files = Arc::new(FileLocks::default());
         let thumbs = Arc::new(Thumbs::new(ctx.clone(), Arc::clone(&db)));
         let board = Arc::new(ScoreBoard::default());
 
@@ -478,17 +552,24 @@ impl CernoApp {
             .unwrap_or(DetailsMode::Off);
 
         let mut app = Self {
-            loader: Loader::new(ctx.clone(), START_TARGET, Arc::clone(&thumbs)),
+            loader: Loader::new(
+                ctx.clone(),
+                START_TARGET,
+                Arc::clone(&thumbs),
+                Arc::clone(&files),
+            ),
             analyzer: Analyzer::new(
                 ctx.clone(),
                 Arc::clone(&db),
                 Arc::clone(&board),
                 Arc::clone(&thumbs),
+                Arc::clone(&files),
             ),
-            writer: RatingWriter::new(ctx.clone(), Arc::clone(&db)),
+            writer: RatingWriter::new(ctx.clone(), Arc::clone(&db), Arc::clone(&files)),
             deletions: DeleteQueue::new(deletion::move_to_trash),
-            transfers: TransferQueue::new(),
+            transfers: TransferQueue::new(Arc::clone(&files)),
             db,
+            files,
             thumbs,
             board,
             dir: None,
@@ -646,6 +727,13 @@ impl CernoApp {
             .set_library(Arc::clone(&self.view.paths), self.current, pinned);
         self.sync_analyzer();
         self.update_title(ctx);
+        // A copy or move finished, a filter changed …: the geometry belongs to the other photo.
+        if let Some(session) = &self.edit
+            && self.view.get(self.current) != Some(&session.path)
+        {
+            self.cancel_edit();
+            self.notice = Some(Notice::hint(i18n::t().edit_cancelled));
+        }
     }
 
     /// Name order without filters: new scores cannot move a photo, but they bring the
@@ -715,6 +803,9 @@ impl CernoApp {
         }
         if self.transfers.is_busy() {
             self.notice = Some(Notice::hint(t.transfer_busy));
+            return;
+        }
+        if !self.allowed(Change::Transfer, None) {
             return;
         }
         let title = match mode {
@@ -870,6 +961,32 @@ impl CernoApp {
         }
     }
 
+    /// Why `change` can't happen to `path` right now – or, without a path, to the photos on
+    /// screen (they may take part in a copy or move).
+    fn blocked_for(&self, change: Change, path: Option<&Path>) -> Option<Blocked> {
+        let transfer = match path {
+            Some(path) => self.transfers.involves(path),
+            None => self.transfers.mode(),
+        };
+        blocked(change, self.edit_busy, self.edit.is_some(), transfer)
+    }
+
+    /// `true` when `change` may go ahead; otherwise a hint says why not.
+    fn allowed(&mut self, change: Change, path: Option<&Path>) -> bool {
+        match self.blocked_for(change, path) {
+            Some(reason) => {
+                self.notice = Some(Notice::hint(reason.hint()));
+                false
+            }
+            None => true,
+        }
+    }
+
+    /// The reason as a menu row shows it (greyed out, the reason as its tooltip).
+    fn menu_block(&self, change: Change, path: Option<&Path>) -> Option<&'static str> {
+        self.blocked_for(change, path).map(Blocked::hint)
+    }
+
     /// A card (models, confirmation) is open: keys and the photo's mouse handling pause.
     fn modal_open(&self) -> bool {
         self.models_open || self.confirm.is_some()
@@ -930,6 +1047,9 @@ impl CernoApp {
     }
 
     fn rate(&mut self, ctx: &egui::Context, path: PathBuf, rating: Rating, advance: bool) {
+        if !self.allowed(Change::Mark, Some(&path)) {
+            return;
+        }
         let next = self.next_path();
         if let Ok(stamp) = FileStamp::of(&path)
             && let Ok(Some(record)) = self.db.lookup(&path.to_string_lossy(), stamp)
@@ -972,6 +1092,9 @@ impl CernoApp {
         label: Option<Label>,
         advance: bool,
     ) {
+        if !self.allowed(Change::Mark, Some(&path)) {
+            return;
+        }
         let next = self.next_path();
         self.session_labels.insert(path.clone(), label);
         self.writer.set_label(path.clone(), label);
@@ -1064,6 +1187,9 @@ impl CernoApp {
             self.notice = Some(Notice::hint(i18n::t().no_match));
             return;
         }
+        if !self.allowed(Change::Delete, None) {
+            return;
+        }
         let now = Instant::now();
         for path in self.view.paths.iter().cloned() {
             self.deletions.push(path, now);
@@ -1073,6 +1199,9 @@ impl CernoApp {
 
     /// All rejected photos go to the trash – with the usual countdown, `Esc` brings them back.
     fn delete_rejected(&mut self, ctx: &egui::Context) {
+        if !self.allowed(Change::Delete, None) {
+            return;
+        }
         let now = Instant::now();
         for path in self.rejected() {
             self.deletions.push(path, now);
@@ -1148,6 +1277,9 @@ impl CernoApp {
         let Some(path) = self.view.get(self.current).cloned() else {
             return;
         };
+        if !self.allowed(Change::Delete, Some(&path)) {
+            return;
+        }
         let keep = self.neighbour(self.current, &[&path]);
         self.delete(ctx, path, keep);
     }
@@ -1390,36 +1522,47 @@ impl CernoApp {
                 filters.insert(0, Row::new(Action::FilterClear, t.filter_clear, None));
             }
             entries.push(Entry::Group(Group::new(t.menu_filter, None, filters)));
+            // Rows that can't run now are greyed out, with the reason as their tooltip.
+            let current = self.view.get(self.current).map(PathBuf::as_path);
+            let edit = self.menu_block(Change::Edit, current);
+            let rewrite = self.menu_block(Change::Rewrite, current);
+            let mark = self.menu_block(Change::Mark, current);
             entries.push(Entry::Group(Group::new(
                 t.menu_edit,
                 None,
                 vec![
-                    Row::new(Action::Straighten, t.cmd_straighten, key("S")),
+                    Row::new(Action::Straighten, t.cmd_straighten, key("S")).disabled(edit),
                     Row::new(
                         Action::RotateCcw,
                         t.cmd_rotate_ccw,
                         Some(format!("{}+←", t.key_ctrl)),
-                    ),
+                    )
+                    .disabled(rewrite),
                     Row::new(
                         Action::RotateCw,
                         t.cmd_rotate_cw,
                         Some(format!("{}+→", t.key_ctrl)),
-                    ),
-                    Row::new(Action::Crop, t.cmd_crop, key("R")),
-                    Row::new(Action::Undo, t.cmd_undo, Some(i18n::with_ctrl("Z"))),
+                    )
+                    .disabled(rewrite),
+                    Row::new(Action::Crop, t.cmd_crop, key("R")).disabled(edit),
+                    Row::new(Action::Undo, t.cmd_undo, Some(i18n::with_ctrl("Z")))
+                        .disabled(rewrite),
                 ],
             )));
             let mut photo = vec![
                 Row::new(Action::Compare, t.cmd_compare, key("C")).toggle(self.pinned.is_some()),
-                Row::new(Action::Reject, t.cmd_reject, key("X")),
+                Row::new(Action::Reject, t.cmd_reject, key("X")).disabled(mark),
             ];
             let rejected = self.rejected().len();
             if rejected > 0 {
-                photo.push(Row::new(
-                    Action::DeleteRejected,
-                    (t.cmd_delete_rejected)(rejected),
-                    None,
-                ));
+                photo.push(
+                    Row::new(
+                        Action::DeleteRejected,
+                        (t.cmd_delete_rejected)(rejected),
+                        None,
+                    )
+                    .disabled(self.menu_block(Change::Delete, None)),
+                );
             }
             entries.push(Entry::Group(Group::new(t.menu_photo, None, photo)));
             let current_label = self.view.get(self.current).and_then(|path| {
@@ -1445,6 +1588,7 @@ impl CernoApp {
                 )
                 .choice(current_label == Some(label))
                 .swatch(crate::theme::label_color(label))
+                .disabled(mark)
             })
             .collect();
             entries.push(Entry::Group(Group::new(t.menu_labels, None, labels)));
@@ -1479,10 +1623,18 @@ impl CernoApp {
     fn action_entries(&self) -> Vec<palette::Entry<Action>> {
         use palette::{Entry, Row};
         let t = i18n::t();
+        let transfer = if self.transfers.is_busy() {
+            Some(t.transfer_busy)
+        } else {
+            self.menu_block(Change::Transfer, None)
+        };
+        let delete = self.menu_block(Change::Delete, None);
         vec![
-            Entry::Row(Row::new(Action::Copy, t.transfer_copy, None)),
-            Entry::Row(Row::new(Action::Move, t.transfer_move, None)),
-            Entry::Row(Row::new(Action::DeleteSelection, t.selection_delete, None)),
+            Entry::Row(Row::new(Action::Copy, t.transfer_copy, None).disabled(transfer)),
+            Entry::Row(Row::new(Action::Move, t.transfer_move, None).disabled(transfer)),
+            Entry::Row(
+                Row::new(Action::DeleteSelection, t.selection_delete, None).disabled(delete),
+            ),
         ]
     }
 
@@ -1632,13 +1784,16 @@ impl CernoApp {
 
     /// JPEG, one photo on screen, and nothing already being written.
     fn can_edit(&mut self) -> bool {
-        if self.pinned.is_some() || self.edit_busy || self.view.is_empty() {
+        if self.pinned.is_some() {
             return false;
         }
-        let Some(path) = self.view.get(self.current) else {
+        let Some(path) = self.view.get(self.current).cloned() else {
             return false;
         };
-        if library::format_of(path) != Some(library::Format::Jpeg) {
+        if !self.allowed(Change::Edit, Some(&path)) {
+            return false;
+        }
+        if library::format_of(&path) != Some(library::Format::Jpeg) {
             self.notice = Some(Notice::hint(i18n::t().edit_not_jpeg));
             return false;
         }
@@ -1666,6 +1821,7 @@ impl CernoApp {
             .unwrap_or(self.zoom);
         self.zoom = viewer::Zoom::default();
         self.edit = Some(EditSession {
+            path: self.view[self.current].clone(),
             zoom,
             kind: EditKind::Straighten { radians: 0.0 },
         });
@@ -1700,6 +1856,7 @@ impl CernoApp {
             .unwrap_or(self.zoom);
         self.zoom = viewer::Zoom::default();
         self.edit = Some(EditSession {
+            path: self.view[self.current].clone(),
             zoom,
             kind: EditKind::Crop {
                 ratio: Ratio::Original,
@@ -1718,13 +1875,20 @@ impl CernoApp {
     }
 
     fn confirm_edit(&mut self) {
+        // Nothing may still be in the writer for this photo: the render reads the file now.
+        if self.edit_busy {
+            self.notice = Some(Notice::hint(Blocked::Writing.hint()));
+            return;
+        }
         let Some(session) = self.edit.take() else {
             return;
         };
         self.zoom = session.zoom;
-        let Some(path) = self.view.get(self.current).cloned() else {
+        if self.view.get(self.current) != Some(&session.path) {
+            self.notice = Some(Notice::hint(i18n::t().edit_cancelled));
             return;
-        };
+        }
+        let path = session.path;
         match session.kind {
             EditKind::Straighten { radians } if radians.abs() < 1e-8 => {}
             EditKind::Straighten { radians } => {
@@ -1753,12 +1917,13 @@ impl CernoApp {
         self.edit_busy = true;
         self.notice = Some(Notice::working(i18n::t().edit_writing));
         let channel = self.writer.channel();
+        let files = Arc::clone(&self.files);
         let thread = std::thread::Builder::new()
             .name("cerno-edit".into())
             .spawn(move || {
                 let result = match job {
-                    PixelJob::Rotate(radians) => edit::render_rotation(&path, radians),
-                    PixelJob::Crop(rect) => edit::render_crop(&path, rect),
+                    PixelJob::Rotate(radians) => edit::render_rotation(&path, radians, &files),
+                    PixelJob::Crop(rect) => edit::render_crop(&path, rect, &files),
                 };
                 match result {
                     Ok(jpeg) => channel.replace_pixels(path, jpeg),
@@ -1774,22 +1939,18 @@ impl CernoApp {
         }
     }
 
+    /// In a straighten or crop session it waits for `Enter` or `Esc`: the render would read
+    /// the file before or after the turn, and one of the two would be lost.
     fn rotate_quarter(&mut self, clockwise: bool) {
-        if self.edit_busy || self.pinned.is_some() {
-            return;
-        }
-        if matches!(
-            self.edit,
-            Some(EditSession {
-                kind: EditKind::Crop { .. },
-                ..
-            })
-        ) {
+        if self.pinned.is_some() {
             return;
         }
         let Some(path) = self.view.get(self.current).cloned() else {
             return;
         };
+        if !self.allowed(Change::Rewrite, Some(&path)) {
+            return;
+        }
         if library::format_of(&path) != Some(library::Format::Jpeg) {
             self.notice = Some(Notice::hint(i18n::t().edit_not_jpeg));
             return;
@@ -1802,12 +1963,15 @@ impl CernoApp {
     /// (straighten, crop and quarter turns keep one, for 30 days). Pressed again, the one
     /// before that.
     fn undo_edit(&mut self) {
-        if self.edit_busy || self.pinned.is_some() {
+        if self.pinned.is_some() {
             return;
         }
         let Some(path) = self.view.get(self.current).cloned() else {
             return;
         };
+        if !self.allowed(Change::Rewrite, Some(&path)) {
+            return;
+        }
         match self.db.latest_backup(&path.to_string_lossy()) {
             Ok(Some(_)) => {
                 self.edit_busy = true;
@@ -2848,6 +3012,44 @@ mod tests {
         assert_eq!(error.opacity(now + NOTICE_TIME * 3), Some(1.0));
         let working = Notice::working("Writing the photo…");
         assert_eq!(working.opacity(now + NOTICE_TIME * 3), Some(1.0));
+    }
+
+    #[test]
+    fn one_action_at_a_time_on_a_photo() {
+        use Change::*;
+        let none = None;
+        // Nothing going on: everything may happen.
+        for change in [Mark, Delete, Edit, Rewrite, Transfer] {
+            assert_eq!(blocked(change, false, false, none), None, "{change:?}");
+        }
+        // A moved photo takes nothing, a copied one still takes marks.
+        for change in [Mark, Delete, Edit, Rewrite] {
+            assert_eq!(
+                blocked(change, false, false, Some(TransferMode::Move)),
+                Some(Blocked::Moving)
+            );
+        }
+        assert_eq!(blocked(Mark, false, false, Some(TransferMode::Copy)), None);
+        for change in [Delete, Edit, Rewrite] {
+            assert_eq!(
+                blocked(change, false, false, Some(TransferMode::Copy)),
+                Some(Blocked::Copying)
+            );
+        }
+        // An edit being written holds everything but marks.
+        assert_eq!(blocked(Mark, true, false, none), None);
+        for change in [Delete, Edit, Rewrite, Transfer] {
+            assert_eq!(blocked(change, true, false, none), Some(Blocked::Writing));
+        }
+        // An open session: no quarter turn, no Ctrl+Z, no copy or move until Enter or Esc.
+        assert_eq!(blocked(Rewrite, false, true, none), Some(Blocked::Editing));
+        assert_eq!(blocked(Transfer, false, true, none), Some(Blocked::Editing));
+        assert_eq!(blocked(Mark, false, true, none), None);
+        assert_eq!(
+            blocked(Edit, false, true, none),
+            None,
+            "S/R switch the session"
+        );
     }
 
     #[test]

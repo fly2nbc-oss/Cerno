@@ -274,6 +274,12 @@ pub struct Texts {
     pub cmd_undo: &'static str,
     pub edit_not_jpeg: &'static str,
     pub edit_writing: &'static str,
+    /// The edited photo is no longer the current one (a copy finished, a filter changed).
+    pub edit_cancelled: &'static str,
+    /// Why an action waits: one action at a time on a photo.
+    pub busy_editing: &'static str,
+    pub busy_copying: &'static str,
+    pub busy_moving: &'static str,
     pub edit_reencoded: &'static str,
     pub undo_done: &'static str,
     pub undo_nothing: &'static str,

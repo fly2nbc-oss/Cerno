@@ -93,9 +93,10 @@ backup.rs            originals kept before an edit (data/backups, 30 days) for C
 transfer.rs          copy / move of the photos the filter shows (background thread)
 deletion.rs          delayed deletion queue (countdown, undo, trash worker)
 db.rs                SQLite index: files (path+stamp → fingerprint, rating, label), images (scores, thumbnail, embedding, taken_ms, metadata_version), feedback (deletions), backups (kept originals), settings; additive migration
-tools/*.py           one-off model preparation (collapse heads, extract the SigLIP tower, CLIP prompt vectors)
+tools/*.py           one-off model preparation (collapse heads, extract the SigLIP tower, CLIP prompt vectors); `i18n_edit.py` for texts
 rating.rs            debounced background writer for marks (rating and colour label), quarter turns, pixel edits and Ctrl+Z restores; one long-lived ExifTool process (-stay_open)
 exiftool.rs          ExifTool stay-open protocol
+filelock.rs          who reads or writes which photo right now (holds around file I/O, write generations)
 filetimes.rs         snapshot / restore of file timestamps
 paths.rs             data, model and database locations
 theme.rs             design tokens → egui Visuals, `text` font sizes, system UI font
@@ -133,9 +134,17 @@ theme.rs             design tokens → egui Visuals, `text` font sizes, system U
 - `metadata::Rating` (`Unrated` / `Rejected` / `Stars(1..=5)`) is the one rating type everywhere (file, index, session map, view, UI). The index stores the file's value (NULL, -1, 1–5); rejects are taste examples with label 0, like deletions. Sorting by rating puts rejects after unrated photos; filter "Rejected" shows only them.
 - `DeleteQueue`: deleted photos are hidden from the view immediately (`rebuild_view` filters `is_hidden`), each deletion restarts the 5 s countdown, `Esc` cancels the whole queue (Esc priority: deletions → zoom → compare → fullscreen → notice). When it runs out, a worker moves the batch to the trash (`trash` crate); failures reappear with a notice. Photos that really went to the trash are recorded as 0-star taste feedback (`Db::record_deletion`); cancelled ones are not. `on_exit` carries out a pending deletion that wasn't cancelled – after `writer.shutdown()`; keep that order, or a rating flushed on exit would hit a file that is already in the trash.
 
+### One action at a time
+
+- `app::blocked(change, writing, editing, transfer)` is pure and unit-tested. Every action that changes a photo asks `allowed()` first (a hint says why not); menu rows ask `menu_block()` and are greyed out with the reason as tooltip. A new action that changes a photo must go through `allowed`.
+- Rules: a photo being moved takes nothing; one being copied still takes marks (the file lock keeps the rating write and the copy apart); an edit in the writer (`edit_busy`) blocks everything but marks; an open straighten/crop session blocks quarter turns, `Ctrl+Z` and copy/move until `Enter` or `Esc`.
+- An `EditSession` remembers its path. `set_view` ends the session (hint) when another photo becomes current, and `confirm_edit` checks the path again.
+- `filelock::FileLocks` is shared by the writer, the loader, the analysis, the edit render and the copy/move worker. Each holds a path only around the I/O itself (one read, one ExifTool call, one copy – never a decode) and never two paths at once. The UI thread never waits there.
+- The analysis puts a photo back (`Outcome::Retry`, again after 1 s, at most 10 times) when a mark for it is queued or being written, or when its write generation changed while it ran – size and dates can stay the same after a rating, so the stamp alone doesn't tell.
+
 ### Languages
 
-- Every user-visible text lives in `i18n::Texts`; each language file is one full struct literal, so a forgotten text is a compile error. Texts with values are non-capturing closures coerced to `fn` pointers (word order per language, arguments type-checked). Add a text: field in `mod.rs` → all five files → `texts_show_their_values` if it takes values.
+- Every user-visible text lives in `i18n::Texts`; each language file is one full struct literal, so a forgotten text is a compile error. Texts with values are non-capturing closures coerced to `fn` pointers (word order per language, arguments type-checked). Add a text: field in `mod.rs` → all five files → `texts_show_their_values` if it takes values. `tools/i18n_edit.py spec.json` adds, replaces or removes a text in all six files at once (the spec format is in its docstring).
 - The current language is a global atomic read via `i18n::t()` on every frame. It **starts as English** and only `CernoApp::new` applies the system/saved language, so tests never depend on the machine's locale. Tests must never call `i18n::set` (they run in parallel and `ui::details::tests` looks for "AESTHETICS"); test formatting through the `format_*` helpers that take `&Texts`.
 - `metadata.rs` stays language-free (raw values: `taken` as `YYYY-MM-DD HH:MM`, `gps`, `digital_zoom`); the UI localizes them (`i18n::date`, `i18n::coordinates`, `Texts::digital_zoom`).
 - Not translated: model/backend names (LAION, SigLIP, DirectML, CPU), file names, library error details (only the sentence around them).
@@ -186,7 +195,7 @@ theme.rs             design tokens → egui Visuals, `text` font sizes, system U
 - ExifTool must get `-charset filename=UTF8`, otherwise paths with umlauts fail on Windows. (Same trap when checking files by hand from PowerShell: pass the folder, not the umlaut file name; and quote `"-FNumber=2.8"` – PowerShell splits unquoted `-x=2.8`.)
 - ExifTool's `-P` shifts mtime and creation time by a few **microseconds** (Perl floats). `filetimes::Snapshot::restore` puts the exact values back after every write – don't remove it just because `-P` "already preserves dates".
 - **In-place writes are deliberately not atomic.** `-overwrite_original_in_place` copies the new bytes back into the original file so its identity (creation date, inode) survives – the user's "dates must not change" requirement wins over temp-file + rename. Trade-off: a crash during the copy-back can corrupt that one file.
-- **Torn reads are possible:** if the loader reads a file while ExifTool copies bytes back into it (rate, navigate away and back within the debounce window), the decode fails and the slot shows an error until it is evicted and re-decoded. Rare and self-healing – keep the eviction, don't cache failures forever.
+- **No torn reads:** the loader, the analysis, the edit render and the copy worker read a file only while holding it in `FileLocks`, and every write holds it too, so nobody sees a file while ExifTool copies bytes back into it. Another program can still rewrite a file under Cerno; a failed decode is evicted and decoded again – don't cache failures forever.
 - **Fingerprints depend on the decoder and resizer.** Upgrading zune-jpeg, libheif or fast_image_resize can change them; that only means a re-analysis, no data loss. Never use `std::hash::DefaultHasher` for them (not stable across Rust versions).
 - DirectML is registered with `error_on_failure()` and falls back to a CPU session explicitly, so the toolbar can show the real backend. It requires `with_memory_pattern(false)`.
 - The ONNX output is picked by shape (the `[batch, 768]` / `[batch, 1152]` one), not by name. SigLIP's `image_embeds` are already L2-normalised; its preprocessing is a plain squash to 384 px with `v/127.5 − 1`, CLIP's is short side 224 + centre crop + CLIP mean/std.

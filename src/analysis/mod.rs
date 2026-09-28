@@ -4,6 +4,9 @@
 //!
 //! Nearest images first, like the loader. Work pauses while the user navigates, so decoding for
 //! the display always wins. Files the database already knows cost one `stat` and one query.
+//!
+//! A photo the rating writer is about to change, or changed while it was analysed, is put back
+//! and taken up again a moment later: its bytes (and the rating read from them) would be stale.
 
 pub mod aesthetic;
 pub mod attributes;
@@ -25,6 +28,7 @@ use anyhow::{Context as _, Result, bail};
 use eframe::egui;
 
 use crate::db::{Db, FileStamp, ImageRecord, Scores};
+use crate::filelock::FileLocks;
 use crate::metadata::{Label, Rating};
 use crate::{decode, library, metadata, paths, thumbs};
 use aesthetic::{AestheticModel, V25Model};
@@ -38,6 +42,10 @@ const NAVIGATION_PAUSE: Duration = Duration::from_millis(900);
 /// The taste model retrains this long after the last rating or deletion.
 const TASTE_DELAY: Duration = Duration::from_secs(2);
 const WORKERS: usize = 2;
+/// A photo that was being written is tried again after this long …
+const RETRY_DELAY: Duration = Duration::from_secs(1);
+/// … this many times; a file that keeps changing is left for the next visit.
+const MAX_RETRIES: u32 = 10;
 
 /// What is known about a file, as far as the UI is concerned.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
@@ -136,6 +144,8 @@ struct State {
     current: usize,
     done: HashSet<usize>,
     in_flight: HashSet<usize>,
+    /// Put back while a write was pending: when to try again, and how often it was tried.
+    deferred: HashMap<usize, (Instant, u32)>,
     shutdown: bool,
 }
 
@@ -158,6 +168,7 @@ struct Shared {
     db: Arc<Db>,
     board: Arc<ScoreBoard>,
     thumbs: Arc<thumbs::Thumbs>,
+    files: Arc<FileLocks>,
     last_navigation: Mutex<Instant>,
     clip: Mutex<Slot<AestheticModel>>,
     clip_state: Mutex<ModelState>,
@@ -180,6 +191,14 @@ struct Job {
     generation: u64,
     index: usize,
     path: PathBuf,
+}
+
+/// How one analysis ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Outcome {
+    Done,
+    /// The file is being written (or was, meanwhile): try again shortly.
+    Retry,
 }
 
 /// Which optional models can run – decides what a complete record needs.
@@ -227,6 +246,7 @@ impl Analyzer {
         db: Arc<Db>,
         board: Arc<ScoreBoard>,
         thumbs: Arc<thumbs::Thumbs>,
+        files: Arc<FileLocks>,
     ) -> Self {
         let present = |ok: bool| {
             if ok {
@@ -243,6 +263,7 @@ impl Analyzer {
                 current: 0,
                 done: HashSet::new(),
                 in_flight: HashSet::new(),
+                deferred: HashMap::new(),
                 shutdown: false,
             }),
             wake: Condvar::new(),
@@ -250,6 +271,7 @@ impl Analyzer {
             db,
             board,
             thumbs,
+            files,
             last_navigation: Mutex::new(Instant::now()),
             clip: Mutex::new(Slot::NotLoaded),
             clip_state: Mutex::new(present(clip_path().is_some_and(|p| p.is_file()))),
@@ -296,6 +318,7 @@ impl Analyzer {
         state.current = current;
         state.done.clear();
         state.in_flight.clear();
+        state.deferred.clear();
         drop(state);
         self.shared.wake.notify_all();
     }
@@ -509,10 +532,22 @@ fn worker(shared: &Shared) {
                 if state.shutdown {
                     return;
                 }
-                if let Some(job) = next_job(&mut state) {
+                let now = Instant::now();
+                if let Some(job) = next_job(&mut state, now) {
                     break job;
                 }
-                state = shared.wake.wait(state).unwrap_or_else(|p| p.into_inner());
+                // Only put-back photos left: wake up when the first of them is due.
+                let due = state.deferred.values().map(|(at, _)| *at).min();
+                state = match due {
+                    Some(at) => {
+                        shared
+                            .wake
+                            .wait_timeout(state, at.saturating_duration_since(now))
+                            .unwrap_or_else(|p| p.into_inner())
+                            .0
+                    }
+                    None => shared.wake.wait(state).unwrap_or_else(|p| p.into_inner()),
+                };
             }
         };
 
@@ -525,21 +560,32 @@ fn worker(shared: &Shared) {
             std::thread::sleep(NAVIGATION_PAUSE - since);
         }
 
-        if let Err(err) = analyze(shared, &job.path) {
+        let outcome = analyze(shared, &job.path).unwrap_or_else(|err| {
             log::warn!("analysis of {}: {err:#}", job.path.display());
-        }
+            Outcome::Done
+        });
 
         let mut state = lock(&shared.state);
         if state.generation == job.generation {
             state.in_flight.remove(&job.index);
-            state.done.insert(job.index);
+            finish(&mut state, job.index, outcome, Instant::now());
         }
         drop(state);
         shared.ctx.request_repaint();
     }
 }
 
-fn next_job(state: &mut State) -> Option<Job> {
+/// Marks the job done, or puts it back for a later try (a bounded number of times).
+fn finish(state: &mut State, index: usize, outcome: Outcome, now: Instant) {
+    let tries = state.deferred.remove(&index).map_or(0, |(_, tries)| tries);
+    if outcome == Outcome::Retry && tries < MAX_RETRIES {
+        state.deferred.insert(index, (now + RETRY_DELAY, tries + 1));
+    } else {
+        state.done.insert(index);
+    }
+}
+
+fn next_job(state: &mut State, now: Instant) -> Option<Job> {
     let len = state.paths.len();
     for distance in 0..len {
         for index in [
@@ -550,7 +596,8 @@ fn next_job(state: &mut State) -> Option<Job> {
         .flatten()
         .filter(|&i| i < len)
         {
-            if state.done.contains(&index) || !state.in_flight.insert(index) {
+            let waiting = state.deferred.get(&index).is_some_and(|(at, _)| *at > now);
+            if state.done.contains(&index) || waiting || !state.in_flight.insert(index) {
                 continue;
             }
             return Some(Job {
@@ -563,7 +610,21 @@ fn next_job(state: &mut State) -> Option<Job> {
     None
 }
 
-fn analyze(shared: &Shared, path: &Path) -> Result<()> {
+/// The file's bytes, read while nobody writes it.
+fn read(files: &FileLocks, path: &Path) -> Result<Vec<u8>> {
+    let _held = files.hold(path);
+    std::fs::read(path).context("cannot read file")
+}
+
+fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
+    // A mark on its way would make the rating read below stale; take the photo up later.
+    let files = &*shared.files;
+    if files.busy(path) {
+        return Ok(Outcome::Retry);
+    }
+    let generation = files.generation(path);
+    // Written meanwhile (the stamp can stay the same: same size, dates put back)?
+    let changed = || files.busy(path) || files.generation(path) != generation;
     let stamp = FileStamp::of(path)?;
     let key = path.to_string_lossy();
     let caps = Capabilities {
@@ -576,12 +637,15 @@ fn analyze(shared: &Shared, path: &Path) -> Result<()> {
         remember_embedding(shared, path, record.image.embedding.as_deref());
         if is_complete(&record.image, caps) {
             shared.board.set(path, known_from(&record));
-            return Ok(());
+            return Ok(Outcome::Done);
         }
         // Scores are done; only the capture time (and a fresh read of rating/label) is missing.
         if scores_complete(&record.image, caps) {
-            let bytes = std::fs::read(path).context("cannot read file")?;
+            let bytes = read(files, path)?;
             let meta = metadata::read(&bytes);
+            if changed() {
+                return Ok(Outcome::Retry);
+            }
             shared.db.put_file(
                 &key,
                 stamp,
@@ -602,7 +666,12 @@ fn analyze(shared: &Shared, path: &Path) -> Result<()> {
                     scores: record.image.scores,
                 },
             );
-            return Ok(());
+            // A write that slipped in between is repaired by the next try.
+            return Ok(if changed() {
+                Outcome::Retry
+            } else {
+                Outcome::Done
+            });
         }
     }
 
@@ -614,7 +683,7 @@ fn analyze(shared: &Shared, path: &Path) -> Result<()> {
     };
 
     let format = library::format_of(path).context("unsupported file type")?;
-    let bytes = std::fs::read(path).context("cannot read file")?;
+    let bytes = read(files, path)?;
     let meta = metadata::read(&bytes);
     let image = decode::decode_for_display(
         &bytes,
@@ -629,10 +698,13 @@ fn analyze(shared: &Shared, path: &Path) -> Result<()> {
     let (tw, th, thumb) = thumbs::downscale(rgb, w, h)?;
     let fingerprint = fingerprint(&thumb, image.original_size);
     let mut record = shared.db.image(fingerprint)?;
-    // A straighten or crop rewrites the file while this may still be running on the old bytes.
-    if FileStamp::of(path).ok() != Some(stamp) {
-        log::debug!("file changed during analysis, skipping {}", path.display());
-        return Ok(());
+    // A mark, straighten or crop rewrote the file while this ran on the old bytes.
+    if changed() || FileStamp::of(path).ok() != Some(stamp) {
+        log::debug!(
+            "file changed during analysis, again later: {}",
+            path.display()
+        );
+        return Ok(Outcome::Retry);
     }
     shared.db.put_file(
         &key,
@@ -736,7 +808,12 @@ fn analyze(shared: &Shared, path: &Path) -> Result<()> {
             scores: record.scores,
         },
     );
-    Ok(())
+    // A write that slipped in after the check above: the next try stores its rating.
+    Ok(if changed() {
+        Outcome::Retry
+    } else {
+        Outcome::Done
+    })
 }
 
 /// Loads a model on first use (one instance shared by all workers), reports its state and
@@ -917,11 +994,48 @@ mod tests {
             current: 2,
             done: HashSet::from([1]),
             in_flight: HashSet::new(),
+            deferred: HashMap::new(),
             shutdown: false,
         };
+        let now = Instant::now();
         let order: Vec<usize> =
-            std::iter::from_fn(|| next_job(&mut state).map(|j| j.index)).collect();
+            std::iter::from_fn(|| next_job(&mut state, now).map(|j| j.index)).collect();
         assert_eq!(order, [2, 3, 4, 0, 5]);
+    }
+
+    #[test]
+    fn a_photo_being_written_comes_back_later_a_few_times() {
+        let mut state = State {
+            generation: 0,
+            paths: Arc::new(vec![PathBuf::from("a.jpg"), PathBuf::from("b.jpg")]),
+            current: 0,
+            done: HashSet::new(),
+            in_flight: HashSet::new(),
+            deferred: HashMap::new(),
+            shutdown: false,
+        };
+        let t0 = Instant::now();
+        let job = next_job(&mut state, t0).unwrap();
+        assert_eq!(job.index, 0);
+        state.in_flight.remove(&0);
+        finish(&mut state, 0, Outcome::Retry, t0);
+        assert!(!state.done.contains(&0));
+        // Not yet due: the neighbour goes first, then nothing until the delay has passed.
+        assert_eq!(next_job(&mut state, t0).map(|j| j.index), Some(1));
+        assert!(next_job(&mut state, t0).is_none());
+        let again = next_job(&mut state, t0 + RETRY_DELAY).unwrap();
+        assert_eq!(again.index, 0);
+        state.in_flight.remove(&0);
+        // A file that keeps changing is given up on after `MAX_RETRIES`.
+        let mut at = t0;
+        for _ in 1..MAX_RETRIES {
+            finish(&mut state, 0, Outcome::Retry, at);
+            at += RETRY_DELAY;
+        }
+        assert!(!state.done.contains(&0));
+        finish(&mut state, 0, Outcome::Retry, at);
+        assert!(state.done.contains(&0));
+        assert!(state.deferred.is_empty());
     }
 
     fn complete_record() -> ImageRecord {

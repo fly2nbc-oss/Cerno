@@ -38,6 +38,8 @@ pub struct Row<A> {
     pub mark: Mark,
     /// A colour dot in front of the label (colour labels).
     pub swatch: Option<Color32>,
+    /// Why the row can't run right now (greyed out, the reason as its tooltip).
+    pub disabled: Option<&'static str>,
 }
 
 impl<A> Row<A> {
@@ -48,7 +50,13 @@ impl<A> Row<A> {
             shortcut,
             mark: Mark::None,
             swatch: None,
+            disabled: None,
         }
+    }
+
+    pub fn disabled(mut self, reason: Option<&'static str>) -> Self {
+        self.disabled = reason;
+        self
     }
 
     pub fn toggle(mut self, on: bool) -> Self {
@@ -213,6 +221,7 @@ pub fn show<A: Copy>(
                             mark: Mark::None,
                             swatch: None,
                             submenu: true,
+                            disabled: None,
                         };
                         let response = row_button(ui, row, id.with(("group", index)), look, lit);
                         if response.hovered && state.open.is_none() {
@@ -269,8 +278,12 @@ pub fn show<A: Copy>(
     out
 }
 
-/// Runs a row: a plain action closes the menu, a switch or a choice keeps it open.
+/// Runs a row: a plain action closes the menu, a switch or a choice keeps it open. A disabled
+/// row does nothing; its tooltip says why.
 fn run_row<A: Copy>(row: &Row<A>, out: &mut Output<A>) {
+    if row.disabled.is_some() {
+        return;
+    }
     out.run = Some(row.action);
     if row.mark == Mark::None {
         out.close = true;
@@ -426,6 +439,7 @@ struct RowLook<'a> {
     mark: Mark,
     swatch: Option<Color32>,
     submenu: bool,
+    disabled: Option<&'static str>,
 }
 
 impl<'a> RowLook<'a> {
@@ -436,6 +450,7 @@ impl<'a> RowLook<'a> {
             mark: row.mark,
             swatch: row.swatch,
             submenu: false,
+            disabled: row.disabled,
         }
     }
 }
@@ -452,9 +467,16 @@ fn row_button(
     look: RowLook<'_>,
     lit: bool,
 ) -> RowResponse {
-    let response = ui
-        .interact(row, id, Sense::click())
-        .on_hover_cursor(CursorIcon::PointingHand);
+    let mut response = ui.interact(row, id, Sense::click());
+    response = match look.disabled {
+        Some(reason) => response.on_hover_text(reason),
+        None => response.on_hover_cursor(CursorIcon::PointingHand),
+    };
+    let text_colour = if look.disabled.is_some() {
+        tokens::MUTED
+    } else {
+        tokens::TEXT
+    };
     let painter = ui.painter();
     if response.hovered() || lit {
         painter.rect_filled(row, 5.0, tokens::ACCENT_SUBTLE);
@@ -502,12 +524,12 @@ fn row_button(
     let mut job = LayoutJob::simple_singleline(
         look.label.to_owned(),
         FontId::proportional(text::BODY),
-        tokens::TEXT,
+        text_colour,
     );
     job.wrap = TextWrapping::truncate_at_width((label_right - x).max(20.0));
     let galley = painter.layout_job(job);
     let size = galley.size();
-    painter.galley(pos2(x, y - size.y / 2.0), galley, tokens::TEXT);
+    painter.galley(pos2(x, y - size.y / 2.0), galley, text_colour);
     if look.submenu {
         icons::chevron(painter, pos2(row.right() - 12.0, y), false, tokens::MUTED);
     }
@@ -656,6 +678,28 @@ mod tests {
         let out = frame(&mut state, &short, vec![key(Key::Enter)]);
         assert!(out.run.is_none(), "the old cursor points nowhere now");
         assert_eq!(state.cursor, None);
+    }
+
+    #[test]
+    fn a_disabled_row_does_not_run() {
+        let entries = vec![
+            Entry::Row(Row::new(1, "Verschieben", None).disabled(Some("läuft schon"))),
+            Entry::Row(Row::new(2, "Hilfe", None)),
+        ];
+        let mut state = State::default();
+        let out = frame(
+            &mut state,
+            &entries,
+            vec![key(Key::ArrowDown), key(Key::Enter)],
+        );
+        assert!(out.run.is_none());
+        assert!(!out.close, "the menu stays open, the tooltip says why");
+        let out = frame(
+            &mut state,
+            &entries,
+            vec![key(Key::ArrowDown), key(Key::Enter)],
+        );
+        assert_eq!(out.run, Some(2));
     }
 
     #[test]

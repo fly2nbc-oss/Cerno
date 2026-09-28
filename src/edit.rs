@@ -10,6 +10,7 @@ use std::path::Path;
 use anyhow::{Context as _, Result, bail};
 
 use crate::decode;
+use crate::filelock::FileLocks;
 use crate::library::Format;
 use crate::metadata;
 
@@ -337,15 +338,15 @@ pub fn encode_jpeg(width: u32, height: u32, rgb: &[u8]) -> Result<Vec<u8>> {
 }
 
 /// Full-resolution clockwise rotation, encoded as a new JPEG. Orientation is already applied.
-pub fn render_rotation(path: &Path, radians: f64) -> Result<Vec<u8>> {
-    let (width, height, rgb) = decode_jpeg(path)?;
+pub fn render_rotation(path: &Path, radians: f64, files: &FileLocks) -> Result<Vec<u8>> {
+    let (width, height, rgb) = decode_jpeg(path, files)?;
     let turned = rotate_cover(&rgb, width, height, radians);
     encode_jpeg(width, height, &turned)
 }
 
 /// Full-resolution crop, encoded as a new JPEG.
-pub fn render_crop(path: &Path, rect: PixelRect) -> Result<Vec<u8>> {
-    let (width, height, rgb) = decode_jpeg(path)?;
+pub fn render_crop(path: &Path, rect: PixelRect, files: &FileLocks) -> Result<Vec<u8>> {
+    let (width, height, rgb) = decode_jpeg(path, files)?;
     if rect.x + rect.w > width || rect.y + rect.h > height {
         bail!("crop extends outside the photo");
     }
@@ -353,8 +354,11 @@ pub fn render_crop(path: &Path, rect: PixelRect) -> Result<Vec<u8>> {
     encode_jpeg(rect.w, rect.h, &cropped)
 }
 
-fn decode_jpeg(path: &Path) -> Result<(u32, u32, Vec<u8>)> {
-    let bytes = std::fs::read(path).context("cannot read file")?;
+fn decode_jpeg(path: &Path, files: &FileLocks) -> Result<(u32, u32, Vec<u8>)> {
+    let bytes = {
+        let _held = files.hold(path);
+        std::fs::read(path).context("cannot read file")?
+    };
     let meta = metadata::read(&bytes);
     let decoded =
         decode::decode_for_display(&bytes, Format::Jpeg, meta.orientation, [u32::MAX; 2])?;

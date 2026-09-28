@@ -13,6 +13,7 @@ use eframe::egui;
 
 use crate::db::{Db, FileStamp};
 use crate::exiftool::ExifTool;
+use crate::filelock::FileLocks;
 use crate::filetimes;
 use crate::metadata::{self, Label, LabelInfo, Rating, RatingInfo};
 
@@ -96,7 +97,8 @@ pub struct RatingWriter {
 }
 
 impl RatingWriter {
-    pub fn new(ctx: egui::Context, db: Arc<Db>) -> Self {
+    /// `files`: every write holds its path there, so no one reads or copies a half-written file.
+    pub fn new(ctx: egui::Context, db: Arc<Db>, files: Arc<FileLocks>) -> Self {
         let (tx, rx) = mpsc::channel();
         let status = Arc::new(Mutex::new(WriterStatus::default()));
         let outcomes = Arc::new(Mutex::new(Vec::new()));
@@ -113,11 +115,14 @@ impl RatingWriter {
                 let backups = crate::backup::dir().ok();
                 run(
                     &rx,
-                    &thread_status,
-                    &thread_outcomes,
-                    &ctx,
-                    &db,
-                    backups.as_deref(),
+                    &Shared {
+                        status: &thread_status,
+                        outcomes: &thread_outcomes,
+                        ctx: &ctx,
+                        db: &db,
+                        files: &files,
+                        backups: backups.as_deref(),
+                    },
                 );
             })
             .expect("failed to spawn rating writer");
@@ -183,14 +188,25 @@ impl Drop for RatingWriter {
     }
 }
 
-fn run(
-    rx: &mpsc::Receiver<Message>,
-    status: &Mutex<WriterStatus>,
-    outcomes: &Mutex<Vec<EditOutcome>>,
-    ctx: &egui::Context,
-    db: &Db,
-    backups: Option<&Path>,
-) {
+/// What the writer thread works with.
+struct Shared<'a> {
+    status: &'a Mutex<WriterStatus>,
+    outcomes: &'a Mutex<Vec<EditOutcome>>,
+    ctx: &'a egui::Context,
+    db: &'a Db,
+    files: &'a FileLocks,
+    backups: Option<&'a Path>,
+}
+
+fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
+    let Shared {
+        status,
+        outcomes,
+        ctx,
+        db,
+        files,
+        backups,
+    } = *shared;
     let mut exiftool: Option<ExifTool> = None;
     let mut pending: HashMap<PathBuf, Pending> = HashMap::new();
     let mut shutting_down = false;
@@ -203,6 +219,7 @@ fn run(
         };
         match rx.recv_timeout(timeout) {
             Ok(Message::SetRating { path, rating }) => {
+                files.set_queued(&path, true);
                 let entry = pending.entry(path).or_insert_with(|| Pending {
                     rating: None,
                     label: None,
@@ -212,6 +229,7 @@ fn run(
                 entry.at = Instant::now();
             }
             Ok(Message::SetLabel { path, label }) => {
+                files.set_queued(&path, true);
                 let entry = pending.entry(path).or_insert_with(|| Pending {
                     rating: None,
                     label: None,
@@ -222,15 +240,19 @@ fn run(
             }
             // Every edit keeps the original first; without that copy it does not happen.
             Ok(Message::RotateQuarter { path, clockwise }) => {
-                let result = flush_pending(&mut pending, &mut exiftool, &path, status)
+                let held = files.hold_write(&path);
+                let result = flush_pending(&mut pending, &mut exiftool, &path, status, files)
                     .and_then(|()| keep_original(db, backups, &path))
                     .and_then(|()| apply_quarter_turn(&mut exiftool, &path, clockwise, db));
+                drop(held);
                 push_outcome(outcomes, path, result, Done::Rotated);
             }
             Ok(Message::ReplacePixels { path, jpeg }) => {
-                let result = flush_pending(&mut pending, &mut exiftool, &path, status)
+                let held = files.hold_write(&path);
+                let result = flush_pending(&mut pending, &mut exiftool, &path, status, files)
                     .and_then(|()| keep_original(db, backups, &path))
                     .and_then(|()| apply_pixels(&mut exiftool, &path, &jpeg, db));
+                drop(held);
                 push_outcome(outcomes, path, result, Done::Reencoded);
             }
             Ok(Message::EditFailed { path, message }) => {
@@ -242,8 +264,10 @@ fn run(
                 );
             }
             Ok(Message::Restore { path }) => {
-                let result = flush_pending(&mut pending, &mut exiftool, &path, status)
+                let held = files.hold_write(&path);
+                let result = flush_pending(&mut pending, &mut exiftool, &path, status, files)
                     .and_then(|()| restore_original(&mut exiftool, &path, db));
+                drop(held);
                 push_outcome(outcomes, path, result, Done::Restored);
             }
             Ok(Message::Shutdown) | Err(RecvTimeoutError::Disconnected) => shutting_down = true,
@@ -259,7 +283,10 @@ fn run(
             let Some(marks) = pending.remove(&path) else {
                 continue;
             };
+            let held = files.hold_write(&path);
             let result = write_marks(&mut exiftool, &path, marks.rating, marks.label);
+            files.set_queued(&path, false);
+            drop(held);
             if let Ok(Some(written)) = &result {
                 // The size changed, the mtime didn't: keep the index valid without rehashing.
                 let updated = FileStamp::of(&path)
@@ -432,16 +459,19 @@ fn percent(stars: u8) -> u8 {
 
 /// Writes a pending rating for `path` before a pixel edit, so the copied metadata includes it.
 /// The index row is not updated: the edit deletes it afterwards.
+/// The caller holds `path` for writing.
 fn flush_pending(
     pending: &mut HashMap<PathBuf, Pending>,
     exiftool: &mut Option<ExifTool>,
     path: &Path,
     status: &Mutex<WriterStatus>,
+    files: &FileLocks,
 ) -> Result<()> {
     let Some(marks) = pending.remove(path) else {
         return Ok(());
     };
     let result = write_marks(exiftool, path, marks.rating, marks.label);
+    files.set_queued(path, false);
     if let Ok(mut status) = status.lock() {
         match &result {
             Ok(_) => status.last_error = None,
@@ -895,7 +925,8 @@ mod tests {
             [u32::MAX; 2],
         )
         .unwrap();
-        let jpeg = crate::edit::render_rotation(&path, 2.0_f64.to_radians()).unwrap();
+        let jpeg = crate::edit::render_rotation(&path, 2.0_f64.to_radians(), &FileLocks::default())
+            .unwrap();
         apply_pixels(&mut exiftool, &path, &jpeg, &db).unwrap();
         let after = fs::read(&path).unwrap();
         let after_meta = metadata::read(&after);

@@ -9,7 +9,7 @@
 //! that fit the GPU's texture limit.
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 use std::time::Instant;
@@ -17,6 +17,7 @@ use std::time::Instant;
 use anyhow::{Context as _, Result};
 use eframe::egui::{self, ColorImage, TextureFilter, TextureHandle, TextureOptions};
 
+use crate::filelock::FileLocks;
 use crate::histogram::{self, RgbHistogram};
 use crate::metadata::{self, CameraInfo, LabelInfo, RatingInfo};
 use crate::thumbs::{self, Thumbs};
@@ -113,6 +114,7 @@ struct Shared {
     wake: Condvar,
     ctx: egui::Context,
     thumbs: Arc<Thumbs>,
+    files: Arc<FileLocks>,
 }
 
 impl Shared {
@@ -143,7 +145,12 @@ pub struct Loader {
 }
 
 impl Loader {
-    pub fn new(ctx: egui::Context, target: [u32; 2], thumbs: Arc<Thumbs>) -> Self {
+    pub fn new(
+        ctx: egui::Context,
+        target: [u32; 2],
+        thumbs: Arc<Thumbs>,
+        files: Arc<FileLocks>,
+    ) -> Self {
         let shared = Arc::new(Shared {
             state: Mutex::new(State {
                 generation: 0,
@@ -162,6 +169,7 @@ impl Loader {
             wake: Condvar::new(),
             ctx,
             thumbs,
+            files,
         });
         // Each decode is single-threaded; a few in parallel keep the prefetch window full.
         let count = std::thread::available_parallelism()
@@ -355,7 +363,7 @@ fn worker(shared: &Shared) {
                 }
             }
             Kind::Full => {
-                let result = load_full(&shared.ctx, &job);
+                let result = load_full(shared, &job);
                 let mut state = shared.lock();
                 if state.generation != job.generation {
                     continue;
@@ -438,7 +446,7 @@ fn too_small(image: &LoadedImage, target: [u32; 2]) -> bool {
 fn load_display(shared: &Shared, job: &Job) -> Result<LoadedImage> {
     let started = Instant::now();
     let format = library::format_of(&job.path).context("unsupported file type")?;
-    let bytes = std::fs::read(&job.path).context("cannot read file")?;
+    let bytes = read(&shared.files, &job.path)?;
     let meta = metadata::read(&bytes);
     let decoded = decode::decode_for_display(&bytes, format, meta.orientation, job.target)?;
 
@@ -474,9 +482,16 @@ fn load_display(shared: &Shared, job: &Job) -> Result<LoadedImage> {
     })
 }
 
-fn load_full(ctx: &egui::Context, job: &Job) -> Result<FullImage> {
+/// The file's bytes, never while the rating writer is halfway through rewriting it.
+fn read(files: &FileLocks, path: &Path) -> Result<Vec<u8>> {
+    let _held = files.hold(path);
+    std::fs::read(path).context("cannot read file")
+}
+
+fn load_full(shared: &Shared, job: &Job) -> Result<FullImage> {
+    let ctx = &shared.ctx;
     let format = library::format_of(&job.path).context("unsupported file type")?;
-    let bytes = std::fs::read(&job.path).context("cannot read file")?;
+    let bytes = read(&shared.files, &job.path)?;
     let meta = metadata::read(&bytes);
     let decoded = decode::decode_for_display(&bytes, format, meta.orientation, [u32::MAX; 2])?;
     drop(bytes);
