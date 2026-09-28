@@ -285,7 +285,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "A, D",
-            "Comparar: conservar la izquierda / la derecha – la otra se rechaza",
+            "Comparar: conservar la izquierda / la derecha – la otra se rechaza y la comparación termina",
         ),
         (
             "6 – 9",

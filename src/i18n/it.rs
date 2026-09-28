@@ -288,7 +288,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "A, D",
-            "Confronta: tieni la sinistra / la destra – l'altra viene rifiutata",
+            "Confronta: tieni la sinistra / la destra – l'altra viene rifiutata e il confronto termina",
         ),
         (
             "6 – 9",

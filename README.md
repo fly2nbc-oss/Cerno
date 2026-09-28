@@ -56,7 +56,7 @@ Cerno (Latin *cerno* – "I sift, discern, see clearly") is a native Rust deskto
 - **Safe metadata writes** – apart from the EXIF orientation of a 90° turn, the rating and the colour label (`xmp:Label`, English names) are the only metadata Cerno writes, in the background and debounced, in one pass when both change. File modification and creation dates stay bit-exact. Windows Explorer's own rating tags are kept in sync if present.
 - **Straighten, crop, rotate (JPEG)** – `S` straightens over a fine grid (mouse wheel or arrows, `Shift` for finer steps), `R` crops to Original, 3:2, 4:3, 16:9 or 1:1 (`A` changes the ratio, `X` flips landscape/portrait), `Ctrl+←` / `Ctrl+→` rotate by 90° losslessly through the EXIF orientation. `Enter` applies, `Esc` cancels. Straighten and crop re-encode the JPEG (quality 95, no chroma subsampling) into the original file; the file dates stay as they were. **Before every edit the original is kept** in Cerno's data folder: `Ctrl+Z` puts it back (with the rating and colour label given since), pressed again the one before. Kept originals are deleted after 30 days.
 - **Zoom** – `Z` or double-click toggles 100 %, mouse wheel zooms around the cursor, drag pans. Full resolution is loaded on demand; zoom and position stay when you switch photos, so a series can be compared at the same spot.
-- **Compare** – `C` pins the current photo on the left, the right side browses the rest. `A` keeps the left one, `D` the right one; the other is marked as rejected and the next photo moves in, so a burst is culled in a few keystrokes. Both sides zoom together. Aesthetics and sharpness sit under each photo. The menu's "Delete rejected photos" sends all rejects to the trash when you are done.
+- **Compare** – `C` pins the current photo on the left, the right side browses the rest. `A` keeps the left one, `D` the right one; the other is marked as rejected, compare mode ends and the kept photo is shown alone. Both sides zoom together. Aesthetics and sharpness sit under each photo. The menu's "Delete rejected photos" sends all rejects to the trash when you are done.
 - **Series and duplicates** – photos shot within two seconds form a series; sorting by capture time puts the sharpest one first, and "Best of each series" hides the rest. Identical copies (same pixels) are marked as duplicates – the original is the file the others only extend (`IMG_1.jpg` for `IMG_1 - Kopie.jpg`), else the only rated one, else the first; nothing is deleted on its own.
 - **Folders** – open one folder, or turn on "Include subfolders" to read the tree under it (hidden folders stay out).
 - **Delete without dialogs** – `Delete` hides the photo at once and moves it to the trash after a 5-second countdown; every further deletion restarts it, `Esc` brings all waiting photos back. Nothing blocks meanwhile.
@@ -102,7 +102,7 @@ Or drop a folder onto the window / `Ctrl+O`. When moving the binary, keep beside
 | `Shift+6`–`9` | Set that colour and go to the next photo |
 | `Delete` | Delete (to the trash after 5 s; `Esc` undoes) |
 | `C` | Compare: pin the current photo on the left / leave compare mode |
-| `A` / `D` | Compare: keep left / keep right – the other one is rejected |
+| `A` / `D` | Compare: keep left / keep right – the other one is rejected, compare mode ends |
 | `Z`, double-click | Toggle fit ↔ 100 % |
 | `+` / `-`, mouse wheel | Zoom in / out |
 | Drag | Pan while zoomed |

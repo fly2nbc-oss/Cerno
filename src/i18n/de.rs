@@ -289,7 +289,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "A, D",
-            "Vergleichen: links / rechts behalten – das andere wird abgelehnt",
+            "Vergleichen: links / rechts behalten – das andere wird abgelehnt, der Vergleich endet",
         ),
         (
             "6 – 9",

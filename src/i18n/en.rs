@@ -275,7 +275,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "A, D",
-            "Compare: keep left / keep right – the other one is rejected",
+            "Compare: keep left / keep right – the other one is rejected, compare mode ends",
         ),
         (
             "6 – 9",
