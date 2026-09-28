@@ -19,10 +19,12 @@ Cerno's own code is licensed under Apache-2.0 (see [LICENSE](./LICENSE)). It use
 | [DirectML](https://github.com/microsoft/DirectML) (`DirectML.dll`, Windows) | GPU backend of ONNX Runtime | MIT |
 | [libheif](https://github.com/strukturag/libheif) (`heif.dll`, Windows, `--features heic`) | HEIC/HEIF container | LGPL-3.0 |
 | [libde265](https://github.com/strukturag/libde265) (`libde265.dll`, Windows, `--features heic`) | HEVC decoding | LGPL-3.0 |
+| Microsoft Visual C++ runtime (`MSVCP140.dll`, `MSVCP140_1.dll`, `VCRUNTIME140.dll`, `VCRUNTIME140_1.dll`; Windows installer and portable zip) | C++ runtime of ONNX Runtime, libheif and libde265 | Microsoft Visual Studio license terms – "Distributable Code", copied from Visual Studio's redist folder |
+| libheif, its libde265 plugin, libde265 and libsharpyuv of Ubuntu 24.04 (`usr/lib` in the AppImage) | HEIC decoding in the Linux AppImage | LGPL-3.0 (libheif, libde265), BSD-3-Clause (libsharpyuv) |
 
 On Windows the HEIC libraries are loaded at run time (vcpkg triplet `x64-windows`, `VCPKGRS_DYNAMIC=1`). `build.rs` copies `heif.dll`, `libde265.dll` and the `licenses/` folder next to `cerno.exe`. The folder contains the GPL-3.0 and LGPL-3.0 texts and [licenses/heic.txt](licenses/heic.txt), which names the versions and how to replace the DLLs. The GPL x265 encoder is not included (`libheif[core]`). HEVC is patent-encumbered; these terms cover copyright only.
 
-On Linux, `--features heic` links the system libheif. A package should depend on the distribution's libheif and libde265 rather than bundling static copies.
+On Linux, `--features heic` links the system libheif. The `.deb` depends on the distribution's libheif and its libde265 plugin. The AppImage bundles them as separate shared libraries; `usr/share/doc/cerno/bundled-libraries.txt` inside it lists the Ubuntu package versions, whose source is in Ubuntu's archive.
 
 ## Model files in the models folder (not distributed with Cerno)
 

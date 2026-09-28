@@ -29,6 +29,15 @@ cargo clean -p libheif-sys
 cargo build --release --features heic
 ```
 
+Packages (what CI's `package-windows` / `package-linux` jobs run, after the HEIC release build):
+
+```bash
+pwsh packaging/windows/build.ps1   # dist/windows: Cerno\ folder, cerno_<v>_x64-portable.zip, cerno_<v>_x64-setup.exe
+packaging/linux/build.sh           # dist/linux: cerno_<v>_amd64.deb, cerno_<v>_x86_64.AppImage (Ubuntu 24.04 only)
+```
+
+`build.ps1` needs `cargo install cargo-packager --version 0.11.8 --locked` and a Visual Studio with the C++ tools; Build Tools installs have no `VC\Redist` folder, so pass `-CrtDir` with a folder holding `msvcp140*.dll` / `vcruntime140*.dll`. `build.sh` needs `cargo-deb`, `patchelf`, `libheif-plugin-libde265`. `packaging/windows/test-installer.ps1` installs over and uninstalls `%LOCALAPPDATA%\Cerno` – CI only, never on the author's machine.
+
 ## Product decisions (settled – build on them, don't re-propose alternatives)
 
 | Decision | Why |
@@ -55,6 +64,7 @@ cargo build --release --features heic
 | **"Probably blurry"** needs the folder's blurriest 20 % **and** an absolute ceiling | Frame 250, eyes 60 (`view::BLURRY_FRAME_MAX` / `BLURRY_EYES_MAX`): the 10th percentile of the author's index on 2026-09-28. A rank alone warned on every fifth photo even in a folder of sharp ones; the same rule drives the filmstrip mark, the info bar, the details and the "Blurry" filter. |
 | **No system dialogs** except the folder picker | Confirmations (model download, reset For you, delete models) are an in-app card (`ui/confirm.rs`, Enter/Esc). Copy/move of the selection ask nothing (choosing the folder confirms), deleting uses the countdown like `Delete`. The CLIP download is offered as a one-time hint once a folder is open, never as a dialog at start. Hints fade after ~5 s (longer texts a little longer), errors stay until Esc or a click. |
 | Version **0.7.0** is the first numbered one | `Cargo.toml` is the only source; the help page and start screen show `CARGO_PKG_VERSION`. |
+| **Four packages**, all with HEIC: Windows NSIS installer + portable zip, Linux AppImage + `.deb` | Built by CI on every push to `main` (artifacts) and drafted as a GitHub release for a `v*` tag (tag must equal the `Cargo.toml` version; `SHA256SUMS.txt`, notes from the CHANGELOG section). The installer is per user (`currentUser`, no UAC) in five languages; the zip is the same folder. Linux is built on Ubuntu 24.04 – the oldest base with libheif ≥ 1.17 – so the AppImage needs glibc 2.39+. Tools: cargo-packager (NSIS only), cargo-deb (`$auto` dependencies, `Recommends`), linuxdeploy + appimagetool with our own `AppRun`. Not signed yet; no updater. |
 
 ## Architecture
 
@@ -115,6 +125,8 @@ filelock.rs          who reads or writes which photo right now (holds around fil
 filetimes.rs         snapshot / restore of file timestamps
 paths.rs             data, model and database locations
 theme.rs             design tokens → egui Visuals, `text` font sizes, system UI font
+packaging/windows/   build.ps1 (portable folder + VC++ runtime + import check, zip, NSIS), test-installer.ps1, German/Italian installer texts
+packaging/linux/     build.sh (.deb, AppImage), AppRun, cerno.desktop
 ```
 
 ### Loader (the speed-critical part)
@@ -203,7 +215,7 @@ theme.rs             design tokens → egui Visuals, `text` font sizes, system U
 5. Host SigLIP vision + V2.5 head in the user's own Hugging Face repo and add the download button (like CLIP: URL pinned to a commit, size and SHA-256 checked before the file is used).
 6. Verify face detection / eye sharpness on real portraits (so far only unit tests and a run on photos without faces).
 7. Linux verification (build, libheif, WebGPU on AMD/Vulkan).
-8. Packaging with `cargo-packager` (`.msi`/NSIS, `.deb`, `.AppImage`) + updater; ship `DirectML.dll`, the HEIC DLLs and the `licenses/` folder that `build.rs` already places next to the exe. The icons are in `assets/` (`icon.ico` for the installer, `icon.png` for the Linux `.desktop` entry – on Wayland the window icon comes from there via the app id `cerno`, not from `with_icon`). Before each release: `cargo audit` (on 2026-09-28 only `ttf-parser` "unmaintained" via egui, reads just the system font), check the vcpkg pin for libheif/libde265 fixes (they parse HEIC from untrusted sources, C code), and record which ONNX Runtime binary `ort`'s `download-binaries` fetched.
+8. ✅ Packages in CI: NSIS installer, portable zip, AppImage, `.deb` (see `packaging/`); the icons are in `assets/` (`icon.ico` for the installer, `icon.png` for the `.desktop` entry – on Wayland the window icon comes from there via the app id `cerno`, not from `with_icon`). Open: updater, code signing. Before each release: `cargo audit` (on 2026-09-28 only `ttf-parser` "unmaintained" via egui, reads just the system font), check the vcpkg pin for libheif/libde265 fixes (they parse HEIC from untrusted sources, C code), and record which ONNX Runtime binary `ort`'s `download-binaries` fetched.
 
 ## Gotchas
 
@@ -243,3 +255,9 @@ theme.rs             design tokens → egui Visuals, `text` font sizes, system U
 - Posted `WM_KEYDOWN`s also produce text input, so scripted tests can use the menus' letter jump.
 - `Ctrl+Z` restores with `write_in_place` plus a file-time snapshot (like a pixel edit), then writes the marks the file had just before, so a star given after the edit survives the undo.
 - The icon source is a JPEG with the "transparent" checkerboard baked into the pixels; `tools/make_icon.py` cuts the blue tile out by colour (blue minus red > 45), so a new JPEG source must keep a blue tile on a light border (a PNG with real transparency keeps its alpha). Change the icon there and regenerate both files – never edit `icon.png` / `icon.ico` by hand. Explorer caches exe icons: after a change it may show the old one until `ie4uinit.exe -show` or a new sign-in.
+- **The Windows install directory is Cerno's data root.** The per-user installer puts the exe into `%LOCALAPPDATA%\Cerno`; the index, models and kept originals are in `%LOCALAPPDATA%\Cerno\data`. The uninstaller deletes only the files it lists plus a non-recursive `RMDir`, so the data goes only with the opt-in "Delete the application data" box (`appdata-paths`). `test-installer.ps1` asserts that – keep it when changing the installer.
+- **The VC++ runtime is not part of Windows.** `cerno.exe` (ONNX Runtime), `heif.dll` and `libde265.dll` import `MSVCP140`/`VCRUNTIME140`. `build.ps1` copies them app-locally and fails when any import of the folder is neither in it nor in System32 – a VC++ runtime found in System32 does not count (runners and dev machines have one, a fresh Windows does not). `crt-static` is no option: ort's prebuilt library and the vcpkg triplet are /MD.
+- **HEVC decoding on Linux is a libheif plugin**, dlopen'd from a compiled-in directory, so `ldd` never shows it missing. Ubuntu 24.04's `libheif1` only *suggests* `libheif-plugin-libde265`; the `.deb` depends on it. The AppImage carries it in `usr/lib/libheif/plugins`, `AppRun` sets `LIBHEIF_PLUGIN_PATH` (it replaces the default directory) and `patchelf` gives it an rpath to the bundled libde265. CI's install tests open a HEIC under Xvfb in clean containers and wait for `start-up: first photo drawn`.
+- The AppImage uses its own `AppRun`: AppImageKit's (what cargo-packager ships) changes into `$APPDIR/usr` – a relative path argument then points elsewhere – and sets `LD_LIBRARY_PATH` for ExifTool and the browser too. The binary finds the bundled libraries through linuxdeploy's rpath instead.
+- winit, wgpu and xkbcommon load their libraries with dlopen, so cargo-deb's `$auto` misses them; the `.deb` lists them by hand. The desktop file must stay `cerno.desktop` (= the app id).
+- cargo-packager's config is camelCase with `deny_unknown_fields` and only a few kebab aliases: `installer-mode` (not `install-mode`), `custom-language-file` (singular). It has no German or Italian texts; `packaging/windows/*.nsh` must stay UTF-8 **with BOM** (NSIS reads BOM-less files in the ANSI code page).
