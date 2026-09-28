@@ -372,6 +372,10 @@ pub struct Texts {
     pub taste_untrained: &'static str,
     pub btn_reset_taste: &'static str,
     pub btn_delete_models: &'static str,
+    /// Tooltip on the button that copies the models folder path.
+    pub copy_models_path: &'static str,
+    /// Shown briefly after that button copies the path.
+    pub models_path_copied: &'static str,
     pub confirm_reset_taste_title: &'static str,
     pub confirm_reset_taste_text: &'static str,
     pub confirm_delete_models_title: &'static str,

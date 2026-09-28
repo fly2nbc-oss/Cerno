@@ -165,6 +165,16 @@ pub fn reject_mark(painter: &Painter, center: Pos2, size: f32, color: Color32) {
     painter.line_segment([center + vec2(-d, d), center + vec2(d, -d)], stroke);
 }
 
+/// Two overlapping sheets, the "copy" mark.
+pub fn copy(painter: &Painter, center: Pos2, color: Color32) {
+    let stroke = Stroke::new(1.2, color);
+    let back = Rect::from_center_size(center + vec2(1.6, -1.6), vec2(8.0, 9.0));
+    let front = Rect::from_center_size(center + vec2(-1.6, 1.6), vec2(8.0, 9.0));
+    painter.rect_stroke(back, 1.0, stroke, StrokeKind::Inside);
+    painter.rect_filled(front, 1.0, tokens::SURFACE);
+    painter.rect_stroke(front, 1.0, stroke, StrokeKind::Inside);
+}
+
 /// Three bars, the menu button at the bottom right.
 pub fn menu(painter: &Painter, center: Pos2, color: Color32) {
     let stroke = Stroke::new(1.6, color);

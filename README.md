@@ -42,17 +42,17 @@ Cerno (Latin *cerno* – "I sift, discern, see clearly") is a native Rust deskto
 ## Features
 
 - **Instant switching** – background workers prefetch the photos around the current one, decoded at monitor resolution and uploaded as GPU textures.
-- **Keyboard-first, Lightroom-style keys** – `1`–`5` set stars, `Shift+1`–`5` rate and move on, `0` clears, `X` marks a photo as rejected (written as `xmp:Rating = -1`, nothing is deleted), `6`–`9` set a colour label (red, yellow, green, blue; purple is in the command palette). `Ctrl+K` opens a command palette that reaches every function without the mouse, including auto-advance, subfolders, series and duplicate filters.
+- **Keyboard-first, Lightroom-style keys** – `1`–`5` set stars, `Shift+1`–`5` rate and move on, `0` clears, `X` marks a photo as rejected (written as `xmp:Rating = -1`, nothing is deleted), `6`–`9` set a colour label (red, yellow, green, blue; purple is in the menu). `Ctrl+K` opens the menu at the bottom right: sort, filter, view, labels, language and the rest, with the shortcut shown on each row.
 - **Safe metadata writes** – only the rating and the colour label (`xmp:Label`, English names) are written, in the background and debounced, in one pass when both change. File modification and creation dates stay bit-exact. Windows Explorer's own rating tags are kept in sync if present.
 - **Zoom** – `Z` or double-click toggles 100 %, mouse wheel zooms around the cursor, drag pans. Full resolution is loaded on demand; zoom and position stay when you switch photos, so a series can be compared at the same spot.
-- **Compare** – `C` pins the current photo on the left, the right side browses the rest. `A` keeps the left one, `D` the right one; the other is marked as rejected and the next photo moves in, so a burst is culled in a few keystrokes. Both sides zoom together. The command palette's "Delete rejected photos" sends all rejects to the trash when you are done.
+- **Compare** – `C` pins the current photo on the left, the right side browses the rest. `A` keeps the left one, `D` the right one; the other is marked as rejected and the next photo moves in, so a burst is culled in a few keystrokes. Both sides zoom together. Aesthetics and sharpness sit under each photo. The menu's "Delete rejected photos" sends all rejects to the trash when you are done.
 - **Series and duplicates** – photos shot within two seconds form a series; sorting by capture time puts the sharpest one first, and "Best of each series" hides the rest. Identical copies (same pixels) are marked as duplicates of the first file, never deleted on their own.
 - **Folders** – open one folder, or turn on "Include subfolders" to read the tree under it (hidden folders stay out).
 - **Delete without dialogs** – `Delete` hides the photo at once and moves it to the trash after a 5-second countdown; every further deletion restarts it, `Esc` brings all waiting photos back. Nothing blocks meanwhile.
 - **Filmstrip** – thumbnails with your stars, a colour stripe, a marker for probably blurry shots, and a wider gap between series.
-- **Sharpness, aesthetics and your own taste** – see [Scores](#scores). Sort by name, capture time, rating, either aesthetics score, personal taste or sharpness; filter by stars or colour; hide the blurriest shots; show only duplicates.
-- **Details panel** – `Tab` shows every value Cerno measured for the current photo, `I` steps through values → values with a short explanation in plain words → off: both aesthetics scores, personal taste, whole-frame and eye sharpness, clipped highlights and shadows, CLIP attributes, a histogram and the state of each model. Rows fold open, and the personal taste model can be reset from here.
-- **Info bar** – always visible: stars, the three aesthetics scores side by side (`L 6.1 / V 6.5 / ★ 2.4` = LAION / V2.5 / personal), sharpness, capture data incl. digital zoom, the current zoom level, and a map pin for photos with GPS coordinates (click opens Google Maps). Buttons at its right end show or hide the top bar, details panel and filmstrip; by default only the photo, the filmstrip and the info bar are visible.
+- **Sharpness, aesthetics and For you** – see [Scores](#scores). Sort by name, capture time, rating, either aesthetics score, For you or sharpness. The filter bar combines stars, unrated, rejected, blurry and duplicate copies; nothing ticked shows every photo.
+- **Details panel** – `Tab` shows every value Cerno measured for the current photo, `I` steps through values → values with a short explanation in plain words → off: both aesthetics scores, For you, whole-frame and eye sharpness, clipped highlights and shadows, CLIP attributes, a histogram and the state of each model. Rows fold open. For you can be reset from here, and the models section shows the folder of the model files with a button that copies the path.
+- **Info bar** – always visible: stars, aesthetics and For you side by side (`L 6.1 / V 6.5 / ★ 2.4` = LAION / V2.5 / For you), sharpness, capture data incl. digital zoom, the current zoom level, and a map pin for photos with GPS coordinates (click opens Google Maps). A menu button at the bottom right (`Ctrl+K`) opens every function; by default only the photo, the filmstrip and the info bar are visible. The filter bar opens with `F`.
 - **Five languages** – German, English, French, Spanish, Italian. Cerno starts in your system language; `Ctrl+L` switches, a flag briefly shows the new one.
 - **Help** – `H`, `F1` or `?` lists all shortcuts with a short explanation; the start screen shows the same page.
 - **Capture info** – camera, lens, focal length, aperture, shutter speed, ISO and capture date.
@@ -93,16 +93,16 @@ Or drop a folder onto the window / `Ctrl+O`. When moving the binary, keep beside
 | `Z`, double-click | Toggle fit ↔ 100 % |
 | `+` / `-`, mouse wheel | Zoom in / out |
 | Drag | Pan while zoomed |
-| `T` | Toggle the top bar |
+| `F` | Toggle the filter bar (sort and filter) |
 | `Tab` | Toggle the details panel (mouse wheel scrolls it) |
-| `I` | Details: values → with explanations → off |
+| `I` | Expand or collapse the explanations in the details panel |
 | `F6` | Toggle the filmstrip |
-| `Shift+Tab` | Top bar, details panel and filmstrip together (the info bar always stays) |
-| `F11` / `F` | Toggle fullscreen |
-| `Ctrl+K` | Command palette: type to find sort, filter, panels, language … |
+| `Shift+Tab` | Filter bar, details panel and filmstrip together (the info bar always stays) |
+| `F11` | Toggle fullscreen |
+| `Ctrl+K` | Menu: sort, filter, view, labels, language and the other commands |
 | `Ctrl+L` | Switch language (DE → EN → FR → ES → IT) |
 | `H` / `F1` / `?` | Help page with all shortcuts |
-| `Esc` | Close help or palette, undo pending deletions, then leave zoom, compare mode, fullscreen |
+| `Esc` | Close help or the menu, undo pending deletions, then leave zoom, compare mode, fullscreen |
 | `Ctrl+O` | Open folder |
 
 ---
@@ -113,7 +113,7 @@ Background analysis (nearest first) is stored in `%LOCALAPPDATA%\Cerno\data\cern
 
 - **Sharpness** – Laplacian on the sharpest tiles; folder percentile; optional eye sharpness via built-in [YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet).
 - **Aesthetics** – LAION (CLIP, download from the toolbar, ~1.2 GB) and optional V2.5 (SigLIP files in the models folder; AGPL head not bundled). Shown as stars 0–5 (`L … / V … / ★ …`).
-- **Personal taste** – ridge regression on your ratings and deletions (from 15 examples).
+- **For you** – ridge regression on your ratings and deletions (from 15 examples). The stars Cerno thinks you would give; not an aesthetics score.
 - **Exposure & CLIP attributes** – blown/crushed pixels; zero-shot quality cues 0–100 %.
 
 ---
@@ -197,7 +197,7 @@ egui/eframe + wgpu · zune-jpeg / optional libheif · ONNX Runtime (DirectML) ·
 
 **Known issues**
 
-- No colour management yet: embedded ICC profiles (e.g. Adobe RGB) are ignored.
+- JPEGs are converted to sRGB on decode (Adobe RGB and Display P3 by a fixed matrix, other profiles through a colour engine). Untagged and already-sRGB files are left as they are. HEIC colour is left to libheif. The Windows monitor profile is not applied.
 - Because the modification date is preserved and XMP padding often keeps the size equal, backup/sync tools that only compare size and date (e.g. `rsync` without `-c`) may not notice a rating or colour-label change.
 - Truncated JPEGs are shown partially, with the missing part in grey.
 - Deleted photos go to the system trash (Recycle Bin / freedesktop trash), not straight to oblivion. Closing Cerno during the countdown carries the deletion out.

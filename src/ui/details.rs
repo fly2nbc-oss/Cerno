@@ -187,6 +187,8 @@ fn content(
         },
         t.explain_v25,
     );
+
+    section(ui, t.row_personal);
     metric_row(
         ui,
         expanded,
@@ -273,6 +275,7 @@ fn content(
     plain_model_row(ui, "V2.5", model_note(&status.v25));
     plain_model_row(ui, t.model_faces, model_note(&status.faces));
     plain_model_row(ui, t.model_personal, personal);
+    models_folder(ui);
 
     ui.add_space(8.0);
     ui.horizontal(|ui| {
@@ -417,6 +420,56 @@ fn clip_details(ui: &mut Ui, d: &Details<'_>) {
         }
         ui.add_space(4.0);
     }
+}
+
+/// Folder of the downloaded CLIP and V2.5 files, with a button that copies the path.
+fn models_folder(ui: &mut Ui) {
+    let t = i18n::t();
+    let Ok(dir) = crate::paths::models_dir() else {
+        return;
+    };
+    let text = dir.display().to_string();
+    ui.add_space(6.0);
+    let copied_id = Id::new("models_path_copied_until");
+    let now = ui.input(|i| i.time);
+    let copied = ui
+        .data(|data| data.get_temp::<f64>(copied_id))
+        .is_some_and(|until| until > now);
+
+    ui.horizontal(|ui| {
+        ui.add_space(PAD);
+        let button = 22.0;
+        let text_w = (ui.available_width() - button - 8.0).max(40.0);
+        ui.allocate_ui_with_layout(vec2(text_w, 0.0), Layout::top_down(Align::Min), |ui| {
+            ui.set_width(text_w);
+            ui.label(
+                RichText::new(&text)
+                    .font(FontId::proportional(11.0))
+                    .color(tokens::MUTED),
+            );
+        });
+        let (rect, response) = ui.allocate_exact_size(vec2(button, 22.0), Sense::click());
+        let color = if copied || response.hovered() {
+            tokens::ACCENT
+        } else {
+            tokens::MUTED
+        };
+        icons::button_background(ui.painter(), rect, response.hovered(), copied);
+        icons::copy(ui.painter(), rect.center(), color);
+        let tip = if copied {
+            t.models_path_copied
+        } else {
+            t.copy_models_path
+        };
+        response.clone().on_hover_text(tip);
+        if response.clicked() {
+            ui.ctx().copy_text(text);
+            let until = ui.input(|i| i.time) + 1.6;
+            ui.data_mut(|data| data.insert_temp(copied_id, until));
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(1700));
+        }
+    });
 }
 
 fn plain_model_row(ui: &mut Ui, label: &str, status_text: String) {
