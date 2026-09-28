@@ -77,7 +77,7 @@ pub static TEXTS: Texts = Texts {
 
     palette_placeholder: "Befehl eingeben…",
     palette_empty: "Kein passender Befehl",
-    cmd_explanations: "Erklärungen in der Detailansicht",
+    cmd_explanations: "Alle Erklärungen in der Detailansicht auf- oder zuklappen",
     cmd_all_panels: "Obere Leiste, Details und Filmstreifen",
     cmd_fullscreen: "Vollbild",
     cmd_compare: "Vergleichen",
@@ -135,6 +135,7 @@ pub static TEXTS: Texts = Texts {
     section_exposure: "Belichtung",
     section_attributes: "CLIP-Merkmale",
     section_models: "Modelle",
+    section_histogram: "Histogramm",
     row_laion: "LAION (CLIP)",
     row_v25: "V2.5 (SigLIP)",
     row_personal: "Persönlicher Geschmack",
@@ -189,9 +190,15 @@ pub static TEXTS: Texts = Texts {
     taste_trained: |n, error| format!("{n} Fotos, ±{error:.1} ★"),
     taste_photos: |n| format!("{n} Fotos"),
     taste_untrained: "noch nicht trainiert",
+    btn_reset_taste: "Geschmack zurücksetzen",
+    btn_delete_models: "Modelle löschen",
+    confirm_reset_taste_title: "Persönliches Geschmacksmodell zurücksetzen?",
+    confirm_reset_taste_text: "Cerno vergisst, was es aus deinen Sternen und Löschungen gelernt hat. Sterne in den Fotodateien bleiben unverändert.",
+    confirm_delete_models_title: "Heruntergeladene Modelle löschen?",
+    confirm_delete_models_text: "Entfernt die CLIP- und SigLIP-Modelldateien von der Festplatte (etwa 3 GB). Gespeicherte Werte bleiben in der Datenbank; Ästhetik kann später wieder geladen werden.",
 
     help_title: "Hilfe",
-    help_intro: "Cerno zeigt deine Fotos ohne Wartezeit und hilft beim Aussortieren. Sterne landen direkt in der Fotodatei, damit andere Programme sie auch sehen – das Dateidatum bleibt unverändert. Alles andere speichert Cerno in seiner eigenen Datenbank. Schärfe und Schönheit werden im Hintergrund automatisch bewertet; Tab zeigt alle Werte, I schaltet die Erklärungen dazu, Strg+K findet jeden Befehl.",
+    help_intro: "Cerno zeigt deine Fotos ohne Wartezeit und hilft beim Aussortieren. Sterne landen direkt in der Fotodatei, damit andere Programme sie auch sehen – das Dateidatum bleibt unverändert. Alles andere speichert Cerno in seiner eigenen Datenbank. Schärfe und Schönheit werden im Hintergrund automatisch bewertet; Tab öffnet die Detailansicht, I klappt alle Erklärungen auf oder zu, Strg+K findet jeden Befehl.",
     help_drop: "Ordner oder Foto aufs Fenster ziehen oder Strg+O drücken.",
     help_close: "Esc, H oder F1 schließt diese Seite",
     help_sections: [
@@ -247,7 +254,7 @@ pub static TEXTS: Texts = Texts {
         ("F11, F", "Vollbild"),
         ("T", "Obere Leiste"),
         ("Tab", "Detailansicht"),
-        ("I", "Details: Werte → mit Erklärungen → aus"),
+        ("I", "Details: alle Erklärungen auf- oder zuklappen"),
         ("F6", "Filmstreifen"),
         (
             "Umschalt+Tab",

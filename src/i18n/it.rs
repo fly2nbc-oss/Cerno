@@ -71,7 +71,7 @@ pub static TEXTS: Texts = Texts {
 
     palette_placeholder: "Digita un comando…",
     palette_empty: "Nessun comando corrispondente",
-    cmd_explanations: "Spiegazioni nel pannello dettagli",
+    cmd_explanations: "Espandi o comprimi tutte le spiegazioni nel pannello dettagli",
     cmd_all_panels: "Barra superiore, dettagli e striscia di miniature",
     cmd_fullscreen: "Schermo intero",
     cmd_compare: "Confronta",
@@ -125,6 +125,7 @@ pub static TEXTS: Texts = Texts {
     section_exposure: "Esposizione",
     section_attributes: "Caratteristiche CLIP",
     section_models: "Modelli",
+    section_histogram: "Istogramma",
     row_laion: "LAION (CLIP)",
     row_v25: "V2.5 (SigLIP)",
     row_personal: "Gusto personale",
@@ -179,9 +180,15 @@ pub static TEXTS: Texts = Texts {
     taste_trained: |n, error| format!("{n} foto, ±{error:.1} ★"),
     taste_photos: |n| format!("{n} foto"),
     taste_untrained: "non ancora addestrato",
+    btn_reset_taste: "Reimposta gusto",
+    btn_delete_models: "Elimina modelli",
+    confirm_reset_taste_title: "Reimpostare il modello di gusto personale?",
+    confirm_reset_taste_text: "Cerno dimenticherà ciò che ha imparato dalle tue stelle e dalle eliminazioni. Le stelle nei file foto restano invariate.",
+    confirm_delete_models_title: "Eliminare i modelli scaricati?",
+    confirm_delete_models_text: "Rimuove i file dei modelli CLIP e SigLIP dal disco (circa 3 GB). I punteggi salvati restano nel database; l'estetica può essere scaricata di nuovo.",
 
     help_title: "Aiuto",
-    help_intro: "Cerno mostra subito le tue foto e ti aiuta a fare una selezione. Le stelle vengono scritte direttamente nel file della foto, così le vedono anche gli altri programmi – la data del file non cambia. Tutto il resto resta nel database di Cerno. Nitidezza e bellezza vengono valutate automaticamente in background; Tab mostra tutti i valori, I aggiunge le spiegazioni, Ctrl+K trova qualsiasi comando.",
+    help_intro: "Cerno mostra subito le tue foto e ti aiuta a fare una selezione. Le stelle vengono scritte direttamente nel file della foto, così le vedono anche gli altri programmi – la data del file non cambia. Tutto il resto resta nel database di Cerno. Nitidezza e bellezza vengono valutate automaticamente in background; Tab apre il pannello dettagli, I espande o comprime tutte le spiegazioni, Ctrl+K trova qualsiasi comando.",
     help_drop: "Trascina una cartella o una foto sulla finestra, oppure premi Ctrl+O.",
     help_close: "Esc, H o F1 chiude questa pagina",
     help_sections: [
@@ -243,7 +250,7 @@ pub static TEXTS: Texts = Texts {
         ("F11, F", "Schermo intero"),
         ("T", "Barra superiore"),
         ("Tab", "Pannello dettagli"),
-        ("I", "Dettagli: valori → con spiegazioni → nascosto"),
+        ("I", "Dettagli: espandi o comprimi tutte le spiegazioni"),
         ("F6", "Striscia di miniature"),
         (
             "Maiusc+Tab",

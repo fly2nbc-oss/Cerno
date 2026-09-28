@@ -42,6 +42,9 @@ const SCHEMA: &str = "
         label       REAL NOT NULL,
         at          INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS taste_skip (
+        fingerprint INTEGER PRIMARY KEY
+    );
 ";
 
 /// Columns added after the first release; `migrate` adds whichever an index lacks.
@@ -312,6 +315,16 @@ impl Db {
     pub fn record_deletion(&self, path: &str) -> Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
+        let fingerprint: Option<i64> = tx
+            .query_row(
+                "SELECT fingerprint FROM files WHERE path = ?1",
+                [path],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if let Some(fp) = fingerprint {
+            tx.execute("DELETE FROM taste_skip WHERE fingerprint = ?1", [fp])?;
+        }
         tx.execute(
             "INSERT OR REPLACE INTO feedback (fingerprint, label, at)
              SELECT fingerprint, 0.0, CAST(strftime('%s', 'now') AS INTEGER)
@@ -323,6 +336,29 @@ impl Db {
         Ok(())
     }
 
+    /// Forgets taste training data while keeping star ratings in the photo files.
+    pub fn reset_taste_learning(&self) -> Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        tx.execute(
+            "INSERT OR IGNORE INTO taste_skip (fingerprint)
+             SELECT fingerprint FROM files WHERE rating IS NOT NULL",
+            [],
+        )?;
+        tx.execute("DELETE FROM feedback", [])?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// A new rating or rejection counts again for the taste model.
+    pub fn allow_taste_for(&self, fingerprint: u64) -> Result<()> {
+        self.conn().execute(
+            "DELETE FROM taste_skip WHERE fingerprint = ?1",
+            [fingerprint as i64],
+        )?;
+        Ok(())
+    }
+
     /// Training data for the taste model: (CLIP embedding, label 0–5). Rejected photos count
     /// as 0 like deleted ones; explicit ratings win over deletion feedback for the same pixels.
     pub fn taste_examples(&self) -> Result<Vec<(Vec<f32>, f32)>> {
@@ -331,13 +367,15 @@ impl Db {
             "SELECT i.embedding, CAST(MAX(MAX(f.rating, 0)) AS REAL)
              FROM files f JOIN images i ON i.fingerprint = f.fingerprint
              WHERE (f.rating BETWEEN 1 AND 5 OR f.rating = -1) AND i.embedding IS NOT NULL
+               AND f.fingerprint NOT IN (SELECT fingerprint FROM taste_skip)
              GROUP BY f.fingerprint
              UNION ALL
              SELECT i.embedding, fb.label
              FROM feedback fb JOIN images i ON i.fingerprint = fb.fingerprint
              WHERE i.embedding IS NOT NULL
                AND fb.fingerprint NOT IN
-                   (SELECT fingerprint FROM files WHERE rating BETWEEN 1 AND 5 OR rating = -1)",
+                   (SELECT fingerprint FROM files WHERE rating BETWEEN 1 AND 5 OR rating = -1)
+               AND fb.fingerprint NOT IN (SELECT fingerprint FROM taste_skip)",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok((
@@ -643,5 +681,20 @@ mod tests {
             .collect();
         examples.sort_by(|a, b| a.0.total_cmp(&b.0));
         assert_eq!(examples, [(1.0, 5.0), (2.0, 0.0), (3.0, 0.0)]);
+    }
+
+    #[test]
+    fn taste_reset_skips_old_ratings_until_they_change() {
+        let db = Db::open_in_memory().unwrap();
+        db.put_aesthetic(1, 5.0, "m", &[1.0; 768]).unwrap();
+        db.put_file("a.jpg", STAMP, 1, Rating::Stars(4), None)
+            .unwrap();
+        assert_eq!(db.taste_examples().unwrap().len(), 1);
+        db.reset_taste_learning().unwrap();
+        assert!(db.taste_examples().unwrap().is_empty());
+        db.allow_taste_for(1).unwrap();
+        db.put_file("a.jpg", STAMP, 1, Rating::Stars(3), None)
+            .unwrap();
+        assert_eq!(db.taste_examples().unwrap().len(), 1);
     }
 }

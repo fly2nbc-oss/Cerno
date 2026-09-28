@@ -11,7 +11,7 @@ use eframe::egui::{
 };
 
 use crate::analysis::{Analyzer, ScoreBoard};
-use crate::db::Db;
+use crate::db::{Db, FileStamp};
 use crate::deletion::{self, DeleteQueue};
 use crate::i18n::{self, Lang};
 use crate::library::{self, Library};
@@ -22,9 +22,9 @@ use crate::rating::RatingWriter;
 use crate::theme::tokens;
 use crate::thumbs::Thumbs;
 use crate::ui::bars::Panels;
-use crate::ui::details::DetailsMode;
+use crate::ui::details::{self, DetailRow, DetailsMode, all_expanded, set_all_expanded};
 use crate::ui::icons::Panel;
-use crate::ui::{bars, details, filmstrip, help, palette, viewer};
+use crate::ui::{bars, filmstrip, help, palette, viewer};
 use crate::view::{
     self, BLURRY_PERCENTILE, Facts, Percentiles, RatingFilter, SortKey, View, ViewOptions,
 };
@@ -57,6 +57,7 @@ const COMPARE_GUTTER: f32 = 4.0;
 /// How long the flag stays after switching the language, and how long it fades out.
 const LANGUAGE_FLASH: Duration = Duration::from_millis(1400);
 const LANGUAGE_FADE: Duration = Duration::from_millis(450);
+const CLIP_DOWNLOAD_DECLINED: &str = "clip_download_declined";
 
 pub struct CernoApp {
     db: Arc<Db>,
@@ -101,6 +102,10 @@ pub struct CernoApp {
     details: DetailsMode,
     /// The stage `Tab` brings back.
     details_last: DetailsMode,
+    /// Which detail rows show their explanation (session-wide).
+    details_expanded: HashSet<DetailRow>,
+    /// Automatic CLIP download prompt runs once after the first frame.
+    clip_download_offer_done: bool,
     /// Help page over the photos (`H`, `F1`, `?`).
     help_open: bool,
     /// Command palette (`Ctrl+K`) while open.
@@ -299,10 +304,12 @@ impl CernoApp {
             show_filmstrip,
             details,
             details_last: if details == DetailsMode::Off {
-                DetailsMode::Values
+                DetailsMode::On
             } else {
                 details
             },
+            details_expanded: HashSet::new(),
+            clip_download_offer_done: false,
             help_open: false,
             palette: None,
             tab_presses: Vec::new(),
@@ -450,7 +457,7 @@ impl CernoApp {
         }
     }
 
-    fn confirm_model_download(&self) {
+    fn confirm_model_download(&mut self) {
         let t = i18n::t();
         let answer = rfd::MessageDialog::new()
             .set_title(t.download_title)
@@ -460,7 +467,54 @@ impl CernoApp {
             .set_buttons(rfd::MessageButtons::YesNo)
             .show();
         if answer == rfd::MessageDialogResult::Yes {
+            self.db.put_setting(CLIP_DOWNLOAD_DECLINED, "0");
             self.analyzer.download_model();
+        } else {
+            self.db.put_setting(CLIP_DOWNLOAD_DECLINED, "1");
+        }
+    }
+
+    fn should_offer_clip_download(&self) -> bool {
+        self.analyzer.clip_model_missing()
+            && self.db.setting(CLIP_DOWNLOAD_DECLINED).as_deref() != Some("1")
+    }
+
+    fn offer_clip_download_if_needed(&mut self) {
+        if self.should_offer_clip_download() {
+            self.confirm_model_download();
+        }
+    }
+
+    fn confirm_reset_taste(&mut self) {
+        let t = i18n::t();
+        let answer = rfd::MessageDialog::new()
+            .set_title(t.confirm_reset_taste_title)
+            .set_description(t.confirm_reset_taste_text)
+            .set_buttons(rfd::MessageButtons::YesNo)
+            .show();
+        if answer == rfd::MessageDialogResult::Yes {
+            self.analyzer.reset_taste_learning();
+        }
+    }
+
+    fn confirm_delete_models(&mut self) {
+        let t = i18n::t();
+        let answer = rfd::MessageDialog::new()
+            .set_title(t.confirm_delete_models_title)
+            .set_description(t.confirm_delete_models_text)
+            .set_buttons(rfd::MessageButtons::YesNo)
+            .show();
+        if answer == rfd::MessageDialogResult::Yes {
+            match self.analyzer.delete_installed_models() {
+                Ok(()) => {
+                    self.db.put_setting(CLIP_DOWNLOAD_DECLINED, "0");
+                    self.offer_clip_download_if_needed();
+                }
+                Err(err) => {
+                    log::error!("delete models: {err:#}");
+                    self.notice = Some(format!("{err:#}"));
+                }
+            }
         }
     }
 
@@ -526,6 +580,12 @@ impl CernoApp {
 
     fn rate(&mut self, ctx: &egui::Context, path: PathBuf, rating: Rating, advance: bool) {
         let next = self.next_path();
+        if let Ok(stamp) = FileStamp::of(&path)
+            && let Ok(Some(record)) = self.db.lookup(&path.to_string_lossy(), stamp)
+            && let Err(err) = self.db.allow_taste_for(record.fingerprint)
+        {
+            log::warn!("taste allow: {err:#}");
+        }
         self.session_ratings.insert(path.clone(), rating);
         self.writer.set(path.clone(), rating);
         self.analyzer.taste_changed();
@@ -858,9 +918,16 @@ impl CernoApp {
         self.save_panels();
     }
 
-    /// `I`: details off → values → values with explanations → off.
-    fn cycle_details(&mut self) {
-        self.set_details(self.details.next());
+    /// `I`: open the panel or expand/collapse all explanations.
+    fn toggle_explanations(&mut self) {
+        if self.details == DetailsMode::Off {
+            self.set_details(DetailsMode::On);
+            set_all_expanded(&mut self.details_expanded, true);
+        } else if all_expanded(&self.details_expanded) {
+            set_all_expanded(&mut self.details_expanded, false);
+        } else {
+            set_all_expanded(&mut self.details_expanded, true);
+        }
         self.save_panels();
     }
 
@@ -928,8 +995,9 @@ impl CernoApp {
                 Command::new(Action::TopBar, t.button_toolbar, key("T")).checked(self.show_toolbar),
                 Command::new(Action::Details, t.button_details, key("Tab"))
                     .checked(self.details != DetailsMode::Off),
-                Command::new(Action::Explanations, t.cmd_explanations, key("I"))
-                    .checked(self.details == DetailsMode::Explained),
+                Command::new(Action::Explanations, t.cmd_explanations, key("I")).checked(
+                    self.details != DetailsMode::Off && all_expanded(&self.details_expanded),
+                ),
                 Command::new(Action::Filmstrip, t.button_filmstrip, key("F6"))
                     .checked(self.show_filmstrip),
                 Command::new(
@@ -1011,14 +1079,7 @@ impl CernoApp {
             Action::EnableAesthetics => self.confirm_model_download(),
             Action::TopBar => self.toggle_panel(Panel::Top),
             Action::Details => self.toggle_panel(Panel::Right),
-            Action::Explanations => {
-                self.set_details(if self.details == DetailsMode::Explained {
-                    DetailsMode::Values
-                } else {
-                    DetailsMode::Explained
-                });
-                self.save_panels();
-            }
+            Action::Explanations => self.toggle_explanations(),
             Action::Filmstrip => self.toggle_panel(Panel::Bottom),
             Action::AllPanels => self.toggle_all_panels(),
             Action::Compare => self.toggle_compare(ctx),
@@ -1273,7 +1334,7 @@ impl CernoApp {
             self.toggle_panel(Panel::Bottom);
         }
         if keys.cycle_details {
-            self.cycle_details();
+            self.toggle_explanations();
         }
         // Zoom keys act on the photo under the mouse, otherwise on the current (right) one.
         let pointer = ctx.pointer_hover_pos();
@@ -1414,6 +1475,9 @@ impl eframe::App for CernoApp {
                 "start-up: first frame after {} ms",
                 self.started.elapsed().as_millis()
             );
+        } else if !self.clip_download_offer_done {
+            self.clip_download_offer_done = true;
+            self.offer_clip_download_if_needed();
         }
         self.update_target(&ctx, window.size());
         self.process_deletions(&ctx);
@@ -1581,7 +1645,7 @@ impl eframe::App for CernoApp {
             }
             if let Some(rect) = details_rect {
                 let status = self.analyzer.status();
-                details::draw(
+                let detail_out = details::draw(
                     ui,
                     rect,
                     &details::Details {
@@ -1590,10 +1654,17 @@ impl eframe::App for CernoApp {
                         frame_percentile: scores.and_then(|s| percentiles.frame(&s)),
                         eyes_percentile: scores.and_then(|s| percentiles.eyes(&s)),
                         attributes: self.analyzer.attributes(&path),
+                        histogram: image.as_deref().map(|i| &i.histogram),
                         status: &status,
-                        explained: self.details == DetailsMode::Explained,
                     },
+                    &mut self.details_expanded,
                 );
+                if detail_out.reset_taste {
+                    self.confirm_reset_taste();
+                }
+                if detail_out.delete_models {
+                    self.confirm_delete_models();
+                }
             }
         }
 

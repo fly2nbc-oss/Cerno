@@ -303,6 +303,7 @@ pub struct Texts {
     pub section_exposure: &'static str,
     pub section_attributes: &'static str,
     pub section_models: &'static str,
+    pub section_histogram: &'static str,
     pub row_laion: &'static str,
     pub row_v25: &'static str,
     pub row_personal: &'static str,
@@ -339,6 +340,12 @@ pub struct Texts {
     pub taste_trained: fn(usize, f32) -> String,
     pub taste_photos: fn(usize) -> String,
     pub taste_untrained: &'static str,
+    pub btn_reset_taste: &'static str,
+    pub btn_delete_models: &'static str,
+    pub confirm_reset_taste_title: &'static str,
+    pub confirm_reset_taste_text: &'static str,
+    pub confirm_delete_models_title: &'static str,
+    pub confirm_delete_models_text: &'static str,
 
     // Help page and start screen.
     pub help_title: &'static str,
