@@ -252,6 +252,20 @@ impl Loader {
         }
     }
 
+    /// Drops one photo so the next frame decodes it again. In-flight decodes are discarded too:
+    /// a worker may be reading the file while it is rewritten.
+    pub fn invalidate(&self, index: usize) {
+        let mut state = self.shared.lock();
+        state.cache.remove(&index);
+        state.full.remove(&index);
+        state.want_full.remove(&index);
+        state.generation += 1;
+        state.in_flight.clear();
+        state.full_in_flight.clear();
+        drop(state);
+        self.shared.wake.notify_all();
+    }
+
     pub fn get(&self, index: usize) -> Lookup {
         match self.shared.lock().cache.get(&index) {
             Some(Slot::Ready(image)) => Lookup::Ready(Arc::clone(image)),

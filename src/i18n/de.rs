@@ -197,6 +197,19 @@ pub static TEXTS: Texts = Texts {
     confirm_delete_models_title: "Heruntergeladene Modelle löschen?",
     confirm_delete_models_text: "Entfernt die CLIP- und SigLIP-Modelldateien von der Festplatte (etwa 3 GB). Gespeicherte Werte bleiben in der Datenbank; Ästhetik kann später wieder geladen werden.",
 
+    cmd_straighten: "Ausrichten",
+    cmd_rotate_ccw: "90° gegen den Uhrzeigersinn",
+    cmd_rotate_cw: "90° im Uhrzeigersinn",
+    cmd_crop: "Ausschnitt",
+    edit_not_jpeg: "Ausrichten und Ausschnitt gibt es nur für JPEG.",
+    edit_writing: "Foto wird geschrieben…",
+    edit_reencoded: "JPEG neu kodiert. Die Qualität wurde einmal neu gesetzt.",
+    edit_failed: |detail| format!("Nicht geschrieben: {detail}"),
+    edit_hint: "Enter übernimmt, Esc verwirft",
+    ratio_original: "Original",
+    crop_landscape: "Querformat",
+    crop_portrait: "Hochformat",
+
     help_title: "Hilfe",
     help_intro: "Cerno zeigt deine Fotos ohne Wartezeit und hilft beim Aussortieren. Sterne landen direkt in der Fotodatei, damit andere Programme sie auch sehen – das Dateidatum bleibt unverändert. Alles andere speichert Cerno in seiner eigenen Datenbank. Schärfe und Schönheit werden im Hintergrund automatisch bewertet; Tab öffnet die Detailansicht, I klappt alle Erklärungen auf oder zu, Strg+K findet jeden Befehl.",
     help_drop: "Ordner oder Foto aufs Fenster ziehen oder Strg+O drücken.",
@@ -259,6 +272,22 @@ pub static TEXTS: Texts = Texts {
         (
             "Umschalt+Tab",
             "Obere Leiste, Details und Filmstreifen zusammen",
+        ),
+        (
+            "S",
+            "Ausrichten: Raster, Mausrad und Pfeile drehen, Umschalt feiner, Enter übernimmt",
+        ),
+        (
+            "Strg+←, Strg+→",
+            "90° drehen – verlustfrei über die JPEG-Orientierung",
+        ),
+        (
+            "R",
+            "Ausschnitt: Rahmen aufziehen, X dreht Quer/Hoch, A wechselt das Format",
+        ),
+        (
+            "Enter, Esc",
+            "Ausrichten oder Ausschnitt übernehmen oder verwerfen",
         ),
     ],
     help_more: [

@@ -3,16 +3,18 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use eframe::egui::{
-    self, CursorIcon, Id, Key, LayerId, OpenUrl, Order, PointerButton, Rect, Sense, Vec2,
-    ViewportCommand, pos2, vec2,
+    self, CursorIcon, Event, Id, Key, LayerId, MouseWheelUnit, OpenUrl, Order, PointerButton, Pos2,
+    Rect, Sense, Vec2, ViewportCommand, pos2, vec2,
 };
 
 use crate::analysis::{Analyzer, ScoreBoard};
 use crate::db::{Db, FileStamp};
 use crate::deletion::{self, DeleteQueue};
+use crate::edit::{self, Ratio};
 use crate::i18n::{self, Lang};
 use crate::library::{self, Library};
 use crate::loader::{LoadedImage, Loader, Lookup};
@@ -24,7 +26,7 @@ use crate::thumbs::Thumbs;
 use crate::ui::bars::Panels;
 use crate::ui::details::{self, DetailRow, DetailsMode, all_expanded, set_all_expanded};
 use crate::ui::icons::Panel;
-use crate::ui::{bars, filmstrip, help, palette, viewer};
+use crate::ui::{bars, edit as edit_ui, filmstrip, help, palette, viewer};
 use crate::view::{
     self, BLURRY_PERCENTILE, Facts, Percentiles, RatingFilter, SortKey, View, ViewOptions,
 };
@@ -119,6 +121,12 @@ pub struct CernoApp {
     started: Instant,
     logged_first_frame: bool,
     logged_first_photo: bool,
+    /// Straighten or crop, while it is open. The saved zoom comes back on Enter or Esc.
+    edit: Option<EditSession>,
+    /// Encodes a confirmed edit. Joined on exit so the write is not lost.
+    edit_thread: Option<JoinHandle<()>>,
+    /// A quarter turn or a re-encode is still in the writer.
+    edit_busy: bool,
 }
 
 struct KeyInput {
@@ -152,6 +160,10 @@ struct KeyInput {
     zoom_out: bool,
     open: bool,
     is_fullscreen: bool,
+    straighten: bool,
+    crop: bool,
+    rotate_cw: bool,
+    rotate_ccw: bool,
 }
 
 /// What a palette entry does.
@@ -180,6 +192,10 @@ enum Action {
     Subfolders,
     BestOfSeries,
     OnlyDuplicates,
+    Straighten,
+    RotateCcw,
+    RotateCw,
+    Crop,
     Language(Lang),
     Help,
 }
@@ -222,6 +238,96 @@ enum Side {
     Single,
     Left,
     Right,
+}
+
+struct EditSession {
+    zoom: viewer::Zoom,
+    kind: EditKind,
+}
+
+enum EditKind {
+    Straighten {
+        radians: f64,
+    },
+    Crop {
+        ratio: Ratio,
+        landscape: bool,
+        image_size: [u32; 2],
+        crop: edit::Crop,
+        gesture: Option<CropGesture>,
+    },
+}
+
+enum CropGesture {
+    Move { start: Pos2, crop: edit::Crop },
+    Resize { anchor: (f64, f64) },
+    Draw { anchor: Pos2, before: edit::Crop },
+}
+
+enum PixelJob {
+    Rotate(f64),
+    Crop(edit::PixelRect),
+}
+
+struct EditKeyInput {
+    enter: bool,
+    escape: bool,
+    left: bool,
+    right: bool,
+    shift: bool,
+    command: bool,
+    flip: bool,
+    cycle: bool,
+    wheel: f64,
+}
+
+/// Wheel down rotates clockwise. One notch is `FINE_STEP`; Shift uses the finer step.
+fn wheel_rotation(events: &[Event]) -> f64 {
+    let mut turns = 0.0;
+    for event in events {
+        if let Event::MouseWheel {
+            unit,
+            delta,
+            modifiers,
+            ..
+        } = event
+        {
+            let amount = -(delta.x + delta.y);
+            let notches = match unit {
+                MouseWheelUnit::Line | MouseWheelUnit::Page => amount,
+                MouseWheelUnit::Point => amount / 50.0,
+            };
+            let step = if modifiers.shift {
+                edit::FINER_STEP
+            } else {
+                edit::FINE_STEP
+            };
+            turns += f64::from(notches) * step;
+        }
+    }
+    turns
+}
+
+fn refit_crop(ratio: Ratio, landscape: bool, image_size: [u32; 2], crop: &mut edit::Crop) {
+    let aspect = edit::ratio_aspect(ratio, image_size[0], image_size[1], landscape);
+    *crop = edit::Crop::max_centered(f64::from(image_size[0]), f64::from(image_size[1]), aspect);
+}
+
+fn crop_caption(ratio: Ratio, landscape: bool) -> String {
+    let texts = i18n::t();
+    let name = match ratio {
+        Ratio::Original => texts.ratio_original,
+        Ratio::ThreeTwo => "3:2",
+        Ratio::FourThree => "4:3",
+        Ratio::SixteenNine => "16:9",
+        Ratio::Square => "1:1",
+    };
+    let side = if landscape {
+        texts.crop_landscape
+    } else {
+        texts.crop_portrait
+    };
+    format!("{name} · {side}")
 }
 
 impl CernoApp {
@@ -318,6 +424,9 @@ impl CernoApp {
             started,
             logged_first_frame: false,
             logged_first_photo: false,
+            edit: None,
+            edit_thread: None,
+            edit_busy: false,
         };
         if let Some(path) = start_path {
             app.open(&ctx, &path);
@@ -369,6 +478,7 @@ impl CernoApp {
         self.all = Arc::clone(&library.paths);
         self.dir = Some(library.dir);
         self.pinned = None;
+        self.cancel_edit();
         self.thumbs.clear();
         // Only needed when the view depends on scores; the analysis fills the board anyway,
         // and on big folders the lookups would delay the first frame.
@@ -1007,6 +1117,18 @@ impl CernoApp {
                 ),
                 Command::new(Action::Compare, t.cmd_compare, key("C"))
                     .checked(self.pinned.is_some()),
+                Command::new(Action::Straighten, t.cmd_straighten, key("S")),
+                Command::new(
+                    Action::RotateCcw,
+                    t.cmd_rotate_ccw,
+                    Some(format!("{}+←", t.key_ctrl)),
+                ),
+                Command::new(
+                    Action::RotateCw,
+                    t.cmd_rotate_cw,
+                    Some(format!("{}+→", t.key_ctrl)),
+                ),
+                Command::new(Action::Crop, t.cmd_crop, key("R")),
                 Command::new(Action::Zoom, t.cmd_zoom, key("Z")).checked(self.zoom.is_zoomed()),
                 Command::new(Action::Fullscreen, t.cmd_fullscreen, key("F11")),
                 Command::new(Action::First, t.cmd_first, None),
@@ -1083,6 +1205,10 @@ impl CernoApp {
             Action::Filmstrip => self.toggle_panel(Panel::Bottom),
             Action::AllPanels => self.toggle_all_panels(),
             Action::Compare => self.toggle_compare(ctx),
+            Action::Straighten => self.begin_straighten(),
+            Action::RotateCcw => self.rotate_quarter(false),
+            Action::RotateCw => self.rotate_quarter(true),
+            Action::Crop => self.begin_crop(),
             Action::Zoom => {
                 if let Some(frame) = frames.last() {
                     self.zoom.toggle(frame, None);
@@ -1190,6 +1316,377 @@ impl CernoApp {
         }
     }
 
+    /// JPEG, one photo on screen, and nothing already being written.
+    fn can_edit(&mut self) -> bool {
+        if self.pinned.is_some() || self.edit_busy || self.view.is_empty() {
+            return false;
+        }
+        let Some(path) = self.view.get(self.current) else {
+            return false;
+        };
+        if library::format_of(path) != Some(library::Format::Jpeg) {
+            self.notice = Some(i18n::t().edit_not_jpeg.to_owned());
+            return false;
+        }
+        matches!(self.loader.get(self.current), Lookup::Ready(_))
+    }
+
+    fn begin_straighten(&mut self) {
+        if matches!(
+            self.edit,
+            Some(EditSession {
+                kind: EditKind::Straighten { .. },
+                ..
+            })
+        ) {
+            self.cancel_edit();
+            return;
+        }
+        if !self.can_edit() {
+            return;
+        }
+        let zoom = self
+            .edit
+            .take()
+            .map(|session| session.zoom)
+            .unwrap_or(self.zoom);
+        self.zoom = viewer::Zoom::default();
+        self.edit = Some(EditSession {
+            zoom,
+            kind: EditKind::Straighten { radians: 0.0 },
+        });
+    }
+
+    fn begin_crop(&mut self) {
+        if matches!(
+            self.edit,
+            Some(EditSession {
+                kind: EditKind::Crop { .. },
+                ..
+            })
+        ) {
+            self.cancel_edit();
+            return;
+        }
+        if !self.can_edit() {
+            return;
+        }
+        let Lookup::Ready(image) = self.loader.get(self.current) else {
+            return;
+        };
+        let image_size = image.original_size;
+        let landscape = image_size[0] >= image_size[1];
+        let aspect = edit::ratio_aspect(Ratio::Original, image_size[0], image_size[1], landscape);
+        let crop =
+            edit::Crop::max_centered(f64::from(image_size[0]), f64::from(image_size[1]), aspect);
+        let zoom = self
+            .edit
+            .take()
+            .map(|session| session.zoom)
+            .unwrap_or(self.zoom);
+        self.zoom = viewer::Zoom::default();
+        self.edit = Some(EditSession {
+            zoom,
+            kind: EditKind::Crop {
+                ratio: Ratio::Original,
+                landscape,
+                image_size,
+                crop,
+                gesture: None,
+            },
+        });
+    }
+
+    fn cancel_edit(&mut self) {
+        if let Some(session) = self.edit.take() {
+            self.zoom = session.zoom;
+        }
+    }
+
+    fn confirm_edit(&mut self) {
+        let Some(session) = self.edit.take() else {
+            return;
+        };
+        self.zoom = session.zoom;
+        let Some(path) = self.view.get(self.current).cloned() else {
+            return;
+        };
+        match session.kind {
+            EditKind::Straighten { radians } if radians.abs() < 1e-8 => {}
+            EditKind::Straighten { radians } => {
+                self.spawn_edit(path, PixelJob::Rotate(radians));
+            }
+            EditKind::Crop {
+                image_size, crop, ..
+            } => {
+                if crop.covers_image(f64::from(image_size[0]), f64::from(image_size[1])) {
+                    return;
+                }
+                let rect = edit::PixelRect::from_crop(crop, image_size[0], image_size[1]);
+                if rect.is_entire(image_size[0], image_size[1]) {
+                    return;
+                }
+                let short = rect.w.min(rect.h);
+                if short < edit::MIN_CROP_SIDE && short < image_size[0].min(image_size[1]) {
+                    return;
+                }
+                self.spawn_edit(path, PixelJob::Crop(rect));
+            }
+        }
+    }
+
+    fn spawn_edit(&mut self, path: PathBuf, job: PixelJob) {
+        self.edit_busy = true;
+        self.notice = Some(i18n::t().edit_writing.to_owned());
+        let channel = self.writer.channel();
+        let thread = std::thread::Builder::new()
+            .name("cerno-edit".into())
+            .spawn(move || {
+                let result = match job {
+                    PixelJob::Rotate(radians) => edit::render_rotation(&path, radians),
+                    PixelJob::Crop(rect) => edit::render_crop(&path, rect),
+                };
+                match result {
+                    Ok(jpeg) => channel.replace_pixels(path, jpeg),
+                    Err(err) => channel.fail(path, format!("{err:#}")),
+                }
+            });
+        match thread {
+            Ok(thread) => self.edit_thread = Some(thread),
+            Err(err) => {
+                self.edit_busy = false;
+                self.notice = Some((i18n::t().edit_failed)(&err.to_string()));
+            }
+        }
+    }
+
+    fn rotate_quarter(&mut self, clockwise: bool) {
+        if self.edit_busy || self.pinned.is_some() {
+            return;
+        }
+        if matches!(
+            self.edit,
+            Some(EditSession {
+                kind: EditKind::Crop { .. },
+                ..
+            })
+        ) {
+            return;
+        }
+        let Some(path) = self.view.get(self.current).cloned() else {
+            return;
+        };
+        if library::format_of(&path) != Some(library::Format::Jpeg) {
+            self.notice = Some(i18n::t().edit_not_jpeg.to_owned());
+            return;
+        }
+        self.edit_busy = true;
+        self.writer.rotate_quarter(path, clockwise);
+    }
+
+    fn poll_edits(&mut self) {
+        if let Some(thread) = self.edit_thread.take_if(|thread| thread.is_finished()) {
+            let _ = thread.join();
+        }
+        let writing = i18n::t().edit_writing;
+        for outcome in self.writer.poll_edits() {
+            self.edit_busy = false;
+            match outcome.error {
+                Some(err) => self.notice = Some((i18n::t().edit_failed)(&err)),
+                None => {
+                    self.refresh_edited(&outcome.path);
+                    if outcome.reencoded {
+                        self.notice = Some(i18n::t().edit_reencoded.to_owned());
+                    } else if self.notice.as_deref() == Some(writing) {
+                        self.notice = None;
+                    }
+                }
+            }
+        }
+    }
+
+    fn refresh_edited(&mut self, path: &Path) {
+        if let Some(index) = self.view.iter().position(|candidate| candidate == path) {
+            self.loader.invalidate(index);
+        }
+        self.thumbs.invalidate(path);
+        self.analyzer.revisit(path);
+    }
+
+    fn handle_edit_keys(&mut self, ctx: &egui::Context) {
+        let input = ctx.input(|input| EditKeyInput {
+            enter: input.key_pressed(Key::Enter),
+            escape: input.key_pressed(Key::Escape),
+            left: input.key_pressed(Key::ArrowLeft),
+            right: input.key_pressed(Key::ArrowRight),
+            shift: input.modifiers.shift,
+            command: input.modifiers.command,
+            flip: input.modifiers.is_none() && input.key_pressed(Key::X),
+            cycle: input.modifiers.is_none() && input.key_pressed(Key::A),
+            wheel: wheel_rotation(&input.events),
+        });
+        if input.escape {
+            self.cancel_edit();
+            return;
+        }
+        if input.enter {
+            self.confirm_edit();
+            return;
+        }
+        if input.command && !input.shift && input.left {
+            self.rotate_quarter(false);
+        }
+        if input.command && !input.shift && input.right {
+            self.rotate_quarter(true);
+        }
+        let Some(session) = self.edit.as_mut() else {
+            return;
+        };
+        match &mut session.kind {
+            EditKind::Straighten { radians } if !input.command => {
+                let step = if input.shift {
+                    edit::FINER_STEP
+                } else {
+                    edit::FINE_STEP
+                };
+                let mut delta = input.wheel;
+                if input.left {
+                    delta -= step;
+                }
+                if input.right {
+                    delta += step;
+                }
+                *radians = edit::clamp_angle(*radians + delta);
+            }
+            EditKind::Crop {
+                ratio,
+                landscape,
+                image_size,
+                crop,
+                gesture,
+            } => {
+                if input.flip {
+                    *landscape = !*landscape;
+                    refit_crop(*ratio, *landscape, *image_size, crop);
+                    *gesture = None;
+                }
+                if input.cycle {
+                    *ratio = ratio.next();
+                    refit_crop(*ratio, *landscape, *image_size, crop);
+                    *gesture = None;
+                }
+            }
+            EditKind::Straighten { .. } => {}
+        }
+    }
+
+    fn handle_edit_pointer(&mut self, ui: &egui::Ui, frame: &viewer::Frame) {
+        let Some(EditSession {
+            kind: EditKind::Crop { .. },
+            ..
+        }) = self.edit.as_ref()
+        else {
+            return;
+        };
+        let id = ui.id().with("crop");
+        let response = ui.interact(frame.area, id, Sense::click_and_drag());
+        let photo = self.zoom.image_rect(frame);
+        let (image_size, crop) = match &self.edit {
+            Some(EditSession {
+                kind: EditKind::Crop {
+                    image_size, crop, ..
+                },
+                ..
+            }) => (*image_size, *crop),
+            _ => return,
+        };
+        let screen = edit_ui::crop_to_screen(photo, image_size, crop);
+        if let Some(pos) = response.hover_pos().filter(|pos| frame.area.contains(*pos)) {
+            ui.ctx()
+                .set_cursor_icon(edit_ui::cursor(edit_ui::hit_test(screen, pos)));
+        }
+        if response.drag_started()
+            && let Some(pos) = response.interact_pointer_pos()
+        {
+            let gesture = match edit_ui::hit_test(screen, pos) {
+                edit_ui::Hit::Corner(corner) => CropGesture::Resize {
+                    anchor: corner.anchor(crop),
+                },
+                edit_ui::Hit::Inside => CropGesture::Move { start: pos, crop },
+                edit_ui::Hit::Outside => CropGesture::Draw {
+                    anchor: pos,
+                    before: crop,
+                },
+            };
+            if let Some(EditSession {
+                kind: EditKind::Crop { gesture: slot, .. },
+                ..
+            }) = self.edit.as_mut()
+            {
+                *slot = Some(gesture);
+            }
+        }
+        if response.dragged()
+            && let Some(pos) = response.interact_pointer_pos()
+        {
+            self.drag_crop(photo, image_size, pos);
+        }
+        if response.drag_stopped()
+            && let Some(EditSession {
+                kind: EditKind::Crop { gesture, crop, .. },
+                ..
+            }) = self.edit.as_mut()
+        {
+            if let Some(CropGesture::Draw { before, anchor }) = gesture
+                && !response
+                    .interact_pointer_pos()
+                    .is_some_and(|pos| pos.distance(*anchor) >= 6.0)
+            {
+                *crop = *before;
+            }
+            *gesture = None;
+        }
+    }
+
+    fn drag_crop(&mut self, photo: Rect, image_size: [u32; 2], pos: Pos2) {
+        let Some(EditSession {
+            kind:
+                EditKind::Crop {
+                    crop,
+                    gesture,
+                    landscape,
+                    ratio,
+                    ..
+                },
+            ..
+        }) = self.edit.as_mut()
+        else {
+            return;
+        };
+        let image = (f64::from(image_size[0]), f64::from(image_size[1]));
+        let aspect = edit::ratio_aspect(*ratio, image_size[0], image_size[1], *landscape);
+        let floor = edit::min_side(image_size[0], image_size[1]);
+        match *gesture {
+            Some(CropGesture::Move {
+                start,
+                crop: origin,
+            }) => {
+                let (dx, dy) = edit_ui::screen_delta(photo, image_size, pos - start);
+                *crop = origin.translate(dx, dy, image.0, image.1);
+            }
+            Some(CropGesture::Resize { anchor }) => {
+                let pointer = edit_ui::screen_to_image(photo, image_size, pos);
+                *crop = edit::resize_from_anchor(anchor, pointer, aspect, image, floor);
+            }
+            Some(CropGesture::Draw { anchor, .. }) => {
+                let anchor = edit_ui::screen_to_image(photo, image_size, anchor);
+                let pointer = edit_ui::screen_to_image(photo, image_size, pos);
+                *crop = edit::resize_from_anchor(anchor, pointer, aspect, image, floor);
+            }
+            None => {}
+        }
+    }
+
     /// Lightroom's keys where Cerno has the same function (see the help page for all).
     fn handle_keys(&mut self, ctx: &egui::Context, frames: &[viewer::Frame]) {
         if let Some(path) =
@@ -1245,6 +1742,14 @@ impl CernoApp {
                 zoom_out: !i.modifiers.command && i.key_pressed(Key::Minus),
                 open: i.modifiers.command && i.key_pressed(Key::O),
                 is_fullscreen: i.viewport().fullscreen.unwrap_or(false),
+                straighten: plain && i.key_pressed(Key::S),
+                crop: plain && i.key_pressed(Key::R),
+                rotate_cw: i.modifiers.command
+                    && !i.modifiers.shift
+                    && i.key_pressed(Key::ArrowRight),
+                rotate_ccw: i.modifiers.command
+                    && !i.modifiers.shift
+                    && i.key_pressed(Key::ArrowLeft),
             }
         });
 
@@ -1274,6 +1779,22 @@ impl CernoApp {
         if keys.help && !self.all.is_empty() {
             self.help_open = true;
             return;
+        }
+        if self.edit.is_some() {
+            self.handle_edit_keys(ctx);
+            return;
+        }
+        if keys.straighten {
+            self.begin_straighten();
+        }
+        if keys.crop {
+            self.begin_crop();
+        }
+        if keys.rotate_ccw {
+            self.rotate_quarter(false);
+        }
+        if keys.rotate_cw {
+            self.rotate_quarter(true);
         }
         if keys.open {
             self.pick_folder(ctx);
@@ -1408,12 +1929,63 @@ impl CernoApp {
                         image_size: image.original_size,
                         pixels_per_point: ctx.pixels_per_point(),
                     };
-                    if !self.help_open {
-                        self.handle_mouse(ui, &frame, slot.side);
+                    let editing = self.edit.is_some();
+                    if !self.help_open && self.palette.is_none() {
+                        if editing && slot.side == Side::Single {
+                            self.handle_edit_pointer(ui, &frame);
+                        } else if !editing {
+                            self.handle_mouse(ui, &frame, slot.side);
+                        }
                     }
+                    let straighten = match &self.edit {
+                        Some(EditSession {
+                            kind: EditKind::Straighten { radians },
+                            ..
+                        }) => Some(*radians),
+                        _ => None,
+                    };
                     let full = self.loader.full(slot.index);
-                    let needs_full =
-                        viewer::draw(ui.painter(), &frame, &self.zoom, &image, full.as_deref());
+                    let needs_full = viewer::draw(
+                        ui.painter(),
+                        &frame,
+                        &self.zoom,
+                        &image,
+                        full.as_deref(),
+                        straighten,
+                    );
+                    if let Some(session) = &self.edit
+                        && slot.side == Side::Single
+                    {
+                        let photo = self.zoom.image_rect(&frame);
+                        match &session.kind {
+                            EditKind::Straighten { radians } => {
+                                let painter = ui.painter().with_clip_rect(photo);
+                                edit_ui::grid(&painter, photo);
+                                edit_ui::banner(
+                                    ui.painter(),
+                                    frame.area,
+                                    &format!("{:+.2}°", radians.to_degrees()),
+                                    i18n::t().edit_hint,
+                                );
+                            }
+                            EditKind::Crop {
+                                ratio,
+                                landscape,
+                                image_size,
+                                crop,
+                                ..
+                            } => {
+                                let screen = edit_ui::crop_to_screen(photo, *image_size, *crop);
+                                edit_ui::crop_frame(ui.painter(), photo, screen);
+                                edit_ui::banner(
+                                    ui.painter(),
+                                    frame.area,
+                                    &crop_caption(*ratio, *landscape),
+                                    i18n::t().edit_hint,
+                                );
+                            }
+                        }
+                    }
                     if needs_full && full.is_none() {
                         self.loader.request_full(slot.index);
                     }
@@ -1481,6 +2053,7 @@ impl eframe::App for CernoApp {
         }
         self.update_target(&ctx, window.size());
         self.process_deletions(&ctx);
+        self.poll_edits();
 
         // Layout: toolbar | photo(s) + details | filmstrip | info bar. The info bar always
         // shows; the toolbar also when a filter hides everything (to change it back).
@@ -1578,10 +2151,12 @@ impl eframe::App for CernoApp {
                         duplicate: duplicates.get(i).is_some_and(|p| p.is_some()),
                     }
                 });
-            if let Some(index) = strip.clicked {
+            if let Some(index) = strip.clicked
+                && self.edit.is_none()
+            {
                 self.go_to(&ctx, index, 1);
             }
-            if strip.step != 0 && !self.help_open {
+            if strip.step != 0 && !self.help_open && self.edit.is_none() {
                 let target = self.current.saturating_add_signed(strip.step);
                 self.go_to(&ctx, target, strip.step.signum());
             }
@@ -1756,7 +2331,11 @@ impl eframe::App for CernoApp {
 
     fn on_exit(&mut self) {
         // A rating given right before closing must still reach the file, and a deletion that
-        // wasn't undone is carried out.
+        // wasn't undone is carried out. A confirmed edit encodes first, then the writer
+        // applies it.
+        if let Some(thread) = self.edit_thread.take() {
+            let _ = thread.join();
+        }
         self.writer.shutdown();
         self.deletions.finish_now();
     }

@@ -187,6 +187,19 @@ pub static TEXTS: Texts = Texts {
     confirm_delete_models_title: "Eliminare i modelli scaricati?",
     confirm_delete_models_text: "Rimuove i file dei modelli CLIP e SigLIP dal disco (circa 3 GB). I punteggi salvati restano nel database; l'estetica può essere scaricata di nuovo.",
 
+    cmd_straighten: "Raddrizza",
+    cmd_rotate_ccw: "Ruota di 90° a sinistra",
+    cmd_rotate_cw: "Ruota di 90° a destra",
+    cmd_crop: "Ritaglio",
+    edit_not_jpeg: "Raddrizza e ritaglio solo per JPEG.",
+    edit_writing: "Scrittura della foto…",
+    edit_reencoded: "JPEG ricodificato. La qualità è stata impostata di nuovo una volta.",
+    edit_failed: |detail| format!("Non scritto: {detail}"),
+    edit_hint: "Invio applica, Esc annulla",
+    ratio_original: "Originale",
+    crop_landscape: "Orizzontale",
+    crop_portrait: "Verticale",
+
     help_title: "Aiuto",
     help_intro: "Cerno mostra subito le tue foto e ti aiuta a fare una selezione. Le stelle vengono scritte direttamente nel file della foto, così le vedono anche gli altri programmi – la data del file non cambia. Tutto il resto resta nel database di Cerno. Nitidezza e bellezza vengono valutate automaticamente in background; Tab apre il pannello dettagli, I espande o comprime tutte le spiegazioni, Ctrl+K trova qualsiasi comando.",
     help_drop: "Trascina una cartella o una foto sulla finestra, oppure premi Ctrl+O.",
@@ -256,6 +269,19 @@ pub static TEXTS: Texts = Texts {
             "Maiusc+Tab",
             "Barra superiore, dettagli e striscia di miniature insieme",
         ),
+        (
+            "S",
+            "Raddrizza: griglia, rotellina e frecce ruotano, Maiusc più fine, Invio applica",
+        ),
+        (
+            "Ctrl+←, Ctrl+→",
+            "Ruota di 90° – senza perdita, tramite l'orientamento JPEG",
+        ),
+        (
+            "R",
+            "Ritaglio: traccia una cornice, X scambia orizzontale/verticale, A cambia il formato",
+        ),
+        ("Invio, Esc", "Applica o annulla raddrizzamento e ritaglio"),
     ],
     help_more: [
         (

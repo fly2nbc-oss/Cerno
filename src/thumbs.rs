@@ -45,6 +45,8 @@ struct Queue {
     queued: HashSet<PathBuf>,
     /// Not in the database (yet); the analysis pass will insert them.
     misses: HashSet<PathBuf>,
+    /// Bumped when a photo is edited, so a database load that started earlier is dropped.
+    fresh: HashMap<PathBuf, u64>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -94,6 +96,15 @@ impl Thumbs {
         self.inner.insert(path, width, height, rgb);
     }
 
+    /// Forgets the texture. A database load already running for this path is ignored, so the
+    /// filmstrip doesn't flash the pre-edit thumbnail.
+    pub fn invalidate(&self, path: &Path) {
+        lock(&self.inner.textures).remove(path);
+        let mut queue = lock(&self.inner.queue);
+        *queue.fresh.entry(path.to_path_buf()).or_insert(0) += 1;
+        queue.misses.remove(path);
+    }
+
     /// Drops textures the filmstrip no longer needs.
     pub fn retain(&self, keep: impl Fn(&Path) -> bool) {
         let mut textures = lock(&self.inner.textures);
@@ -139,7 +150,7 @@ impl Inner {
 
 fn worker(inner: &Inner) {
     loop {
-        let path = {
+        let (path, token) = {
             let mut queue = lock(&inner.queue);
             loop {
                 if inner.shutdown.load(Ordering::Relaxed) {
@@ -147,7 +158,8 @@ fn worker(inner: &Inner) {
                 }
                 if let Some(path) = queue.pending.pop_front() {
                     queue.queued.remove(&path);
-                    break path;
+                    let token = queue.fresh.get(&path).copied().unwrap_or(0);
+                    break (path, token);
                 }
                 queue = inner.wake.wait(queue).unwrap_or_else(|p| p.into_inner());
             }
@@ -155,7 +167,11 @@ fn worker(inner: &Inner) {
         if lock(&inner.textures).contains_key(&path) {
             continue;
         }
-        match load_from_db(&inner.db, &path) {
+        let loaded = load_from_db(&inner.db, &path);
+        if lock(&inner.queue).fresh.get(&path).copied().unwrap_or(0) != token {
+            continue;
+        }
+        match loaded {
             Ok(Some((w, h, rgb))) => inner.insert(&path, w, h, &rgb),
             Ok(None) => {
                 lock(&inner.queue).misses.insert(path);

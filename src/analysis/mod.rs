@@ -370,6 +370,24 @@ impl Analyzer {
         self.shared.taste_wake.notify_all();
     }
 
+    /// The file's pixels changed. Drop this path from the "already done" set so it is
+    /// analysed again, and ignore an analysis that is still running on the old bytes.
+    pub fn revisit(&self, path: &Path) {
+        self.shared
+            .embeddings
+            .write()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(path);
+        let mut state = lock(&self.shared.state);
+        state.generation += 1;
+        state.in_flight.clear();
+        if let Some(index) = state.paths.iter().position(|p| p == path) {
+            state.done.remove(&index);
+        }
+        drop(state);
+        self.shared.wake.notify_all();
+    }
+
     /// Downloads the CLIP model in the background, then re-runs the analysis to add the
     /// scores.
     /// Clears taste feedback in the index; star ratings in the files stay.
@@ -611,6 +629,11 @@ fn analyze(shared: &Shared, path: &Path) -> Result<()> {
     let (tw, th, thumb) = thumbs::downscale(rgb, w, h)?;
     let fingerprint = fingerprint(&thumb, image.original_size);
     let mut record = shared.db.image(fingerprint)?;
+    // A straighten or crop rewrites the file while this may still be running on the old bytes.
+    if FileStamp::of(path).ok() != Some(stamp) {
+        log::debug!("file changed during analysis, skipping {}", path.display());
+        return Ok(());
+    }
     shared.db.put_file(
         &key,
         stamp,

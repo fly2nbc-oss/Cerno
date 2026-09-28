@@ -2,6 +2,7 @@
 
 pub mod bars;
 pub mod details;
+pub mod edit;
 pub mod filmstrip;
 pub mod help;
 pub mod icons;

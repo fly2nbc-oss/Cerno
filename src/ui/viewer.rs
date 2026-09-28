@@ -2,7 +2,7 @@
 //!
 //! Zoom and position survive switching photos, so a series can be compared at the same spot.
 
-use eframe::egui::{Color32, Painter, Pos2, Rect, Vec2, pos2, vec2};
+use eframe::egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Vec2, epaint::Vertex, pos2, vec2};
 
 use crate::loader::{FullImage, LoadedImage};
 
@@ -122,9 +122,21 @@ pub fn draw(
     zoom: &Zoom,
     display: &LoadedImage,
     full: Option<&FullImage>,
+    straighten: Option<f64>,
 ) -> bool {
     let rect = zoom.image_rect(frame);
     let painter = painter.with_clip_rect(frame.area);
+    if let Some(radians) = straighten {
+        let scale = crate::edit::cover_scale(frame.image_size[0], frame.image_size[1], radians);
+        draw_rotated(
+            &painter.with_clip_rect(rect),
+            rect,
+            display.texture.id(),
+            radians,
+            scale as f32,
+        );
+        return false;
+    }
     let uv = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
     let shown_width = zoom.effective_scale(frame) * frame.image_size[0] as f32;
     let needs_full = shown_width > display.texture.size()[0] as f32 * 1.05;
@@ -148,6 +160,40 @@ pub fn draw(
         }
     }
     needs_full
+}
+
+/// The display texture, scaled by `scale` and rotated clockwise about the centre of `rect`.
+fn draw_rotated(
+    painter: &Painter,
+    rect: Rect,
+    texture: eframe::egui::TextureId,
+    radians: f64,
+    scale: f32,
+) {
+    let (sin, cos) = (radians as f32).sin_cos();
+    let center = rect.center();
+    let half = rect.size() * scale * 0.5;
+    let corners = [
+        (vec2(-half.x, -half.y), pos2(0.0, 0.0)),
+        (vec2(half.x, -half.y), pos2(1.0, 0.0)),
+        (vec2(half.x, half.y), pos2(1.0, 1.0)),
+        (vec2(-half.x, half.y), pos2(0.0, 1.0)),
+    ];
+    let mut mesh = Mesh::with_texture(texture);
+    for (offset, uv) in corners {
+        let turned = vec2(
+            offset.x * cos - offset.y * sin,
+            offset.x * sin + offset.y * cos,
+        );
+        mesh.vertices.push(Vertex {
+            pos: center + turned,
+            uv,
+            color: Color32::WHITE,
+        });
+    }
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    painter.add(Shape::mesh(mesh));
 }
 
 #[cfg(test)]

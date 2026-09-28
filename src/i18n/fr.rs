@@ -208,6 +208,19 @@ pub static TEXTS: Texts = Texts {
     confirm_delete_models_title: "Supprimer les modèles téléchargés ?",
     confirm_delete_models_text: "Supprime les fichiers des modèles CLIP et SigLIP du disque (environ 3 Go). Les scores enregistrés restent dans la base ; l'esthétique pourra être téléchargée à nouveau.",
 
+    cmd_straighten: "Redresser",
+    cmd_rotate_ccw: "Pivoter de 90° vers la gauche",
+    cmd_rotate_cw: "Pivoter de 90° vers la droite",
+    cmd_crop: "Recadrer",
+    edit_not_jpeg: "Redressement et recadrage uniquement pour les JPEG.",
+    edit_writing: "Écriture de la photo…",
+    edit_reencoded: "JPEG réencodé. La qualité a été réécrite une fois.",
+    edit_failed: |detail| format!("Pas enregistré : {detail}"),
+    edit_hint: "Entrée applique, Échap annule",
+    ratio_original: "Original",
+    crop_landscape: "Paysage",
+    crop_portrait: "Portrait",
+
     help_title: "Aide",
     help_intro: "Cerno affiche vos photos instantanément et vous aide à faire le tri. Les étoiles sont écrites directement dans le fichier photo, pour que les autres logiciels les voient aussi – la date du fichier reste inchangée. Tout le reste est conservé dans la base de données de Cerno. La netteté et la beauté sont évaluées automatiquement en arrière-plan ; Tab ouvre le panneau de détails, I déplie ou replie toutes les explications, Ctrl+K trouve n'importe quelle commande.",
     help_drop: "Déposez un dossier ou une photo sur la fenêtre, ou appuyez sur Ctrl+O.",
@@ -266,6 +279,22 @@ pub static TEXTS: Texts = Texts {
         ("I", "Détails : déplier ou replier toutes les explications"),
         ("F6", "Pellicule"),
         ("Maj+Tab", "Barre du haut, détails et pellicule ensemble"),
+        (
+            "S",
+            "Redresser : grille, molette et flèches tournent, Maj plus fin, Entrée applique",
+        ),
+        (
+            "Ctrl+←, Ctrl+→",
+            "Pivoter de 90° – sans perte, via l'orientation JPEG",
+        ),
+        (
+            "R",
+            "Recadrer : tracer un cadre, X bascule paysage/portrait, A change le format",
+        ),
+        (
+            "Entrée, Échap",
+            "Appliquer ou annuler redressement et recadrage",
+        ),
     ],
     help_more: [
         (

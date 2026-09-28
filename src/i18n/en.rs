@@ -195,6 +195,19 @@ pub static TEXTS: Texts = Texts {
     confirm_delete_models_title: "Delete downloaded models?",
     confirm_delete_models_text: "Removes the CLIP and SigLIP model files from disk (about 3 GB). Saved scores stay in the database; aesthetics can be downloaded again later.",
 
+    cmd_straighten: "Straighten",
+    cmd_rotate_ccw: "Rotate 90° counter-clockwise",
+    cmd_rotate_cw: "Rotate 90° clockwise",
+    cmd_crop: "Crop",
+    edit_not_jpeg: "Straighten and crop work on JPEG only.",
+    edit_writing: "Writing the photo…",
+    edit_reencoded: "JPEG re-encoded. Quality was set once more.",
+    edit_failed: |detail| format!("Not written: {detail}"),
+    edit_hint: "Enter applies, Esc cancels",
+    ratio_original: "Original",
+    crop_landscape: "Landscape",
+    crop_portrait: "Portrait",
+
     help_title: "Help",
     help_intro: "Cerno shows your photos instantly and helps you sort them out. Stars go straight into the photo file, so other programs see them too – the file date stays untouched. Everything else stays in Cerno's own database. Sharpness and beauty are rated automatically in the background; Tab opens the details panel, I expands or collapses all explanations, Ctrl+K finds any command.",
     help_drop: "Drop a folder or photo onto the window, or press Ctrl+O.",
@@ -244,6 +257,19 @@ pub static TEXTS: Texts = Texts {
         ("I", "Details: expand or collapse all explanations"),
         ("F6", "Filmstrip"),
         ("Shift+Tab", "Top bar, details and filmstrip together"),
+        (
+            "S",
+            "Straighten: grid, wheel and arrows rotate, Shift is finer, Enter applies",
+        ),
+        (
+            "Ctrl+←, Ctrl+→",
+            "Rotate 90° – lossless, via the JPEG orientation",
+        ),
+        (
+            "R",
+            "Crop: draw a frame, X flips landscape/portrait, A changes the ratio",
+        ),
+        ("Enter, Esc", "Apply or cancel straighten and crop"),
     ],
     help_more: [
         ("Ctrl+K", "Command palette: find and run any command"),

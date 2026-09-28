@@ -199,6 +199,19 @@ pub static TEXTS: Texts = Texts {
     confirm_delete_models_title: "¿Eliminar los modelos descargados?",
     confirm_delete_models_text: "Quita los archivos de los modelos CLIP y SigLIP del disco (unos 3 GB). Los valores guardados permanecen en la base de datos; la estética se puede volver a descargar.",
 
+    cmd_straighten: "Enderezar",
+    cmd_rotate_ccw: "Girar 90° a la izquierda",
+    cmd_rotate_cw: "Girar 90° a la derecha",
+    cmd_crop: "Recorte",
+    edit_not_jpeg: "Enderezar y recortar solo funciona con JPEG.",
+    edit_writing: "Escribiendo la foto…",
+    edit_reencoded: "JPEG recodificado. La calidad se ha fijado de nuevo una vez.",
+    edit_failed: |detail| format!("No se ha escrito: {detail}"),
+    edit_hint: "Intro aplica, Esc cancela",
+    ratio_original: "Original",
+    crop_landscape: "Horizontal",
+    crop_portrait: "Vertical",
+
     help_title: "Ayuda",
     help_intro: "Cerno muestra tus fotos al instante y te ayuda a seleccionarlas. Las estrellas se guardan directamente en el archivo de la foto, así que otros programas también las ven – la fecha del archivo no cambia. Todo lo demás se queda en la base de datos propia de Cerno. La nitidez y la belleza se valoran automáticamente en segundo plano; Tab abre el panel de detalles, I despliega o pliega todas las explicaciones, Ctrl+K encuentra cualquier comando.",
     help_drop: "Arrastra una carpeta o una foto a la ventana, o pulsa Ctrl+O.",
@@ -257,6 +270,19 @@ pub static TEXTS: Texts = Texts {
             "Mayús+Tab",
             "Barra superior, detalles y tira de miniaturas a la vez",
         ),
+        (
+            "S",
+            "Enderezar: cuadrícula, rueda y flechas giran, Mayús más fino, Intro aplica",
+        ),
+        (
+            "Ctrl+←, Ctrl+→",
+            "Girar 90° – sin pérdida, mediante la orientación JPEG",
+        ),
+        (
+            "R",
+            "Recorte: trazar un marco, X cambia horizontal/vertical, A cambia el formato",
+        ),
+        ("Intro, Esc", "Aplicar o cancelar enderezar y recorte"),
     ],
     help_more: [
         (

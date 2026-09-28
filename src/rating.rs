@@ -26,9 +26,53 @@ pub struct WriterStatus {
 }
 
 enum Message {
-    SetRating { path: PathBuf, rating: Rating },
-    SetLabel { path: PathBuf, label: Option<Label> },
+    SetRating {
+        path: PathBuf,
+        rating: Rating,
+    },
+    SetLabel {
+        path: PathBuf,
+        label: Option<Label>,
+    },
+    /// Quarter turn, lossless: only the EXIF orientation changes.
+    RotateQuarter {
+        path: PathBuf,
+        clockwise: bool,
+    },
+    /// New JPEG bytes. Metadata is copied from the current file, then written in place.
+    ReplacePixels {
+        path: PathBuf,
+        jpeg: Vec<u8>,
+    },
+    EditFailed {
+        path: PathBuf,
+        message: String,
+    },
     Shutdown,
+}
+
+/// What the UI should do after a straighten or crop has been written (or failed).
+pub struct EditOutcome {
+    pub path: PathBuf,
+    pub error: Option<String>,
+    /// Pixels were re-encoded, so the quality notice applies. A quarter turn is lossless.
+    pub reencoded: bool,
+}
+
+/// Sends a finished pixel edit to the writer thread. Cheap to clone into a worker.
+#[derive(Clone)]
+pub struct EditChannel {
+    tx: mpsc::Sender<Message>,
+}
+
+impl EditChannel {
+    pub fn replace_pixels(&self, path: PathBuf, jpeg: Vec<u8>) {
+        let _ = self.tx.send(Message::ReplacePixels { path, jpeg });
+    }
+
+    pub fn fail(&self, path: PathBuf, message: String) {
+        let _ = self.tx.send(Message::EditFailed { path, message });
+    }
 }
 
 struct Pending {
@@ -42,21 +86,25 @@ pub struct RatingWriter {
     tx: mpsc::Sender<Message>,
     thread: Option<JoinHandle<()>>,
     status: Arc<Mutex<WriterStatus>>,
+    outcomes: Arc<Mutex<Vec<EditOutcome>>>,
 }
 
 impl RatingWriter {
     pub fn new(ctx: egui::Context, db: Arc<Db>) -> Self {
         let (tx, rx) = mpsc::channel();
         let status = Arc::new(Mutex::new(WriterStatus::default()));
+        let outcomes = Arc::new(Mutex::new(Vec::new()));
         let thread_status = Arc::clone(&status);
+        let thread_outcomes = Arc::clone(&outcomes);
         let thread = std::thread::Builder::new()
             .name("cerno-rating-writer".into())
-            .spawn(move || run(&rx, &thread_status, &ctx, &db))
+            .spawn(move || run(&rx, &thread_status, &thread_outcomes, &ctx, &db))
             .expect("failed to spawn rating writer");
         Self {
             tx,
             thread: Some(thread),
             status,
+            outcomes,
         }
     }
 
@@ -70,8 +118,28 @@ impl RatingWriter {
         let _ = self.tx.send(Message::SetLabel { path, label });
     }
 
+    /// Clockwise or counter-clockwise quarter turn, written as EXIF orientation.
+    pub fn rotate_quarter(&self, path: PathBuf, clockwise: bool) {
+        let _ = self.tx.send(Message::RotateQuarter { path, clockwise });
+    }
+
+    /// Handle for a worker that encodes pixels and then hands the JPEG back here.
+    pub fn channel(&self) -> EditChannel {
+        EditChannel {
+            tx: self.tx.clone(),
+        }
+    }
+
     pub fn status(&self) -> WriterStatus {
         self.status.lock().map(|s| s.clone()).unwrap_or_default()
+    }
+
+    /// Finished edits since the last call.
+    pub fn poll_edits(&self) -> Vec<EditOutcome> {
+        self.outcomes
+            .lock()
+            .map(|mut queue| std::mem::take(&mut *queue))
+            .unwrap_or_default()
     }
 
     /// Writes everything still pending and waits for it. Must run before the app exits.
@@ -89,7 +157,13 @@ impl Drop for RatingWriter {
     }
 }
 
-fn run(rx: &mpsc::Receiver<Message>, status: &Mutex<WriterStatus>, ctx: &egui::Context, db: &Db) {
+fn run(
+    rx: &mpsc::Receiver<Message>,
+    status: &Mutex<WriterStatus>,
+    outcomes: &Mutex<Vec<EditOutcome>>,
+    ctx: &egui::Context,
+    db: &Db,
+) {
     let mut exiftool: Option<ExifTool> = None;
     let mut pending: HashMap<PathBuf, Pending> = HashMap::new();
     let mut shutting_down = false;
@@ -118,6 +192,19 @@ fn run(rx: &mpsc::Receiver<Message>, status: &Mutex<WriterStatus>, ctx: &egui::C
                 });
                 entry.label = Some(label);
                 entry.at = Instant::now();
+            }
+            Ok(Message::RotateQuarter { path, clockwise }) => {
+                let result = flush_pending(&mut pending, &mut exiftool, &path, status)
+                    .and_then(|()| apply_quarter_turn(&mut exiftool, &path, clockwise, db));
+                push_outcome(outcomes, path, result, false);
+            }
+            Ok(Message::ReplacePixels { path, jpeg }) => {
+                let result = flush_pending(&mut pending, &mut exiftool, &path, status)
+                    .and_then(|()| apply_pixels(&mut exiftool, &path, &jpeg, db));
+                push_outcome(outcomes, path, result, true);
+            }
+            Ok(Message::EditFailed { path, message }) => {
+                push_outcome(outcomes, path, Err(anyhow::anyhow!("{message}")), false);
             }
             Ok(Message::Shutdown) | Err(RecvTimeoutError::Disconnected) => shutting_down = true,
             Err(RecvTimeoutError::Timeout) => {}
@@ -303,6 +390,195 @@ fn percent(stars: u8) -> u8 {
     }
 }
 
+/// Writes a pending rating for `path` before a pixel edit, so the copied metadata includes it.
+/// The index row is not updated: the edit deletes it afterwards.
+fn flush_pending(
+    pending: &mut HashMap<PathBuf, Pending>,
+    exiftool: &mut Option<ExifTool>,
+    path: &Path,
+    status: &Mutex<WriterStatus>,
+) -> Result<()> {
+    let Some(marks) = pending.remove(path) else {
+        return Ok(());
+    };
+    let result = write_marks(exiftool, path, marks.rating, marks.label);
+    if let Ok(mut status) = status.lock() {
+        match &result {
+            Ok(_) => status.last_error = None,
+            Err(err) => {
+                status.last_error = Some(format!(
+                    "{}: {err:#}",
+                    crate::library::file_name_lossy(path)
+                ));
+            }
+        }
+    }
+    result.map(|_| ())
+}
+
+fn push_outcome(
+    outcomes: &Mutex<Vec<EditOutcome>>,
+    path: PathBuf,
+    result: Result<()>,
+    reencoded: bool,
+) {
+    let error = match &result {
+        Ok(()) => None,
+        Err(err) => {
+            log::error!("edit of {}: {err:#}", path.display());
+            Some(format!("{err:#}"))
+        }
+    };
+    if let Ok(mut queue) = outcomes.lock() {
+        queue.push(EditOutcome {
+            path,
+            error,
+            reencoded,
+        });
+    }
+}
+
+fn apply_quarter_turn(
+    exiftool: &mut Option<ExifTool>,
+    path: &Path,
+    clockwise: bool,
+    db: &Db,
+) -> Result<()> {
+    let path_str = path.to_str().context("path is not valid Unicode")?;
+    let bytes = std::fs::read(path).context("cannot read file")?;
+    let current = metadata::read(&bytes).orientation;
+    drop(bytes);
+    let next = crate::edit::rotate_orientation(current, if clockwise { 1 } else { -1 });
+    if next == current {
+        return Ok(());
+    }
+    let snapshot = filetimes::Snapshot::capture(path).context("cannot read file times")?;
+    run_exiftool(
+        exiftool,
+        &[format!("-Orientation#={next}"), path_str.to_owned()],
+    )?;
+    if snapshot
+        .restore(path)
+        .context("cannot restore file times")?
+    {
+        log::debug!("restored exact file times of {}", path.display());
+    }
+    db.forget_file(&path.to_string_lossy())
+        .context("cannot drop the index row")?;
+    log::info!("orientation {current} → {next} on {}", path.display());
+    Ok(())
+}
+
+fn apply_pixels(exiftool: &mut Option<ExifTool>, path: &Path, jpeg: &[u8], db: &Db) -> Result<()> {
+    let path_str = path.to_str().context("path is not valid Unicode")?;
+    let snapshot = filetimes::Snapshot::capture(path).context("cannot read file times")?;
+    let temp = TempJpeg::create()?;
+    std::fs::write(&temp.path, jpeg).context("cannot write temporary JPEG")?;
+    let temp_str = temp
+        .path
+        .to_str()
+        .context("temp path is not valid Unicode")?
+        .to_owned();
+    run_exiftool(
+        exiftool,
+        &[
+            "-TagsFromFile".to_owned(),
+            path_str.to_owned(),
+            "-all:all".to_owned(),
+            "-unsafe".to_owned(),
+            "-Orientation#=1".to_owned(),
+            "-ThumbnailImage=".to_owned(),
+            "-PreviewImage=".to_owned(),
+            "-MPF:all=".to_owned(),
+            "-IFD1:all=".to_owned(),
+            "-EXIF:ImageWidth=".to_owned(),
+            "-EXIF:ImageHeight=".to_owned(),
+            "-EXIF:ExifImageWidth=".to_owned(),
+            "-EXIF:ExifImageHeight=".to_owned(),
+            temp_str,
+        ],
+    )?;
+    let prepared = std::fs::read(&temp.path).context("cannot read prepared JPEG")?;
+    write_in_place(path, &prepared)?;
+    if snapshot
+        .restore(path)
+        .context("cannot restore file times")?
+    {
+        log::debug!("restored exact file times of {}", path.display());
+    }
+    db.forget_file(&path.to_string_lossy())
+        .context("cannot drop the index row")?;
+    log::info!("pixels rewritten in {}", path.display());
+    Ok(())
+}
+
+fn run_exiftool(exiftool: &mut Option<ExifTool>, args: &[String]) -> Result<()> {
+    if args.iter().any(|arg| arg.contains(['\n', '\r'])) {
+        bail!("argument contains a line break");
+    }
+    let tool = match exiftool {
+        Some(tool) => tool,
+        None => exiftool.insert(ExifTool::spawn()?),
+    };
+    let command: Vec<&str> = args.iter().map(String::as_str).collect();
+    let output = match tool.execute(&command) {
+        Ok(output) => output,
+        Err(err) => {
+            *exiftool = None;
+            return Err(err);
+        }
+    };
+    let updated = ["1 image files updated", "1 image files unchanged"]
+        .iter()
+        .any(|ok| output.stdout.contains(ok));
+    if !updated {
+        let message = output
+            .stderr
+            .lines()
+            .chain(output.stdout.lines())
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .unwrap_or("ExifTool did not update the file");
+        bail!("{message}");
+    }
+    Ok(())
+}
+
+fn write_in_place(path: &Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .open(path)
+        .context("cannot open file")?;
+    file.write_all(bytes).context("cannot write file")?;
+    file.set_len(bytes.len() as u64)
+        .context("cannot resize file")?;
+    Ok(())
+}
+
+/// Removed on drop, including when the metadata copy fails.
+struct TempJpeg {
+    path: PathBuf,
+}
+
+impl TempJpeg {
+    fn create() -> Result<Self> {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let path =
+            std::env::temp_dir().join(format!("cerno-edit-{}-{nanos}.jpg", std::process::id()));
+        Ok(Self { path })
+    }
+}
+
+impl Drop for TempJpeg {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -432,6 +708,79 @@ mod tests {
         assert_eq!(after.modified().unwrap(), before.modified().unwrap());
         #[cfg(windows)]
         assert_eq!(after.created().unwrap(), before.created().unwrap());
+        drop(exiftool);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Quarter turn via the orientation tag, then a real re-encode. Dates stay put either way.
+    #[test]
+    fn quarter_turn_and_reencode_keep_file_dates() {
+        use std::fs::{self, File, FileTimes};
+        use std::time::SystemTime;
+
+        if crate::exiftool::locate().is_none() {
+            eprintln!("ExifTool not found – skipped");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("cerno-edit-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("tiny.jpg");
+        fs::copy(
+            Path::new(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/fixtures/tiny.jpg"
+            )),
+            &path,
+        )
+        .unwrap();
+        let old = SystemTime::now() - Duration::from_secs(86_400 * 400);
+        File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old))
+            .unwrap();
+        let created = fs::metadata(&path).unwrap().created().ok();
+        let db = Db::open_in_memory().unwrap();
+        let mut exiftool = None;
+
+        let orientation = || metadata::read(&fs::read(&path).unwrap()).orientation;
+        let before = orientation();
+        apply_quarter_turn(&mut exiftool, &path, true, &db).unwrap();
+        assert_eq!(orientation(), crate::edit::rotate_orientation(before, 1));
+        assert_eq!(fs::metadata(&path).unwrap().modified().unwrap(), old);
+
+        let bytes = fs::read(&path).unwrap();
+        let meta = metadata::read(&bytes);
+        let oriented = crate::decode::decode_for_display(
+            &bytes,
+            crate::library::Format::Jpeg,
+            meta.orientation,
+            [u32::MAX; 2],
+        )
+        .unwrap();
+        let jpeg = crate::edit::render_rotation(&path, 2.0_f64.to_radians()).unwrap();
+        apply_pixels(&mut exiftool, &path, &jpeg, &db).unwrap();
+        let after = fs::read(&path).unwrap();
+        let after_meta = metadata::read(&after);
+        assert_eq!(after_meta.orientation, 1);
+        let decoded = crate::decode::decode_for_display(
+            &after,
+            crate::library::Format::Jpeg,
+            after_meta.orientation,
+            [u32::MAX; 2],
+        )
+        .unwrap();
+        assert_eq!(
+            (decoded.width, decoded.height),
+            (oriented.width, oriented.height)
+        );
+        assert_eq!(fs::metadata(&path).unwrap().modified().unwrap(), old);
+        #[cfg(windows)]
+        assert_eq!(fs::metadata(&path).unwrap().created().ok(), created);
+        #[cfg(not(windows))]
+        let _ = created;
+
         drop(exiftool);
         fs::remove_dir_all(&dir).unwrap();
     }

@@ -6,6 +6,7 @@ mod app;
 mod db;
 mod decode;
 mod deletion;
+mod edit;
 mod exiftool;
 mod filetimes;
 mod histogram;

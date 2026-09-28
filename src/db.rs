@@ -272,6 +272,16 @@ impl Db {
         Ok(())
     }
 
+    /// Drops the path so the next analysis fingerprints the file again. Used after a pixel edit
+    /// or a quarter turn: size and mtime are put back on purpose, so the stamp would otherwise
+    /// still match and the old scores would stick. The `images` row stays; ratings history and
+    /// taste feedback point at it.
+    pub fn forget_file(&self, path: &str) -> Result<()> {
+        self.conn()
+            .execute("DELETE FROM files WHERE path = ?1", [path])?;
+        Ok(())
+    }
+
     /// After Cerno wrote a rating or colour label: the size changed, the mtime deliberately did
     /// not. Updating the stamp here avoids re-fingerprinting the file.
     pub fn update_after_write(

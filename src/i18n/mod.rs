@@ -271,6 +271,20 @@ pub struct Texts {
     pub cmd_only_duplicates: &'static str,
     pub cmd_label: fn(&str) -> String,
 
+    // Straighten and crop.
+    pub cmd_straighten: &'static str,
+    pub cmd_rotate_ccw: &'static str,
+    pub cmd_rotate_cw: &'static str,
+    pub cmd_crop: &'static str,
+    pub edit_not_jpeg: &'static str,
+    pub edit_writing: &'static str,
+    pub edit_reencoded: &'static str,
+    pub edit_failed: fn(&str) -> String,
+    pub edit_hint: &'static str,
+    pub ratio_original: &'static str,
+    pub crop_landscape: &'static str,
+    pub crop_portrait: &'static str,
+
     // Photo area, compare mode and deletion.
     pub loading: &'static str,
     pub cannot_show: &'static str,
@@ -355,7 +369,7 @@ pub struct Texts {
     pub help_sections: [&'static str; 4],
     pub help_browse: [HelpRow; 5],
     pub help_rate: [HelpRow; 10],
-    pub help_view: [HelpRow; 9],
+    pub help_view: [HelpRow; 13],
     pub help_more: [HelpRow; 4],
 }
 
@@ -429,6 +443,7 @@ mod tests {
             let trained = (t.taste_trained)(30, 0.7);
             assert!(trained.contains("30") && trained.contains("0.7"), "{name}");
             assert!((t.taste_photos)(30).contains("30"), "{name}");
+            assert!((t.edit_failed)("locked").contains("locked"), "{name}");
             assert_eq!(t.compare_left_badge.chars().count(), 1, "{name}");
         }
     }
