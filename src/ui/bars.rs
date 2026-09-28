@@ -668,9 +668,10 @@ enum Piece {
     Star,
 }
 
-/// Non-breaking spaces the outline star is painted over; the last one is the gap after it.
-const STAR_PLACEHOLDER: &str = "\u{a0}\u{a0}\u{a0}";
-const STAR_PLACEHOLDER_CHARS: usize = 3;
+/// Non-breaking spaces at value size the outline star is painted over: a gap, the star, a
+/// gap.
+const STAR_PLACEHOLDER: &str = "\u{a0}\u{a0}\u{a0}\u{a0}\u{a0}";
+const STAR_PLACEHOLDER_CHARS: usize = 5;
 
 #[derive(Clone)]
 struct Meter {
@@ -730,7 +731,7 @@ fn layout_meters(painter: &Painter, meters: &[Meter]) -> LaidMeters {
                     Piece::Separator(text) => (text.as_str(), size, tokens::MUTED),
                     Piece::Star => {
                         stars.push(chars);
-                        (STAR_PLACEHOLDER, text::LABEL, tokens::MUTED)
+                        (STAR_PLACEHOLDER, size, tokens::MUTED)
                     }
                 };
                 let mut format = TextFormat::simple(FontId::proportional(size), color);
@@ -796,7 +797,7 @@ fn paint_meters(
         for index in stars {
             let from = value.pos_from_cursor(CCursor::new(index)).min.x;
             let to = value
-                .pos_from_cursor(CCursor::new(index + STAR_PLACEHOLDER_CHARS - 1))
+                .pos_from_cursor(CCursor::new(index + STAR_PLACEHOLDER_CHARS))
                 .min
                 .x;
             let centre = pos2(origin.x + (from + to) / 2.0, y);

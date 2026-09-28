@@ -68,7 +68,7 @@ pub static TEXTS: Texts = Texts {
     button_menu: "Menu",
     button_language: |name| format!("Lingua: {name}"),
 
-    cmd_explanations: "Espandi o comprimi tutte le spiegazioni nel pannello dettagli",
+    cmd_explanations: "Tutte le spiegazioni",
     cmd_all_panels: "Barra dei filtri, dettagli e striscia di miniature",
     cmd_fullscreen: "Schermo intero",
     cmd_compare: "Confronta",

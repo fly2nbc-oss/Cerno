@@ -144,6 +144,8 @@ pub struct CernoApp {
     options: ViewOptions,
     /// Score board version the view was built from.
     view_version: u64,
+    /// When the view was last built (quiet refreshes are spaced out).
+    view_built: Instant,
     /// Sorted sharpness values of the folder, for percentiles (board version, values).
     percentiles: (u64, Percentiles),
 
@@ -497,6 +499,7 @@ impl CernoApp {
             pinned: None,
             options,
             view_version: 0,
+            view_built: Instant::now(),
             percentiles: (u64::MAX, Percentiles::default()),
             session_ratings: HashMap::new(),
             session_labels: HashMap::new(),
@@ -631,10 +634,28 @@ impl CernoApp {
         self.current = view::skip_pinned(view.len(), current, pinned, 1).unwrap_or(current);
         self.view = view;
         self.view_version = self.board.version();
+        self.view_built = Instant::now();
         self.loader
             .set_library(Arc::clone(&self.view.paths), self.current, pinned);
         self.sync_analyzer();
         self.update_title(ctx);
+    }
+
+    /// Name order without filters: new scores cannot move a photo, but they bring the
+    /// fingerprints and capture times behind duplicate marks and series. Rebuild quietly, at
+    /// most every 2 s. (With a score-dependent sort or filter the filter bar offers "Refresh
+    /// order" instead – rebuilding there would move photos under the user.)
+    fn refresh_marks(&mut self, ctx: &egui::Context) {
+        const EVERY: Duration = Duration::from_secs(2);
+        if self.options.depends_on_scores() || self.board.version() == self.view_version {
+            return;
+        }
+        let since = self.view_built.elapsed();
+        if since >= EVERY {
+            self.rebuild_view(ctx, None);
+        } else {
+            ctx.request_repaint_after(EVERY - since);
+        }
     }
 
     fn pinned_index(&self) -> Option<usize> {
@@ -2007,12 +2028,15 @@ impl CernoApp {
             let plain = i.modifiers.is_none();
             let rate_and_next = shifted_digit(&i.events);
             KeyInput {
-                next: [Key::ArrowRight, Key::Space, Key::PageDown]
-                    .iter()
-                    .any(|k| i.key_pressed(*k)),
-                prev: [Key::ArrowLeft, Key::Backspace, Key::PageUp]
-                    .iter()
-                    .any(|k| i.key_pressed(*k)),
+                // Without Ctrl: Ctrl+Left/Right turn the photo instead.
+                next: !i.modifiers.command
+                    && [Key::ArrowRight, Key::Space, Key::PageDown]
+                        .iter()
+                        .any(|k| i.key_pressed(*k)),
+                prev: !i.modifiers.command
+                    && [Key::ArrowLeft, Key::Backspace, Key::PageUp]
+                        .iter()
+                        .any(|k| i.key_pressed(*k)),
                 first: i.key_pressed(Key::Home),
                 last: i.key_pressed(Key::End),
                 rating: STAR_KEYS
@@ -2406,6 +2430,7 @@ impl eframe::App for CernoApp {
         self.process_deletions(&ctx);
         self.poll_transfer(&ctx);
         self.poll_edits();
+        self.refresh_marks(&ctx);
 
         // Layout: toolbar | photo(s) + details | filmstrip | info bar. The info bar always
         // shows; the toolbar also when a filter hides everything (to change it back).

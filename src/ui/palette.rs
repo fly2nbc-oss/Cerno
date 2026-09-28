@@ -10,6 +10,8 @@ use eframe::egui::{
     StrokeKind, pos2, vec2,
 };
 
+use eframe::egui::text::{LayoutJob, TextWrapping};
+
 use crate::theme::{text, tokens};
 use crate::ui::icons;
 
@@ -464,23 +466,27 @@ fn row_button(
         painter.circle_filled(pos2(x + 5.0, y), 5.0, colour);
         x += 16.0;
     }
-    painter.text(
-        pos2(x, y),
-        Align2::LEFT_CENTER,
-        look.label,
-        FontId::proportional(text::BODY),
-        tokens::TEXT,
-    );
     let right_reserve = if look.submenu { 22.0 } else { 10.0 };
+    let mut label_right = row.right() - right_reserve;
     if let Some(shortcut) = look.shortcut {
-        painter.text(
+        let rect = painter.text(
             pos2(row.right() - right_reserve, y),
             Align2::RIGHT_CENTER,
             shortcut,
             FontId::proportional(text::SMALL),
             tokens::MUTED,
         );
+        label_right = rect.left() - 12.0;
     }
+    let mut job = LayoutJob::simple_singleline(
+        look.label.to_owned(),
+        FontId::proportional(text::BODY),
+        tokens::TEXT,
+    );
+    job.wrap = TextWrapping::truncate_at_width((label_right - x).max(20.0));
+    let galley = painter.layout_job(job);
+    let size = galley.size();
+    painter.galley(pos2(x, y - size.y / 2.0), galley, tokens::TEXT);
     if look.submenu {
         icons::chevron(painter, pos2(row.right() - 12.0, y), false, tokens::MUTED);
     }

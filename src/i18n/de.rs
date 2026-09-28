@@ -68,7 +68,7 @@ pub static TEXTS: Texts = Texts {
     button_menu: "Menü",
     button_language: |name| format!("Sprache: {name}"),
 
-    cmd_explanations: "Alle Erklärungen in der Detailansicht auf- oder zuklappen",
+    cmd_explanations: "Alle Erklärungen",
     cmd_all_panels: "Filterleiste, Details und Filmstreifen",
     cmd_fullscreen: "Vollbild",
     cmd_compare: "Vergleichen",
