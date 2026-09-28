@@ -5,9 +5,9 @@ use std::time::{Duration, Instant};
 use eframe::egui::{self, Id, LayerId, Order, Rect};
 
 use crate::i18n::{self, Lang};
-use crate::ui::bars::{self, Panels};
 use crate::ui::details::{DetailsMode, all_expanded, set_all_expanded};
 use crate::ui::icons::Panel;
+use crate::ui::overlays;
 
 use super::CernoApp;
 
@@ -15,6 +15,14 @@ use super::CernoApp;
 const LANGUAGE_FLASH: Duration = Duration::from_millis(1400);
 
 const LANGUAGE_FADE: Duration = Duration::from_millis(450);
+
+/// Which optional parts of the window are shown (the info bar always is).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Panels {
+    toolbar: bool,
+    details: bool,
+    filmstrip: bool,
+}
 
 impl CernoApp {
     fn panels(&self) -> Panels {
@@ -110,7 +118,7 @@ impl CernoApp {
             1.0 - (elapsed - fade_start).as_secs_f32() / LANGUAGE_FADE.as_secs_f32()
         };
         let painter = ctx.layer_painter(LayerId::new(Order::Tooltip, Id::new("language-flash")));
-        bars::language_flash(&painter, area, i18n::current(), opacity);
+        overlays::language_flash(&painter, area, i18n::current(), opacity);
         ctx.request_repaint();
     }
 }

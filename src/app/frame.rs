@@ -9,7 +9,7 @@ use crate::i18n;
 use crate::loader::Lookup;
 use crate::theme::tokens;
 use crate::ui::details::{self, DetailsMode};
-use crate::ui::{bars, filmstrip, help, palette};
+use crate::ui::{filmstrip, filter_bar, help, info_bar, overlays, palette};
 
 use super::CernoApp;
 use super::menu::ConfirmAction;
@@ -31,13 +31,16 @@ impl CernoApp {
         let mut area = window;
         let toolbar =
             (!self.all.is_empty() && (self.show_toolbar || self.view.is_empty())).then(|| {
-                let r = Rect::from_min_size(window.min, vec2(window.width(), bars::TOOLBAR_HEIGHT));
+                let r = Rect::from_min_size(
+                    window.min,
+                    vec2(window.width(), filter_bar::TOOLBAR_HEIGHT),
+                );
                 area.min.y = r.max.y;
                 r
             });
         let info = (!self.view.is_empty()).then(|| {
             let r = Rect::from_min_max(
-                pos2(window.min.x, window.max.y - bars::INFO_HEIGHT),
+                pos2(window.min.x, window.max.y - info_bar::INFO_HEIGHT),
                 window.max,
             );
             area.max.y = r.min.y;
@@ -78,7 +81,7 @@ impl CernoApp {
                 self.pick_folder(&ctx);
             }
         } else if self.view.is_empty() {
-            bars::centred_message(ui, area, i18n::t().no_match, tokens::MUTED);
+            overlays::centred_message(ui, area, i18n::t().no_match, tokens::MUTED);
         } else {
             // Navigation may have changed the photos; lay them out again.
             let slots = self.slots(area);
@@ -171,7 +174,7 @@ impl CernoApp {
             .and_then(|p| p.as_ref())
             .map(|original| self.photo_name(original));
         let comparing = self.pinned.is_some();
-        let bar = bars::InfoBar {
+        let bar = info_bar::InfoBar {
             name: &name,
             position: (self.current + 1, self.view.len()),
             image: image.as_deref(),
@@ -199,7 +202,7 @@ impl CernoApp {
             saving: self.writer.status().pending > 0,
             zoom: self.zoom.scale.map(|s| s * 100.0),
         };
-        let out = bars::info_bar(ui, rect, &bar);
+        let out = info_bar::info_bar(ui, rect, &bar);
         if let Some(stars) = out.rating {
             self.set_rating(&ctx, stars, false);
         }
@@ -241,13 +244,13 @@ impl CernoApp {
     pub(super) fn draw_toolbar(&mut self, ui: &mut egui::Ui, rect: Rect) {
         let ctx = ui.ctx().clone();
         let status = self.analyzer.status();
-        let info = bars::ToolbarInfo {
+        let info = filter_bar::ToolbarInfo {
             stale: self.options.depends_on_scores() && self.board.version() != self.view_version,
             status: &status,
             actions_open: self.action_menu.is_some(),
         };
         let mut options = self.options;
-        let out = bars::toolbar(ui, rect, &mut options, &info);
+        let out = filter_bar::toolbar(ui, rect, &mut options, &info);
         self.action_anchor = out.actions_anchor;
         if out.toggle_actions {
             if self.action_menu.is_some() {

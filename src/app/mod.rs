@@ -46,8 +46,8 @@ use crate::rating::RatingWriter;
 use crate::theme::tokens;
 use crate::thumbs::Thumbs;
 use crate::transfer::Queue as TransferQueue;
-use crate::ui::bars;
 use crate::ui::details::{DetailRow, DetailsMode};
+use crate::ui::overlays;
 use crate::ui::{palette, viewer};
 use crate::view::{FilterKind, Percentiles, PhotoFilter, SortKey, View, ViewOptions};
 
@@ -371,7 +371,7 @@ impl eframe::App for CernoApp {
             layout.area
         };
         self.draw_language_flash(&ctx, flash);
-        bars::drop_hint(ui, window);
+        overlays::drop_hint(ui, window);
     }
 
     /// `Tab` is Lightroom's panel key. egui would move keyboard focus to the next widget with

@@ -11,7 +11,7 @@ use crate::metadata::Label;
 use crate::transfer::Mode as TransferMode;
 use crate::ui::details::{DetailsMode, all_expanded};
 use crate::ui::icons::Panel;
-use crate::ui::{bars, confirm, help, models, palette, viewer};
+use crate::ui::{confirm, filter_bar, help, models, palette, viewer};
 use crate::view::{FilterKind, SortKey};
 
 use super::gate::Change;
@@ -149,7 +149,7 @@ impl CernoApp {
             let anchor = self.action_anchor.unwrap_or_else(|| {
                 Rect::from_min_size(
                     pos2(window.right() - 100.0, window.top()),
-                    vec2(88.0, bars::TOOLBAR_HEIGHT),
+                    vec2(88.0, filter_bar::TOOLBAR_HEIGHT),
                 )
             });
             let out = palette::show(

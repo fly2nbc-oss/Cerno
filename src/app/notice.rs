@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use eframe::egui::{self, Rect};
 
 use crate::i18n;
-use crate::ui::bars;
+use crate::ui::overlays;
 
 use super::CernoApp;
 
@@ -64,7 +64,7 @@ impl CernoApp {
     /// which wins as long as the writer reports it.
     pub(super) fn draw_messages(&mut self, ui: &egui::Ui, area: Rect) {
         if let Some((count, left)) = self.deletions.countdown(Instant::now()) {
-            bars::delete_countdown(ui, area, count, left);
+            overlays::delete_countdown(ui, area, count, left);
         }
         let writer_error = self
             .writer
@@ -83,7 +83,7 @@ impl CernoApp {
             }
             _ => None,
         };
-        if bars::notices(ui, area, message) && writer_error.is_none() {
+        if overlays::notices(ui, area, message) && writer_error.is_none() {
             self.notice = None;
         }
         if let Some(until) = self.notice.as_ref().and_then(|n| n.until) {

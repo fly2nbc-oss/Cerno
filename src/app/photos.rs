@@ -7,7 +7,7 @@ use crate::library;
 use crate::loader::{LoadedImage, Lookup};
 use crate::metadata::Rating;
 use crate::theme::tokens;
-use crate::ui::{bars, viewer};
+use crate::ui::{overlays, viewer};
 
 use super::CernoApp;
 use super::notice::Notice;
@@ -144,7 +144,7 @@ impl CernoApp {
         for slot in slots {
             match self.loader.get(slot.index) {
                 Lookup::Ready(image) => self.draw_photo(ui, slot, &image),
-                Lookup::Failed(message) => bars::centred_message(
+                Lookup::Failed(message) => overlays::centred_message(
                     ui,
                     slot.area,
                     &format!(
@@ -155,7 +155,7 @@ impl CernoApp {
                     tokens::STATUS_ERROR,
                 ),
                 Lookup::Pending => {
-                    bars::centred_message(ui, slot.area, i18n::t().loading, tokens::MUTED);
+                    overlays::centred_message(ui, slot.area, i18n::t().loading, tokens::MUTED);
                 }
             }
         }
@@ -217,7 +217,7 @@ impl CernoApp {
         } else {
             (t.compare_right, "D")
         };
-        bars::compare_label(
+        overlays::compare_label(
             ui,
             slot.area,
             side,
@@ -227,7 +227,7 @@ impl CernoApp {
         );
         let scores = self.board.get(&path).map(|k| k.scores);
         let percentiles = self.percentiles().clone();
-        bars::compare_scores(
+        overlays::compare_scores(
             ui,
             slot.area,
             [

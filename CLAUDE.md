@@ -75,7 +75,9 @@ app/notice.rs        messages over the photo and the deletion countdown
 view.rs              sorting + filtering, time series and exact duplicates (`View`, pure, unit-tested)
 ui/viewer.rs         fit / zoom / pan geometry and drawing (display texture or full-res tiles)
 ui/filmstrip.rs      thumbnail strip centred on the current photo; marks explained in one tooltip
-ui/bars.rs           filter bar (sort, filter boxes, colour squares, status, Action), two-row info bar (meters, zoom, GPS pin, help and menu), notices, language flash
+ui/filter_bar.rs     filter bar (sort, filter boxes, colour squares, status, Action)
+ui/info_bar.rs       two-row info bar (meters, zoom, GPS pin, help and menu)
+ui/overlays.rs       over the photo area: compare labels, deletion countdown, notices, drop hint, language flash
 ui/details.rs        side panel with the current photo's values (and its size / load time); rows fold open, `I` all; scrolls
 ui/help.rs           help page (`H`/`F1`/`?`, modal foreground area) and the small start screen (five keys, H for the rest)
 ui/palette.rs        the menus: burger (`Ctrl+K`) and action menu (`Ctrl+M`) – groups, switches/choices, keyboard
