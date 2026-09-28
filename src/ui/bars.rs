@@ -244,7 +244,7 @@ fn aesthetics_status(ui: &mut Ui, state: &ModelState, out: &mut ToolbarOutput) {
         ModelState::Loading => {
             ui.label(muted(t.aesthetics_loading.into()));
         }
-        ModelState::Available | ModelState::Ready { .. } => {}
+        ModelState::Available | ModelState::Ready { .. } | ModelState::Removing => {}
         ModelState::Failed(message) => {
             ui.label(RichText::new(t.aesthetics_failed).color(tokens::STATUS_ERROR))
                 .on_hover_text(message);

@@ -497,6 +497,7 @@ pub fn model_note(state: &ModelState) -> String {
         ModelState::Loading => t.model_loading.to_owned(),
         ModelState::Ready { backend } => (*backend).to_owned(),
         ModelState::Failed(_) => t.model_failed.to_owned(),
+        ModelState::Removing => t.model_removing.to_owned(),
     }
 }
 

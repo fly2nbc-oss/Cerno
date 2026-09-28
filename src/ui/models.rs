@@ -69,6 +69,8 @@ fn content(ui: &mut Ui, status: &Status) -> ModelsOutput {
     models_folder(ui);
     ui.add_space(18.0);
 
+    // Nothing to press while the files are being removed.
+    let removing = [&status.aesthetics, &status.v25].contains(&&ModelState::Removing);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
         if status.aesthetics == ModelState::Missing {
@@ -90,7 +92,10 @@ fn content(ui: &mut Ui, status: &Status) -> ModelsOutput {
             out.reset_taste = true;
         }
         if ui
-            .add(Button::new(t.btn_delete_models).min_size(vec2(0.0, 32.0)))
+            .add_enabled(
+                !removing,
+                Button::new(t.btn_delete_models).min_size(vec2(0.0, 32.0)),
+            )
             .clicked()
         {
             out.delete_models = true;

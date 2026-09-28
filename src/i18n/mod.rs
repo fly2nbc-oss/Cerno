@@ -372,6 +372,8 @@ pub struct Texts {
     pub model_downloading: fn(f64) -> String,
     pub model_ready: &'static str,
     pub model_loading: &'static str,
+    /// While "Delete models" waits for a running analysis and removes the files.
+    pub model_removing: &'static str,
     pub model_failed: &'static str,
     pub model_faces: &'static str,
     pub model_personal: &'static str,
@@ -380,6 +382,8 @@ pub struct Texts {
     pub taste_untrained: &'static str,
     pub btn_reset_taste: &'static str,
     pub btn_delete_models: &'static str,
+    /// Hint once the model files are gone.
+    pub models_deleted: &'static str,
     /// Tooltip on the button that copies the models folder path.
     pub copy_models_path: &'static str,
     /// Shown briefly after that button copies the path.

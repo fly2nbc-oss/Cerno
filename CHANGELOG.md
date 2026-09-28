@@ -38,6 +38,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 - Deletions carried out when the window closes count for For you, like the ones during the session.
 - If the index can't be opened, its error stays on screen instead of being replaced by the next hint, and editing is off (its kept originals would be lost track of).
 - `cerno IMG_0042.jpg` started inside the folder opens that photo instead of the first one; paths are stored absolute.
+- "Delete models" no longer freezes the window while an analysis runs and no longer fails because the file is in use; the models card says "removing…" meanwhile.
+- A model download that stalls gives up after a minute with an error instead of hanging at the same percentage until a restart; a failed download leaves no partial file behind.
+- If the face detector can't be loaded, photos are no longer decoded again on every visit.
 - A straighten or crop is cancelled (with a hint) when another photo becomes current underneath it, e.g. because a copy finished.
 - No torn reads or copies: reading, copying and writing a photo take turns, so the analysis, the viewer and a copy never see a file halfway through a rating write.
 - A photo rated while it was being analysed is analysed again shortly afterwards instead of staying without values until the folder is reopened, and the index no longer keeps the rating it had before.

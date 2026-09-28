@@ -979,12 +979,7 @@ impl CernoApp {
                 self.analyzer.download_model();
             }
             ConfirmAction::ResetTaste => self.analyzer.reset_taste_learning(),
-            ConfirmAction::DeleteModels => {
-                if let Err(err) = self.analyzer.delete_installed_models() {
-                    log::error!("delete models: {err:#}");
-                    self.notice = Some(Notice::error(format!("{err:#}")));
-                }
-            }
+            ConfirmAction::DeleteModels => self.analyzer.delete_installed_models(),
         }
     }
 
@@ -2639,6 +2634,12 @@ impl eframe::App for CernoApp {
         self.poll_transfer(&ctx);
         self.poll_edits();
         self.refresh_marks(&ctx);
+        if let Some(removal) = self.analyzer.take_removal() {
+            self.notice = Some(match removal {
+                Ok(()) => Notice::hint(i18n::t().models_deleted),
+                Err(err) => Notice::error(err),
+            });
+        }
 
         // Layout: toolbar | photo(s) + details | filmstrip | info bar. The info bar always
         // shows; the toolbar also when a filter hides everything (to change it back).
