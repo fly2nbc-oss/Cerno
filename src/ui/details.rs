@@ -13,7 +13,7 @@ use crate::histogram::RgbHistogram;
 use crate::i18n;
 use crate::theme::tokens;
 use crate::ui::icons;
-use crate::view::BLURRY_PERCENTILE;
+use crate::view::is_blurry;
 
 pub const WIDTH: f32 = 320.0;
 const PAD: f32 = 16.0;
@@ -199,7 +199,8 @@ fn content(ui: &mut Ui, d: &Details<'_>, expanded: &mut HashSet<DetailRow>) {
             Some(p) => Value {
                 text: format!("{:.0} %", p * 100.0),
                 fill: Some(p),
-                warn: p < BLURRY_PERCENTILE && d.eyes_percentile.is_none(),
+                warn: d.eyes_percentile.is_none()
+                    && scores.sharpness.is_some_and(|raw| is_blurry(p, raw, false)),
             },
             None => Value::note(t.note_analysing),
         },
@@ -214,7 +215,7 @@ fn content(ui: &mut Ui, d: &Details<'_>, expanded: &mut HashSet<DetailRow>) {
             (Some(p), _) => Value {
                 text: format!("{:.0} %", p * 100.0),
                 fill: Some(p),
-                warn: p < BLURRY_PERCENTILE,
+                warn: scores.eyes.is_some_and(|raw| is_blurry(p, raw, true)),
             },
             (None, Some(0)) => Value::note(t.note_no_face),
             (None, Some(n)) => Value::note((t.note_faces_too_small)(n)),

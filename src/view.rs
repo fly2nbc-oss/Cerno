@@ -15,6 +15,22 @@ pub const SERIES_GAP_MS: i64 = 2_000;
 
 /// Sharpness percentile (within the folder) below which a photo counts as probably blurry.
 pub const BLURRY_PERCENTILE: f32 = 0.2;
+/// Absolute ceilings for "probably blurry", so a folder of sharp photos gets no warnings: the
+/// 10th percentile of the author's index on 2026-09-28, rounded (2 777 photos with
+/// `sharpness_version = 1`: 260; 720 with `faces_version = 1` and eyes: 60).
+pub const BLURRY_FRAME_MAX: f32 = 250.0;
+pub const BLURRY_EYES_MAX: f32 = 60.0;
+
+/// Probably out of focus: among the blurriest 20 % of the folder **and** below the absolute
+/// ceiling of its measure (`eyes`: the eye region, otherwise the whole frame).
+pub fn is_blurry(percentile: f32, raw: f32, eyes: bool) -> bool {
+    let ceiling = if eyes {
+        BLURRY_EYES_MAX
+    } else {
+        BLURRY_FRAME_MAX
+    };
+    percentile < BLURRY_PERCENTILE && raw < ceiling
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortKey {
@@ -379,6 +395,15 @@ impl Percentiles {
             .map(|p| (p, true))
             .or_else(|| self.frame(scores).map(|p| (p, false)))
     }
+
+    /// The subject (see `subject`) is probably out of focus, see `is_blurry`.
+    pub fn is_blurry(&self, scores: &Scores) -> bool {
+        match self.subject(scores) {
+            Some((p, true)) => scores.eyes.is_some_and(|raw| is_blurry(p, raw, true)),
+            Some((p, false)) => scores.sharpness.is_some_and(|raw| is_blurry(p, raw, false)),
+            None => false,
+        }
+    }
 }
 
 struct Entry<'a> {
@@ -455,7 +480,10 @@ pub fn build(
             if hidden(entry.path) {
                 return false;
             }
-            let blurry = entry.sharp.is_some_and(|p| p < BLURRY_PERCENTILE);
+            let blurry = entry
+                .facts
+                .as_ref()
+                .is_some_and(|f| percentiles.is_blurry(&f.scores));
             let is_duplicate = copies.contains_key(entry.path.as_path());
             options
                 .filter
@@ -826,6 +854,28 @@ mod tests {
             names(&build(&all, options, lookup, &HashMap::new(), &labels, |_| false,).paths),
             "a"
         );
+    }
+
+    #[test]
+    fn a_folder_of_sharp_photos_has_no_blurry_ones() {
+        let scores = |s| Scores {
+            sharpness: Some(s),
+            ..Scores::default()
+        };
+        let sharp = [900.0, 1500.0, 3000.0, 4000.0, 6000.0].map(scores);
+        let p = Percentiles::from_scores(sharp.iter());
+        assert!(
+            sharp.iter().all(|s| !p.is_blurry(s)),
+            "the least sharp photo is still sharp"
+        );
+        let mixed = [90.0, 1500.0, 3000.0, 4000.0, 6000.0].map(scores);
+        let p = Percentiles::from_scores(mixed.iter());
+        assert!(p.is_blurry(&mixed[0]));
+        assert!(!p.is_blurry(&mixed[1]));
+        // The eye region has its own, lower ceiling.
+        assert!(is_blurry(0.1, 50.0, true));
+        assert!(!is_blurry(0.1, 70.0, true));
+        assert!(!is_blurry(0.5, 10.0, false), "not among the blurriest 20 %");
     }
 
     #[test]

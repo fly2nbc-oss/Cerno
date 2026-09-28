@@ -1,10 +1,11 @@
 //! Toolbar (top), info bar (bottom), notices and the drop hint.
 
 use eframe::egui::containers::scroll_area::ScrollBarVisibility;
-use eframe::egui::text::{LayoutJob, TextFormat};
+use eframe::egui::text::{CCursor, LayoutJob, TextFormat};
 use eframe::egui::{
     Align, Align2, Button, Color32, ComboBox, CursorIcon, FontId, Galley, Layout, Painter, Pos2,
-    Rect, RichText, ScrollArea, Sense, Sides, Stroke, StrokeKind, Ui, UiBuilder, Vec2, pos2, vec2,
+    Rect, Response, RichText, ScrollArea, Sense, Sides, Stroke, StrokeKind, Ui, UiBuilder, Vec2,
+    pos2, vec2,
 };
 use std::sync::Arc;
 
@@ -13,15 +14,16 @@ use crate::i18n::{self, Lang};
 use crate::loader::LoadedImage;
 use crate::metadata::{self, Label, Rating};
 use crate::theme::{self, tokens};
-use crate::ui::icons::{self, Panel};
+use crate::ui::icons;
 use crate::ui::stars;
-use crate::view::{BLURRY_PERCENTILE, FilterKind, SortKey, ViewOptions};
+use crate::view::{FilterKind, SortKey, ViewOptions};
 
 pub const TOOLBAR_HEIGHT: f32 = 40.0;
 pub const INFO_HEIGHT: f32 = 60.0;
 const STAR_SIZE: f32 = 16.0;
 const STAR_GAP: f32 = 6.0;
-const BUTTON: f32 = 28.0;
+/// Click area of the info bar buttons (design system: at least 32 px).
+const BUTTON: f32 = 32.0;
 
 pub struct ToolbarInfo<'a> {
     /// New scores arrived since the view was sorted/filtered.
@@ -79,10 +81,10 @@ pub fn toolbar(
                                     ui.selectable_value(&mut options.sort, key, key.label());
                                 }
                             });
-                        ScrollArea::horizontal()
+                        let boxes = ScrollArea::horizontal()
                             .id_salt("filter-boxes")
                             .max_width(ui.available_width())
-                            .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden)
+                            .scroll_bar_visibility(ScrollBarVisibility::VisibleWhenNeeded)
                             .show(ui, |ui| {
                                 ui.horizontal(|ui| {
                                     ui.spacing_mut().item_spacing.x = 6.0;
@@ -93,39 +95,47 @@ pub fn toolbar(
                                     }
                                     for kind in FilterKind::ALL {
                                         let mut on = options.filter.contains(kind);
-                                        let text = match kind {
-                                            FilterKind::Stars(n) => RichText::new(format!("{n}★")),
-                                            FilterKind::Colour(label) => {
-                                                RichText::new(kind.label())
-                                                    .color(theme::label_color(label))
+                                        let response = match kind {
+                                            // Colours as small squares: five names would not
+                                            // fit next to the rest.
+                                            FilterKind::Colour(label) => colour_box(
+                                                ui,
+                                                &mut on,
+                                                theme::label_color(label),
+                                                i18n::label_name(label),
+                                            ),
+                                            FilterKind::Stars(n) => {
+                                                ui.checkbox(&mut on, format!("{n}★"))
                                             }
-                                            _ => RichText::new(kind.label()),
+                                            FilterKind::Blurry => ui
+                                                .checkbox(&mut on, kind.label())
+                                                .on_hover_text(t.filter_blurry_tooltip),
+                                            FilterKind::Duplicate => ui
+                                                .checkbox(&mut on, kind.label())
+                                                .on_hover_text(t.filter_duplicate_tooltip),
+                                            _ => ui.checkbox(&mut on, kind.label()),
                                         };
-                                        let mut response = ui.checkbox(&mut on, text);
-                                        if kind == FilterKind::Blurry {
-                                            response =
-                                                response.on_hover_text(t.filter_blurry_tooltip);
-                                        }
-                                        if kind == FilterKind::Duplicate {
-                                            response =
-                                                response.on_hover_text(t.filter_duplicate_tooltip);
-                                        }
                                         if response.changed() {
                                             options.filter.set(kind, on);
                                         }
                                     }
                                 });
                             });
+                        overflow_hint(
+                            ui.painter(),
+                            boxes.inner_rect,
+                            boxes.content_size.x,
+                            boxes.state.offset.x,
+                        );
                     },
                     |ui| {
+                        // Only what needs attention: the model is missing, loading or failed, or
+                        // the analysis is still running. Where the model runs is on the models
+                        // card.
                         aesthetics_status(ui, &info.status.aesthetics, &mut out);
                         let Status { done, total, .. } = *info.status;
-                        if total > 0 {
-                            let text = if done < total {
-                                (t.analyzing_progress)(done, total)
-                            } else {
-                                (t.analyzed)(total)
-                            };
+                        if done < total {
+                            let text = (t.analyzing_progress)(done, total);
                             ui.label(RichText::new(text).color(tokens::MUTED));
                         }
                         if info.stale
@@ -156,6 +166,64 @@ pub fn toolbar(
     out
 }
 
+/// A colour label as a small square – filled and ticked when on; the name is the tooltip.
+fn colour_box(ui: &mut Ui, on: &mut bool, colour: Color32, name: &str) -> Response {
+    let (rect, mut response) = ui.allocate_exact_size(vec2(20.0, 20.0), Sense::click());
+    if response.clicked() {
+        *on = !*on;
+        response.mark_changed();
+    }
+    let painter = ui.painter();
+    let square = Rect::from_center_size(rect.center(), vec2(14.0, 14.0));
+    if *on {
+        painter.rect_filled(square, 3.0, colour);
+        let c = square.center();
+        let stroke = Stroke::new(1.8, tokens::BG);
+        painter.line_segment([c + vec2(-3.5, 0.0), c + vec2(-1.0, 2.8)], stroke);
+        painter.line_segment([c + vec2(-1.0, 2.8), c + vec2(3.8, -3.2)], stroke);
+    } else {
+        painter.rect_stroke(square, 3.0, Stroke::new(1.5, colour), StrokeKind::Inside);
+    }
+    if response.hovered() {
+        painter.rect_stroke(
+            square.expand(2.0),
+            4.0,
+            Stroke::new(1.0, tokens::ACCENT),
+            StrokeKind::Outside,
+        );
+    }
+    response
+        .on_hover_cursor(CursorIcon::PointingHand)
+        .on_hover_text(name)
+}
+
+/// Fades the edge where filter boxes are scrolled out of view, so hidden ones are noticed.
+fn overflow_hint(painter: &Painter, inner: Rect, content_width: f32, offset: f32) {
+    const WIDTH: f32 = 28.0;
+    const STEPS: usize = 14;
+    let hidden_left = offset > 1.0;
+    let hidden_right = offset + inner.width() < content_width - 1.0;
+    let [r, g, b, _] = tokens::SURFACE.to_array();
+    for (hidden, edge, direction) in [
+        (hidden_left, inner.left(), 1.0),
+        (hidden_right, inner.right(), -1.0),
+    ] {
+        if !hidden {
+            continue;
+        }
+        for step in 0..STEPS {
+            let (a, b_) = (step as f32 / STEPS as f32, (step + 1) as f32 / STEPS as f32);
+            let (x0, x1) = (edge + direction * a * WIDTH, edge + direction * b_ * WIDTH);
+            let alpha = ((1.0 - a) * 255.0) as u8;
+            painter.rect_filled(
+                Rect::from_x_y_ranges(x0.min(x1)..=x0.max(x1), inner.y_range()),
+                0.0,
+                Color32::from_rgba_unmultiplied(r, g, b, alpha),
+            );
+        }
+    }
+}
+
 fn aesthetics_status(ui: &mut Ui, state: &ModelState, out: &mut ToolbarOutput) {
     let t = i18n::t();
     let muted = |text: String| RichText::new(text).color(tokens::MUTED);
@@ -173,16 +241,10 @@ fn aesthetics_status(ui: &mut Ui, state: &ModelState, out: &mut ToolbarOutput) {
             let percent = *received as f64 / (*total).max(1) as f64 * 100.0;
             ui.label(muted((t.downloading_model)(percent)));
         }
-        ModelState::Available => {
-            ui.label(muted(t.aesthetics_ready.into()));
-        }
         ModelState::Loading => {
             ui.label(muted(t.aesthetics_loading.into()));
         }
-        ModelState::Ready { backend } => {
-            ui.label(muted((t.aesthetics_backend)(backend)))
-                .on_hover_text(t.aesthetics_backend_tooltip);
-        }
+        ModelState::Available | ModelState::Ready { .. } => {}
         ModelState::Failed(message) => {
             ui.label(RichText::new(t.aesthetics_failed).color(tokens::STATUS_ERROR))
                 .on_hover_text(message);
@@ -218,6 +280,8 @@ pub struct InfoBar<'a> {
     pub personal: Option<f32>,
     /// (percentile within the folder, measured at the eyes).
     pub sharpness: Option<(f32, bool)>,
+    /// The subject is probably out of focus (`view::is_blurry`).
+    pub blurry: bool,
     pub saving: bool,
     /// Viewer zoom in percent while zoomed in.
     pub zoom: Option<f32>,
@@ -227,7 +291,6 @@ pub struct InfoBar<'a> {
 pub struct InfoBarOutput {
     /// The star the user clicked (`Some(None)` clears the rating).
     pub rating: Option<Rating>,
-    pub toggle: Option<Panel>,
     pub help: bool,
     pub menu: bool,
     /// Google Maps link of the photo's position.
@@ -260,11 +323,15 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
             fraction: None,
             color: tokens::MUTED,
             tooltip: None,
+            small: true,
         }]
     };
     let laid = layout_meters(painter, &meters);
+    // The centre is as wide as it can get in this language, so the side columns stay put
+    // while browsing (the blurry note, "Eyes" instead of "Sharpness", "Analysing…").
+    let widest = widest_centre(painter);
     let stars_width = 5.0 * STAR_SIZE + 4.0 * STAR_GAP;
-    let centre_half = (laid.width / 2.0).max(stars_width / 2.0) + 8.0;
+    let centre_half = (laid.width.max(widest) / 2.0).max(stars_width / 2.0) + 8.0;
     let centre = rect.center().x;
     for (area, tooltip) in paint_meters(painter, centre, row2, laid) {
         if let Some(tooltip) = tooltip {
@@ -286,12 +353,14 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
         FontId::proportional(13.0),
         tokens::TEXT,
     );
+    // Size and load time live in the details panel. What doesn't fit is left out whole, the
+    // capture date first.
     let mut facts = vec![format!("{} / {}", bar.position.0, bar.position.1)];
-    if let Some(zoom) = bar.zoom {
-        facts.push((t.zoom)(zoom));
-    }
     if bar.auto_advance {
         facts.push(t.auto_advance_on.to_owned());
+    }
+    if let Some(zoom) = bar.zoom {
+        facts.push((t.zoom)(zoom));
     }
     if let Some((index, len)) = bar.series {
         facts.push((t.series_position)(index, len));
@@ -299,19 +368,17 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     if let Some(name) = &bar.duplicate_of {
         facts.push((t.duplicate_of)(name));
     }
-    if let Some(image) = bar.image {
-        if let Some(taken) = &image.camera.taken {
-            facts.push(i18n::date(taken));
-        }
-        let [w, h] = image.original_size;
-        facts.push(format!("{w} × {h}"));
-        facts.push(format!("{} ms", image.load_ms));
+    if let Some(taken) = bar.image.and_then(|image| image.camera.taken.as_ref()) {
+        facts.push(i18n::date(taken));
     }
+    let font = FontId::proportional(11.5);
+    let room = (centre - centre_half - 12.0 - x).max(0.0);
+    let text = fit_parts(painter, facts, "   ·   ", &font, room, Drop::Back);
     left.text(
         pos2(x, row2),
         Align2::LEFT_CENTER,
-        facts.join("   ·   "),
-        FontId::proportional(11.5),
+        text,
+        font,
         tokens::MUTED,
     );
 
@@ -449,57 +516,86 @@ fn fit_parts(
     }
 }
 
-/// `AESTHETICS 6.1 / 6.5 / 2.4 ★` (LAION / V2.5 / personal) and sharpness.
+/// `L 6.1 / V 6.5 / ☆ 2.4` (LAION / V2.5 / For you, all on the star scale, "–" while not
+/// known) and the sharpness meter.
 fn meters(bar: &InfoBar<'_>) -> Vec<Meter> {
-    let t = i18n::t();
-    let mut meters = Vec::new();
     let [laion, v25] = bar.aesthetics;
+    let mut meters = Vec::new();
     if laion.is_some() || v25.is_some() || bar.personal.is_some() {
-        // L 3.4 / V 3.8 / ★ 2.4, all on the star scale – the letters say which model, "–" means not known yet.
-        let score =
-            |v: Option<f32>| Piece::Value(v.map_or_else(|| "–".to_owned(), |v| format!("{v:.1}")));
-        let slash = || Piece::Separator(" / ".to_owned());
-        meters.push(Meter {
-            label: t.meter_aesthetics.to_owned(),
-            value: vec![
-                Piece::Prefix("L ".to_owned()),
-                score(laion.map(aesthetic::as_stars)),
-                slash(),
-                Piece::Prefix("V ".to_owned()),
-                score(v25.map(aesthetic::as_stars)),
-                slash(),
-                Piece::Prefix("★ ".to_owned()),
-                score(bar.personal),
-            ],
-            fraction: None,
-            color: tokens::ACCENT,
-            tooltip: Some(t.meter_aesthetics_tooltip),
-        });
+        meters.push(scores_meter(
+            laion.map(aesthetic::as_stars),
+            v25.map(aesthetic::as_stars),
+            bar.personal,
+        ));
     }
     if let Some((p, eyes)) = bar.sharpness {
-        let blurry = p < BLURRY_PERCENTILE;
-        let name = if eyes {
-            t.meter_eyes
-        } else {
-            t.meter_sharpness
-        };
-        meters.push(Meter {
-            label: if blurry {
-                format!("{name} · {}", t.probably_blurry)
-            } else {
-                name.to_owned()
-            },
-            value: vec![Piece::Value(format!("{:.0} %", p * 100.0))],
-            fraction: Some(p),
-            color: if blurry {
-                tokens::STATUS_WARN
-            } else {
-                tokens::ACCENT
-            },
-            tooltip: None,
-        });
+        meters.push(sharpness_meter(p, eyes, bar.blurry));
     }
     meters
+}
+
+/// The three scores without a group label: the small letters say which model, the outline
+/// star is For you – filled stars are only ever the user's own rating.
+fn scores_meter(laion: Option<f32>, v25: Option<f32>, personal: Option<f32>) -> Meter {
+    let score =
+        |v: Option<f32>| Piece::Value(v.map_or_else(|| "–".to_owned(), |v| format!("{v:.1}")));
+    let slash = || Piece::Separator(" / ".to_owned());
+    Meter {
+        label: String::new(),
+        value: vec![
+            Piece::Prefix("L ".to_owned()),
+            score(laion),
+            slash(),
+            Piece::Prefix("V ".to_owned()),
+            score(v25),
+            slash(),
+            Piece::Star,
+            score(personal),
+        ],
+        fraction: None,
+        color: tokens::ACCENT,
+        tooltip: Some(i18n::t().meter_aesthetics_tooltip),
+        small: false,
+    }
+}
+
+fn sharpness_meter(percentile: f32, eyes: bool, blurry: bool) -> Meter {
+    let t = i18n::t();
+    let name = if eyes {
+        t.meter_eyes
+    } else {
+        t.meter_sharpness
+    };
+    Meter {
+        label: if blurry {
+            format!("{name} · {}", t.probably_blurry)
+        } else {
+            name.to_owned()
+        },
+        value: vec![Piece::Value(format!("{:.0} %", percentile * 100.0))],
+        fraction: Some(percentile),
+        color: if blurry {
+            tokens::STATUS_WARN
+        } else {
+            tokens::ACCENT
+        },
+        tooltip: None,
+        small: false,
+    }
+}
+
+/// Width of the centre at its widest in the current language.
+fn widest_centre(painter: &Painter) -> f32 {
+    [true, false]
+        .into_iter()
+        .map(|eyes| {
+            let meters = [
+                scores_meter(Some(8.8), Some(8.8), Some(8.8)),
+                sharpness_meter(1.0, eyes, true),
+            ];
+            layout_meters(painter, &meters).width
+        })
+        .fold(0.0, f32::max)
 }
 
 /// Buttons at the right end, laid out from the right edge: the menu, then help, then the map
@@ -568,7 +664,13 @@ enum Piece {
     Prefix(String),
     /// Muted, value-sized (" / ").
     Separator(String),
+    /// Room for the outline star painted in front of For you.
+    Star,
 }
+
+/// Non-breaking spaces the outline star is painted over; the last one is the gap after it.
+const STAR_PLACEHOLDER: &str = "\u{a0}\u{a0}\u{a0}";
+const STAR_PLACEHOLDER_CHARS: usize = 3;
 
 #[derive(Clone)]
 struct Meter {
@@ -578,10 +680,20 @@ struct Meter {
     fraction: Option<f32>,
     color: Color32,
     tooltip: Option<&'static str>,
+    /// Status text ("Analysing…") at label size instead of a value.
+    small: bool,
+}
+
+struct LaidMeter {
+    label: Arc<Galley>,
+    value: Arc<Galley>,
+    meter: Meter,
+    /// Character index of each star placeholder in `value`.
+    stars: Vec<usize>,
 }
 
 struct LaidMeters {
-    items: Vec<(Arc<Galley>, Arc<Galley>, Meter)>,
+    items: Vec<LaidMeter>,
     width: f32,
 }
 
@@ -590,7 +702,7 @@ const METER_GAP: f32 = 7.0;
 const METER_SPACING: f32 = 22.0;
 
 fn layout_meters(painter: &Painter, meters: &[Meter]) -> LaidMeters {
-    let items: Vec<_> = meters
+    let items: Vec<LaidMeter> = meters
         .iter()
         .map(|m| {
             let label = painter.layout_no_wrap(
@@ -607,44 +719,53 @@ fn layout_meters(painter: &Painter, meters: &[Meter]) -> LaidMeters {
             } else {
                 tokens::TEXT
             };
-            let size = if m.label.is_empty() { 12.0 } else { 17.0 };
+            let size = if m.small { 12.0 } else { 17.0 };
             let mut job = LayoutJob::default();
+            let mut stars = Vec::new();
+            let mut chars = 0;
             for piece in &m.value {
                 let (text, size, color) = match piece {
-                    Piece::Value(text) => (text, size, value_color),
-                    Piece::Prefix(text) => (text, 11.0, tokens::MUTED),
-                    Piece::Separator(text) => (text, size, tokens::MUTED),
+                    Piece::Value(text) => (text.as_str(), size, value_color),
+                    Piece::Prefix(text) => (text.as_str(), 11.0, tokens::MUTED),
+                    Piece::Separator(text) => (text.as_str(), size, tokens::MUTED),
+                    Piece::Star => {
+                        stars.push(chars);
+                        (STAR_PLACEHOLDER, 11.0, tokens::MUTED)
+                    }
                 };
                 let mut format = TextFormat::simple(FontId::proportional(size), color);
-                if matches!(piece, Piece::Prefix(_)) {
+                if matches!(piece, Piece::Prefix(_) | Piece::Star) {
                     format.valign = Align::Center;
                 }
+                chars += text.chars().count();
                 job.append(text, 0.0, format);
             }
             let value = painter.layout_job(job);
-            (label, value, m.clone())
+            LaidMeter {
+                label,
+                value,
+                meter: m.clone(),
+                stars,
+            }
         })
         .collect();
-    let width = items
-        .iter()
-        .map(|(label, value, m)| meter_width(label, value, m))
-        .sum::<f32>()
+    let width = items.iter().map(meter_width).sum::<f32>()
         + METER_SPACING * items.len().saturating_sub(1) as f32;
     LaidMeters { items, width }
 }
 
-fn meter_width(label: &Galley, value: &Galley, meter: &Meter) -> f32 {
-    let label = if label.size().x > 0.0 {
-        label.size().x + METER_GAP
+fn meter_width(laid: &LaidMeter) -> f32 {
+    let label = if laid.label.size().x > 0.0 {
+        laid.label.size().x + METER_GAP
     } else {
         0.0
     };
-    let bar = if meter.fraction.is_some() {
+    let bar = if laid.meter.fraction.is_some() {
         METER_GAP + METER_BAR.x
     } else {
         0.0
     };
-    label + value.size().x + bar
+    label + laid.value.size().x + bar
 }
 
 /// `LABEL  6.1  ▬▬▬▬▭▭` for each meter, centred on `centre`. Returns each meter's area and
@@ -657,16 +778,32 @@ fn paint_meters(
 ) -> Vec<(Rect, Option<&'static str>)> {
     let mut areas = Vec::new();
     let mut x = centre - laid.width / 2.0;
-    for (label, value, meter) in laid.items {
-        let width = meter_width(&label, &value, &meter);
+    for item in laid.items {
+        let width = meter_width(&item);
+        let LaidMeter {
+            label,
+            value,
+            meter,
+            stars,
+        } = item;
         let start = x;
         if label.size().x > 0.0 {
             let lw = label.size().x;
             painter.galley(pos2(x, y - label.size().y / 2.0), label, tokens::MUTED);
             x += lw + METER_GAP;
         }
+        let origin = pos2(x, y - value.size().y / 2.0);
+        for index in stars {
+            let from = value.pos_from_cursor(CCursor::new(index)).min.x;
+            let to = value
+                .pos_from_cursor(CCursor::new(index + STAR_PLACEHOLDER_CHARS - 1))
+                .min
+                .x;
+            let centre = pos2(origin.x + (from + to) / 2.0, y);
+            stars::paint_star(painter, centre, 5.5, false, tokens::MUTED);
+        }
         let vw = value.size().x;
-        painter.galley(pos2(x, y - value.size().y / 2.0), value, tokens::TEXT);
+        painter.galley(origin, value, tokens::TEXT);
         x += vw;
         if let Some(fraction) = meter.fraction {
             x += METER_GAP;
@@ -755,28 +892,27 @@ pub fn compare_scores(
         v.map(|v| format!("{:.1}", aesthetic::as_stars(v)))
             .unwrap_or_else(|| "–".to_owned())
     };
-    let personal = personal
+    // `L 2.8 / V 4.0 / ☆ 2.3   Eyes 80 %` – the outline star is painted, like in the info bar.
+    const STAR_ROOM: f32 = 16.0;
+    let before = format!("L {} / V {} / ", star(aesthetics[0]), star(aesthetics[1]));
+    let mut after = personal
         .map(|v| format!("{v:.1}"))
         .unwrap_or_else(|| "–".to_owned());
-    let mut text = format!(
-        "L {} / V {} / ★ {}",
-        star(aesthetics[0]),
-        star(aesthetics[1]),
-        personal
-    );
     if let Some((p, eyes)) = sharpness {
         let name = if eyes {
             t.meter_eyes
         } else {
             t.meter_sharpness
         };
-        text.push_str(&format!("   {name} {:.0} %", p * 100.0));
+        after.push_str(&format!("   {name} {:.0} %", p * 100.0));
     }
     let painter = ui.painter().with_clip_rect(area);
-    let galley = painter.layout_no_wrap(text, FontId::proportional(12.5), tokens::TEXT);
+    let font = FontId::proportional(12.5);
+    let before = painter.layout_no_wrap(before, font.clone(), tokens::TEXT);
+    let after = painter.layout_no_wrap(after, font, tokens::TEXT);
     let pill = Rect::from_min_size(
         area.min + vec2(10.0, 44.0),
-        vec2(galley.size().x + 24.0, 26.0),
+        vec2(before.size().x + STAR_ROOM + after.size().x + 24.0, 26.0),
     );
     painter.rect_filled(pill, 6.0, tokens::SURFACE.gamma_multiply(0.92));
     painter.rect_stroke(
@@ -785,11 +921,14 @@ pub fn compare_scores(
         Stroke::new(1.0, tokens::LINE),
         StrokeKind::Inside,
     );
-    painter.galley(
-        pos2(pill.left() + 12.0, pill.center().y - galley.size().y / 2.0),
-        galley,
-        tokens::TEXT,
-    );
+    let y = pill.center().y;
+    let mut x = pill.left() + 12.0;
+    let width = before.size().x;
+    painter.galley(pos2(x, y - before.size().y / 2.0), before, tokens::TEXT);
+    x += width;
+    stars::paint_star(&painter, pos2(x + 6.0, y), 5.0, false, tokens::MUTED);
+    x += STAR_ROOM;
+    painter.galley(pos2(x, y - after.size().y / 2.0), after, tokens::TEXT);
 }
 
 /// Countdown for pending deletions, bottom centre of the photo area. The bar runs out, Esc
@@ -827,13 +966,15 @@ pub fn delete_countdown(ui: &Ui, area: Rect, count: usize, left: f32) {
     );
 }
 
-pub fn notices(ui: &Ui, rect: Rect, error: Option<&str>, notice: Option<&str>) {
-    let (text, is_error) = match (error, notice) {
-        (Some(err), _) => (err.to_owned(), true),
-        (None, Some(notice)) => (notice.to_owned(), false),
-        (None, None) => return,
+/// A message at the top of the photo area: `(text, is_error, opacity)`. Returns whether it was
+/// clicked (which dismisses it).
+pub fn notices(ui: &Ui, rect: Rect, message: Option<(&str, bool, f32)>) -> bool {
+    let Some((text, is_error, opacity)) = message else {
+        return false;
     };
-    let painter = ui.painter();
+    let text = text.to_owned();
+    let mut painter = ui.painter().clone();
+    painter.set_opacity(opacity);
     let galley = painter.layout(
         text,
         FontId::proportional(13.0),
@@ -853,6 +994,9 @@ pub fn notices(ui: &Ui, rect: Rect, error: Option<&str>, notice: Option<&str>) {
     painter.rect_filled(pill, 6.0, fill);
     painter.rect_stroke(pill, 6.0, Stroke::new(1.0, border), StrokeKind::Inside);
     painter.galley(pill.min + vec2(12.0, 7.0), galley, tokens::TEXT);
+    ui.interact(pill, ui.id().with("notice"), Sense::click())
+        .on_hover_cursor(CursorIcon::PointingHand)
+        .clicked()
 }
 
 pub fn drop_hint(ui: &Ui, rect: Rect) {
@@ -922,4 +1066,92 @@ pub fn language_flash(painter: &Painter, area: Rect, lang: Lang, opacity: f32) {
         name,
         tokens::TEXT,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eframe::egui::{Context, RawInput, Shape};
+
+    fn texts_of(bar: &InfoBar<'_>, width: f32) -> Vec<(String, Rect)> {
+        let ctx = Context::default();
+        let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(width, INFO_HEIGHT));
+        let mut output = ctx.run_ui(
+            RawInput {
+                screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(width, 400.0))),
+                ..Default::default()
+            },
+            |ui| {
+                info_bar(ui, rect, bar);
+            },
+        );
+        output.textures_delta.clear();
+        output
+            .shapes
+            .iter()
+            .filter_map(|clipped| match &clipped.shape {
+                Shape::Text(text) => {
+                    Some((text.galley.text().to_owned(), text.visual_bounding_rect()))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn bar(blurry: bool) -> InfoBar<'static> {
+        InfoBar {
+            name: "IMG_0001.JPG",
+            position: (3, 120),
+            image: None,
+            rating: Rating::Stars(3),
+            label: None,
+            series: Some((2, 5)),
+            duplicate_of: Some("IMG_0000 - Kopie.JPG".to_owned()),
+            auto_advance: true,
+            analysed: true,
+            aesthetics: [Some(6.0), Some(5.5)],
+            personal: Some(3.1),
+            sharpness: Some((0.1, true)),
+            blurry,
+            saving: false,
+            zoom: Some(100.0),
+        }
+    }
+
+    /// The facts line leaves out whole parts instead of running under the scores.
+    #[test]
+    fn left_line_stops_before_the_centre() {
+        let width = 700.0;
+        let texts = texts_of(&bar(true), width);
+        let facts = texts
+            .iter()
+            .find(|(text, _)| text.starts_with("3 / 120"))
+            .expect("facts line");
+        let scores_left = texts
+            .iter()
+            .filter(|(text, _)| text.contains("L "))
+            .map(|(_, rect)| rect.left())
+            .fold(f32::MAX, f32::min);
+        assert!(
+            facts.1.right() < scores_left,
+            "{:?} runs into the scores at {scores_left}",
+            facts
+        );
+    }
+
+    /// The side columns stay where they are when the blurry note comes and goes: at a width
+    /// where the facts line has to leave parts out, it keeps the same parts either way.
+    #[test]
+    fn centre_width_does_not_follow_the_blurry_note() {
+        let facts = |blurry| {
+            texts_of(&bar(blurry), 760.0)
+                .into_iter()
+                .find(|(text, _)| text.starts_with("3 / 120"))
+                .map(|(text, _)| text)
+                .expect("facts line")
+        };
+        let full = "Duplicate of";
+        assert!(!facts(true).contains(full), "760 px cannot show every part");
+        assert_eq!(facts(true), facts(false));
+    }
 }

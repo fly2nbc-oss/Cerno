@@ -28,10 +28,7 @@ use crate::ui::bars::{self, Panels};
 use crate::ui::details::{self, DetailRow, DetailsMode, all_expanded, set_all_expanded};
 use crate::ui::icons::Panel;
 use crate::ui::{confirm, edit as edit_ui, filmstrip, help, models, palette, viewer};
-use crate::view::{
-    self, BLURRY_PERCENTILE, Facts, FilterKind, Percentiles, PhotoFilter, SortKey, View,
-    ViewOptions,
-};
+use crate::view::{self, Facts, FilterKind, Percentiles, PhotoFilter, SortKey, View, ViewOptions};
 
 /// Decode size before the window exists, so the first photo decodes while the GPU starts up.
 /// Covers screens up to 4K; the real monitor size replaces it on the first frame (a larger
@@ -64,6 +61,56 @@ const LANGUAGE_FADE: Duration = Duration::from_millis(450);
 /// Set once the hint about the aesthetics model has been shown. Before 0.10 the same key
 /// meant "the download dialog was declined", which also ends the hint.
 const CLIP_OFFER_SHOWN: &str = "clip_download_declined";
+
+/// How long a hint stays at least (longer ones a little longer), and how long it fades.
+const NOTICE_TIME: Duration = Duration::from_secs(4);
+const NOTICE_FADE: Duration = Duration::from_millis(400);
+
+/// A message over the photo. Hints fade on their own; errors stay until Esc or a click;
+/// "working" messages stay until the work is done.
+struct Notice {
+    text: String,
+    error: bool,
+    /// When a hint is gone; `None` keeps the message.
+    until: Option<Instant>,
+}
+
+impl Notice {
+    fn hint(text: impl Into<String>) -> Self {
+        let text = text.into();
+        let reading = Duration::from_millis(60 * text.chars().count() as u64);
+        Self {
+            until: Some(Instant::now() + NOTICE_TIME.max(reading).min(NOTICE_TIME * 2)),
+            text,
+            error: false,
+        }
+    }
+
+    fn error(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            error: true,
+            until: None,
+        }
+    }
+
+    fn working(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            error: false,
+            until: None,
+        }
+    }
+
+    /// 1 while shown, fading to 0 at the end; `None` once gone.
+    fn opacity(&self, now: Instant) -> Option<f32> {
+        let Some(until) = self.until else {
+            return Some(1.0);
+        };
+        let left = until.checked_duration_since(now)?;
+        Some((left.as_secs_f32() / NOTICE_FADE.as_secs_f32()).min(1.0))
+    }
+}
 
 /// What a confirmation card asks about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -138,7 +185,8 @@ pub struct CernoApp {
     tab_presses: Vec<bool>,
     /// When the language was last switched (the flag shows for a moment).
     language_flash: Option<Instant>,
-    notice: Option<String>,
+    /// Message over the photo; hints fade, errors wait for Esc or a click.
+    notice: Option<Notice>,
     /// Process start, for the start-up log lines.
     started: Instant,
     logged_first_frame: bool,
@@ -366,7 +414,9 @@ impl CernoApp {
             .and_then(|path| Db::open(&path))
             .unwrap_or_else(|err| {
                 log::error!("index database: {err:#}");
-                notice = Some((i18n::t().db_unavailable)(&format!("{err:#}")));
+                notice = Some(Notice::error((i18n::t().db_unavailable)(&format!(
+                    "{err:#}"
+                ))));
                 Db::open_in_memory().expect("in-memory SQLite")
             });
         if let Some(lang) = db.setting("language").and_then(|c| Lang::from_code(&c)) {
@@ -509,21 +559,24 @@ impl CernoApp {
             Ok(opened) => opened,
             Err(err) => {
                 let path = path.display().to_string();
-                self.notice = Some((i18n::t().cannot_open)(&path, &err.to_string()));
+                self.notice = Some(Notice::error((i18n::t().cannot_open)(
+                    &path,
+                    &err.to_string(),
+                )));
                 return;
             }
         };
         self.notice = library
             .paths
             .is_empty()
-            .then(|| (i18n::t().no_photos_in)(&library.dir.display().to_string()));
+            .then(|| Notice::hint((i18n::t().no_photos_in)(&library.dir.display().to_string())));
         // No dialog at start: once the first folder with photos is open, a quiet hint says
         // where the aesthetics model is downloaded.
         if !library.paths.is_empty()
             && self.analyzer.clip_model_missing()
             && self.db.setting(CLIP_OFFER_SHOWN).as_deref() != Some("1")
         {
-            self.notice = Some(i18n::t().aesthetics_offer.to_owned());
+            self.notice = Some(Notice::hint(i18n::t().aesthetics_offer));
             self.db.put_setting(CLIP_OFFER_SHOWN, "1");
         }
         self.all_index = index_of(&library.paths);
@@ -615,11 +668,11 @@ impl CernoApp {
     fn begin_transfer(&mut self, ctx: &egui::Context, mode: TransferMode) {
         let t = i18n::t();
         if self.view.is_empty() {
-            self.notice = Some(t.no_match.to_owned());
+            self.notice = Some(Notice::hint(t.no_match));
             return;
         }
         if self.transfers.is_busy() {
-            self.notice = Some(t.transfer_busy.to_owned());
+            self.notice = Some(Notice::hint(t.transfer_busy));
             return;
         }
         let title = match mode {
@@ -638,7 +691,7 @@ impl CernoApp {
             .as_deref()
             .is_some_and(|dir| same_folder(dir, &dest))
         {
-            self.notice = Some(t.transfer_same_folder.to_owned());
+            self.notice = Some(Notice::hint(t.transfer_same_folder));
             return;
         }
         let sources = self.view.paths.iter().cloned().collect();
@@ -671,13 +724,18 @@ impl CernoApp {
             .first()
             .map(|(path, err)| (library::file_name_lossy(path), err.clone()))
             .unwrap_or_default();
-        self.notice = Some((t.transfer_done)(
+        let text = (t.transfer_done)(
             outcome.mode == TransferMode::Move,
             outcome.done.len(),
             outcome.skipped.len(),
             &name,
             &err,
-        ));
+        );
+        self.notice = Some(if outcome.failed.is_empty() {
+            Notice::hint(text)
+        } else {
+            Notice::error(text)
+        });
         if outcome.mode == TransferMode::Move && !outcome.done.is_empty() {
             self.retarget_moved(&outcome);
             let gone: HashSet<&PathBuf> = outcome.done.iter().map(|(src, _)| src).collect();
@@ -764,7 +822,7 @@ impl CernoApp {
             ConfirmAction::DeleteModels => {
                 if let Err(err) = self.analyzer.delete_installed_models() {
                     log::error!("delete models: {err:#}");
-                    self.notice = Some(format!("{err:#}"));
+                    self.notice = Some(Notice::error(format!("{err:#}")));
                 }
             }
         }
@@ -967,7 +1025,7 @@ impl CernoApp {
     /// brings them all back, like `Delete` for a single photo.
     fn delete_selection(&mut self, ctx: &egui::Context) {
         if self.view.is_empty() {
-            self.notice = Some(i18n::t().no_match.to_owned());
+            self.notice = Some(Notice::hint(i18n::t().no_match));
             return;
         }
         let now = Instant::now();
@@ -1098,11 +1156,11 @@ impl CernoApp {
                 self.analyzer.set_library(Arc::clone(&self.all), current);
             }
             if let Some((path, err)) = done.failed.first() {
-                self.notice = Some((i18n::t().delete_failed)(
+                self.notice = Some(Notice::error((i18n::t().delete_failed)(
                     done.failed.len(),
                     &library::file_name_lossy(path),
                     err,
-                ));
+                )));
             }
             self.rebuild_view(ctx, None);
         }
@@ -1123,7 +1181,7 @@ impl CernoApp {
             return;
         };
         if self.view.len() < 2 {
-            self.notice = Some(i18n::t().compare_needs_two.to_owned());
+            self.notice = Some(Notice::hint(i18n::t().compare_needs_two));
             return;
         }
         let right = self.neighbour(self.current, &[&path]);
@@ -1543,7 +1601,7 @@ impl CernoApp {
             return false;
         };
         if library::format_of(path) != Some(library::Format::Jpeg) {
-            self.notice = Some(i18n::t().edit_not_jpeg.to_owned());
+            self.notice = Some(Notice::hint(i18n::t().edit_not_jpeg));
             return false;
         }
         matches!(self.loader.get(self.current), Lookup::Ready(_))
@@ -1655,7 +1713,7 @@ impl CernoApp {
 
     fn spawn_edit(&mut self, path: PathBuf, job: PixelJob) {
         self.edit_busy = true;
-        self.notice = Some(i18n::t().edit_writing.to_owned());
+        self.notice = Some(Notice::working(i18n::t().edit_writing));
         let channel = self.writer.channel();
         let thread = std::thread::Builder::new()
             .name("cerno-edit".into())
@@ -1673,7 +1731,7 @@ impl CernoApp {
             Ok(thread) => self.edit_thread = Some(thread),
             Err(err) => {
                 self.edit_busy = false;
-                self.notice = Some((i18n::t().edit_failed)(&err.to_string()));
+                self.notice = Some(Notice::error((i18n::t().edit_failed)(&err.to_string())));
             }
         }
     }
@@ -1695,7 +1753,7 @@ impl CernoApp {
             return;
         };
         if library::format_of(&path) != Some(library::Format::Jpeg) {
-            self.notice = Some(i18n::t().edit_not_jpeg.to_owned());
+            self.notice = Some(Notice::hint(i18n::t().edit_not_jpeg));
             return;
         }
         self.edit_busy = true;
@@ -1710,12 +1768,12 @@ impl CernoApp {
         for outcome in self.writer.poll_edits() {
             self.edit_busy = false;
             match outcome.error {
-                Some(err) => self.notice = Some((i18n::t().edit_failed)(&err)),
+                Some(err) => self.notice = Some(Notice::error((i18n::t().edit_failed)(&err))),
                 None => {
                     self.refresh_edited(&outcome.path);
                     if outcome.reencoded {
-                        self.notice = Some(i18n::t().edit_reencoded.to_owned());
-                    } else if self.notice.as_deref() == Some(writing) {
+                        self.notice = Some(Notice::hint(i18n::t().edit_reencoded));
+                    } else if self.notice.as_ref().is_some_and(|n| n.text == writing) {
                         self.notice = None;
                     }
                 }
@@ -2391,8 +2449,8 @@ impl eframe::App for CernoApp {
                     let path = &paths[i];
                     let known = self.board.get(path);
                     let blurry = known
+                        .filter(|k| percentiles.is_blurry(&k.scores))
                         .and_then(|k| percentiles.subject(&k.scores))
-                        .filter(|(p, _)| *p < BLURRY_PERCENTILE)
                         .map(|(p, eyes)| (i18n::t().blurry_tooltip)(eyes, p * 100.0));
                     let rating = match self.session_ratings.get(path) {
                         Some(rating) => *rating,
@@ -2472,15 +2530,13 @@ impl eframe::App for CernoApp {
                 } else {
                     scores.and_then(|s| percentiles.subject(&s))
                 },
+                blurry: !comparing && scores.is_some_and(|s| percentiles.is_blurry(&s)),
                 saving: self.writer.status().pending > 0,
                 zoom: self.zoom.scale.map(|s| s * 100.0),
             };
             let out = bars::info_bar(ui, rect, &bar);
             if let Some(stars) = out.rating {
                 self.set_rating(&ctx, stars, false);
-            }
-            if let Some(panel) = out.toggle {
-                self.toggle_panel(panel);
             }
             if out.help {
                 self.help_open = true;
@@ -2555,7 +2611,30 @@ impl eframe::App for CernoApp {
             .status()
             .last_error
             .map(|e| (i18n::t().rating_not_saved)(&e));
-        bars::notices(ui, area, writer_error.as_deref(), self.notice.as_deref());
+        // A failed rating write wins; it stays as long as the writer reports it.
+        let now = Instant::now();
+        let opacity = self.notice.as_ref().and_then(|n| n.opacity(now));
+        if opacity.is_none() {
+            self.notice = None;
+        }
+        let message = match (&writer_error, &self.notice, opacity) {
+            (Some(err), _, _) => Some((err.as_str(), true, 1.0)),
+            (None, Some(notice), Some(opacity)) => {
+                Some((notice.text.as_str(), notice.error, opacity))
+            }
+            _ => None,
+        };
+        if bars::notices(ui, area, message) && writer_error.is_none() {
+            self.notice = None;
+        }
+        if let Some(until) = self.notice.as_ref().and_then(|n| n.until) {
+            // Wake up for the fade and to remove the hint.
+            let left = until.saturating_duration_since(now);
+            ctx.request_repaint_after(
+                left.saturating_sub(NOTICE_FADE)
+                    .max(Duration::from_millis(16)),
+            );
+        }
 
         if self.help_open && !self.all.is_empty() {
             let out = help::overlay(&ctx, window);
@@ -2682,6 +2761,22 @@ mod tests {
             repeat: false,
             modifiers,
         }
+    }
+
+    #[test]
+    fn hints_fade_and_errors_stay() {
+        let now = Instant::now();
+        let hint = Notice::hint("3 copied, 0 skipped");
+        assert_eq!(hint.opacity(now), Some(1.0));
+        assert!(
+            hint.opacity(now + NOTICE_TIME - NOTICE_FADE / 2)
+                .is_some_and(|o| o < 1.0)
+        );
+        assert_eq!(hint.opacity(now + NOTICE_TIME * 3), None);
+        let error = Notice::error("Could not delete 1 photo");
+        assert_eq!(error.opacity(now + NOTICE_TIME * 3), Some(1.0));
+        let working = Notice::working("Writing the photo…");
+        assert_eq!(working.opacity(now + NOTICE_TIME * 3), Some(1.0));
     }
 
     #[test]

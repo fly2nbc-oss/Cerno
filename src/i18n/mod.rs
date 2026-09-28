@@ -194,14 +194,10 @@ pub struct Texts {
     pub refresh_order: &'static str,
     pub refresh_order_tooltip: &'static str,
     pub analyzing_progress: fn(usize, usize) -> String,
-    pub analyzed: fn(usize) -> String,
     pub enable_aesthetics: &'static str,
     pub enable_aesthetics_tooltip: &'static str,
     pub downloading_model: fn(f64) -> String,
-    pub aesthetics_ready: &'static str,
     pub aesthetics_loading: &'static str,
-    pub aesthetics_backend: fn(&str) -> String,
-    pub aesthetics_backend_tooltip: &'static str,
     pub aesthetics_failed: &'static str,
 
     // Sorting and filtering.
@@ -224,7 +220,6 @@ pub struct Texts {
     pub label_purple: &'static str,
 
     // Info bar.
-    pub meter_aesthetics: &'static str,
     pub meter_aesthetics_tooltip: &'static str,
     pub meter_sharpness: &'static str,
     pub meter_eyes: &'static str,
@@ -421,12 +416,7 @@ mod tests {
             assert!((t.filter_stars)(3).contains('3'), "{name}");
             let progress = (t.analyzing_progress)(4, 9);
             assert!(progress.contains('4') && progress.contains('9'), "{name}");
-            assert!((t.analyzed)(9).contains('9'), "{name}");
             assert!((t.downloading_model)(42.0).contains("42"), "{name}");
-            assert!(
-                (t.aesthetics_backend)("DirectML").contains("DirectML"),
-                "{name}"
-            );
             let moved = (t.transfer_done)(true, 4, 2, "a.jpg", "busy");
             assert!(
                 moved.contains('4')
