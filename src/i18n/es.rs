@@ -6,10 +6,7 @@ pub static TEXTS: Texts = Texts {
     key_ctrl: "Ctrl",
     key_shift: "Mayús",
 
-    open: "Abrir…",
-    open_tooltip: "Abrir carpeta (Ctrl+O)",
     sort: |key| format!("Orden: {key}"),
-    filter_summary: |list| format!("Filtro: {list}"),
     filter_stars: |n| {
         if n == 1 {
             "1 estrella".to_owned()
@@ -42,12 +39,20 @@ pub static TEXTS: Texts = Texts {
     sort_personal: "Para ti",
     sort_sharpness: "Nitidez",
     sort_taken: "Hora de captura",
-    filter_all: "Todas",
     filter_unrated: "Sin estrellas",
 
     filter_rejected: "Rechazadas",
-    filter_label_all: "Cualquier color",
-    label_filter: |name| format!("Color: {name}"),
+    actions: "Acción",
+    actions_tooltip: "Copiar, mover o eliminar las fotos en pantalla",
+    selection_delete: "Eliminar",
+    confirm_copy_title: "¿Copiar la selección?",
+    confirm_copy: |n| format!("¿Copiar {n} fotos a otra carpeta?"),
+    confirm_move_title: "¿Mover la selección?",
+    confirm_move: |n| format!("¿Mover {n} fotos a otra carpeta?"),
+    confirm_delete_selection_title: "¿Eliminar la selección?",
+    confirm_delete_selection: |n| {
+        format!("¿Mover {n} fotos a la papelera? Esc las devuelve mientras corre la cuenta atrás.")
+    },
     label_red: "Rojo",
     label_yellow: "Amarillo",
     label_green: "Verde",
@@ -93,6 +98,8 @@ pub static TEXTS: Texts = Texts {
     menu_sort: "Ordenar",
     menu_filter: "Filtro",
     menu_view: "Vista",
+    menu_edit: "Editar",
+    menu_photo: "Foto",
     menu_labels: "Colores",
     menu_language: "Idioma",
     loading: "Cargando…",
@@ -126,7 +133,6 @@ pub static TEXTS: Texts = Texts {
     no_photos_in: |dir| format!("No hay archivos JPEG ni HEIC en {dir}"),
     rating_not_saved: |err| format!("Estrellas no guardadas – {err}"),
     open_folder: "Abrir carpeta",
-    transfer_menu: "Copia o mueve todo lo que muestra el filtro actual a …",
     transfer_copy: "Copiar",
     transfer_move: "Mover",
     transfer_copy_cmd: "Copia todo lo que muestra el filtro actual a …",
@@ -306,6 +312,10 @@ pub static TEXTS: Texts = Texts {
     ],
     help_more: [
         ("Ctrl+K", "Menú: todas las funciones"),
+        (
+            "Ctrl+M",
+            "Acción: copiar, mover o eliminar las fotos en pantalla",
+        ),
         ("Ctrl+L", "Cambiar idioma"),
         ("H, F1, ?", "Esta ayuda"),
         (

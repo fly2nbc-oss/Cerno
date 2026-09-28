@@ -141,12 +141,8 @@ pub fn show<A: Copy>(
                             state.open = if open { None } else { Some(index) };
                         }
                         if state.open == Some(index) {
-                            let sub_h = group.rows.len() as f32 * ROW_HEIGHT + 8.0;
-                            let sub = Rect::from_min_size(
-                                pos2(menu.left() - WIDTH - 4.0, row.top() - 4.0),
-                                vec2(WIDTH, sub_h),
-                            );
-                            submenu = Some((index, sub));
+                            submenu =
+                                Some((index, submenu_rect(window, menu, row, group.rows.len())));
                         }
                     }
                 }
@@ -161,6 +157,9 @@ pub fn show<A: Copy>(
                         pos2(sub.left() + 4.0, sub.top() + 4.0 + j as f32 * ROW_HEIGHT),
                         vec2(sub.width() - 8.0, ROW_HEIGHT),
                     );
+                    if row.bottom() > sub.bottom() {
+                        break;
+                    }
                     if row_button(
                         ui,
                         row,
@@ -190,6 +189,17 @@ pub fn show<A: Copy>(
             }
         });
     out
+}
+
+/// Submenu to the left of its group, shifted so a long list stays inside the window.
+fn submenu_rect(window: Rect, menu: Rect, row: Rect, rows: usize) -> Rect {
+    let sub_h = rows as f32 * ROW_HEIGHT + 8.0;
+    let max_h = (window.height() - 16.0).max(ROW_HEIGHT + 8.0);
+    let h = sub_h.min(max_h);
+    let y = (row.top() - 4.0)
+        .min(window.bottom() - 8.0 - h)
+        .max(window.top() + 8.0);
+    Rect::from_min_size(pos2(menu.left() - WIDTH - 4.0, y), vec2(WIDTH, h))
 }
 
 fn clicked_action<A: Copy>(item: &Row<A>) -> Option<A> {

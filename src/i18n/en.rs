@@ -6,10 +6,7 @@ pub static TEXTS: Texts = Texts {
     key_ctrl: "Ctrl",
     key_shift: "Shift",
 
-    open: "Open…",
-    open_tooltip: "Open folder (Ctrl+O)",
     sort: |key| format!("Sort: {key}"),
-    filter_summary: |list| format!("Filter: {list}"),
     filter_stars: |n| {
         if n == 1 {
             "1 star".to_owned()
@@ -42,12 +39,20 @@ pub static TEXTS: Texts = Texts {
     sort_personal: "For you",
     sort_sharpness: "Sharpness",
     sort_taken: "Capture time",
-    filter_all: "All",
     filter_unrated: "Unrated",
 
     filter_rejected: "Rejected",
-    filter_label_all: "Any colour",
-    label_filter: |name| format!("Colour: {name}"),
+    actions: "Action",
+    actions_tooltip: "Copy, move or delete the photos on screen",
+    selection_delete: "Delete",
+    confirm_copy_title: "Copy the selection?",
+    confirm_copy: |n| format!("Copy {n} photos to another folder?"),
+    confirm_move_title: "Move the selection?",
+    confirm_move: |n| format!("Move {n} photos to another folder?"),
+    confirm_delete_selection_title: "Delete the selection?",
+    confirm_delete_selection: |n| {
+        format!("Move {n} photos to the trash? Esc brings them back while the countdown runs.")
+    },
     label_red: "Red",
     label_yellow: "Yellow",
     label_green: "Green",
@@ -93,6 +98,8 @@ pub static TEXTS: Texts = Texts {
     menu_sort: "Sort",
     menu_filter: "Filter",
     menu_view: "View",
+    menu_edit: "Edit",
+    menu_photo: "Photo",
     menu_labels: "Colour labels",
     menu_language: "Language",
     loading: "Loading…",
@@ -122,7 +129,6 @@ pub static TEXTS: Texts = Texts {
     no_photos_in: |dir| format!("No JPEG or HEIC files in {dir}"),
     rating_not_saved: |err| format!("Rating not saved – {err}"),
     open_folder: "Open folder",
-    transfer_menu: "Copy or move everything the current filter shows to …",
     transfer_copy: "Copy",
     transfer_move: "Move",
     transfer_copy_cmd: "Copy everything the current filter shows to …",
@@ -296,6 +302,10 @@ pub static TEXTS: Texts = Texts {
     ],
     help_more: [
         ("Ctrl+K", "Menu: every function"),
+        (
+            "Ctrl+M",
+            "Action: copy, move or delete the photos on screen",
+        ),
         ("Ctrl+L", "Switch language"),
         ("H, F1, ?", "This help"),
         ("Esc", "Step back: zoom, compare mode, full screen"),

@@ -183,11 +183,7 @@ pub struct Texts {
     pub key_shift: &'static str,
 
     // Toolbar.
-    pub open: &'static str,
-    pub open_tooltip: &'static str,
     pub sort: fn(&str) -> String,
-    /// "Filter: 1 star, Blurry" — the argument is the joined selection, or "all".
-    pub filter_summary: fn(&str) -> String,
     pub filter_stars: fn(u8) -> String,
     pub filter_blurry: &'static str,
     pub filter_blurry_tooltip: &'static str,
@@ -216,11 +212,17 @@ pub struct Texts {
     pub sort_personal: &'static str,
     pub sort_sharpness: &'static str,
     pub sort_taken: &'static str,
-    pub filter_all: &'static str,
     pub filter_unrated: &'static str,
     pub filter_rejected: &'static str,
-    pub filter_label_all: &'static str,
-    pub label_filter: fn(&str) -> String,
+    pub actions: &'static str,
+    pub actions_tooltip: &'static str,
+    pub selection_delete: &'static str,
+    pub confirm_copy_title: &'static str,
+    pub confirm_copy: fn(usize) -> String,
+    pub confirm_move_title: &'static str,
+    pub confirm_move: fn(usize) -> String,
+    pub confirm_delete_selection_title: &'static str,
+    pub confirm_delete_selection: fn(usize) -> String,
     pub label_red: &'static str,
     pub label_yellow: &'static str,
     pub label_green: &'static str,
@@ -273,6 +275,8 @@ pub struct Texts {
     pub menu_sort: &'static str,
     pub menu_filter: &'static str,
     pub menu_view: &'static str,
+    pub menu_edit: &'static str,
+    pub menu_photo: &'static str,
     pub menu_labels: &'static str,
     pub menu_language: &'static str,
 
@@ -312,8 +316,6 @@ pub struct Texts {
     pub no_photos_in: fn(&str) -> String,
     pub rating_not_saved: fn(&str) -> String,
     pub open_folder: &'static str,
-    /// Menu title: copy or move everything the current filter shows.
-    pub transfer_menu: &'static str,
     pub transfer_copy: &'static str,
     pub transfer_move: &'static str,
     pub transfer_copy_cmd: &'static str,
@@ -390,7 +392,7 @@ pub struct Texts {
     pub help_browse: [HelpRow; 5],
     pub help_rate: [HelpRow; 10],
     pub help_view: [HelpRow; 13],
-    pub help_more: [HelpRow; 4],
+    pub help_more: [HelpRow; 5],
 }
 
 #[cfg(test)]
@@ -417,7 +419,6 @@ mod tests {
             let t = lang.texts();
             let name = lang.name();
             assert!((t.sort)("X").contains('X'), "{name}");
-            assert!((t.filter_summary)("X").contains('X'), "{name}");
             assert!((t.filter_stars)(1).contains('1'), "{name}");
             assert!((t.filter_stars)(3).contains('3'), "{name}");
             let progress = (t.analyzing_progress)(4, 9);
@@ -445,7 +446,9 @@ mod tests {
             assert!((t.button_language)(name).contains(name), "{name}");
             assert!((t.cmd_language)(name).contains(name), "{name}");
             assert!((t.cmd_delete_rejected)(7).contains('7'), "{name}");
-            assert!((t.label_filter)("Red").contains("Red"), "{name}");
+            assert!((t.confirm_copy)(3).contains('3'), "{name}");
+            assert!((t.confirm_move)(3).contains('3'), "{name}");
+            assert!((t.confirm_delete_selection)(3).contains('3'), "{name}");
             assert!((t.cmd_label)("Red").contains("Red"), "{name}");
             let series = (t.series_position)(3, 7);
             assert!(series.contains('3') && series.contains('7'), "{name}");

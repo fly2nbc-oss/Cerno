@@ -1,9 +1,10 @@
 //! Toolbar (top), info bar (bottom), notices and the drop hint.
 
+use eframe::egui::containers::scroll_area::ScrollBarVisibility;
 use eframe::egui::text::{LayoutJob, TextFormat};
 use eframe::egui::{
-    Align, Align2, Color32, ComboBox, CursorIcon, FontId, Galley, Layout, Painter,
-    PopupCloseBehavior, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2, pos2,
+    Align, Align2, Area, Color32, ComboBox, CursorIcon, FontId, Galley, Id, Layout, Order, Painter,
+    Pos2, Rect, RichText, ScrollArea, Sense, Sides, Stroke, StrokeKind, Ui, UiBuilder, Vec2, pos2,
     vec2,
 };
 use std::sync::Arc;
@@ -12,7 +13,7 @@ use crate::analysis::{ModelState, Status, aesthetic};
 use crate::i18n::{self, Lang};
 use crate::loader::LoadedImage;
 use crate::metadata::{self, Label, Rating};
-use crate::theme::tokens;
+use crate::theme::{self, tokens};
 use crate::ui::icons::{self, Panel};
 use crate::ui::stars;
 use crate::view::{BLURRY_PERCENTILE, FilterKind, SortKey, ViewOptions};
@@ -27,6 +28,8 @@ pub struct ToolbarInfo<'a> {
     /// New scores arrived since the view was sorted/filtered.
     pub stale: bool,
     pub status: &'a Status,
+    /// The action menu (copy, move, delete) is open.
+    pub actions_open: bool,
 }
 
 /// Copy or move every photo the current filter shows.
@@ -39,10 +42,12 @@ pub enum TransferChoice {
 #[derive(Default)]
 pub struct ToolbarOutput {
     pub options_changed: bool,
-    pub open: bool,
     pub refresh: bool,
     pub download_model: bool,
     pub transfer: Option<TransferChoice>,
+    pub delete_selection: bool,
+    /// `Some` when the action menu should open or close.
+    pub actions_open: Option<bool>,
 }
 
 pub fn toolbar(
@@ -60,95 +65,159 @@ pub fn toolbar(
     );
     let before = *options;
     let mut out = ToolbarOutput::default();
+    let mut action_rect = None;
     ui.scope_builder(
         UiBuilder::new()
             .max_rect(rect.shrink2(vec2(12.0, 0.0)))
             .layout(Layout::left_to_right(Align::Center)),
         |ui| {
-            ui.spacing_mut().item_spacing.x = 10.0;
-            if ui.button(t.open).on_hover_text(t.open_tooltip).clicked() {
-                out.open = true;
-            }
-            ui.separator();
-            ComboBox::from_id_salt("sort")
-                .selected_text((t.sort)(options.sort.label()))
-                .show_ui(ui, |ui| {
-                    for key in SortKey::ALL {
-                        ui.selectable_value(&mut options.sort, key, key.label());
-                    }
-                });
-            ComboBox::from_id_salt("filter")
-                .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
-                .selected_text((t.filter_summary)(&options.filter.summary()))
-                .show_ui(ui, |ui| {
-                    if ui.button(t.filter_clear).clicked() {
-                        options.filter.clear();
-                    }
-                    for kind in FilterKind::ALL {
-                        let mut on = options.filter.contains(kind);
-                        let mut response = ui.checkbox(&mut on, kind.label());
-                        if kind == FilterKind::Blurry {
-                            response = response.on_hover_text(t.filter_blurry_tooltip);
+            ui.spacing_mut().item_spacing.x = 8.0;
+            // One line: sort and the filter boxes on the left, action and analysis status on
+            // the right. The boxes scroll sideways when they no longer fit.
+            Sides::new()
+                .height(ui.available_height())
+                .shrink_left()
+                .show(
+                    ui,
+                    |ui| {
+                        ComboBox::from_id_salt("sort")
+                            .selected_text((t.sort)(options.sort.label()))
+                            .show_ui(ui, |ui| {
+                                for key in SortKey::ALL {
+                                    ui.selectable_value(&mut options.sort, key, key.label());
+                                }
+                            });
+                        ScrollArea::horizontal()
+                            .id_salt("filter-boxes")
+                            .max_width(ui.available_width())
+                            .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden)
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 6.0;
+                                    if !options.filter.is_all()
+                                        && ui.small_button(t.filter_clear).clicked()
+                                    {
+                                        options.filter.clear();
+                                    }
+                                    for kind in FilterKind::ALL {
+                                        let mut on = options.filter.contains(kind);
+                                        let text = match kind {
+                                            FilterKind::Stars(n) => RichText::new(format!("{n}★")),
+                                            FilterKind::Colour(label) => {
+                                                RichText::new(kind.label())
+                                                    .color(theme::label_color(label))
+                                            }
+                                            _ => RichText::new(kind.label()),
+                                        };
+                                        let mut response = ui.checkbox(&mut on, text);
+                                        if kind == FilterKind::Blurry {
+                                            response =
+                                                response.on_hover_text(t.filter_blurry_tooltip);
+                                        }
+                                        if kind == FilterKind::Duplicate {
+                                            response =
+                                                response.on_hover_text(t.filter_duplicate_tooltip);
+                                        }
+                                        if response.changed() {
+                                            options.filter.set(kind, on);
+                                        }
+                                    }
+                                });
+                            });
+                    },
+                    |ui| {
+                        aesthetics_status(ui, &info.status.aesthetics, &mut out);
+                        let Status { done, total, .. } = *info.status;
+                        if total > 0 {
+                            let text = if done < total {
+                                (t.analyzing_progress)(done, total)
+                            } else {
+                                (t.analyzed)(total)
+                            };
+                            ui.label(RichText::new(text).color(tokens::MUTED));
                         }
-                        if kind == FilterKind::Duplicate {
-                            response = response.on_hover_text(t.filter_duplicate_tooltip);
+                        if info.stale
+                            && ui
+                                .button(t.refresh_order)
+                                .on_hover_text(t.refresh_order_tooltip)
+                                .clicked()
+                        {
+                            out.refresh = true;
                         }
-                        if response.changed() {
-                            options.filter.set(kind, on);
+                        let action = ui.button(t.actions).on_hover_text(format!(
+                            "{}\n{}",
+                            t.actions_tooltip,
+                            i18n::with_ctrl("M")
+                        ));
+                        action_rect = Some(action.rect);
+                        if action.clicked() {
+                            out.actions_open = Some(!info.actions_open);
                         }
-                    }
-                });
-            ui.menu_button(t.transfer_menu, |ui| {
-                if ui.button(t.transfer_copy).clicked() {
-                    out.transfer = Some(TransferChoice::Copy);
-                    ui.close();
-                }
-                if ui.button(t.transfer_move).clicked() {
-                    out.transfer = Some(TransferChoice::Move);
-                    ui.close();
-                }
-            });
-            let colour = options
-                .label
-                .map(i18n::label_name)
-                .unwrap_or(t.filter_label_all);
-            ComboBox::from_id_salt("label")
-                .selected_text((t.label_filter)(colour))
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut options.label, None, t.filter_label_all);
-                    for label in Label::ALL {
-                        ui.selectable_value(
-                            &mut options.label,
-                            Some(label),
-                            i18n::label_name(label),
-                        );
-                    }
-                });
-            if info.stale
-                && ui
-                    .button(t.refresh_order)
-                    .on_hover_text(t.refresh_order_tooltip)
-                    .clicked()
-            {
-                out.refresh = true;
-            }
-
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                aesthetics_status(ui, &info.status.aesthetics, &mut out);
-                let Status { done, total, .. } = *info.status;
-                if total > 0 {
-                    let text = if done < total {
-                        (t.analyzing_progress)(done, total)
-                    } else {
-                        (t.analyzed)(total)
-                    };
-                    ui.label(RichText::new(text).color(tokens::MUTED));
-                }
-            });
+                    },
+                );
         },
     );
+    if info.actions_open
+        && let Some(anchor) = action_rect
+    {
+        action_menu(ui.ctx(), anchor, &mut out);
+    }
     out.options_changed = *options != before;
     out
+}
+
+fn action_menu(ctx: &eframe::egui::Context, anchor: Rect, out: &mut ToolbarOutput) {
+    let t = i18n::t();
+    let width = 200.0;
+    let row = 32.0;
+    let menu = Rect::from_min_size(
+        pos2(anchor.left(), anchor.bottom() + 4.0),
+        vec2(width, row * 3.0 + 8.0),
+    );
+    let window = ctx.content_rect();
+    Area::new(Id::new("action-menu"))
+        .order(Order::Foreground)
+        .fixed_pos(window.min)
+        .show(ctx, |ui| {
+            let backdrop = ui.allocate_rect(window, Sense::click());
+            ui.painter().rect_filled(menu, 8.0, tokens::SURFACE);
+            ui.painter().rect_stroke(
+                menu,
+                8.0,
+                Stroke::new(1.0, tokens::LINE),
+                StrokeKind::Inside,
+            );
+            let mut child = ui.new_child(
+                UiBuilder::new()
+                    .max_rect(menu.shrink(4.0))
+                    .layout(Layout::top_down(Align::Min)),
+            );
+            let choose = |ui: &mut Ui, label: &str| {
+                ui.add_sized(
+                    vec2(menu.width() - 8.0, row),
+                    eframe::egui::Button::new(label),
+                )
+                .clicked()
+            };
+            if choose(&mut child, t.transfer_copy) {
+                out.transfer = Some(TransferChoice::Copy);
+                out.actions_open = Some(false);
+            }
+            if choose(&mut child, t.transfer_move) {
+                out.transfer = Some(TransferChoice::Move);
+                out.actions_open = Some(false);
+            }
+            if choose(&mut child, t.selection_delete) {
+                out.delete_selection = true;
+                out.actions_open = Some(false);
+            }
+            let on_rows = ui
+                .input(|i| i.pointer.interact_pos())
+                .is_some_and(|p| menu.contains(p));
+            if backdrop.clicked() && !on_rows {
+                out.actions_open = Some(false);
+            }
+        });
 }
 
 fn aesthetics_status(ui: &mut Ui, state: &ModelState, out: &mut ToolbarOutput) {

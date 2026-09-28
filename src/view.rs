@@ -69,7 +69,7 @@ impl SortKey {
     }
 }
 
-/// One checkbox in the filter menu. Several may be on at once.
+/// One checkbox in the filter bar. Several may be on at once.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilterKind {
     /// 1..=5.
@@ -79,10 +79,12 @@ pub enum FilterKind {
     Blurry,
     /// A later copy of an earlier photo. The first path in folder order stays out.
     Duplicate,
+    /// A colour label. Nothing ticked means every colour.
+    Colour(Label),
 }
 
 impl FilterKind {
-    pub const ALL: [FilterKind; 9] = [
+    pub const ALL: [FilterKind; 14] = [
         Self::Stars(1),
         Self::Stars(2),
         Self::Stars(3),
@@ -92,6 +94,11 @@ impl FilterKind {
         Self::Rejected,
         Self::Blurry,
         Self::Duplicate,
+        Self::Colour(Label::Red),
+        Self::Colour(Label::Yellow),
+        Self::Colour(Label::Green),
+        Self::Colour(Label::Blue),
+        Self::Colour(Label::Purple),
     ];
 
     pub fn label(self) -> String {
@@ -102,6 +109,7 @@ impl FilterKind {
             Self::Rejected => t.filter_rejected.to_owned(),
             Self::Blurry => t.filter_blurry.to_owned(),
             Self::Duplicate => t.filter_duplicate.to_owned(),
+            Self::Colour(label) => i18n::label_name(label).to_owned(),
         }
     }
 
@@ -117,6 +125,7 @@ impl FilterKind {
             Self::Rejected => "rejected",
             Self::Blurry => "blurry",
             Self::Duplicate => "duplicate",
+            Self::Colour(label) => label.id(),
         }
     }
 
@@ -135,6 +144,8 @@ pub struct PhotoFilter {
     rejected: bool,
     blurry: bool,
     duplicate: bool,
+    /// Same order as `Label::ALL`.
+    colours: [bool; 5],
 }
 
 impl PhotoFilter {
@@ -144,6 +155,12 @@ impl PhotoFilter {
             && !self.rejected
             && !self.blurry
             && !self.duplicate
+            && !self.colours.iter().any(|on| *on)
+    }
+
+    /// Any colour box is ticked, so changing a label can hide the current photo.
+    pub fn has_colour(self) -> bool {
+        self.colours.iter().any(|on| *on)
     }
 
     pub fn contains(self, kind: FilterKind) -> bool {
@@ -153,6 +170,7 @@ impl PhotoFilter {
             FilterKind::Rejected => self.rejected,
             FilterKind::Blurry => self.blurry,
             FilterKind::Duplicate => self.duplicate,
+            FilterKind::Colour(label) => self.colours[colour_index(label)],
             FilterKind::Stars(_) => false,
         }
     }
@@ -164,6 +182,7 @@ impl PhotoFilter {
             FilterKind::Rejected => self.rejected = on,
             FilterKind::Blurry => self.blurry = on,
             FilterKind::Duplicate => self.duplicate = on,
+            FilterKind::Colour(label) => self.colours[colour_index(label)] = on,
             FilterKind::Stars(_) => {}
         }
     }
@@ -177,22 +196,15 @@ impl PhotoFilter {
         *self = Self::default();
     }
 
-    /// Button text inside "Filter: …". An empty selection reads as "all".
-    pub fn summary(self) -> String {
-        if self.is_all() {
-            return i18n::t().filter_all.to_owned();
-        }
-        FilterKind::ALL
-            .into_iter()
-            .filter(|kind| self.contains(*kind))
-            .map(FilterKind::label)
-            .collect::<Vec<_>>()
-            .join(", ")
-    }
-
-    /// A photo matches when its rating is ticked, or when it is blurry or a copy and that box
-    /// is ticked.
-    pub fn accepts(self, rating: Rating, is_blurry: bool, is_duplicate: bool) -> bool {
+    /// A photo matches when its rating or colour is ticked, or when it is blurry or a copy and
+    /// that box is ticked.
+    pub fn accepts(
+        self,
+        rating: Rating,
+        is_blurry: bool,
+        is_duplicate: bool,
+        colour: Option<Label>,
+    ) -> bool {
         if self.is_all() {
             return true;
         }
@@ -202,7 +214,8 @@ impl PhotoFilter {
             Rating::Rejected => self.rejected,
             Rating::Stars(_) => false,
         };
-        by_rating || (self.blurry && is_blurry) || (self.duplicate && is_duplicate)
+        let by_colour = colour.is_some_and(|label| self.colours[colour_index(label)]);
+        by_rating || by_colour || (self.blurry && is_blurry) || (self.duplicate && is_duplicate)
     }
 
     /// Stored setting. A leading `*` marks the exact set, so an old `"3"` (at least 3 stars)
@@ -251,12 +264,17 @@ impl PhotoFilter {
     }
 }
 
+fn colour_index(label: Label) -> usize {
+    Label::ALL
+        .iter()
+        .position(|item| *item == label)
+        .unwrap_or(0)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ViewOptions {
     pub sort: SortKey,
     pub filter: PhotoFilter,
-    /// `None` shows every colour.
-    pub label: Option<Label>,
     /// One photo per series: the sharpest that is not rejected.
     pub best_of_series: bool,
 }
@@ -266,7 +284,6 @@ impl Default for ViewOptions {
         Self {
             sort: SortKey::Name,
             filter: PhotoFilter::default(),
-            label: None,
             best_of_series: false,
         }
     }
@@ -440,8 +457,9 @@ pub fn build(
             }
             let blurry = entry.sharp.is_some_and(|p| p < BLURRY_PERCENTILE);
             let is_duplicate = copies.contains_key(entry.path.as_path());
-            options.filter.accepts(entry.rating, blurry, is_duplicate)
-                && options.label.is_none_or(|label| entry.label == Some(label))
+            options
+                .filter
+                .accepts(entry.rating, blurry, is_duplicate, entry.label)
         })
         .collect();
 
@@ -784,6 +802,30 @@ mod tests {
         assert_eq!(mixed.id(), "*1,2,unrated,blurry,duplicate");
         assert_eq!(PhotoFilter::from_stored("rejected").id(), "*rejected");
         assert_eq!(PhotoFilter::default().id(), "");
+        let red = PhotoFilter::from_stored("*red");
+        assert!(red.contains(FilterKind::Colour(Label::Red)));
+        assert!(!red.contains(FilterKind::Colour(Label::Blue)));
+        assert_eq!(red.id(), "*red");
+    }
+
+    #[test]
+    fn colour_is_one_more_category() {
+        let (all, known) = fixture();
+        let lookup = |p: &Path| known.get(p).copied();
+        let labels = HashMap::from([
+            (PathBuf::from("a"), Some(Label::Red)),
+            (PathBuf::from("c"), Some(Label::Green)),
+        ]);
+        let mut filter = PhotoFilter::default();
+        filter.set(FilterKind::Colour(Label::Red), true);
+        let options = ViewOptions {
+            filter,
+            ..ViewOptions::default()
+        };
+        assert_eq!(
+            names(&build(&all, options, lookup, &HashMap::new(), &labels, |_| false,).paths),
+            "a"
+        );
     }
 
     #[test]

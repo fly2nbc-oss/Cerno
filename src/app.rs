@@ -115,6 +115,8 @@ pub struct CernoApp {
     help_open: bool,
     /// Burger menu (`Ctrl+K` and the button) while open.
     palette: Option<palette::State>,
+    /// Action menu in the filter bar (`Ctrl+M`): copy, move or delete the photos on screen.
+    action_menu: bool,
     /// `Tab` presses taken out of egui's input (`true` = with Shift), see `raw_input_hook`.
     tab_presses: Vec<bool>,
     /// When the language was last switched (the flag shows for a moment).
@@ -158,6 +160,8 @@ struct KeyInput {
     help: bool,
     language: bool,
     palette: bool,
+    /// `Ctrl+M`: the action menu in the filter bar.
+    actions: bool,
     toggle_zoom: bool,
     zoom_in: bool,
     zoom_out: bool,
@@ -176,7 +180,6 @@ enum Action {
     Sort(SortKey),
     Filter(FilterKind),
     FilterClear,
-    Transfer(TransferMode),
     Refresh,
     EnableAesthetics,
     TopBar,
@@ -367,10 +370,20 @@ impl CernoApp {
             filter.set(FilterKind::Duplicate, true);
             migrated_filter = true;
         }
+        if let Some(label) = db
+            .setting("label_filter")
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .and_then(Label::from_stored)
+        {
+            filter.set(FilterKind::Colour(label), true);
+            migrated_filter = true;
+        }
         if migrated_filter {
             db.put_setting("filter", &filter.id());
             db.put_setting("hide_blurry", "0");
             db.put_setting("only_duplicates", "0");
+            db.put_setting("label_filter", "");
         }
         let options = ViewOptions {
             sort: db
@@ -378,10 +391,6 @@ impl CernoApp {
                 .and_then(|s| SortKey::from_id(&s))
                 .unwrap_or(SortKey::Name),
             filter,
-            label: db
-                .setting("label_filter")
-                .as_deref()
-                .and_then(Label::from_stored),
             best_of_series: db.setting("best_of_series").as_deref() == Some("1"),
         };
         let auto_advance = db.setting("auto_advance").as_deref() == Some("1");
@@ -435,6 +444,7 @@ impl CernoApp {
             clip_download_offer_done: false,
             help_open: false,
             palette: None,
+            action_menu: false,
             tab_presses: Vec::new(),
             language_flash: None,
             notice,
@@ -549,10 +559,6 @@ impl CernoApp {
         self.db.put_setting("sort", self.options.sort.id());
         self.db.put_setting("filter", &self.options.filter.id());
         self.db.put_setting(
-            "label_filter",
-            self.options.label.map(|l| l.id()).unwrap_or(""),
-        );
-        self.db.put_setting(
             "best_of_series",
             if self.options.best_of_series {
                 "1"
@@ -583,6 +589,14 @@ impl CernoApp {
         }
         if self.transfers.is_busy() {
             self.notice = Some(t.transfer_busy.to_owned());
+            return;
+        }
+        let n = self.view.len();
+        let (title, text) = match mode {
+            TransferMode::Copy => (t.confirm_copy_title, (t.confirm_copy)(n)),
+            TransferMode::Move => (t.confirm_move_title, (t.confirm_move)(n)),
+        };
+        if !confirm_yes(title, &text) {
             return;
         }
         let title = match mode {
@@ -851,7 +865,7 @@ impl CernoApp {
         let next = self.next_path();
         self.session_labels.insert(path.clone(), label);
         self.writer.set_label(path.clone(), label);
-        self.finish_mark(ctx, &path, next, advance, self.options.label.is_some());
+        self.finish_mark(ctx, &path, next, advance, self.options.filter.has_colour());
     }
 
     /// The photo after the current one, remembered before a rebuild moves things around.
@@ -931,6 +945,27 @@ impl CernoApp {
             })
             .cloned()
             .collect()
+    }
+
+    /// The photos on screen go to the trash after a yes, then the usual countdown.
+    fn delete_selection(&mut self, ctx: &egui::Context) {
+        let t = i18n::t();
+        let n = self.view.len();
+        if n == 0 {
+            self.notice = Some(t.no_match.to_owned());
+            return;
+        }
+        if !confirm_yes(
+            t.confirm_delete_selection_title,
+            &(t.confirm_delete_selection)(n),
+        ) {
+            return;
+        }
+        let now = Instant::now();
+        for path in self.view.paths.iter().cloned() {
+            self.deletions.push(path, now);
+        }
+        self.rebuild_view(ctx, None);
     }
 
     /// All rejected photos go to the trash – with the usual countdown, `Esc` brings them back.
@@ -1188,7 +1223,7 @@ impl CernoApp {
         ctx.request_repaint();
     }
 
-    /// The burger menu: submenus for anything with several values, a row for each action.
+    /// Burger menu, grouped: view, sort, filter, edit, the current photo, labels, language.
     fn menu(&self) -> Vec<palette::Entry<Action>> {
         use palette::{Entry, Group, Row};
         let t = i18n::t();
@@ -1199,6 +1234,32 @@ impl CernoApp {
             Some(i18n::with_ctrl("O")),
         ))];
         if !self.all.is_empty() {
+            entries.push(Entry::Group(Group::new(
+                t.menu_view,
+                None,
+                vec![
+                    Row::new(Action::TopBar, t.button_toolbar, key("F")).checked(self.show_toolbar),
+                    Row::new(Action::Details, t.button_details, key("Tab"))
+                        .checked(self.details != DetailsMode::Off),
+                    Row::new(Action::Filmstrip, t.button_filmstrip, key("F6"))
+                        .checked(self.show_filmstrip),
+                    Row::new(
+                        Action::AllPanels,
+                        t.cmd_all_panels,
+                        Some(i18n::with_shift("Tab")),
+                    ),
+                    Row::new(Action::Explanations, t.cmd_explanations, key("I")).checked(
+                        self.details != DetailsMode::Off && all_expanded(&self.details_expanded),
+                    ),
+                    Row::new(Action::Zoom, t.cmd_zoom, key("Z")).checked(self.zoom.is_zoomed()),
+                    Row::new(Action::Fullscreen, t.cmd_fullscreen, key("F11")),
+                    Row::new(Action::Subfolders, t.cmd_subfolders, None).checked(self.subfolders),
+                    Row::new(Action::BestOfSeries, t.cmd_best_of_series, None)
+                        .checked(self.options.best_of_series),
+                    Row::new(Action::AutoAdvance, t.cmd_auto_advance, None)
+                        .checked(self.auto_advance),
+                ],
+            )));
             entries.push(Entry::Group(Group::new(
                 t.menu_sort,
                 None,
@@ -1222,58 +1283,38 @@ impl CernoApp {
             }
             entries.push(Entry::Group(Group::new(t.menu_filter, None, filters)));
             entries.push(Entry::Group(Group::new(
-                t.menu_view,
+                t.menu_edit,
                 None,
                 vec![
-                    Row::new(Action::TopBar, t.button_toolbar, key("F")).checked(self.show_toolbar),
-                    Row::new(Action::Details, t.button_details, key("Tab"))
-                        .checked(self.details != DetailsMode::Off),
-                    Row::new(Action::Filmstrip, t.button_filmstrip, key("F6"))
-                        .checked(self.show_filmstrip),
+                    Row::new(Action::Straighten, t.cmd_straighten, key("S")),
                     Row::new(
-                        Action::AllPanels,
-                        t.cmd_all_panels,
-                        Some(i18n::with_shift("Tab")),
+                        Action::RotateCcw,
+                        t.cmd_rotate_ccw,
+                        Some(format!("{}+←", t.key_ctrl)),
                     ),
-                    Row::new(Action::Explanations, t.cmd_explanations, key("I")).checked(
-                        self.details != DetailsMode::Off && all_expanded(&self.details_expanded),
+                    Row::new(
+                        Action::RotateCw,
+                        t.cmd_rotate_cw,
+                        Some(format!("{}+→", t.key_ctrl)),
                     ),
+                    Row::new(Action::Crop, t.cmd_crop, key("R")),
                 ],
             )));
-            entries.extend([
-                Entry::Row(
-                    Row::new(Action::Compare, t.cmd_compare, key("C"))
-                        .checked(self.pinned.is_some()),
-                ),
-                Entry::Row(Row::new(Action::Straighten, t.cmd_straighten, key("S"))),
-                Entry::Row(Row::new(
-                    Action::RotateCcw,
-                    t.cmd_rotate_ccw,
-                    Some(format!("{}+←", t.key_ctrl)),
-                )),
-                Entry::Row(Row::new(
-                    Action::RotateCw,
-                    t.cmd_rotate_cw,
-                    Some(format!("{}+→", t.key_ctrl)),
-                )),
-                Entry::Row(Row::new(Action::Crop, t.cmd_crop, key("R"))),
-                Entry::Row(
-                    Row::new(Action::Zoom, t.cmd_zoom, key("Z")).checked(self.zoom.is_zoomed()),
-                ),
-                Entry::Row(Row::new(Action::Fullscreen, t.cmd_fullscreen, key("F11"))),
-                Entry::Row(
-                    Row::new(Action::Subfolders, t.cmd_subfolders, None).checked(self.subfolders),
-                ),
-                Entry::Row(
-                    Row::new(Action::BestOfSeries, t.cmd_best_of_series, None)
-                        .checked(self.options.best_of_series),
-                ),
-                Entry::Row(
-                    Row::new(Action::AutoAdvance, t.cmd_auto_advance, None)
-                        .checked(self.auto_advance),
-                ),
-                Entry::Row(Row::new(Action::Reject, t.cmd_reject, key("X"))),
-            ]);
+            let mut photo = vec![
+                Row::new(Action::Compare, t.cmd_compare, key("C")).checked(self.pinned.is_some()),
+                Row::new(Action::Reject, t.cmd_reject, key("X")),
+            ];
+            let rejected = self.rejected().len();
+            if rejected > 0 {
+                photo.push(Row::new(
+                    Action::DeleteRejected,
+                    (t.cmd_delete_rejected)(rejected),
+                    None,
+                ));
+            }
+            photo.push(Row::new(Action::First, t.cmd_first, None));
+            photo.push(Row::new(Action::Last, t.cmd_last, None));
+            entries.push(Entry::Group(Group::new(t.menu_photo, None, photo)));
             let current_label = self.view.get(self.current).and_then(|path| {
                 let image = match self.loader.get(self.current) {
                     Lookup::Ready(image) => Some(image),
@@ -1299,29 +1340,9 @@ impl CernoApp {
             })
             .collect();
             entries.push(Entry::Group(Group::new(t.menu_labels, None, labels)));
-            entries.push(Entry::Row(Row::new(
-                Action::Transfer(TransferMode::Copy),
-                t.transfer_copy_cmd,
-                None,
-            )));
-            entries.push(Entry::Row(Row::new(
-                Action::Transfer(TransferMode::Move),
-                t.transfer_move_cmd,
-                None,
-            )));
-            let rejected = self.rejected().len();
-            if rejected > 0 {
-                entries.push(Entry::Row(Row::new(
-                    Action::DeleteRejected,
-                    (t.cmd_delete_rejected)(rejected),
-                    None,
-                )));
-            }
             if self.options.depends_on_scores() && self.board.version() != self.view_version {
                 entries.push(Entry::Row(Row::new(Action::Refresh, t.refresh_order, None)));
             }
-            entries.push(Entry::Row(Row::new(Action::First, t.cmd_first, None)));
-            entries.push(Entry::Row(Row::new(Action::Last, t.cmd_last, None)));
         }
         if self.analyzer.status().aesthetics == crate::analysis::ModelState::Missing {
             entries.push(Entry::Row(Row::new(
@@ -1352,7 +1373,6 @@ impl CernoApp {
             Action::Sort(sort) => self.change_options(ctx, |o| o.sort = sort),
             Action::Filter(kind) => self.change_options(ctx, |o| o.filter.toggle(kind)),
             Action::FilterClear => self.change_options(ctx, |o| o.filter.clear()),
-            Action::Transfer(mode) => self.begin_transfer(ctx, mode),
             Action::Refresh => self.rebuild_view(ctx, None),
             Action::EnableAesthetics => self.confirm_model_download(),
             Action::TopBar => self.toggle_panel(Panel::Top),
@@ -1887,6 +1907,7 @@ impl CernoApp {
                     || (plain && i.key_pressed(Key::H)),
                 language: i.modifiers.command && i.key_pressed(Key::L),
                 palette: i.modifiers.command && i.key_pressed(Key::K),
+                actions: i.modifiers.command && !i.modifiers.shift && i.key_pressed(Key::M),
                 toggle_zoom: plain && i.key_pressed(Key::Z),
                 // German layouts type "=" for Shift+0, which is "rate 0 and next" here.
                 zoom_in: !i.modifiers.command
@@ -1908,6 +1929,22 @@ impl CernoApp {
 
         if keys.language {
             self.switch_language(ctx);
+        }
+        if keys.actions {
+            self.palette = None;
+            self.help_open = false;
+            self.show_toolbar = true;
+            self.action_menu = !self.action_menu;
+            return;
+        }
+        if self.action_menu {
+            if keys.escape || keys.palette {
+                self.action_menu = false;
+            }
+            if keys.palette {
+                self.palette = Some(palette::State::default());
+            }
+            return;
         }
         // The palette handles its own keys (typing, arrows, Enter, Esc).
         if self.palette.is_some() {
@@ -2083,7 +2120,7 @@ impl CernoApp {
                         pixels_per_point: ctx.pixels_per_point(),
                     };
                     let editing = self.edit.is_some();
-                    if !self.help_open && self.palette.is_none() {
+                    if !self.help_open && self.palette.is_none() && !self.action_menu {
                         if editing && slot.side == Side::Single {
                             self.handle_edit_pointer(ui, &frame);
                         } else if !editing {
@@ -2198,6 +2235,15 @@ fn same_folder(open: &Path, dest: &Path) -> bool {
         (Ok(open), Ok(dest)) => open == dest,
         _ => open == dest,
     }
+}
+
+fn confirm_yes(title: &str, text: &str) -> bool {
+    rfd::MessageDialog::new()
+        .set_title(title)
+        .set_description(text)
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .show()
+        == rfd::MessageDialogResult::Yes
 }
 
 fn index_of(paths: &[PathBuf]) -> HashMap<PathBuf, usize> {
@@ -2441,9 +2487,13 @@ impl eframe::App for CernoApp {
                 stale: self.options.depends_on_scores()
                     && self.board.version() != self.view_version,
                 status: &status,
+                actions_open: self.action_menu,
             };
             let mut options = self.options;
             let out = bars::toolbar(ui, rect, &mut options, &info);
+            if let Some(open) = out.actions_open {
+                self.action_menu = open;
+            }
             if out.options_changed {
                 self.options = options;
                 self.save_options();
@@ -2452,18 +2502,20 @@ impl eframe::App for CernoApp {
             if out.refresh {
                 self.rebuild_view(&ctx, None);
             }
-            if out.open {
-                self.pick_folder(&ctx);
-            }
             if out.download_model {
                 self.confirm_model_download();
             }
             if let Some(choice) = out.transfer {
+                self.action_menu = false;
                 let mode = match choice {
                     TransferChoice::Copy => TransferMode::Copy,
                     TransferChoice::Move => TransferMode::Move,
                 };
                 self.begin_transfer(&ctx, mode);
+            }
+            if out.delete_selection {
+                self.action_menu = false;
+                self.delete_selection(&ctx);
             }
         }
 

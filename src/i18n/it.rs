@@ -6,10 +6,7 @@ pub static TEXTS: Texts = Texts {
     key_ctrl: "Ctrl",
     key_shift: "Maiusc",
 
-    open: "Apri…",
-    open_tooltip: "Apri cartella (Ctrl+O)",
     sort: |key| format!("Ordina: {key}"),
-    filter_summary: |list| format!("Filtro: {list}"),
     filter_stars: |n| {
         if n == 1 {
             "1 stella".to_owned()
@@ -42,12 +39,22 @@ pub static TEXTS: Texts = Texts {
     sort_personal: "Per te",
     sort_sharpness: "Nitidezza",
     sort_taken: "Ora di scatto",
-    filter_all: "Tutte",
     filter_unrated: "Senza stelle",
 
     filter_rejected: "Rifiutate",
-    filter_label_all: "Qualsiasi colore",
-    label_filter: |name| format!("Colore: {name}"),
+    actions: "Azione",
+    actions_tooltip: "Copia, sposta o elimina le foto in vista",
+    selection_delete: "Elimina",
+    confirm_copy_title: "Copiare la selezione?",
+    confirm_copy: |n| format!("Copiare {n} foto in un'altra cartella?"),
+    confirm_move_title: "Spostare la selezione?",
+    confirm_move: |n| format!("Spostare {n} foto in un'altra cartella?"),
+    confirm_delete_selection_title: "Eliminare la selezione?",
+    confirm_delete_selection: |n| {
+        format!(
+            "Spostare {n} foto nel cestino? Esc le riporta finché scorre il conto alla rovescia."
+        )
+    },
     label_red: "Rosso",
     label_yellow: "Giallo",
     label_green: "Verde",
@@ -93,6 +100,8 @@ pub static TEXTS: Texts = Texts {
     menu_sort: "Ordina",
     menu_filter: "Filtro",
     menu_view: "Vista",
+    menu_edit: "Modifica",
+    menu_photo: "Foto",
     menu_labels: "Colori",
     menu_language: "Lingua",
     loading: "Caricamento…",
@@ -120,7 +129,6 @@ pub static TEXTS: Texts = Texts {
     no_photos_in: |dir| format!("Nessun file JPEG o HEIC in {dir}"),
     rating_not_saved: |err| format!("Stelle non salvate – {err}"),
     open_folder: "Apri cartella",
-    transfer_menu: "Copia o sposta tutto ciò che mostra il filtro attuale in …",
     transfer_copy: "Copia",
     transfer_move: "Sposta",
     transfer_copy_cmd: "Copia tutto ciò che mostra il filtro attuale in …",
@@ -311,6 +319,7 @@ pub static TEXTS: Texts = Texts {
     ],
     help_more: [
         ("Ctrl+K", "Menu: tutte le funzioni"),
+        ("Ctrl+M", "Azione: copia, sposta o elimina le foto in vista"),
         ("Ctrl+L", "Cambia lingua"),
         ("H, F1, ?", "Questa guida"),
         ("Esc", "Torna indietro: zoom, confronto, schermo intero"),

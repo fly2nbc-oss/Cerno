@@ -6,10 +6,7 @@ pub static TEXTS: Texts = Texts {
     key_ctrl: "Ctrl",
     key_shift: "Maj",
 
-    open: "Ouvrir…",
-    open_tooltip: "Ouvrir un dossier (Ctrl+O)",
     sort: |key| format!("Tri : {key}"),
-    filter_summary: |list| format!("Filtre : {list}"),
     filter_stars: |n| {
         if n == 1 {
             "1 étoile".to_owned()
@@ -42,12 +39,22 @@ pub static TEXTS: Texts = Texts {
     sort_personal: "Pour vous",
     sort_sharpness: "Netteté",
     sort_taken: "Date de prise",
-    filter_all: "Toutes",
     filter_unrated: "Sans étoiles",
 
     filter_rejected: "Rejetées",
-    filter_label_all: "Toutes les couleurs",
-    label_filter: |name| format!("Couleur : {name}"),
+    actions: "Action",
+    actions_tooltip: "Copier, déplacer ou supprimer les photos affichées",
+    selection_delete: "Supprimer",
+    confirm_copy_title: "Copier la sélection ?",
+    confirm_copy: |n| format!("Copier {n} photos vers un autre dossier ?"),
+    confirm_move_title: "Déplacer la sélection ?",
+    confirm_move: |n| format!("Déplacer {n} photos vers un autre dossier ?"),
+    confirm_delete_selection_title: "Supprimer la sélection ?",
+    confirm_delete_selection: |n| {
+        format!(
+            "Mettre {n} photos à la corbeille ? Échap les ramène tant que le compte à rebours tourne."
+        )
+    },
     label_red: "Rouge",
     label_yellow: "Jaune",
     label_green: "Vert",
@@ -93,6 +100,8 @@ pub static TEXTS: Texts = Texts {
     menu_sort: "Trier",
     menu_filter: "Filtre",
     menu_view: "Affichage",
+    menu_edit: "Modifier",
+    menu_photo: "Photo",
     menu_labels: "Couleurs",
     menu_language: "Langue",
     loading: "Chargement…",
@@ -128,7 +137,6 @@ pub static TEXTS: Texts = Texts {
     no_photos_in: |dir| format!("Aucun fichier JPEG ou HEIC dans {dir}"),
     rating_not_saved: |err| format!("Étoiles non enregistrées – {err}"),
     open_folder: "Ouvrir un dossier",
-    transfer_menu: "Copier ou déplacer tout ce que le filtre actuel affiche vers …",
     transfer_copy: "Copier",
     transfer_move: "Déplacer",
     transfer_copy_cmd: "Copier tout ce que le filtre actuel affiche vers …",
@@ -312,6 +320,10 @@ pub static TEXTS: Texts = Texts {
     ],
     help_more: [
         ("Ctrl+K", "Menu : toutes les fonctions"),
+        (
+            "Ctrl+M",
+            "Action : copier, déplacer ou supprimer les photos affichées",
+        ),
         ("Ctrl+L", "Changer de langue"),
         ("H, F1, ?", "Cette aide"),
         ("Esc", "Revenir en arrière : zoom, comparaison, plein écran"),
