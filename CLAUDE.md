@@ -208,6 +208,7 @@ theme.rs             design tokens → egui Visuals, `text` font sizes, system U
 ## Gotchas
 
 - **EXIF orientation applies to JPEG only.** For HEIC, libheif already applies the `irot`/`imir` transforms; applying EXIF orientation again would double-rotate.
+- `exiftool::locate` returns an absolute path (`CERNO_EXIFTOOL`, next to the exe, then only the *absolute* `PATH` entries) and `spawn` starts exactly that file. An empty `PATH` entry (`;;`, a trailing `;`) means the working directory – with a bare name `Command` would search on its own and could start another file than the one checked.
 - ExifTool must get `-charset filename=UTF8`, otherwise paths with umlauts fail on Windows. (Same trap when checking files by hand from PowerShell: pass the folder, not the umlaut file name; and quote `"-FNumber=2.8"` – PowerShell splits unquoted `-x=2.8`.)
 - ExifTool's `-P` shifts mtime and creation time by a few **microseconds** (Perl floats). `filetimes::Snapshot::restore` puts the exact values back after every write – don't remove it just because `-P` "already preserves dates".
 - **In-place writes are deliberately not atomic.** `-overwrite_original_in_place` copies the new bytes back into the original file so its identity (creation date, inode) survives – the user's "dates must not change" requirement wins over temp-file + rename. Trade-off: a crash during the copy-back can corrupt that one file.
