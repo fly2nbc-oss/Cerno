@@ -1,6 +1,6 @@
 //! Dark tokens of `ui_design_system_v1.2.md`, mapped onto egui – with neutral greys instead of
 //! the system's blue-grey surfaces: tinted chrome around a photo biases colour judgement, so
-//! (like Lightroom or Capture One) only the accent and status colours carry hue.
+//! only the accent and status colours carry hue.
 
 use eframe::egui::{self, Color32, CornerRadius, Stroke, Theme, Visuals};
 

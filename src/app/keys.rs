@@ -1,6 +1,6 @@
-//! The keyboard: Lightroom's keys where Cerno has the same function. `read_keys` turns one
-//! frame's input into a `KeyInput` (pure, tested); `handle_keys` decides who gets the keys
-//! (cards, menus, help, an edit session) and carries them out.
+//! The keyboard. `read_keys` turns one frame's input into a `KeyInput` (pure, tested);
+//! `handle_keys` decides who gets the keys (cards, menus, help, an edit session) and carries
+//! them out.
 
 use std::time::Instant;
 
@@ -22,7 +22,7 @@ const STAR_KEYS: [(Key, Rating); 6] = [
     (Key::Num5, Rating::Stars(5)),
 ];
 
-/// Lightroom's colour keys. Purple has no digit; it lives in the command palette.
+/// `6`–`9` set the colour label. Purple has no digit; it lives in the command palette.
 const LABEL_KEYS: [(Key, Label); 4] = [
     (Key::Num6, Label::Red),
     (Key::Num7, Label::Yellow),
@@ -42,7 +42,7 @@ struct KeyInput {
     rating: Option<Rating>,
     /// `Shift+0…5`: rate and move on.
     rate_and_next: Option<Rating>,
-    /// `X` (toggles), `Shift+X` rejects and moves on – like Lightroom.
+    /// `X` (toggles), `Shift+X` rejects and moves on.
     reject: bool,
     reject_and_next: bool,
     label: Option<Label>,
@@ -134,7 +134,7 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         compare: plain && i.key_pressed(Key::C),
         keep_left: plain && i.key_pressed(Key::A),
         keep_right: plain && i.key_pressed(Key::D),
-        // Lightroom: F full screen (F11 as well), T the toolbar – here the filter bar.
+        // F and F11 full screen; T (`toggle_toolbar`) is the filter bar.
         toggle_fullscreen: i.key_pressed(Key::F11) || (plain && i.key_pressed(Key::F)),
         escape: i.key_pressed(Key::Escape),
         toggle_toolbar: plain && i.key_pressed(Key::T),
@@ -164,7 +164,7 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
 }
 
 impl CernoApp {
-    /// Lightroom's keys where Cerno has the same function (see the help page for all).
+    /// Carries out this frame's keys (see the help page for all).
     pub(super) fn handle_keys(&mut self, ctx: &egui::Context, frames: &[viewer::Frame]) {
         if let Some(path) =
             ctx.input(|i| i.raw.dropped_files.first().map(|f| f.path().to_path_buf()))

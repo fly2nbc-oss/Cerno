@@ -374,7 +374,7 @@ impl eframe::App for CernoApp {
         overlays::drop_hint(ui, window);
     }
 
-    /// `Tab` is Lightroom's panel key. egui would move keyboard focus to the next widget with
+    /// `Tab` toggles the details panel. egui would move keyboard focus to the next widget with
     /// it – and `Space` would then click that widget – so it never reaches egui.
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
         raw_input.events.retain(|event| match event {

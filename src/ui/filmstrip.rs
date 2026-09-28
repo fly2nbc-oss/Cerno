@@ -122,7 +122,7 @@ pub fn draw(
             );
         }
 
-        // Rejects are dimmed, like in Lightroom – below the selection frame.
+        // Rejects are dimmed – below the selection frame.
         if cell_info.rating == Rating::Rejected {
             painter.rect_filled(cell, 4.0, Color32::from_black_alpha(150));
         }
