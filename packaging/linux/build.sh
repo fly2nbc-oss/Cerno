@@ -59,8 +59,8 @@ plugins=$appdir/usr/lib/libheif/plugins
 doc=$appdir/usr/share/doc/cerno
 mkdir -p "$appdir/usr/bin" "$plugins" "$doc"
 install -m755 -s "$bin" "$appdir/usr/bin/cerno"
+# linuxdeploy also deploys the plugin's own dependency, libde265, into usr/lib.
 install -m644 "$(dpkg -L libheif-plugin-libde265 | grep '/libheif-libde265\.so$')" "$plugins/"
-libde265=$(dpkg -L libde265-0 | grep '/libde265\.so\.0$')
 cp LICENSE NOTICE THIRD_PARTY.md "$doc/"
 cp -r target/release/licenses "$doc/licenses"
 
@@ -71,19 +71,25 @@ export APPIMAGE_EXTRACT_AND_RUN=1
 export NO_STRIP=1
 "$tools/linuxdeploy" --appdir "$appdir" \
     --executable "$appdir/usr/bin/cerno" \
-    --library "$libde265" \
     --desktop-file packaging/linux/cerno.desktop \
     --icon-file assets/icon.png --icon-filename cerno \
     --custom-apprun packaging/linux/AppRun
-# The plugin sits two levels below usr/lib, where libde265 was deployed.
+# linuxdeploy gives every library `$ORIGIN`, but the plugin sits two levels below
+# usr/lib, where libheif and libde265 are.
 patchelf --set-rpath '$ORIGIN/../..' "$plugins/libheif-libde265.so"
 
 # Both must resolve to the AppDir, or the AppImage would silently use the host's
-# libheif (or none): HEIC photos would then fail to open.
+# libheif (or none): HEIC photos would then fail to open. ldd prints the rpath
+# unresolved (usr/bin/../lib/...), so compare canonical paths.
 root=$(readlink -f "$appdir")
-ldd "$appdir/usr/bin/cerno" | grep -q "$root/usr/lib/libheif\.so" ||
+bundled() { # elf soname-regex
+    local path
+    path=$(ldd "$1" | awk -v lib="$2" '$1 ~ lib { print $3; exit }')
+    [[ -n $path && $(readlink -f "$path") == "$root"/usr/lib/* ]]
+}
+bundled "$appdir/usr/bin/cerno" '^libheif\.so' ||
     { echo "cerno does not load the bundled libheif" >&2; exit 1; }
-ldd "$plugins/libheif-libde265.so" | grep -q "$root/usr/lib/libde265\.so" ||
+bundled "$plugins/libheif-libde265.so" '^libde265\.so' ||
     { echo "the HEVC plugin does not load the bundled libde265" >&2; exit 1; }
 
 # The LGPL libraries' versions, so their source can be found (Ubuntu source packages).
