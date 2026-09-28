@@ -3,9 +3,8 @@
 use eframe::egui::containers::scroll_area::ScrollBarVisibility;
 use eframe::egui::text::{LayoutJob, TextFormat};
 use eframe::egui::{
-    Align, Align2, Area, Color32, ComboBox, CursorIcon, FontId, Galley, Id, Layout, Order, Painter,
-    Pos2, Rect, RichText, ScrollArea, Sense, Sides, Stroke, StrokeKind, Ui, UiBuilder, Vec2, pos2,
-    vec2,
+    Align, Align2, Button, Color32, ComboBox, CursorIcon, FontId, Galley, Layout, Painter, Pos2,
+    Rect, RichText, ScrollArea, Sense, Sides, Stroke, StrokeKind, Ui, UiBuilder, Vec2, pos2, vec2,
 };
 use std::sync::Arc;
 
@@ -32,22 +31,15 @@ pub struct ToolbarInfo<'a> {
     pub actions_open: bool,
 }
 
-/// Copy or move every photo the current filter shows.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TransferChoice {
-    Copy,
-    Move,
-}
-
 #[derive(Default)]
 pub struct ToolbarOutput {
     pub options_changed: bool,
     pub refresh: bool,
     pub download_model: bool,
-    pub transfer: Option<TransferChoice>,
-    pub delete_selection: bool,
-    /// `Some` when the action menu should open or close.
-    pub actions_open: Option<bool>,
+    /// The "Action" button was clicked (opens or closes the action menu).
+    pub toggle_actions: bool,
+    /// Where the "Action" button is, so the menu opens under it.
+    pub actions_anchor: Option<Rect>,
 }
 
 pub fn toolbar(
@@ -144,80 +136,24 @@ pub fn toolbar(
                         {
                             out.refresh = true;
                         }
-                        let action = ui.button(t.actions).on_hover_text(format!(
-                            "{}\n{}",
-                            t.actions_tooltip,
-                            i18n::with_ctrl("M")
-                        ));
+                        let action = ui
+                            .add(Button::new(t.actions).selected(info.actions_open))
+                            .on_hover_text(format!(
+                                "{}\n{}",
+                                t.actions_tooltip,
+                                i18n::with_ctrl("M")
+                            ));
                         action_rect = Some(action.rect);
                         if action.clicked() {
-                            out.actions_open = Some(!info.actions_open);
+                            out.toggle_actions = true;
                         }
                     },
                 );
         },
     );
-    if info.actions_open
-        && let Some(anchor) = action_rect
-    {
-        action_menu(ui.ctx(), anchor, &mut out);
-    }
+    out.actions_anchor = action_rect;
     out.options_changed = *options != before;
     out
-}
-
-fn action_menu(ctx: &eframe::egui::Context, anchor: Rect, out: &mut ToolbarOutput) {
-    let t = i18n::t();
-    let width = 200.0;
-    let row = 32.0;
-    let menu = Rect::from_min_size(
-        pos2(anchor.left(), anchor.bottom() + 4.0),
-        vec2(width, row * 3.0 + 8.0),
-    );
-    let window = ctx.content_rect();
-    Area::new(Id::new("action-menu"))
-        .order(Order::Foreground)
-        .fixed_pos(window.min)
-        .show(ctx, |ui| {
-            let backdrop = ui.allocate_rect(window, Sense::click());
-            ui.painter().rect_filled(menu, 8.0, tokens::SURFACE);
-            ui.painter().rect_stroke(
-                menu,
-                8.0,
-                Stroke::new(1.0, tokens::LINE),
-                StrokeKind::Inside,
-            );
-            let mut child = ui.new_child(
-                UiBuilder::new()
-                    .max_rect(menu.shrink(4.0))
-                    .layout(Layout::top_down(Align::Min)),
-            );
-            let choose = |ui: &mut Ui, label: &str| {
-                ui.add_sized(
-                    vec2(menu.width() - 8.0, row),
-                    eframe::egui::Button::new(label),
-                )
-                .clicked()
-            };
-            if choose(&mut child, t.transfer_copy) {
-                out.transfer = Some(TransferChoice::Copy);
-                out.actions_open = Some(false);
-            }
-            if choose(&mut child, t.transfer_move) {
-                out.transfer = Some(TransferChoice::Move);
-                out.actions_open = Some(false);
-            }
-            if choose(&mut child, t.selection_delete) {
-                out.delete_selection = true;
-                out.actions_open = Some(false);
-            }
-            let on_rows = ui
-                .input(|i| i.pointer.interact_pos())
-                .is_some_and(|p| menu.contains(p));
-            if backdrop.clicked() && !on_rows {
-                out.actions_open = Some(false);
-            }
-        });
 }
 
 fn aesthetics_status(ui: &mut Ui, state: &ModelState, out: &mut ToolbarOutput) {

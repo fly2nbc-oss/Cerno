@@ -24,7 +24,7 @@ use crate::rating::RatingWriter;
 use crate::theme::tokens;
 use crate::thumbs::Thumbs;
 use crate::transfer::{Mode as TransferMode, Outcome as TransferOutcome, Queue as TransferQueue};
-use crate::ui::bars::{self, Panels, TransferChoice};
+use crate::ui::bars::{self, Panels};
 use crate::ui::details::{self, DetailRow, DetailsMode, all_expanded, set_all_expanded};
 use crate::ui::icons::Panel;
 use crate::ui::{confirm, edit as edit_ui, filmstrip, help, models, palette, viewer};
@@ -127,8 +127,13 @@ pub struct CernoApp {
     confirm: Option<(ConfirmAction, bool)>,
     /// Burger menu (`Ctrl+K` and the button) while open.
     palette: Option<palette::State>,
-    /// Action menu in the filter bar (`Ctrl+M`): copy, move or delete the photos on screen.
-    action_menu: bool,
+    /// Action menu under the filter bar's button (`Ctrl+M`): copy, move or delete the photos
+    /// on screen.
+    action_menu: Option<palette::State>,
+    /// Where the "Action" button was last drawn; the menu opens under it.
+    action_anchor: Option<Rect>,
+    /// `Ctrl+M` showed the hidden filter bar; closing the menu hides it again.
+    toolbar_before_actions: Option<bool>,
     /// `Tab` presses taken out of egui's input (`true` = with Shift), see `raw_input_hook`.
     tab_presses: Vec<bool>,
     /// When the language was last switched (the flag shows for a moment).
@@ -202,8 +207,6 @@ enum Action {
     Compare,
     Zoom,
     Fullscreen,
-    First,
-    Last,
     Reject,
     DeleteRejected,
     Label(Option<Label>),
@@ -217,6 +220,9 @@ enum Action {
     Language(Lang),
     Models,
     Help,
+    Copy,
+    Move,
+    DeleteSelection,
 }
 
 /// `Shift` plus a physical key. With Shift the typed character depends on the layout
@@ -458,7 +464,9 @@ impl CernoApp {
             models_open: false,
             confirm: None,
             palette: None,
-            action_menu: false,
+            action_menu: None,
+            action_anchor: None,
+            toolbar_before_actions: None,
             tab_presses: Vec::new(),
             language_flash: None,
             notice,
@@ -716,7 +724,7 @@ impl CernoApp {
     /// Opens a confirmation card. `from_models`: the models card comes back afterwards.
     fn ask(&mut self, action: ConfirmAction, from_models: bool) {
         self.palette = None;
-        self.action_menu = false;
+        self.close_action_menu();
         self.help_open = false;
         self.models_open = false;
         self.confirm = Some((action, from_models));
@@ -1225,6 +1233,7 @@ impl CernoApp {
     }
 
     /// Burger menu, grouped: view, sort, filter, edit, the current photo, labels, language.
+    /// Switches show a box, choices a tick on the current value.
     fn menu(&self) -> Vec<palette::Entry<Action>> {
         use palette::{Entry, Group, Row};
         let t = i18n::t();
@@ -1239,26 +1248,26 @@ impl CernoApp {
                 t.menu_view,
                 None,
                 vec![
-                    Row::new(Action::TopBar, t.button_toolbar, key("F")).checked(self.show_toolbar),
+                    Row::new(Action::TopBar, t.button_toolbar, key("F")).toggle(self.show_toolbar),
                     Row::new(Action::Details, t.button_details, key("Tab"))
-                        .checked(self.details != DetailsMode::Off),
+                        .toggle(self.details != DetailsMode::Off),
                     Row::new(Action::Filmstrip, t.button_filmstrip, key("F6"))
-                        .checked(self.show_filmstrip),
+                        .toggle(self.show_filmstrip),
                     Row::new(
                         Action::AllPanels,
                         t.cmd_all_panels,
                         Some(i18n::with_shift("Tab")),
                     ),
-                    Row::new(Action::Explanations, t.cmd_explanations, key("I")).checked(
+                    Row::new(Action::Explanations, t.cmd_explanations, key("I")).toggle(
                         self.details != DetailsMode::Off && all_expanded(&self.details_expanded),
                     ),
-                    Row::new(Action::Zoom, t.cmd_zoom, key("Z")).checked(self.zoom.is_zoomed()),
+                    Row::new(Action::Zoom, t.cmd_zoom, key("Z")).toggle(self.zoom.is_zoomed()),
                     Row::new(Action::Fullscreen, t.cmd_fullscreen, key("F11")),
-                    Row::new(Action::Subfolders, t.cmd_subfolders, None).checked(self.subfolders),
+                    Row::new(Action::Subfolders, t.cmd_subfolders, None).toggle(self.subfolders),
                     Row::new(Action::BestOfSeries, t.cmd_best_of_series, None)
-                        .checked(self.options.best_of_series),
+                        .toggle(self.options.best_of_series),
                     Row::new(Action::AutoAdvance, t.cmd_auto_advance, None)
-                        .checked(self.auto_advance),
+                        .toggle(self.auto_advance),
                 ],
             )));
             entries.push(Entry::Group(Group::new(
@@ -1268,15 +1277,19 @@ impl CernoApp {
                     .into_iter()
                     .map(|sort| {
                         Row::new(Action::Sort(sort), sort.label(), None)
-                            .checked(self.options.sort == sort)
+                            .choice(self.options.sort == sort)
                     })
                     .collect(),
             )));
             let mut filters: Vec<Row<Action>> = FilterKind::ALL
                 .into_iter()
                 .map(|kind| {
-                    Row::new(Action::Filter(kind), kind.label(), None)
-                        .checked(self.options.filter.contains(kind))
+                    let row = Row::new(Action::Filter(kind), kind.label(), None)
+                        .toggle(self.options.filter.contains(kind));
+                    match kind {
+                        FilterKind::Colour(label) => row.swatch(crate::theme::label_color(label)),
+                        _ => row,
+                    }
                 })
                 .collect();
             if !self.options.filter.is_all() {
@@ -1302,7 +1315,7 @@ impl CernoApp {
                 ],
             )));
             let mut photo = vec![
-                Row::new(Action::Compare, t.cmd_compare, key("C")).checked(self.pinned.is_some()),
+                Row::new(Action::Compare, t.cmd_compare, key("C")).toggle(self.pinned.is_some()),
                 Row::new(Action::Reject, t.cmd_reject, key("X")),
             ];
             let rejected = self.rejected().len();
@@ -1313,8 +1326,6 @@ impl CernoApp {
                     None,
                 ));
             }
-            photo.push(Row::new(Action::First, t.cmd_first, None));
-            photo.push(Row::new(Action::Last, t.cmd_last, None));
             entries.push(Entry::Group(Group::new(t.menu_photo, None, photo)));
             let current_label = self.view.get(self.current).and_then(|path| {
                 let image = match self.loader.get(self.current) {
@@ -1334,10 +1345,11 @@ impl CernoApp {
             .map(|(label, shortcut)| {
                 Row::new(
                     Action::Label(Some(label)),
-                    (t.cmd_label)(i18n::label_name(label)),
+                    i18n::label_name(label),
                     shortcut.map(str::to_owned),
                 )
-                .checked(current_label == Some(label))
+                .choice(current_label == Some(label))
+                .swatch(crate::theme::label_color(label))
             })
             .collect();
             entries.push(Entry::Group(Group::new(t.menu_labels, None, labels)));
@@ -1355,8 +1367,7 @@ impl CernoApp {
         let languages = Lang::ALL
             .into_iter()
             .map(|lang| {
-                Row::new(Action::Language(lang), (t.cmd_language)(lang.name()), None)
-                    .checked(i18n::current() == lang)
+                Row::new(Action::Language(lang), lang.name(), None).choice(i18n::current() == lang)
             })
             .collect();
         entries.push(Entry::Row(Row::new(Action::Models, t.menu_models, None)));
@@ -1367,6 +1378,36 @@ impl CernoApp {
         )));
         entries.push(Entry::Row(Row::new(Action::Help, t.help_title, key("H"))));
         entries
+    }
+
+    /// The action menu under the filter bar's "Action" button (`Ctrl+M`).
+    fn action_entries(&self) -> Vec<palette::Entry<Action>> {
+        use palette::{Entry, Row};
+        let t = i18n::t();
+        vec![
+            Entry::Row(Row::new(Action::Copy, t.transfer_copy, None)),
+            Entry::Row(Row::new(Action::Move, t.transfer_move, None)),
+            Entry::Row(Row::new(Action::DeleteSelection, t.selection_delete, None)),
+        ]
+    }
+
+    /// `Ctrl+M` or the button: the filter bar shows while the action menu is open.
+    fn open_action_menu(&mut self) {
+        self.palette = None;
+        self.help_open = false;
+        if !self.show_toolbar {
+            self.toolbar_before_actions = Some(false);
+            self.show_toolbar = true;
+        }
+        self.action_menu = Some(palette::State::default());
+    }
+
+    /// Closing puts the filter bar back the way it was.
+    fn close_action_menu(&mut self) {
+        self.action_menu = None;
+        if let Some(shown) = self.toolbar_before_actions.take() {
+            self.show_toolbar = shown;
+        }
     }
 
     fn run(&mut self, ctx: &egui::Context, action: Action, frames: &[viewer::Frame]) {
@@ -1396,8 +1437,6 @@ impl CernoApp {
                 let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
                 ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!fullscreen));
             }
-            Action::First => self.go_to(ctx, 0, 1),
-            Action::Last => self.go_to(ctx, usize::MAX, -1),
             Action::Reject => self.toggle_reject(ctx, false),
             Action::DeleteRejected => self.delete_rejected(ctx),
             Action::Label(label) => match label {
@@ -1422,6 +1461,9 @@ impl CernoApp {
             }
             Action::Language(lang) => self.set_language(ctx, lang),
             Action::Models => self.models_open = true,
+            Action::Copy => self.begin_transfer(ctx, TransferMode::Copy),
+            Action::Move => self.begin_transfer(ctx, TransferMode::Move),
+            Action::DeleteSelection => self.delete_selection(ctx),
             Action::Help => self.help_open = !self.all.is_empty(),
         }
     }
@@ -1938,22 +1980,21 @@ impl CernoApp {
             self.switch_language(ctx);
         }
         if keys.actions {
-            self.palette = None;
-            self.help_open = false;
-            self.show_toolbar = true;
-            self.action_menu = !self.action_menu;
+            if self.action_menu.is_some() {
+                self.close_action_menu();
+            } else {
+                self.open_action_menu();
+            }
             return;
         }
-        if self.action_menu {
-            if keys.escape || keys.palette {
-                self.action_menu = false;
-            }
+        // Both menus read their own arrows, Enter, letters and Esc (see `palette`).
+        if self.action_menu.is_some() {
             if keys.palette {
+                self.close_action_menu();
                 self.palette = Some(palette::State::default());
             }
             return;
         }
-        // The palette handles its own keys (typing, arrows, Enter, Esc).
         if self.palette.is_some() {
             if keys.palette {
                 self.palette = None;
@@ -2129,7 +2170,7 @@ impl CernoApp {
                     let editing = self.edit.is_some();
                     if !self.help_open
                         && self.palette.is_none()
-                        && !self.action_menu
+                        && self.action_menu.is_none()
                         && !self.modal_open()
                     {
                         if editing && slot.side == Side::Single {
@@ -2481,12 +2522,17 @@ impl eframe::App for CernoApp {
                 stale: self.options.depends_on_scores()
                     && self.board.version() != self.view_version,
                 status: &status,
-                actions_open: self.action_menu,
+                actions_open: self.action_menu.is_some(),
             };
             let mut options = self.options;
             let out = bars::toolbar(ui, rect, &mut options, &info);
-            if let Some(open) = out.actions_open {
-                self.action_menu = open;
+            self.action_anchor = out.actions_anchor;
+            if out.toggle_actions {
+                if self.action_menu.is_some() {
+                    self.close_action_menu();
+                } else {
+                    self.open_action_menu();
+                }
             }
             if out.options_changed {
                 self.options = options;
@@ -2498,18 +2544,6 @@ impl eframe::App for CernoApp {
             }
             if out.download_model {
                 self.ask(ConfirmAction::DownloadModel, false);
-            }
-            if let Some(choice) = out.transfer {
-                self.action_menu = false;
-                let mode = match choice {
-                    TransferChoice::Copy => TransferMode::Copy,
-                    TransferChoice::Move => TransferMode::Move,
-                };
-                self.begin_transfer(&ctx, mode);
-            }
-            if out.delete_selection {
-                self.action_menu = false;
-                self.delete_selection(&ctx);
             }
         }
 
@@ -2534,9 +2568,39 @@ impl eframe::App for CernoApp {
         }
         if let Some(mut state) = self.palette.take() {
             let entries = self.menu();
-            let out = palette::show(&ctx, window, &mut state, &entries);
+            let out = palette::show(
+                &ctx,
+                window,
+                &mut state,
+                &entries,
+                palette::Placement::BottomRight,
+            );
             if !out.close {
                 self.palette = Some(state);
+            }
+            if let Some(action) = out.run {
+                self.run(&ctx, action, &frames);
+            }
+        }
+        if let Some(mut state) = self.action_menu.take() {
+            let entries = self.action_entries();
+            // Until the filter bar has been drawn once, open under its right end.
+            let anchor = self.action_anchor.unwrap_or_else(|| {
+                Rect::from_min_size(
+                    pos2(window.right() - 100.0, window.top()),
+                    vec2(88.0, bars::TOOLBAR_HEIGHT),
+                )
+            });
+            let out = palette::show(
+                &ctx,
+                window,
+                &mut state,
+                &entries,
+                palette::Placement::Below(anchor),
+            );
+            self.action_menu = Some(state);
+            if out.close {
+                self.close_action_menu();
             }
             if let Some(action) = out.run {
                 self.run(&ctx, action, &frames);

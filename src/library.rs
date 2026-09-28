@@ -168,7 +168,7 @@ pub fn natural_cmp(a: &str, b: &str) -> Ordering {
 
 /// Lower-case base letter of common Latin-1 letters; plain code point order would put `Ü`
 /// after `z`.
-fn sort_key(c: char) -> char {
+pub(crate) fn sort_key(c: char) -> char {
     match c.to_lowercase().next().unwrap_or(c) {
         'à'..='å' => 'a',
         'ç' => 'c',

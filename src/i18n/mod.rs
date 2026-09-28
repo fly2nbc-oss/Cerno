@@ -257,15 +257,11 @@ pub struct Texts {
     pub cmd_fullscreen: &'static str,
     pub cmd_compare: &'static str,
     pub cmd_zoom: &'static str,
-    pub cmd_first: &'static str,
-    pub cmd_last: &'static str,
-    pub cmd_language: fn(&str) -> String,
     pub cmd_reject: &'static str,
     pub cmd_delete_rejected: fn(usize) -> String,
     pub cmd_auto_advance: &'static str,
     pub cmd_subfolders: &'static str,
     pub cmd_best_of_series: &'static str,
-    pub cmd_label: fn(&str) -> String,
     pub menu_sort: &'static str,
     pub menu_filter: &'static str,
     pub menu_view: &'static str,
@@ -446,9 +442,7 @@ mod tests {
             assert!((t.digital_zoom)(2.0).contains('2'), "{name}");
             assert!((t.map_tooltip)("N 48").contains("N 48"), "{name}");
             assert!((t.button_language)(name).contains(name), "{name}");
-            assert!((t.cmd_language)(name).contains(name), "{name}");
             assert!((t.cmd_delete_rejected)(7).contains('7'), "{name}");
-            assert!((t.cmd_label)("Red").contains("Red"), "{name}");
             let series = (t.series_position)(3, 7);
             assert!(series.contains('3') && series.contains('7'), "{name}");
             assert!((t.series_more)(4).contains('4'), "{name}");
