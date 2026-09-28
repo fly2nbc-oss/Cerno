@@ -275,7 +275,9 @@ pub struct Texts {
     pub edit_writing: &'static str,
     pub edit_reencoded: &'static str,
     pub edit_failed: fn(&str) -> String,
-    pub edit_hint: &'static str,
+    /// Banner hints while straightening and cropping.
+    pub edit_hint_straighten: &'static str,
+    pub edit_hint_crop: &'static str,
     pub ratio_original: &'static str,
     pub crop_landscape: &'static str,
     pub crop_portrait: &'static str,
@@ -381,10 +383,15 @@ pub struct Texts {
     pub help_intro: &'static str,
     pub help_drop: &'static str,
     pub help_close: &'static str,
-    pub help_sections: [&'static str; 4],
+    /// Start screen: one sentence, the five keys to begin with, and where the rest is.
+    pub welcome_intro: &'static str,
+    pub welcome_keys: [HelpRow; 5],
+    pub welcome_more: &'static str,
+    pub help_sections: [&'static str; 5],
     pub help_browse: [HelpRow; 5],
     pub help_rate: [HelpRow; 10],
-    pub help_view: [HelpRow; 13],
+    pub help_view: [HelpRow; 9],
+    pub help_edit: [HelpRow; 4],
     pub help_more: [HelpRow; 5],
 }
 
@@ -471,7 +478,9 @@ mod tests {
                 .iter()
                 .chain(&t.help_rate)
                 .chain(&t.help_view)
-                .chain(&t.help_more);
+                .chain(&t.help_edit)
+                .chain(&t.help_more)
+                .chain(&t.welcome_keys);
             for (keys, action) in rows {
                 assert!(!keys.trim().is_empty() && !action.trim().is_empty());
             }

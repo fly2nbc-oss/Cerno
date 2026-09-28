@@ -1,5 +1,6 @@
-//! Help page: every shortcut with a short explanation. `H`/`F1` shows it over the photos; the
-//! start screen (nothing open yet) shows the same content with an "Open folder" button.
+//! Help page: every shortcut with a short explanation. `H`/`F1` shows it over the photos
+//! (and over the start screen). The start screen is a small card: one sentence, "Open folder"
+//! and the five keys to begin with.
 
 use eframe::egui::{
     Align2, Area, Color32, Context, CursorIcon, FontId, Id, Order, Painter, Pos2, Rect, ScrollArea,
@@ -11,6 +12,8 @@ use crate::theme::{self, tokens};
 use crate::ui::icons;
 
 const MAX_WIDTH: f32 = 940.0;
+/// The start screen is a small card: one sentence, the button and five keys.
+const WELCOME_WIDTH: f32 = 560.0;
 const PAD: f32 = 28.0;
 /// Two columns of shortcuts from this content width on.
 const TWO_COLUMNS: f32 = 700.0;
@@ -55,7 +58,10 @@ fn card_with_content(ui: &mut Ui, space: Rect, welcome: bool) -> HelpOutput {
         });
     let card = Rect::from_center_size(
         space.center(),
-        vec2((space.width() - 48.0).clamp(200.0, MAX_WIDTH), height),
+        vec2(
+            (space.width() - 48.0).clamp(200.0, if welcome { WELCOME_WIDTH } else { MAX_WIDTH }),
+            height,
+        ),
     );
     // Swallows clicks on the card, so only the backdrop closes the page.
     ui.interact(card, Id::new(("help-card", welcome)), Sense::click());
@@ -154,7 +160,11 @@ fn content(ui: &mut Ui, welcome: bool) -> (HelpOutput, f32) {
 
     // Intro.
     let intro = painter.layout(
-        i18n::keep_together(t.help_intro),
+        i18n::keep_together(if welcome {
+            t.welcome_intro
+        } else {
+            t.help_intro
+        }),
         FontId::proportional(13.5),
         tokens::TEXT,
         width.min(760.0),
@@ -177,14 +187,27 @@ fn content(ui: &mut Ui, welcome: bool) -> (HelpOutput, f32) {
             tokens::MUTED,
         );
         y += 34.0;
+        // Only the keys to begin with; H shows the rest.
+        y = section(&painter, left, y, width, "", &t.welcome_keys) + 10.0;
+        painter.text(
+            pos2(left + width / 2.0, y),
+            Align2::CENTER_TOP,
+            t.welcome_more,
+            FontId::proportional(12.5),
+            tokens::MUTED,
+        );
+        y += 24.0;
+        ui.allocate_space(vec2(width, y - top.y));
+        return (out, y - top.y);
     }
 
     // Shortcuts: two columns on wide windows.
-    let sections: [(&str, &[HelpRow]); 4] = [
+    let sections: [(&str, &[HelpRow]); 5] = [
         (t.help_sections[0], &t.help_browse),
         (t.help_sections[1], &t.help_rate),
         (t.help_sections[2], &t.help_view),
-        (t.help_sections[3], &t.help_more),
+        (t.help_sections[3], &t.help_edit),
+        (t.help_sections[4], &t.help_more),
     ];
     let columns: Vec<&[(&str, &[HelpRow])]> = if width >= TWO_COLUMNS {
         vec![&sections[..2], &sections[2..]]
@@ -220,14 +243,17 @@ fn content(ui: &mut Ui, welcome: bool) -> (HelpOutput, f32) {
 
 /// Section title and its rows; returns the bottom.
 fn section(painter: &Painter, x: f32, y: f32, width: f32, title: &str, rows: &[HelpRow]) -> f32 {
-    painter.text(
-        pos2(x, y),
-        Align2::LEFT_TOP,
-        title.to_uppercase(),
-        FontId::proportional(11.0),
-        tokens::ACCENT,
-    );
-    let mut y = y + 22.0;
+    let mut y = y;
+    if !title.is_empty() {
+        painter.text(
+            pos2(x, y),
+            Align2::LEFT_TOP,
+            title.to_uppercase(),
+            FontId::proportional(11.0),
+            tokens::ACCENT,
+        );
+        y += 22.0;
+    }
     let keys_width = (width * 0.42).min(210.0);
     for (keys, action) in rows {
         let caps_height = keycaps(painter, pos2(x, y), keys_width, keys);
@@ -289,4 +315,37 @@ fn header_button(
     };
     paint(painter, area.center(), color);
     response.on_hover_text(tooltip).clicked()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eframe::egui::RawInput;
+
+    /// The start screen is a small card that fits a 1280 × 720 window without scrolling.
+    #[test]
+    fn start_screen_fits_a_small_window() {
+        let ctx = Context::default();
+        let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 720.0));
+        // The card takes the content height of the previous frame.
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(
+                RawInput {
+                    screen_rect: Some(window),
+                    ..Default::default()
+                },
+                |ui| {
+                    welcome(ui, window);
+                },
+            );
+            output.textures_delta.clear();
+        }
+        let content = ctx
+            .data(|d| d.get_temp::<f32>(Id::new(("help-height", true))))
+            .expect("content height");
+        assert!(
+            content + 40.0 <= window.height() - 48.0,
+            "start screen needs {content} px"
+        );
+    }
 }

@@ -1306,7 +1306,7 @@ impl CernoApp {
                 t.menu_view,
                 None,
                 vec![
-                    Row::new(Action::TopBar, t.button_toolbar, key("F")).toggle(self.show_toolbar),
+                    Row::new(Action::TopBar, t.button_toolbar, key("T")).toggle(self.show_toolbar),
                     Row::new(Action::Details, t.button_details, key("Tab"))
                         .toggle(self.details != DetailsMode::Off),
                     Row::new(Action::Filmstrip, t.button_filmstrip, key("F6"))
@@ -1320,7 +1320,7 @@ impl CernoApp {
                         self.details != DetailsMode::Off && all_expanded(&self.details_expanded),
                     ),
                     Row::new(Action::Zoom, t.cmd_zoom, key("Z")).toggle(self.zoom.is_zoomed()),
-                    Row::new(Action::Fullscreen, t.cmd_fullscreen, key("F11")),
+                    Row::new(Action::Fullscreen, t.cmd_fullscreen, key("F")),
                     Row::new(Action::Subfolders, t.cmd_subfolders, None).toggle(self.subfolders),
                     Row::new(Action::BestOfSeries, t.cmd_best_of_series, None)
                         .toggle(self.options.best_of_series),
@@ -1522,7 +1522,7 @@ impl CernoApp {
             Action::Copy => self.begin_transfer(ctx, TransferMode::Copy),
             Action::Move => self.begin_transfer(ctx, TransferMode::Move),
             Action::DeleteSelection => self.delete_selection(ctx),
-            Action::Help => self.help_open = !self.all.is_empty(),
+            Action::Help => self.help_open = true,
         }
     }
 
@@ -2004,9 +2004,10 @@ impl CernoApp {
                 compare: plain && i.key_pressed(Key::C),
                 keep_left: plain && i.key_pressed(Key::A),
                 keep_right: plain && i.key_pressed(Key::D),
-                toggle_fullscreen: i.key_pressed(Key::F11),
+                // Lightroom: F full screen (F11 as well), T the toolbar – here the filter bar.
+                toggle_fullscreen: i.key_pressed(Key::F11) || (plain && i.key_pressed(Key::F)),
                 escape: i.key_pressed(Key::Escape),
-                toggle_toolbar: plain && i.key_pressed(Key::F),
+                toggle_toolbar: plain && i.key_pressed(Key::T),
                 toggle_filmstrip: i.key_pressed(Key::F6),
                 cycle_details: plain && i.key_pressed(Key::I),
                 help: i.key_pressed(Key::F1)
@@ -2071,8 +2072,8 @@ impl CernoApp {
             }
             return;
         }
-        // The start screen already is the help page.
-        if keys.help && !self.all.is_empty() {
+        // Also on the start screen, which only shows the first keys.
+        if keys.help {
             self.help_open = true;
             return;
         }
@@ -2265,7 +2266,7 @@ impl CernoApp {
                                     ui.painter(),
                                     frame.area,
                                     &format!("{:+.2}°", radians.to_degrees()),
-                                    i18n::t().edit_hint,
+                                    i18n::t().edit_hint_straighten,
                                 );
                             }
                             EditKind::Crop {
@@ -2281,7 +2282,7 @@ impl CernoApp {
                                     ui.painter(),
                                     frame.area,
                                     &crop_caption(*ratio, *landscape),
-                                    i18n::t().edit_hint,
+                                    i18n::t().edit_hint_crop,
                                 );
                             }
                         }
@@ -2415,8 +2416,7 @@ impl eframe::App for CernoApp {
 
         ui.painter().rect_filled(window, 0.0, tokens::CANVAS);
         if self.all.is_empty() {
-            // Start screen: the help page with the "Open folder" button.
-            self.help_open = false;
+            // Start screen: one sentence, "Open folder" and the first keys (H shows all).
             let out = help::welcome(ui, window);
             if out.language {
                 self.switch_language(&ctx);
@@ -2636,7 +2636,7 @@ impl eframe::App for CernoApp {
             );
         }
 
-        if self.help_open && !self.all.is_empty() {
+        if self.help_open {
             let out = help::overlay(&ctx, window);
             if out.language {
                 self.switch_language(&ctx);
