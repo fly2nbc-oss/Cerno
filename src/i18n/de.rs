@@ -81,6 +81,17 @@ pub static TEXTS: Texts = Texts {
     menu_filter: "Filter",
     menu_view: "Ansicht",
     menu_labels: "Farbmarken",
+    menu_external: "Extern bearbeiten",
+    external_other: "Anderes Programm …",
+    external_chooser: "Systemauswahl „Öffnen mit“ …",
+    external_pick_title: "Programm zum Bearbeiten wählen",
+    external_opened: |name| {
+        format!(
+            "In {name} geöffnet – nach dem Speichern zeigt Cerno die neue Fassung, das Original bleibt in .originals"
+        )
+    },
+    external_reloaded: |name| format!("{name} wurde extern gespeichert – neu geladen"),
+    external_failed: |err| format!("Nicht geöffnet: {err}"),
     menu_language: "Sprache",
     menu_models: "Modelle & Daten",
     menu_this_photo: "Dieses Foto",
@@ -351,6 +362,10 @@ pub static TEXTS: Texts = Texts {
         (
             "Strg+Z",
             "Original zurückholen – es bleibt in .originals neben dem Foto",
+        ),
+        (
+            "E",
+            "In einem anderen Programm bearbeiten – im gemerkten, oder eins wählen",
         ),
     ],
     help_more: [

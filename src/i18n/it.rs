@@ -81,6 +81,17 @@ pub static TEXTS: Texts = Texts {
     menu_filter: "Filtro",
     menu_view: "Vista",
     menu_labels: "Colori",
+    menu_external: "Modifica altrove",
+    external_other: "Altro programma …",
+    external_chooser: "«Apri con» del sistema …",
+    external_pick_title: "Scegli un programma per modificare",
+    external_opened: |name| {
+        format!(
+            "Aperto in {name} – dopo il salvataggio Cerno mostra la nuova versione; l'originale resta in .originals"
+        )
+    },
+    external_reloaded: |name| format!("{name} è stato salvato altrove – ricaricato"),
+    external_failed: |err| format!("Non aperto: {err}"),
     menu_language: "Lingua",
     menu_models: "Modelli e dati",
     menu_this_photo: "Questa foto",
@@ -350,6 +361,10 @@ pub static TEXTS: Texts = Texts {
         (
             "Ctrl+Z",
             "Recupera l'originale – resta in .originals accanto alla foto",
+        ),
+        (
+            "E",
+            "Modifica in un altro programma – quello memorizzato o scegline uno",
         ),
     ],
     help_more: [

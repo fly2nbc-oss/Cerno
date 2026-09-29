@@ -58,6 +58,12 @@ enum Message {
     Restore {
         path: PathBuf,
     },
+    /// Another program saved the file: the marks it dropped come back (`lost_marks`).
+    KeepMarks {
+        path: PathBuf,
+        rating: Rating,
+        label: Option<Label>,
+    },
     Shutdown,
 }
 
@@ -69,6 +75,9 @@ pub struct EditOutcome {
     pub reencoded: bool,
     /// `Ctrl+Z` put the kept original back.
     pub restored: bool,
+    /// Another program saved the file and the marks it dropped are back (`keep_marks`) – not
+    /// an edit of Cerno's; the photo is reloaded now.
+    pub elsewhere: bool,
 }
 
 /// Sends a finished pixel edit to the writer thread. Cheap to clone into a worker.
@@ -179,6 +188,16 @@ impl RatingWriter {
         let _ = self.tx.send(Message::Restore { path });
     }
 
+    /// Another program saved `path`: the rating and label Cerno knew go back where the file
+    /// now has none (Paint, for one, drops all metadata). What that program set itself stays.
+    pub fn keep_marks(&self, path: PathBuf, rating: Rating, label: Option<Label>) {
+        let _ = self.tx.send(Message::KeepMarks {
+            path,
+            rating,
+            label,
+        });
+    }
+
     /// Handle for a worker that encodes pixels and then hands the JPEG back here.
     pub fn channel(&self) -> EditChannel {
         EditChannel {
@@ -285,6 +304,28 @@ fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
                 drop(held);
                 push_outcome(outcomes, path, result, Done::Restored);
             }
+            Ok(Message::KeepMarks {
+                path,
+                rating,
+                label,
+            }) => {
+                let held = files.hold_write(&path);
+                let result = flush_pending(&mut pending, &mut exiftool, &path, status, files)
+                    .and_then(|()| {
+                        let bytes = std::fs::read(&path).context("cannot read file")?;
+                        let meta = metadata::read(&bytes);
+                        match lost_marks(meta.rating.value, meta.label, rating, label) {
+                            (None, None) => Ok(None),
+                            (rating, label) => {
+                                write_marks(&mut exiftool, &path, rating, label, None)
+                            }
+                        }
+                    });
+                drop(held);
+                note_marks(db, status, &path, result);
+                // A failed write shows in the status; the photo is reloaded either way.
+                push_outcome(outcomes, path, Ok(()), Done::Elsewhere);
+            }
             Ok(Message::Shutdown) | Err(RecvTimeoutError::Disconnected) => shutting_down = true,
             Err(RecvTimeoutError::Timeout) => {}
         }
@@ -308,34 +349,7 @@ fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
             );
             files.set_queued(&path, false);
             drop(held);
-            if let Ok(Some(written)) = &result {
-                // The size changed, the mtime didn't: keep the index valid without rehashing.
-                let updated = FileStamp::of(&path)
-                    .map_err(anyhow::Error::from)
-                    .and_then(|stamp| {
-                        db.update_after_write(
-                            &path.to_string_lossy(),
-                            stamp,
-                            written.rating,
-                            written.label,
-                        )
-                    });
-                if let Err(err) = updated {
-                    log::warn!("index update for {}: {err:#}", path.display());
-                }
-            }
-            if let Ok(mut status) = status.lock() {
-                match result {
-                    Ok(_) => status.last_error = None,
-                    Err(err) => {
-                        log::error!("rating for {}: {err:#}", path.display());
-                        status.last_error = Some(format!(
-                            "{}: {err:#}",
-                            crate::library::file_name_lossy(&path)
-                        ));
-                    }
-                }
-            }
+            note_marks(db, status, &path, result);
         }
 
         if let Ok(mut status) = status.lock() {
@@ -344,6 +358,54 @@ fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
         ctx.request_repaint();
     }
     // Dropping `exiftool` ends the stay-open process.
+}
+
+/// After a marks write: the index follows the file, the status shows the error.
+fn note_marks(db: &Db, status: &Mutex<WriterStatus>, path: &Path, result: Result<Option<Written>>) {
+    if let Ok(Some(written)) = &result {
+        // The size changed, the mtime didn't: keep the index valid without rehashing.
+        let updated = FileStamp::of(path)
+            .map_err(anyhow::Error::from)
+            .and_then(|stamp| {
+                db.update_after_write(
+                    &path.to_string_lossy(),
+                    stamp,
+                    written.rating,
+                    written.label,
+                )
+            });
+        if let Err(err) = updated {
+            log::warn!("index update for {}: {err:#}", path.display());
+        }
+    }
+    if let Ok(mut status) = status.lock() {
+        match result {
+            Ok(_) => status.last_error = None,
+            Err(err) => {
+                log::error!("rating for {}: {err:#}", path.display());
+                status.last_error = Some(format!(
+                    "{}: {err:#}",
+                    crate::library::file_name_lossy(path)
+                ));
+            }
+        }
+    }
+}
+
+/// The marks another program's save dropped: Cerno's rating where the file has none, its
+/// colour where the file has no label at all (an unknown label text stays).
+fn lost_marks(
+    have: Rating,
+    have_label: LabelInfo,
+    rating: Rating,
+    label: Option<Label>,
+) -> (Option<Rating>, Option<Option<Label>>) {
+    let rating = (have == Rating::Unrated && rating != Rating::Unrated).then_some(rating);
+    let label = match (have_label, label) {
+        (LabelInfo::None, Some(label)) => Some(Some(label)),
+        _ => None,
+    };
+    (rating, label)
 }
 
 struct Written {
@@ -580,6 +642,7 @@ enum Done {
     Rotated,
     Reencoded,
     Restored,
+    Elsewhere,
 }
 
 fn push_outcome(outcomes: &Mutex<Vec<EditOutcome>>, path: PathBuf, result: Result<()>, done: Done) {
@@ -596,6 +659,7 @@ fn push_outcome(outcomes: &Mutex<Vec<EditOutcome>>, path: PathBuf, result: Resul
             error,
             reencoded: done == Done::Reencoded,
             restored: done == Done::Restored,
+            elsewhere: done == Done::Elsewhere,
         });
     }
 }
@@ -813,6 +877,35 @@ mod tests {
         drop(temp);
         assert!(!fresh.exists());
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn only_marks_a_save_dropped_come_back() {
+        let red = Some(Label::Red);
+        // Paint and the like drop all metadata: both come back.
+        assert_eq!(
+            lost_marks(Rating::Unrated, LabelInfo::None, Rating::Stars(4), red),
+            (Some(Rating::Stars(4)), Some(red))
+        );
+        assert_eq!(
+            lost_marks(Rating::Unrated, LabelInfo::None, Rating::Rejected, None),
+            (Some(Rating::Rejected), None)
+        );
+        // What the other program set stays, an unknown label text too.
+        let blue = LabelInfo::Known(Label::Blue);
+        assert_eq!(
+            lost_marks(Rating::Stars(2), blue, Rating::Stars(4), red),
+            (None, None)
+        );
+        assert_eq!(
+            lost_marks(Rating::Unrated, LabelInfo::Other, Rating::Unrated, red),
+            (None, None)
+        );
+        // Nothing known, nothing to write.
+        assert_eq!(
+            lost_marks(Rating::Unrated, LabelInfo::None, Rating::Unrated, None),
+            (None, None)
+        );
     }
 
     #[test]

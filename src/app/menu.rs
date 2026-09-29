@@ -46,6 +46,11 @@ enum Action {
     Reject,
     Describe,
     DeleteCurrent,
+    /// One of the programs the system offers, by its place in the list.
+    EditWith(usize),
+    EditRemembered,
+    EditWithOther,
+    EditWithChooser,
     DeleteRejected,
     Label(Option<Label>),
     AutoAdvance,
@@ -130,6 +135,8 @@ impl CernoApp {
             }
         }
         if let Some(mut state) = self.palette.take() {
+            // "Edit elsewhere" lists the system's programs: asked once per file type.
+            self.prepare_editors();
             let entries = self.menu();
             let out = palette::show(
                 ctx,
@@ -369,9 +376,72 @@ impl CernoApp {
         let mut entries = vec![
             Entry::Group(Group::new(t.menu_stars, None, stars)),
             Entry::Group(Group::new(t.menu_labels, None, labels)),
+            Entry::Group(self.editor_group()),
         ];
         entries.extend(rows.into_iter().map(Entry::Row));
         Group::nested(t.menu_this_photo, None, entries)
+    }
+
+    /// "Edit elsewhere": the programs the system offers for the photo's type (the remembered
+    /// one ticked, with `E`), one picked by hand, the system's chooser. Picking one opens the
+    /// photo there and closes the menu.
+    fn editor_group(&self) -> palette::Group<Action> {
+        use palette::{Group, Row};
+        let t = i18n::t();
+        let current = self.view.get(self.current).map(PathBuf::as_path);
+        let block = self.menu_block(Change::External, current);
+        let remembered = self.external_editor.as_ref();
+        let listed = self.editors_for_current();
+        let mut rows = Vec::new();
+        if let Some(editor) = remembered
+            && !listed.iter().any(|e| e.id == editor.id)
+        {
+            rows.push(
+                Row::new(
+                    Action::EditRemembered,
+                    editor.name.clone(),
+                    Some("E".into()),
+                )
+                .choice(true)
+                .disabled(block),
+            );
+        }
+        for (index, editor) in listed.iter().enumerate() {
+            let chosen = remembered.is_some_and(|r| r.id == editor.id);
+            rows.push(
+                Row::new(
+                    Action::EditWith(index),
+                    editor.name.clone(),
+                    chosen.then(|| "E".to_owned()),
+                )
+                .choice(chosen)
+                .disabled(block),
+            );
+        }
+        rows.push(Row::new(Action::EditWithOther, t.external_other, None).disabled(block));
+        rows.push(Row::new(Action::EditWithChooser, t.external_chooser, None).disabled(block));
+        Group::new(t.menu_external, Some("E".into()), rows)
+    }
+
+    /// The menu opened at "This photo › Edit elsewhere" (`E` before a program is remembered).
+    pub(super) fn menu_at_editors(&self) -> palette::State {
+        let t = i18n::t();
+        let entries = self.menu();
+        let path = entries
+            .iter()
+            .position(|e| e.is_group(t.menu_this_photo))
+            .and_then(|top| {
+                let palette::Entry::Group(photo) = &entries[top] else {
+                    return None;
+                };
+                let inner = photo
+                    .entries
+                    .iter()
+                    .position(|e| e.is_group(t.menu_external))?;
+                Some(vec![top, inner])
+            })
+            .unwrap_or_default();
+        palette::State::opened(path)
     }
 
     /// The filter boxes, with "Show all" on top while any is ticked.
@@ -486,6 +556,17 @@ impl CernoApp {
             Action::Reject => self.toggle_reject(ctx, false),
             Action::Describe => self.open_description(ctx),
             Action::DeleteCurrent => self.delete_current(ctx),
+            // Choices keep a menu open; opening another program closes it.
+            Action::EditWith(index) => {
+                self.palette = None;
+                self.open_in_listed(index);
+            }
+            Action::EditRemembered => {
+                self.palette = None;
+                self.edit_elsewhere();
+            }
+            Action::EditWithOther => self.pick_editor(),
+            Action::EditWithChooser => self.edit_with_chooser(),
             Action::DeleteRejected => self.delete_rejected(ctx),
             Action::Label(label) => match label {
                 Some(label) => self.toggle_label(ctx, label, false),

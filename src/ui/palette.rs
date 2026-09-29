@@ -114,6 +114,11 @@ impl<A> Entry<A> {
             Self::Group(group) => &group.label,
         }
     }
+
+    /// A submenu with this label.
+    pub fn is_group(&self, label: &str) -> bool {
+        matches!(self, Self::Group(group) if group.label == label)
+    }
 }
 
 /// The list reached by opening the groups on `path` (one index per level), or `None` when the
@@ -157,6 +162,18 @@ pub struct State {
 }
 
 impl State {
+    /// The menu opened down to a submenu: `path` holds the group's index on each level, the
+    /// cursor starts on the submenu's first row. A path that does not fit is cut on the first
+    /// frame (`fit`).
+    pub fn opened(path: Vec<usize>) -> Self {
+        let mut cursors: Vec<Option<usize>> = path.iter().map(|&index| Some(index)).collect();
+        cursors.push(Some(0));
+        Self {
+            open: path,
+            cursors,
+        }
+    }
+
     /// The menu is rebuilt every frame and can shrink while it is open (a deletion ran out,
     /// "Refresh order" went away). The open path is cut where it no longer leads through a
     /// group, and cursors that no longer point at a row are dropped.

@@ -8,6 +8,7 @@ mod decode;
 mod deletion;
 mod edit;
 mod exiftool;
+mod external;
 mod filelock;
 mod filetimes;
 mod histogram;

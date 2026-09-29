@@ -56,6 +56,8 @@ struct KeyInput {
     play: bool,
     /// `B`: the description tab (comment and keywords).
     describe: bool,
+    /// `E`: edit the photo in the remembered program (or choose one).
+    edit_elsewhere: bool,
     toggle_fullscreen: bool,
     escape: bool,
     toggle_toolbar: bool,
@@ -140,6 +142,7 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         keep_right: plain && i.key_pressed(Key::D),
         play: plain && i.key_pressed(Key::Enter),
         describe: plain && i.key_pressed(Key::B),
+        edit_elsewhere: plain && i.key_pressed(Key::E),
         // F and F11 full screen; T (`toggle_toolbar`) is the filter bar.
         toggle_fullscreen: i.key_pressed(Key::F11) || (plain && i.key_pressed(Key::F)),
         escape: i.key_pressed(Key::Escape),
@@ -301,6 +304,9 @@ impl CernoApp {
         if keys.keep_left {
             self.keep_left(ctx);
         }
+        if keys.edit_elsewhere {
+            self.edit_elsewhere();
+        }
         if keys.keep_right {
             self.keep_right(ctx);
         }
@@ -429,6 +435,14 @@ mod tests {
         assert!(keys.next && !keys.rotate_cw);
         let keys = read(vec![key(Key::Z, Key::Z, ctrl)], ctrl);
         assert!(keys.undo && !keys.toggle_zoom);
+    }
+
+    #[test]
+    fn e_edits_elsewhere_only_without_modifiers() {
+        let plain = Modifiers::NONE;
+        assert!(read(vec![key(Key::E, Key::E, plain)], plain).edit_elsewhere);
+        let ctrl = Modifiers::COMMAND;
+        assert!(!read(vec![key(Key::E, Key::E, ctrl)], ctrl).edit_elsewhere);
     }
 
     #[test]
