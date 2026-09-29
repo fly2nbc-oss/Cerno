@@ -21,6 +21,8 @@ const GAP: f32 = 6.0;
 /// Extra space where one series ends and the next begins (capture-time order).
 const SERIES_GAP: f32 = 16.0;
 const THUMB_HEIGHT: f32 = 66.0;
+/// The play button over a video's cell.
+const PLAY_RADIUS: f32 = 13.0;
 
 /// What the strip shows about one photo besides its thumbnail.
 pub struct CellInfo {
@@ -36,6 +38,8 @@ pub struct CellInfo {
     pub in_current_series: bool,
     /// Display name of the original when this photo is an exact copy.
     pub duplicate_of: Option<String>,
+    /// A video: the play button over the cell.
+    pub video: bool,
 }
 
 /// Touchpads scroll in points: this many make one photo.
@@ -87,7 +91,11 @@ pub fn draw(
         .map(|i| shift[i])
         .unwrap_or(0.0);
 
-    for (n, (index, cell_info)) in visible.iter().enumerate() {
+    // Nearest first: videos get their frames in the order the cells ask for them.
+    let mut order: Vec<usize> = (0..visible.len()).collect();
+    order.sort_by_key(|&n| visible[n].0.abs_diff(current));
+    for n in order {
+        let (index, cell_info) = &visible[n];
         let path = &paths[*index];
         let offset = *index as f32 - current as f32;
         let cell = Rect::from_center_size(
@@ -118,6 +126,10 @@ pub fn draw(
                 Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
                 Color32::WHITE,
             );
+        }
+        // Also before the frame has arrived: the button alone already says "video".
+        if cell_info.video {
+            icons::play(&painter, cell.center(), PLAY_RADIUS);
         }
 
         // Rejects are dimmed – below the selection frame.
@@ -176,6 +188,9 @@ pub fn draw(
         }
         // Every mark explains itself in one tooltip.
         let mut tooltip = Vec::new();
+        if cell_info.video {
+            tooltip.push(i18n::t().filmstrip_video.to_owned());
+        }
         if let Some(reason) = &cell_info.blurry {
             icons::warning(&painter, pos2(cell.right() - 10.0, cell.top() + 10.0));
             tooltip.push(reason.clone());

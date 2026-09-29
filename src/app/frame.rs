@@ -6,6 +6,7 @@ use std::sync::Arc;
 use eframe::egui::{self, Rect, pos2, vec2};
 
 use crate::i18n;
+use crate::library;
 use crate::loader::Lookup;
 use crate::theme::tokens;
 use crate::ui::details::{self, DetailsMode, DetailsTab};
@@ -125,6 +126,7 @@ impl CernoApp {
                     .get(i)
                     .and_then(|p| p.as_ref())
                     .map(|original| self.photo_name(original)),
+                video: library::format_of(path) == Some(library::Format::Video),
             }
         });
         if let Some(index) = strip.clicked

@@ -235,6 +235,8 @@ pub struct Texts {
     pub duplicate_of: fn(&str) -> String,
     /// Marks a rejected photo (info bar, compare label).
     pub rejected: &'static str,
+    /// Tooltip of a video's cell in the filmstrip (the play sign).
+    pub filmstrip_video: &'static str,
     pub star_tooltip: fn(u8) -> String,
     pub zoom: fn(f32) -> String,
     pub digital_zoom: fn(f64) -> String,

@@ -155,6 +155,25 @@ pub fn warning(painter: &Painter, center: Pos2) {
     painter.circle_filled(center + vec2(0.0, 3.4), 1.0, Color32::BLACK);
 }
 
+/// A video's play button: a light triangle on a dark disc, both see-through so the frame
+/// shows beneath.
+pub fn play(painter: &Painter, center: Pos2, radius: f32) {
+    painter.circle_filled(center, radius, Color32::from_black_alpha(110));
+    let r = radius * 0.5;
+    // Pushed right by the triangle's centroid, so it looks centred in the disc.
+    let c = center + vec2(r * 0.2, 0.0);
+    let points = vec![
+        c + vec2(-r * 0.8, -r),
+        c + vec2(r, 0.0),
+        c + vec2(-r * 0.8, r),
+    ];
+    painter.add(Shape::convex_polygon(
+        points,
+        Color32::from_white_alpha(190),
+        Stroke::NONE,
+    ));
+}
+
 /// Two overlapping sheets, the "copy" mark.
 pub fn copy(painter: &Painter, center: Pos2, color: Color32) {
     let stroke = Stroke::new(1.2, color);

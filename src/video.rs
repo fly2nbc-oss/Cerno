@@ -38,11 +38,20 @@ pub fn locate() -> Option<PathBuf> {
 /// One frame as JPEG bytes: at one second, or – for a clip shorter than that – the first.
 /// ffmpeg applies the rotation the phone recorded.
 pub fn poster(path: &Path) -> Result<Vec<u8>> {
-    let exe = locate().context("ffmpeg not found")?;
-    frame_at(&exe, path, "1").or_else(|_| frame_at(&exe, path, "0"))
+    frame(path, None)
 }
 
-fn frame_at(exe: &Path, path: &Path, seconds: &str) -> Result<Vec<u8>> {
+/// The same frame, scaled by ffmpeg to fit into `side` × `side` – for the filmstrip.
+pub fn thumbnail(path: &Path, side: u32) -> Result<Vec<u8>> {
+    frame(path, Some(side))
+}
+
+fn frame(path: &Path, side: Option<u32>) -> Result<Vec<u8>> {
+    let exe = locate().context("ffmpeg not found")?;
+    frame_at(&exe, path, "1", side).or_else(|_| frame_at(&exe, path, "0", side))
+}
+
+fn frame_at(exe: &Path, path: &Path, seconds: &str, side: Option<u32>) -> Result<Vec<u8>> {
     let mut command = Command::new(exe);
     command
         .args([
@@ -55,7 +64,15 @@ fn frame_at(exe: &Path, path: &Path, seconds: &str) -> Result<Vec<u8>> {
             "-i",
         ])
         .arg(path)
-        .args(["-frames:v", "1", "-an", "-f", "image2pipe", "-c:v", "mjpeg"])
+        .args(["-frames:v", "1", "-an"]);
+    // After the rotation: ffmpeg rotates before the filters it is given.
+    if let Some(side) = side {
+        command.arg("-vf").arg(format!(
+            "scale=w={side}:h={side}:force_original_aspect_ratio=decrease"
+        ));
+    }
+    command
+        .args(["-f", "image2pipe", "-c:v", "mjpeg"])
         .args(["-q:v", "3", "pipe:1"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -134,8 +151,8 @@ pub fn play(path: &Path) -> Result<()> {
 
 /// What a video shows without ffmpeg: a dark 16:9 frame with a play sign.
 pub fn placeholder(max_size: [u32; 2]) -> DecodedImage {
-    let [w, h] = crate::decode::fit_within([1280, 720], max_size);
-    let mut rgb = vec![0x24u8; (w * h * 3) as usize];
+    let mut image = blank(max_size);
+    let (w, h) = (image.width, image.height);
     let (cx, cy, r) = (w as f32 / 2.0, h as f32 / 2.0, h as f32 / 7.0);
     for y in 0..h {
         for x in 0..w {
@@ -144,14 +161,21 @@ pub fn placeholder(max_size: [u32; 2]) -> DecodedImage {
             let inside = dx >= -r * 0.6 && dx <= r && dy.abs() <= (r - dx) * 0.62;
             if inside {
                 let i = ((y * w + x) * 3) as usize;
-                rgb[i..i + 3].copy_from_slice(&[0x70, 0x70, 0x70]);
+                image.rgb[i..i + 3].copy_from_slice(&[0x70, 0x70, 0x70]);
             }
         }
     }
+    image
+}
+
+/// The placeholder's dark frame without the sign – the filmstrip paints its own over every
+/// video.
+pub fn blank(max_size: [u32; 2]) -> DecodedImage {
+    let [w, h] = crate::decode::fit_within([1280, 720], max_size);
     DecodedImage {
         width: w,
         height: h,
-        rgb,
+        rgb: vec![0x24u8; (w * h * 3) as usize],
         original_size: [w, h],
     }
 }
@@ -209,6 +233,14 @@ mod tests {
         )
         .expect("a JPEG");
         assert_eq!((image.width, image.height), (320, 240));
+        let small = crate::decode::decode_for_display(
+            &thumbnail(&clip, 256).expect("a small frame"),
+            crate::library::Format::Jpeg,
+            1,
+            [u32::MAX; 2],
+        )
+        .expect("a JPEG");
+        assert_eq!((small.width, small.height), (256, 192));
         assert!(poster(&dir.join("missing.mp4")).is_err());
         std::fs::remove_dir_all(&dir).unwrap();
     }

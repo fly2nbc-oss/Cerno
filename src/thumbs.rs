@@ -1,8 +1,9 @@
 //! Filmstrip thumbnails as GPU textures.
 //!
-//! Three sources: the display loader (downscaled from what it just decoded – instant for the
-//! neighbourhood), the analysis pass (every image, also stored in the database), and the
-//! database for folders analysed before (loaded here on request).
+//! Four sources: the display loader (downscaled from what it just decoded – instant for the
+//! neighbourhood), the analysis pass (every image, also stored in the database), the
+//! database for folders analysed before (loaded here on request), and for videos – which have
+//! no index row – a frame ffmpeg takes on request, kept in memory only.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -18,7 +19,8 @@ use zune_core::options::DecoderOptions;
 use zune_jpeg::JpegDecoder;
 
 use crate::db::{Db, FileStamp};
-use crate::decode;
+use crate::library::{self, Format};
+use crate::{decode, video};
 
 /// Longest side of a thumbnail in pixels.
 pub const THUMB_SIZE: u32 = 256;
@@ -27,10 +29,12 @@ pub const THUMB_SIZE: u32 = 256;
 const MAX_TEXTURES: usize = 400;
 /// Evicting in batches keeps the sort off the per-photo path.
 const EVICT_SLACK: usize = MAX_TEXTURES / 4;
+/// A video the strip has not asked for in this many egui passes has been scrolled out.
+const STALE_PASSES: u64 = 2;
 
 pub struct Thumbs {
     inner: Arc<Inner>,
-    worker: Option<JoinHandle<()>>,
+    workers: Vec<JoinHandle<()>>,
 }
 
 struct Inner {
@@ -38,7 +42,11 @@ struct Inner {
     db: Arc<Db>,
     textures: Mutex<Textures>,
     queue: Mutex<Queue>,
+    /// Database lookups: a few milliseconds each.
     wake: Condvar,
+    /// Video frames: one ffmpeg run each, up to its timeout – on their own thread, so a slow
+    /// video never holds up the photos' thumbnails.
+    video_wake: Condvar,
     shutdown: AtomicBool,
 }
 
@@ -80,6 +88,50 @@ struct Queue {
     misses: HashSet<PathBuf>,
     /// Bumped when a photo is edited, so a database load that started earlier is dropped.
     fresh: HashMap<PathBuf, u64>,
+    /// Videos waiting for a frame, in the order the strip first asked (nearest first).
+    videos: VecDeque<PathBuf>,
+    /// The egui pass that last asked for each of them.
+    videos_asked: HashMap<PathBuf, u64>,
+}
+
+/// The worker a request goes to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Lane {
+    Database,
+    Video,
+}
+
+impl Queue {
+    /// Queues `path`, asked for in egui pass `pass`; the lane to wake when the request is new.
+    fn request(&mut self, path: &Path, pass: u64) -> Option<Lane> {
+        // No index row for a video: the database would miss it for good.
+        if library::format_of(path) == Some(Format::Video) {
+            if let Some(asked) = self.videos_asked.get_mut(path) {
+                *asked = pass;
+                return None;
+            }
+            self.videos_asked.insert(path.to_path_buf(), pass);
+            self.videos.push_back(path.to_path_buf());
+            return Some(Lane::Video);
+        }
+        if !self.misses.contains(path) && self.queued.insert(path.to_path_buf()) {
+            self.pending.push_back(path.to_path_buf());
+            return Some(Lane::Database);
+        }
+        None
+    }
+
+    /// The next video the strip still shows in pass `now`. Those scrolled out meanwhile are
+    /// dropped; the strip asks again when they come back.
+    fn next_video(&mut self, now: u64) -> Option<PathBuf> {
+        while let Some(path) = self.videos.pop_front() {
+            let asked = self.videos_asked.remove(&path).unwrap_or(0);
+            if asked + STALE_PASSES >= now {
+                return Some(path);
+            }
+        }
+        None
+    }
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -94,28 +146,36 @@ impl Thumbs {
             textures: Mutex::default(),
             queue: Mutex::default(),
             wake: Condvar::new(),
+            video_wake: Condvar::new(),
             shutdown: AtomicBool::new(false),
         });
-        let worker_inner = Arc::clone(&inner);
-        let worker = std::thread::Builder::new()
-            .name("cerno-thumbs".into())
-            .spawn(move || worker(&worker_inner))
-            .expect("failed to spawn thumbnail worker");
-        Self {
-            inner,
-            worker: Some(worker),
-        }
+        let spawn = |name: &str, work: fn(&Inner)| {
+            let inner = Arc::clone(&inner);
+            std::thread::Builder::new()
+                .name(name.into())
+                .spawn(move || work(&inner))
+                .expect("failed to spawn thumbnail worker")
+        };
+        let workers = vec![
+            spawn("cerno-thumbs", worker),
+            spawn("cerno-video-thumbs", video_worker),
+        ];
+        Self { inner, workers }
     }
 
-    /// The texture, or `None` after queueing a database lookup.
+    /// The texture, or `None` after queueing a database lookup – or, for a video, a frame.
+    /// Ask every frame for what the strip shows: a video not asked for any more leaves the
+    /// queue.
     pub fn get_or_request(&self, path: &Path) -> Option<TextureHandle> {
         if let Some(texture) = lock(&self.inner.textures).get(path) {
             return Some(texture);
         }
+        let pass = self.inner.ctx.cumulative_pass_nr();
         let mut queue = lock(&self.inner.queue);
-        if !queue.misses.contains(path) && queue.queued.insert(path.to_path_buf()) {
-            queue.pending.push_back(path.to_path_buf());
-            self.inner.wake.notify_one();
+        match queue.request(path, pass) {
+            Some(Lane::Database) => self.inner.wake.notify_one(),
+            Some(Lane::Video) => self.inner.video_wake.notify_one(),
+            None => {}
         }
         None
     }
@@ -144,14 +204,21 @@ impl Thumbs {
         queue.pending.clear();
         queue.queued.clear();
         queue.misses.clear();
+        queue.videos.clear();
+        queue.videos_asked.clear();
     }
 }
 
 impl Drop for Thumbs {
     fn drop(&mut self) {
-        self.inner.shutdown.store(true, Ordering::Relaxed);
+        // Under the queue lock: the workers check the flag there right before they wait.
+        {
+            let _queue = lock(&self.inner.queue);
+            self.inner.shutdown.store(true, Ordering::Relaxed);
+        }
         self.inner.wake.notify_all();
-        if let Some(worker) = self.worker.take() {
+        self.inner.video_wake.notify_all();
+        for worker in self.workers.drain(..) {
             let _ = worker.join();
         }
     }
@@ -170,6 +237,15 @@ impl Inner {
         lock(&self.textures).insert(path.to_path_buf(), texture);
         lock(&self.queue).misses.remove(path);
         self.ctx.request_repaint();
+    }
+
+    /// Notes that the database has no thumbnail – unless the analysis delivered one during the
+    /// lookup: that stale miss would keep the database from being asked after an eviction.
+    fn miss(&self, path: PathBuf) {
+        let mut queue = lock(&self.queue);
+        if !lock(&self.textures).map.contains_key(&path) {
+            queue.misses.insert(path);
+        }
     }
 }
 
@@ -198,15 +274,59 @@ fn worker(inner: &Inner) {
         }
         match loaded {
             Ok(Some((w, h, rgb))) => inner.insert(&path, w, h, &rgb),
-            Ok(None) => {
-                lock(&inner.queue).misses.insert(path);
-            }
+            Ok(None) => inner.miss(path),
             Err(err) => {
                 log::debug!("thumbnail for {}: {err:#}", path.display());
-                lock(&inner.queue).misses.insert(path);
+                inner.miss(path);
             }
         }
     }
+}
+
+fn video_worker(inner: &Inner) {
+    loop {
+        // Read outside the queue lock, like the UI thread does.
+        let now = inner.ctx.cumulative_pass_nr();
+        let (path, token) = {
+            let mut queue = lock(&inner.queue);
+            if inner.shutdown.load(Ordering::Relaxed) {
+                return;
+            }
+            match queue.next_video(now) {
+                Some(path) => {
+                    let token = queue.fresh.get(&path).copied().unwrap_or(0);
+                    (path, token)
+                }
+                None => {
+                    drop(inner.video_wake.wait(queue));
+                    continue;
+                }
+            }
+        };
+        // The loader may have made it from the frame it shows.
+        if lock(&inner.textures).map.contains_key(&path) {
+            continue;
+        }
+        let (w, h, rgb) = video_thumbnail(&path);
+        // Saved by another program meanwhile: the frame shows the old version.
+        if lock(&inner.queue).fresh.get(&path).copied().unwrap_or(0) != token {
+            continue;
+        }
+        inner.insert(&path, w, h, &rgb);
+    }
+}
+
+/// A frame of the video at thumbnail size – without ffmpeg or a frame, the placeholder's dark
+/// one. The strip paints the play sign over both.
+fn video_thumbnail(path: &Path) -> (u32, u32, Vec<u8>) {
+    let frame = video::thumbnail(path, THUMB_SIZE).and_then(|jpeg| {
+        decode::catch_panic(|| decode::decode_for_display(&jpeg, Format::Jpeg, 1, [THUMB_SIZE; 2]))
+    });
+    let image = frame.unwrap_or_else(|err| {
+        log::debug!("no thumbnail frame of {}: {err:#}", path.display());
+        video::blank([THUMB_SIZE; 2])
+    });
+    (image.width, image.height, image.rgb)
 }
 
 fn load_from_db(db: &Db, path: &Path) -> Result<Option<(u32, u32, Vec<u8>)>> {
@@ -287,6 +407,56 @@ mod tests {
         }
         assert!(textures.map.contains_key(Path::new("2000.jpg")));
         assert!(!textures.map.contains_key(Path::new("1.jpg")));
+    }
+
+    #[test]
+    fn videos_never_go_to_the_database() {
+        let mut queue = Queue::default();
+        assert_eq!(queue.request(Path::new("clip.MP4"), 1), Some(Lane::Video));
+        assert_eq!(queue.request(Path::new("clip.MP4"), 2), None, "queued once");
+        assert!(queue.pending.is_empty() && queue.misses.is_empty());
+        assert_eq!(queue.request(Path::new("a.jpg"), 2), Some(Lane::Database));
+        assert_eq!(queue.next_video(2), Some(PathBuf::from("clip.MP4")));
+        assert_eq!(queue.next_video(2), None);
+        // Asked for again after its frame came and went (an eviction): queued anew.
+        assert_eq!(queue.request(Path::new("clip.MP4"), 9), Some(Lane::Video));
+    }
+
+    #[test]
+    fn videos_scrolled_out_of_the_strip_are_dropped() {
+        let mut queue = Queue::default();
+        for name in ["gone.mp4", "shown.mp4", "new.mp4"] {
+            queue.request(Path::new(name), 3);
+        }
+        // Scrolled on: "gone" is not drawn any more, the other two still are.
+        for pass in 4..=10 {
+            queue.request(Path::new("shown.mp4"), pass);
+            queue.request(Path::new("new.mp4"), pass);
+        }
+        assert_eq!(queue.next_video(10), Some(PathBuf::from("shown.mp4")));
+        assert_eq!(queue.next_video(11), Some(PathBuf::from("new.mp4")));
+        assert_eq!(queue.next_video(11), None);
+        assert!(queue.videos_asked.is_empty());
+        assert_eq!(queue.request(Path::new("gone.mp4"), 12), Some(Lane::Video));
+    }
+
+    #[test]
+    fn a_thumbnail_that_arrives_during_the_lookup_is_no_miss() {
+        let inner = Inner {
+            ctx: egui::Context::default(),
+            db: Arc::new(Db::open_in_memory().unwrap()),
+            textures: Mutex::default(),
+            queue: Mutex::default(),
+            wake: Condvar::new(),
+            video_wake: Condvar::new(),
+            shutdown: AtomicBool::new(false),
+        };
+        inner.insert(Path::new("a.jpg"), 1, 1, &[0, 0, 0]);
+        inner.miss(PathBuf::from("a.jpg"));
+        inner.miss(PathBuf::from("b.jpg"));
+        let queue = lock(&inner.queue);
+        assert!(!queue.misses.contains(Path::new("a.jpg")));
+        assert!(queue.misses.contains(Path::new("b.jpg")));
     }
 
     #[test]

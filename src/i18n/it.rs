@@ -57,6 +57,7 @@ pub static TEXTS: Texts = Texts {
     series_position: |index, len| format!("Serie {index} / {len}"),
     duplicate_of: |name| format!("Duplicato di {name}"),
     rejected: "Rifiutata",
+    filmstrip_video: "Video",
     star_tooltip: |n| format!("{n} ★ – tasto {n}"),
     zoom: |percent| format!("Zoom {percent:.0} %"),
     digital_zoom: |ratio| format!("Zoom digitale {ratio:.1}×"),
