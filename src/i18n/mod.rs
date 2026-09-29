@@ -265,8 +265,10 @@ pub struct Texts {
     pub menu_external: &'static str,
     /// Pick a program file by hand (remembered).
     pub external_other: &'static str,
-    /// The system's own chooser (Windows "Open with"; the default program on Linux) – not remembered.
+    /// Windows: the system's own "Open with" chooser – what is picked there is not remembered.
     pub external_chooser: &'static str,
+    /// Linux, instead of `external_chooser`: `xdg-open` starts the default program, it shows no choice.
+    pub external_default: &'static str,
     /// Title of the file dialog for another program.
     pub external_pick_title: &'static str,
     /// The photo is open in another program.

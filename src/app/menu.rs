@@ -419,7 +419,13 @@ impl CernoApp {
             );
         }
         rows.push(Row::new(Action::EditWithOther, t.external_other, None).disabled(block));
-        rows.push(Row::new(Action::EditWithChooser, t.external_chooser, None).disabled(block));
+        // Linux has no chooser to call: `xdg-open` starts the default program.
+        let chooser = if cfg!(windows) {
+            t.external_chooser
+        } else {
+            t.external_default
+        };
+        rows.push(Row::new(Action::EditWithChooser, chooser, None).disabled(block));
         Group::new(t.menu_external, Some("E".into()), rows)
     }
 

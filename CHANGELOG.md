@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Fixed
+
+- Linux: the last row of *Edit elsewhere* promised the system's *Open with* dialog, but Linux opens the default program without asking; it now says *Open with the default program*.
+
 ## [1.1.0] – 2026-09-29
 
 More than JPEG and HEIC: PNG, TIFF, WebP, BMP, GIF, RAW and videos. Comments and keywords, editing in another program, and originals that are never deleted.

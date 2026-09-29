@@ -84,6 +84,7 @@ pub static TEXTS: Texts = Texts {
     menu_external: "Modifica altrove",
     external_other: "Altro programma …",
     external_chooser: "«Apri con» del sistema …",
+    external_default: "Apri con il programma predefinito",
     external_pick_title: "Scegli un programma per modificare",
     external_opened: |name| {
         format!(
