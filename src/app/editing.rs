@@ -287,9 +287,8 @@ impl CernoApp {
         self.writer.rotate_quarter(path, clockwise);
     }
 
-    /// `Ctrl+Z`: the newest original kept for the current photo goes back into the file
-    /// (straighten, crop and quarter turns keep one, for 30 days). Pressed again, the one
-    /// before that.
+    /// `Ctrl+Z`: the first original of the current photo goes back into the file (the first
+    /// straighten, crop or quarter turn keeps it in `.originals`, for good).
     pub(super) fn undo_edit(&mut self) {
         if self.pinned.is_some() {
             return;
@@ -300,7 +299,7 @@ impl CernoApp {
         if !self.allowed(Change::Rewrite, Some(&path)) {
             return;
         }
-        match self.db.latest_backup(&path.to_string_lossy()) {
+        match crate::originals::original(&self.db, &path) {
             Ok(Some(_)) => {
                 self.edit_busy = true;
                 self.writer.restore(path);

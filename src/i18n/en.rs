@@ -269,7 +269,10 @@ pub static TEXTS: Texts = Texts {
             "X, Shift+X",
             "Reject – marked in the file, nothing is deleted; with Shift go on to the next photo",
         ),
-        ("Del", "Delete: goes to the trash after 5 seconds"),
+        (
+            "Del",
+            "Delete: moves into the hidden .originals folder after 5 seconds – nothing is lost",
+        ),
         ("Esc", "Bring back photos that are waiting to be deleted"),
         (
             "C",
@@ -312,7 +315,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "Ctrl+Z",
-            "Undo the last change – originals are kept for 30 days",
+            "Bring back the original – it stays in .originals beside the photo",
         ),
     ],
     help_more: [

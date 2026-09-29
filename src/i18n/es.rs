@@ -279,7 +279,10 @@ pub static TEXTS: Texts = Texts {
             "X, Mayús+X",
             "Rechazar – queda anotado en el archivo, no se elimina nada; con Mayús, pasar a la foto siguiente",
         ),
-        ("Supr", "Eliminar: va a la papelera tras 5 segundos"),
+        (
+            "Supr",
+            "Eliminar: va a la carpeta oculta .originals tras 5 segundos – no se pierde nada",
+        ),
         ("Esc", "Recuperar las fotos que esperan a ser eliminadas"),
         (
             "C",
@@ -325,7 +328,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "Ctrl+Z",
-            "Deshacer el último cambio – los originales se guardan 30 días",
+            "Recuperar el original – se queda en .originals junto a la foto",
         ),
     ],
     help_more: [

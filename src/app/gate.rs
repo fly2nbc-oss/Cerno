@@ -14,7 +14,7 @@ use super::notice::Notice;
 pub(super) enum Change {
     /// Stars, rejection, colour label.
     Mark,
-    /// Into the trash (with the countdown).
+    /// Into `.originals` beside the photo (with the countdown).
     Delete,
     /// Open straighten or crop.
     Edit,

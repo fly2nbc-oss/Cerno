@@ -572,18 +572,6 @@ impl Db {
         Ok(())
     }
 
-    /// The newest copy of `path`: row id and the copy's file.
-    pub fn latest_backup(&self, path: &str) -> Result<Option<(i64, String)>> {
-        Ok(self
-            .conn()
-            .query_row(
-                "SELECT id, backup FROM backups WHERE path = ?1 ORDER BY at_ms DESC, id DESC",
-                [path],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .optional()?)
-    }
-
     /// Every copy of `path`, newest first: row id and the copy's file.
     pub fn backups_of(&self, path: &str) -> Result<Vec<(i64, String)>> {
         let conn = self.conn();
@@ -600,18 +588,21 @@ impl Db {
         Ok(())
     }
 
-    /// Backups taken before `before_ms`, removed from the table; the caller deletes the files.
-    pub fn take_old_backups(&self, before_ms: i64) -> Result<Vec<String>> {
-        let mut conn = self.conn();
-        let tx = conn.transaction()?;
-        let files = {
-            let mut stmt = tx.prepare("SELECT backup FROM backups WHERE at_ms < ?1")?;
-            let rows = stmt.query_map([before_ms], |row| row.get(0))?;
-            rows.collect::<rusqlite::Result<Vec<String>>>()?
-        };
-        tx.execute("DELETE FROM backups WHERE at_ms < ?1", [before_ms])?;
-        tx.commit()?;
-        Ok(files)
+    /// The kept original moved (beside its photo, or with it): the row points at the new file.
+    pub fn set_backup_file(&self, id: i64, backup: &str) -> Result<()> {
+        self.conn().execute(
+            "UPDATE backups SET backup = ?2 WHERE id = ?1",
+            params![id, backup],
+        )?;
+        Ok(())
+    }
+
+    /// Every row, oldest first: row id, photo and kept file.
+    pub fn all_backups(&self) -> Result<Vec<(i64, String, String)>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare("SELECT id, path, backup FROM backups ORDER BY at_ms, id")?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
     pub fn setting(&self, key: &str) -> Option<String> {

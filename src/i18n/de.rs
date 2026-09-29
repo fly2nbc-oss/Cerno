@@ -283,7 +283,10 @@ pub static TEXTS: Texts = Texts {
             "X, Umschalt+X",
             "Ablehnen – steht in der Datei, nichts wird gelöscht; mit Umschalt weiter zum nächsten Foto",
         ),
-        ("Entf", "Löschen: nach 5 Sekunden in den Papierkorb"),
+        (
+            "Entf",
+            "Löschen: nach 5 Sekunden in den versteckten Ordner .originals – nichts geht verloren",
+        ),
         ("Esc", "Fotos zurückholen, die aufs Löschen warten"),
         (
             "C",
@@ -332,7 +335,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "Strg+Z",
-            "Letzte Änderung zurücknehmen – Originale bleiben 30 Tage",
+            "Original zurückholen – es bleibt in .originals neben dem Foto",
         ),
     ],
     help_more: [

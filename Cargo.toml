@@ -37,7 +37,6 @@ rusqlite = { version = "0.40.2", features = ["bundled"] }
 sha2 = "0.11.0"
 # UI language default: the system locale (Windows, Linux, macOS).
 sys-locale = "0.3"
-trash = "5.2.9"
 ureq = "3.4.2"
 zune-core = "0.5.3"
 zune-jpeg = "0.5.15"

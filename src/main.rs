@@ -3,7 +3,6 @@
 
 mod analysis;
 mod app;
-mod backup;
 mod db;
 mod decode;
 mod deletion;
@@ -16,6 +15,7 @@ mod i18n;
 mod library;
 mod loader;
 mod metadata;
+mod originals;
 mod paths;
 mod rating;
 mod theme;

@@ -282,7 +282,10 @@ pub static TEXTS: Texts = Texts {
             "X, Maiusc+X",
             "Rifiuta – annotato nel file, non viene eliminato nulla; con Maiusc passa alla foto successiva",
         ),
-        ("Canc", "Elimina: va nel cestino dopo 5 secondi"),
+        (
+            "Canc",
+            "Elimina: va nella cartella nascosta .originals dopo 5 secondi – non si perde nulla",
+        ),
         ("Esc", "Recupera le foto in attesa di essere eliminate"),
         (
             "C",
@@ -331,7 +334,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "Ctrl+Z",
-            "Annulla l'ultima modifica – gli originali restano 30 giorni",
+            "Recupera l'originale – resta in .originals accanto alla foto",
         ),
     ],
     help_more: [

@@ -12,8 +12,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 - The menu (`Ctrl+K`) is grouped by what a command acts on: **This photo** (stars, reject, colour label, compare, straighten, crop, turns, undo, delete), **Photos on screen** (sort, filter, refresh order, copy, move, delete, delete rejected), **View** (panels, zoom, full screen), **Settings** (auto advance, subfolders, language, models & data) and Help. Stars and deleting the current photo are in the menu now; colours appear once for marking and once, clearly apart, as a filter; no row appears or disappears at the top level. Submenus can hold submenus. The action menu (`Ctrl+M`) offers "Delete rejected photos" too.
 - A series only holds photos of one camera model: two phones or a phone and a drone firing at the same moment make two series instead of one. Photos without camera data only form series with each other. After the update Cerno reads every photo's metadata once more (no new analysis).
 
+- **Originals are never deleted.** Deleting a photo (`Delete`, the action menu, "Delete rejected photos") moves it into a hidden `.originals` folder beside it instead of the trash. Before a photo's first straighten, crop or quarter turn, its original is copied there under the same name, and only that first original is kept – `Ctrl+Z` brings it back in one step and the copy stays. When Cerno moves a photo to another folder, its original moves along. Cerno never shows `.originals`, not even when that folder is opened.
+- The originals Cerno 1.0 kept in its data folder move into the `.originals` folder beside their photos at the first start.
+
 ### Removed
 
+- The 30-day clean-up of kept originals, and deleting their copies together with the photo.
 - "Best of each series" and its `+n` count: a series always shows all its photos. Hiding them let the next frame of a burst slip into a rejected photo's place unnoticed, so after "Delete rejected photos" the look-alike frames seemed to be rejected photos that had come back. Series stay marked in the filmstrip and the info bar, and capture-time order still puts the sharpest first.
 
 ## [1.0.0] – 2026-09-29

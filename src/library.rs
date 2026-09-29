@@ -38,8 +38,12 @@ impl Library {
     /// Paths are made absolute first: `cerno IMG_0042.jpg` from inside the folder must select
     /// that photo (a bare name would become `./IMG_0042.jpg` and match nothing), and the index
     /// keys files by their full path.
+    ///
+    /// Photos in an `.originals` folder are never shown: opening that folder, or a photo in it,
+    /// opens the folder it belongs to, with nothing selected.
     pub fn open(path: &Path, subfolders: bool) -> io::Result<(Library, usize)> {
-        let path = &std::path::absolute(path)?;
+        let path = std::path::absolute(path)?;
+        let path = &outside_originals(&path).unwrap_or(path);
         let (dir, selected) = if path.is_dir() {
             (path.to_path_buf(), None)
         } else {
@@ -91,6 +95,19 @@ fn relative_key(root: &Path, path: &Path) -> String {
         .unwrap_or_else(|_| file_name_lossy(path))
 }
 
+/// The folder an `.originals` folder in `path` belongs to, when there is one.
+fn outside_originals(path: &Path) -> Option<PathBuf> {
+    let mut outside = PathBuf::new();
+    for part in path.components() {
+        if crate::originals::is_inside(Path::new(part.as_os_str())) {
+            return Some(outside);
+        }
+        outside.push(part);
+    }
+    None
+}
+
+/// Hidden folders – `.originals` among them – are never walked.
 fn is_hidden(path: &Path) -> bool {
     path.file_name()
         .and_then(|n| n.to_str())
@@ -292,6 +309,29 @@ mod tests {
             "IMG_2.jpg"
         );
 
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// Kept originals and set-aside photos are never shown – not when their folder or one of
+    /// them is opened directly either.
+    #[test]
+    fn originals_are_never_shown() {
+        let root = std::env::temp_dir().join(format!("cerno-lib-orig-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let originals = root.join(".originals");
+        std::fs::create_dir_all(&originals).unwrap();
+        std::fs::write(root.join("IMG_1.jpg"), b"x").unwrap();
+        std::fs::write(originals.join("IMG_1.jpg"), b"x").unwrap();
+        std::fs::write(originals.join("IMG_2.jpg"), b"x").unwrap();
+
+        for opened in [root.clone(), originals.clone(), originals.join("IMG_2.jpg")] {
+            for subfolders in [false, true] {
+                let (library, index) = Library::open(&opened, subfolders).unwrap();
+                assert_eq!(library.dir, root, "{}", opened.display());
+                assert_eq!(*library.paths, [root.join("IMG_1.jpg")]);
+                assert_eq!(index, 0);
+            }
+        }
         std::fs::remove_dir_all(&root).unwrap();
     }
 

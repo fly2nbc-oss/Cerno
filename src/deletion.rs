@@ -2,8 +2,9 @@
 //!
 //! A deleted photo disappears from the view at once and waits in a queue. Every further
 //! deletion restarts the countdown; cancelling (Esc) brings all waiting photos back. When the
-//! countdown runs out, the whole queue is moved to the trash on a background thread, so
-//! browsing, rating and deleting go on meanwhile.
+//! countdown runs out, the whole queue is set aside on a background thread – into the hidden
+//! `.originals` folder beside each photo, never the trash or gone (`originals`) – so browsing,
+//! rating and deleting go on meanwhile.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -13,11 +14,13 @@ use std::time::{Duration, Instant};
 
 pub const DELAY: Duration = Duration::from_secs(5);
 
-/// Moves one file away; the trash in the app, a recorder in tests.
+/// Moves one file away; `.originals` in the app, a recorder in tests.
 pub type Remover = fn(&Path) -> Result<(), String>;
 
-pub fn move_to_trash(path: &Path) -> Result<(), String> {
-    trash::delete(path).map_err(|e| e.to_string())
+pub fn set_aside(path: &Path) -> Result<(), String> {
+    crate::originals::set_aside(path)
+        .map(|_| ())
+        .map_err(|e| format!("{e:#}"))
 }
 
 /// Result of one finished batch.
@@ -77,7 +80,7 @@ impl DeleteQueue {
         Some((self.pending.len(), left.clamp(0.0, 1.0)))
     }
 
-    /// Starts the trash worker once the countdown has run out. `on_done` runs on the worker
+    /// Starts the worker that sets the photos aside once the countdown has run out. `on_done` runs on the worker
     /// after the batch (e.g. to request a repaint).
     pub fn tick(&mut self, now: Instant, on_done: impl FnOnce() + Send + 'static) -> bool {
         if self.deadline.is_none_or(|d| now < d) || self.pending.is_empty() {
@@ -146,7 +149,7 @@ fn run(remove: Remover, batch: Vec<PathBuf>) -> Finished {
     for path in batch {
         match remove(&path) {
             Ok(()) => {
-                log::info!("moved to trash: {}", path.display());
+                log::info!("deleted (set aside): {}", path.display());
                 finished.deleted.push(path);
             }
             Err(err) => {

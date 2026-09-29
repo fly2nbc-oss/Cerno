@@ -288,7 +288,10 @@ pub static TEXTS: Texts = Texts {
             "X, Maj+X",
             "Rejeter – noté dans le fichier, rien n'est supprimé ; avec Maj, passer à la photo suivante",
         ),
-        ("Suppr", "Supprimer : va dans la corbeille après 5 secondes"),
+        (
+            "Suppr",
+            "Supprimer : va dans le dossier caché .originals après 5 secondes – rien n'est perdu",
+        ),
         ("Esc", "Récupérer les photos en attente de suppression"),
         (
             "C",
@@ -337,7 +340,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "Ctrl+Z",
-            "Annuler la dernière retouche – les originaux sont gardés 30 jours",
+            "Récupérer l'original – il reste dans .originals à côté de la photo",
         ),
     ],
     help_more: [

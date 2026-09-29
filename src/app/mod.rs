@@ -234,7 +234,7 @@ impl CernoApp {
                 Arc::clone(&files),
             ),
             writer: RatingWriter::new(ctx.clone(), Arc::clone(&db), Arc::clone(&files)),
-            deletions: DeleteQueue::new(deletion::move_to_trash),
+            deletions: DeleteQueue::new(deletion::set_aside),
             transfers: TransferQueue::new(Arc::clone(&files)),
             db,
             files,
@@ -404,8 +404,7 @@ impl eframe::App for CernoApp {
         for outcome in self.transfers.finish_now() {
             self.retarget_moved(&outcome);
         }
-        // Photos that really went to the trash teach For you and take their kept originals
-        // along, as during the session.
+        // Photos that were really set aside teach For you, as during the session.
         for path in self.deletions.finish_now().deleted {
             self.forget_deleted(&path);
         }

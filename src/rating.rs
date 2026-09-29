@@ -107,11 +107,12 @@ impl RatingWriter {
         let thread = std::thread::Builder::new()
             .name("cerno-rating-writer".into())
             .spawn(move || {
-                let backups = crate::backup::dir().ok();
-                match backups.as_deref().map(|dir| crate::backup::prune(&db, dir)) {
-                    None | Some(Ok(0)) => {}
-                    Some(Ok(n)) => log::info!("deleted {n} originals older than 30 days"),
-                    Some(Err(err)) => log::warn!("backups: {err:#}"),
+                // Cerno 1.0 kept its copies in the data folder; they move beside the photos.
+                let legacy = crate::originals::legacy_dir();
+                match legacy.map(|dir| crate::originals::migrate(&db, &dir)) {
+                    Ok(Ok(0)) | Err(_) => {}
+                    Ok(Ok(n)) => log::info!("moved {n} kept originals into .originals folders"),
+                    Ok(Err(err)) => log::warn!("kept originals: {err:#}"),
                 }
                 run(
                     &rx,
@@ -121,7 +122,6 @@ impl RatingWriter {
                         ctx: &ctx,
                         db: &db,
                         files: &files,
-                        backups: backups.as_deref(),
                     },
                 );
             })
@@ -195,7 +195,6 @@ struct Shared<'a> {
     ctx: &'a egui::Context,
     db: &'a Db,
     files: &'a FileLocks,
-    backups: Option<&'a Path>,
 }
 
 fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
@@ -205,7 +204,6 @@ fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
         ctx,
         db,
         files,
-        backups,
     } = *shared;
     let mut exiftool: Option<ExifTool> = None;
     let mut pending: HashMap<PathBuf, Pending> = HashMap::new();
@@ -242,7 +240,7 @@ fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
             Ok(Message::RotateQuarter { path, clockwise }) => {
                 let held = files.hold_write(&path);
                 let result = flush_pending(&mut pending, &mut exiftool, &path, status, files)
-                    .and_then(|()| keep_original(db, backups, &path))
+                    .and_then(|()| crate::originals::keep(db, &path))
                     .and_then(|()| apply_quarter_turn(&mut exiftool, &path, clockwise, db));
                 drop(held);
                 push_outcome(outcomes, path, result, Done::Rotated);
@@ -250,7 +248,7 @@ fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
             Ok(Message::ReplacePixels { path, jpeg }) => {
                 let held = files.hold_write(&path);
                 let result = flush_pending(&mut pending, &mut exiftool, &path, status, files)
-                    .and_then(|()| keep_original(db, backups, &path))
+                    .and_then(|()| crate::originals::keep(db, &path))
                     .and_then(|()| apply_pixels(&mut exiftool, &path, &jpeg, db));
                 drop(held);
                 push_outcome(outcomes, path, result, Done::Reencoded);
@@ -266,7 +264,7 @@ fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
             Ok(Message::Restore { path }) => {
                 let held = files.hold_write(&path);
                 let result = flush_pending(&mut pending, &mut exiftool, &path, status, files)
-                    .and_then(|()| restore_original(&mut exiftool, &path, db, backups));
+                    .and_then(|()| restore_original(&mut exiftool, &path, db));
                 drop(held);
                 push_outcome(outcomes, path, result, Done::Restored);
             }
@@ -512,26 +510,12 @@ fn push_outcome(outcomes: &Mutex<Vec<EditOutcome>>, path: PathBuf, result: Resul
     }
 }
 
-/// Copies the file into the backup folder before an edit (see `backup`).
-fn keep_original(db: &Db, backups: Option<&Path>, path: &Path) -> Result<()> {
-    let dir = backups.context("no folder for the kept originals")?;
-    crate::backup::keep(db, dir, path)?;
-    Ok(())
-}
-
-/// `Ctrl+Z`: writes the newest kept original back into the file – in place, so the file keeps
-/// its identity and dates – then the rating and colour label the file has now, so marks set
-/// after the edit stay. The copy is used up.
-fn restore_original(
-    exiftool: &mut Option<ExifTool>,
-    path: &Path,
-    db: &Db,
-    backups: Option<&Path>,
-) -> Result<()> {
+/// `Ctrl+Z`: writes the first original (`.originals`) back into the file – in place, so the
+/// file keeps its identity and dates – then the rating and colour label the file has now, so
+/// marks set after the edit stay. The original stays where it is.
+fn restore_original(exiftool: &mut Option<ExifTool>, path: &Path, db: &Db) -> Result<()> {
     let key = path.to_string_lossy();
-    let dir = backups.context("no folder for the kept originals")?;
-    let (id, copy) =
-        crate::backup::latest(db, dir, path)?.context("no original kept for this photo")?;
+    let copy = crate::originals::original(db, path)?.context("no original kept for this photo")?;
     let original = std::fs::read(&copy).context("cannot read the kept original")?;
     let now = metadata::read(&std::fs::read(path).context("cannot read file")?);
     let label = match now.label {
@@ -547,10 +531,6 @@ fn restore_original(
         .context("cannot restore file times")?;
     write_marks(exiftool, path, Some(now.rating.value), label)?;
     db.forget_file(&key).context("cannot drop the index row")?;
-    db.drop_backup(id)?;
-    if let Err(err) = std::fs::remove_file(&copy) {
-        log::warn!("kept original {}: {err}", copy.display());
-    }
     log::info!("original restored: {}", path.display());
     Ok(())
 }
@@ -903,22 +883,25 @@ mod tests {
         let read = || metadata::read(&fs::read(&path).unwrap());
         let before = read().orientation;
 
-        let backups = dir.join("backups");
-        keep_original(&db, Some(&backups), &path).unwrap();
-        apply_quarter_turn(&mut exiftool, &path, true, &db).unwrap();
+        let untouched = fs::read(&path).unwrap();
+        // Two turns: only the first original is kept.
+        for _ in 0..2 {
+            crate::originals::keep(&db, &path).unwrap();
+            apply_quarter_turn(&mut exiftool, &path, true, &db).unwrap();
+        }
         assert_ne!(read().orientation, before);
+        let kept = dir.join(crate::originals::FOLDER).join("Ärger.jpg");
+        assert_eq!(fs::read(&kept).unwrap(), untouched);
         write_marks(&mut exiftool, &path, Some(Rating::Stars(4)), None).unwrap();
 
-        restore_original(&mut exiftool, &path, &db, Some(&backups)).unwrap();
+        restore_original(&mut exiftool, &path, &db).unwrap();
         let after = read();
         assert_eq!(after.orientation, before);
         assert_eq!(after.rating.value, Rating::Stars(4));
         assert_eq!(fs::metadata(&path).unwrap().modified().unwrap(), old);
-        assert!(db.latest_backup(&path.to_string_lossy()).unwrap().is_none());
-        assert!(
-            restore_original(&mut exiftool, &path, &db, Some(&backups)).is_err(),
-            "used up"
-        );
+        assert_eq!(fs::read(&kept).unwrap(), untouched, "the original stays");
+        restore_original(&mut exiftool, &path, &db).expect("again: same result");
+        assert_eq!(read().orientation, before);
         drop(exiftool);
         fs::remove_dir_all(&dir).unwrap();
     }

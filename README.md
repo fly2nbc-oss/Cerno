@@ -54,12 +54,12 @@ Cerno (Latin *cerno* – "I sift, discern, see clearly") is a native Rust deskto
 - **Instant switching** – background workers prefetch the photos around the current one, decoded at monitor resolution and uploaded as GPU textures.
 - **Keyboard-first** – `1`–`5` set stars, `Shift+1`–`5` rate and move on, `0` clears, `X` marks a photo as rejected (written as `xmp:Rating = -1`, nothing is deleted), `6`–`9` set a colour label (red, yellow, green, blue; purple is in the menu). `Ctrl+K` opens the menu at the bottom right, grouped by what a command acts on – this photo (stars, reject, colour, compare, edit, delete), the photos on screen (sort, filter, copy, move, delete), the view, the settings and help – with the shortcut shown on each row; arrows, `Enter`, `→`/`←` and a letter work in it like anywhere else.
 - **Safe metadata writes** – apart from the EXIF orientation of a 90° turn, the rating and the colour label (`xmp:Label`, English names) are the only metadata Cerno writes, in the background and debounced, in one pass when both change. File modification and creation dates stay bit-exact. Windows Explorer's own rating tags are kept in sync if present.
-- **Straighten, crop, rotate (JPEG)** – `S` straightens over a fine grid (mouse wheel or arrows, `Shift` for finer steps), `R` crops to Original, 3:2, 4:3, 16:9 or 1:1 (`A` changes the ratio, `X` flips landscape/portrait), `Ctrl+←` / `Ctrl+→` rotate by 90° losslessly through the EXIF orientation. `Enter` applies, `Esc` cancels. Straighten and crop re-encode the JPEG (quality 95, no chroma subsampling) into the original file; the file dates stay as they were. **Before every edit the original is kept** in Cerno's data folder: `Ctrl+Z` puts it back (with the rating and colour label given since), pressed again the one before. Kept originals are deleted after 30 days, or together with the photo when you delete it in Cerno.
+- **Straighten, crop, rotate (JPEG)** – `S` straightens over a fine grid (mouse wheel or arrows, `Shift` for finer steps), `R` crops to Original, 3:2, 4:3, 16:9 or 1:1 (`A` changes the ratio, `X` flips landscape/portrait), `Ctrl+←` / `Ctrl+→` rotate by 90° losslessly through the EXIF orientation. `Enter` applies, `Esc` cancels. Straighten and crop re-encode the JPEG (quality 95, no chroma subsampling) into the original file; the file dates stay as they were. **The original is never lost**: before the first edit Cerno copies the photo into a hidden `.originals` folder beside it, and `Ctrl+Z` puts it back (with the rating and colour label given since). Later edits keep that first original; nothing in `.originals` is ever deleted.
 - **Zoom** – `Z` or double-click toggles 100 %, mouse wheel zooms around the cursor, drag pans. Full resolution is loaded on demand; zoom and position stay when you switch photos, so a series can be compared at the same spot.
 - **Compare** – `C` pins the current photo on the left, the right side browses the rest. `A` keeps the left one, `D` the right one; the other is marked as rejected, compare mode ends and the kept photo is shown alone. Both sides zoom together. Aesthetics and sharpness sit under each photo. The menu's "Delete rejected photos" sends all rejects to the trash when you are done.
 - **Series and duplicates** – photos from the same camera shot within two seconds form a series (two cameras firing together make two); sorting by capture time puts the sharpest one first. A series is never folded away – every photo stays in view, and a mark applies to that one photo only. Identical copies (same pixels) are marked as duplicates – the original is the file the others only extend (`IMG_1.jpg` for `IMG_1 - Kopie.jpg`), else the only rated one, else the first; nothing is deleted on its own.
 - **Folders** – open one folder, or turn on "Include subfolders" to read the tree under it (hidden folders stay out).
-- **Delete without dialogs** – `Delete` hides the photo at once and moves it to the trash after a 5-second countdown; every further deletion restarts it, `Esc` brings all waiting photos back. Nothing blocks meanwhile.
+- **Delete without dialogs** – `Delete` hides the photo at once and moves it into the hidden `.originals` folder beside it after a 5-second countdown – Cerno never deletes a photo for good; every further deletion restarts it, `Esc` brings all waiting photos back. Nothing blocks meanwhile.
 - **Copy, move or delete what the filter shows** – the filter bar's Action menu (`Ctrl+M`) copies or moves every photo on screen to another folder (choosing the folder is the confirmation), or deletes them with the same countdown and `Esc`.
 - **Filmstrip** – thumbnails with your stars, a colour stripe, a marker for probably blurry shots and one for duplicates (each named in the tooltip), and a wider gap between series.
 - **Sharpness, aesthetics and For you** – see [Scores](#scores). Sort by name, capture time, rating, either aesthetics score, For you or sharpness. The filter bar (`T`) keeps sort and filter on one line and combines stars, unrated, rejected, blurry, duplicate copies and the five colour labels; nothing ticked shows every photo.
@@ -84,7 +84,7 @@ Cerno (Latin *cerno* – "I sift, discern, see clearly") is a native Rust deskto
 | `cerno_<version>_x86_64.AppImage` | Linux portable – `chmod +x`, run; HEIC libraries included; needs glibc 2.39+ (Ubuntu 24.04, Debian 13, Fedora 40 or newer) |
 | `cerno_<version>_amd64.deb` | Ubuntu 24.04+ / Debian 13+ – `sudo apt install ./cerno_<version>_amd64.deb` pulls in libheif's HEVC plugin and ExifTool |
 
-The Windows files are not code-signed yet, so SmartScreen asks once (*More info* → *Run anyway*). Installed or portable, Cerno keeps its index, models and kept originals in `%LOCALAPPDATA%\Cerno\data` (Linux: `~/.local/share/cerno`); uninstalling leaves them unless you tick *Delete the application data*.
+The Windows files are not code-signed yet, so SmartScreen asks once (*More info* → *Run anyway*). Installed or portable, Cerno keeps its index and models in `%LOCALAPPDATA%\Cerno\data` (Linux: `~/.local/share/cerno`); uninstalling leaves them unless you tick *Delete the application data*. Kept originals and deleted photos are in the `.originals` folders beside your photos and are never touched by uninstalling.
 
 Or build from source:
 
@@ -111,7 +111,7 @@ Or drop a folder onto the window / `Ctrl+O`. When moving the binary, keep beside
 | `X` / `Shift+X` | Reject (again: undo) / reject and go to the next photo |
 | `6` / `7` / `8` / `9` | Colour label red / yellow / green / blue (again: remove it) |
 | `Shift+6`–`9` | Set that colour and go to the next photo |
-| `Delete` | Delete (to the trash after 5 s; `Esc` undoes) |
+| `Delete` | Delete (into `.originals` beside the photo after 5 s; `Esc` undoes) |
 | `C` | Compare: pin the current photo on the left / leave compare mode |
 | `A` / `D` | Compare: keep left / keep right – the other one is rejected, compare mode ends |
 | `Z`, double-click | Toggle fit ↔ 100 % |
@@ -127,7 +127,7 @@ Or drop a folder onto the window / `Ctrl+O`. When moving the binary, keep beside
 | `R` | Crop (JPEG): draw a frame, `A` changes the ratio, `X` flips landscape/portrait |
 | `Ctrl+←` / `Ctrl+→` | Rotate 90° – lossless, via the EXIF orientation |
 | `Enter` / `Esc` | Apply / cancel straighten or crop |
-| `Ctrl+Z` | Undo the last straighten, crop or quarter turn of the current photo (the original is kept for 30 days) |
+| `Ctrl+Z` | Bring back the original of the current photo (kept in `.originals` before its first straighten, crop or quarter turn) |
 | `Ctrl+K` | Menu: view, sort, filter, edit, photo, colour labels, models & data, language, help – arrows, `Enter`, `→`/`←`, a letter jumps |
 | `Ctrl+M` | Action menu: copy, move or delete the photos on screen |
 | `Ctrl+L` | Switch language (DE → EN → FR → ES → IT) |
@@ -238,7 +238,7 @@ egui/eframe + wgpu · zune-jpeg / optional libheif · ONNX Runtime (DirectML) ·
 - JPEGs are converted to sRGB on decode (Adobe RGB and Display P3 by a fixed matrix, other profiles through a colour engine). Untagged and already-sRGB files are left as they are. HEIC colour is left to libheif. The Windows monitor profile is not applied.
 - Because the modification date is preserved and XMP padding often keeps the size equal, backup/sync tools that only compare size and date (e.g. `rsync` without `-c`) may not notice a rating or colour-label change.
 - Truncated JPEGs are shown partially, with the missing part in grey.
-- Deleted photos go to the system trash (Recycle Bin / freedesktop trash), not straight to oblivion. Closing Cerno during the countdown carries the deletion out.
+- Deleted photos move into a hidden `.originals` folder beside them – never to oblivion, and not to the Recycle Bin; empty it yourself once you are sure. Cerno never shows that folder, not even when you open it. Closing Cerno during the countdown carries the deletion out.
 
 ---
 

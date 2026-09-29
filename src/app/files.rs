@@ -7,9 +7,9 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 
-use crate::backup;
 use crate::i18n;
 use crate::library;
+use crate::originals;
 use crate::transfer::{Mode as TransferMode, Outcome as TransferOutcome};
 
 use super::CernoApp;
@@ -136,6 +136,10 @@ impl CernoApp {
             return;
         }
         for (src, dest) in &outcome.done {
+            // The kept original follows into `.originals` at the destination first.
+            if let Err(err) = originals::follow(&self.db, src, dest) {
+                log::warn!("kept original of {}: {err:#}", src.display());
+            }
             if let Err(err) = self
                 .db
                 .retarget_path(&src.to_string_lossy(), &dest.to_string_lossy())
@@ -145,7 +149,7 @@ impl CernoApp {
         }
     }
 
-    /// The photos on screen go to the trash with the usual countdown – no question, `Esc`
+    /// The photos on screen are set aside into `.originals` with the usual countdown – no question, `Esc`
     /// brings them all back, like `Delete` for a single photo.
     pub(super) fn delete_selection(&mut self, ctx: &egui::Context) {
         if self.view.is_empty() {
@@ -162,7 +166,7 @@ impl CernoApp {
         self.rebuild_view(ctx, None);
     }
 
-    /// All rejected photos go to the trash – with the usual countdown, `Esc` brings them back.
+    /// All rejected photos are set aside – with the usual countdown, `Esc` brings them back.
     pub(super) fn delete_rejected(&mut self, ctx: &egui::Context) {
         if !self.allowed(Change::Delete, None) {
             return;
@@ -174,7 +178,7 @@ impl CernoApp {
         self.rebuild_view(ctx, None);
     }
 
-    /// Hides the photo at once; it goes to the trash when the countdown runs out.
+    /// Hides the photo at once; it moves into `.originals` when the countdown runs out.
     fn delete(&mut self, ctx: &egui::Context, path: PathBuf, keep: Option<PathBuf>) {
         self.deletions.push(path, Instant::now());
         self.rebuild_view(ctx, keep);
@@ -198,16 +202,11 @@ impl CernoApp {
         }
     }
 
-    /// A photo really went to the trash: it teaches the taste model what the user doesn't
-    /// like, and its kept originals go with it (no copies left behind in the data folder).
+    /// A photo was really set aside: it teaches the taste model what the user doesn't like.
+    /// Its first original stays in `.originals`, and so does the index row pointing at it.
     pub(super) fn forget_deleted(&self, path: &Path) {
         if let Err(err) = self.db.record_deletion(&path.to_string_lossy()) {
             log::warn!("index: {err:#}");
-        }
-        if let Ok(dir) = backup::dir()
-            && let Err(err) = backup::discard(&self.db, &dir, path)
-        {
-            log::warn!("kept originals of {}: {err:#}", path.display());
         }
     }
 
