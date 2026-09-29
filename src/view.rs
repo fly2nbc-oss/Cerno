@@ -316,6 +316,8 @@ pub struct Facts {
     pub label: Option<Label>,
     /// Capture time in local wall-clock milliseconds.
     pub taken_ms: Option<i64>,
+    /// `metadata::camera_id` of the camera model; series never mix cameras.
+    pub camera: Option<u64>,
     /// Pixel fingerprint; `None` until the photo has been indexed.
     pub fingerprint: Option<u64>,
     pub scores: Scores,
@@ -409,6 +411,7 @@ struct Entry<'a> {
     rating: Rating,
     label: Option<Label>,
     taken: Option<i64>,
+    camera: Option<u64>,
     /// Subject sharpness percentile, when the photo has been measured.
     sharp: Option<f32>,
 }
@@ -440,6 +443,7 @@ pub fn build(
             Entry {
                 path,
                 taken: known.and_then(|f| f.taken_ms),
+                camera: known.and_then(|f| f.camera),
                 rating,
                 label,
                 facts: known,
@@ -602,9 +606,10 @@ fn pick_original<'a>(paths: &[&'a PathBuf], marked: &impl Fn(&Path) -> bool) -> 
     paths[0]
 }
 
-/// Series of photos that follow each other by at most [`SERIES_GAP_MS`]. A single photo is
-/// not a series. Within a series the sharpest non-rejected photo is index 1; rejected and
-/// not-yet-measured photos come last.
+/// Series of photos from one camera that follow each other by at most [`SERIES_GAP_MS`] – two
+/// cameras firing at the same moment make two series. Photos without a camera model only form
+/// series with each other. A single photo is not a series. Within a series the sharpest
+/// non-rejected photo is index 1; rejected and not-yet-measured photos come last.
 fn series_places(shown: &[Entry<'_>]) -> Vec<Option<SeriesPlace>> {
     let mut timed: Vec<usize> = shown
         .iter()
@@ -612,13 +617,16 @@ fn series_places(shown: &[Entry<'_>]) -> Vec<Option<SeriesPlace>> {
         .filter(|(_, entry)| entry.taken.is_some())
         .map(|(index, _)| index)
         .collect();
-    timed.sort_by(|&a, &b| shown[a].taken.cmp(&shown[b].taken).then(a.cmp(&b)));
+    timed.sort_by(|&a, &b| {
+        (shown[a].camera, shown[a].taken, a).cmp(&(shown[b].camera, shown[b].taken, b))
+    });
 
     let mut groups: Vec<Vec<usize>> = Vec::new();
     for index in timed {
         let taken = shown[index].taken.unwrap_or(0);
         if let Some(group) = groups.last_mut()
             && let Some(&prev) = group.last()
+            && shown[prev].camera == shown[index].camera
             && taken - shown[prev].taken.unwrap_or(0) <= SERIES_GAP_MS
         {
             group.push(index);
@@ -668,12 +676,15 @@ fn taken_order(
     a: usize,
     b: usize,
 ) -> std::cmp::Ordering {
-    let key = |index: usize| -> Option<(i64, u32)> {
+    // The series id keeps two cameras' series apart when they start in the same millisecond
+    // (files with whole seconds only).
+    let key = |index: usize| -> Option<(i64, u32, u32)> {
         let taken = shown[index].taken?;
-        let (start, rank) = places[index]
-            .map(|place| (place.start_ms, place.index))
-            .unwrap_or((taken, 0));
-        Some((start, rank))
+        Some(
+            places[index]
+                .map(|place| (place.start_ms, place.id, place.index))
+                .unwrap_or((taken, 0, 0)),
+        )
     };
     match (key(a), key(b)) {
         (Some(x), Some(y)) => x.cmp(&y).then(a.cmp(&b)),
@@ -988,6 +999,63 @@ mod tests {
         assert_eq!(view.series[3].unwrap().len, 2);
         assert!(view.series[5].is_none());
         assert!(view.grouped);
+    }
+
+    #[test]
+    fn series_never_mix_cameras() {
+        let shot = |name: &str, camera: Option<&str>, taken: i64, sharp: f32| {
+            let (path, mut facts) = timed(name, Some(taken), Some(sharp), Rating::Unrated);
+            facts.camera = camera.map(crate::metadata::camera_id);
+            (path, facts)
+        };
+        // Two phones fire together; a screenshot without EXIF camera sits in between.
+        let rows = [
+            shot("a", Some("Pixel 7a"), 0, 10.0),
+            shot("b", Some("moto g42"), 400, 20.0),
+            shot("c", Some("Pixel 7a"), 1_000, 30.0),
+            shot("d", Some("moto g42"), 1_300, 40.0),
+            shot("e", None, 1_500, 50.0),
+            shot("f", None, 2_500, 60.0),
+            // Same second as a and c, other camera: whole seconds only.
+            shot("g", Some("XQ-ES54"), 0, 70.0),
+            shot("h", Some("XQ-ES54"), 1_000, 80.0),
+        ];
+        let all: Vec<_> = rows.iter().map(|(p, _)| p.clone()).collect();
+        let known: HashMap<_, _> = rows.into_iter().collect();
+        let view = build(
+            &all,
+            ViewOptions {
+                sort: SortKey::Taken,
+                ..ViewOptions::default()
+            },
+            |p: &Path| known.get(p).copied(),
+            &HashMap::new(),
+            &HashMap::new(),
+            |_| false,
+        );
+        let series_of = |name: &str| {
+            let index = view.iter().position(|p| p == Path::new(name)).unwrap();
+            view.series[index].map(|place| (place.id, place.len))
+        };
+        assert_eq!(series_of("a").map(|s| s.1), Some(2));
+        assert_eq!(series_of("a"), series_of("c"));
+        assert_eq!(series_of("b"), series_of("d"));
+        assert_eq!(
+            series_of("e"),
+            series_of("f"),
+            "no camera: among themselves"
+        );
+        assert_eq!(series_of("g"), series_of("h"));
+        let ids: HashSet<u32> = ["a", "b", "e", "g"]
+            .iter()
+            .map(|n| series_of(n).unwrap().0)
+            .collect();
+        assert_eq!(ids.len(), 4, "four series");
+        // Each series stays together, even two that start in the same millisecond.
+        let order = names(&view.paths);
+        for pair in ["ca", "db", "fe", "hg"] {
+            assert!(order.contains(pair), "{pair} in {order}");
+        }
     }
 
     /// Windows names copies "IMG - Kopie.jpg"; they sort before "IMG.jpg" but are not the

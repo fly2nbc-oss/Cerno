@@ -10,9 +10,21 @@ use memchr::memmem;
 /// Microsoft's EXIF rating tag (IFD0 0x4746), written by Windows Explorer.
 const EXIF_RATING: exif::Tag = exif::Tag(exif::Context::Tiff, 0x4746);
 
-/// Bumped when capture time or colour-label reading changes, so the analysis re-reads metadata
-/// without decoding the image again.
-pub const VERSION: i64 = 1;
+/// Bumped when capture time, camera or colour-label reading changes, so the analysis re-reads
+/// metadata without decoding the image again. 2: the camera model (series per camera).
+pub const VERSION: i64 = 2;
+
+/// Stable id of a camera model for series (FNV-1a, not `DefaultHasher`): case and outer
+/// spaces don't count.
+pub fn camera_id(model: &str) -> u64 {
+    model
+        .trim()
+        .to_lowercase()
+        .bytes()
+        .fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+            (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+        })
+}
 
 /// A photo's rating field (`xmp:Rating`): the XMP standard defines -1 as "rejected" and 0 (or
 /// no value) as "unrated".
@@ -194,6 +206,10 @@ pub struct FileMetadata {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct CameraInfo {
     pub camera: Option<String>,
+    /// Tells cameras apart for series: the EXIF model, else the make. The model alone, because
+    /// some files of the same camera lack the make ("FC7503" next to "DJI FC7503"). Two bodies
+    /// of the same model look alike – phones write no serial number.
+    pub model: Option<String>,
     pub lens: Option<String>,
     pub focal_mm: Option<f64>,
     pub focal_35mm: Option<u32>,
@@ -307,6 +323,7 @@ fn camera_info(exif: &Exif) -> CameraInfo {
     };
     let uint = |tag| field(tag)?.get_uint(0).filter(|v| *v > 0);
 
+    let model = text(Tag::Model).or_else(|| text(Tag::Make));
     // "Canon" + "Canon EOS R5" → "Canon EOS R5"; "NIKON CORPORATION" + "NIKON Z 6" → "NIKON Z 6".
     let camera = match (text(Tag::Make), text(Tag::Model)) {
         (Some(make), Some(model)) => {
@@ -325,6 +342,7 @@ fn camera_info(exif: &Exif) -> CameraInfo {
     };
     CameraInfo {
         camera,
+        model,
         lens: text(Tag::LensModel),
         focal_mm: number(Tag::FocalLength),
         focal_35mm: uint(Tag::FocalLengthIn35mmFilm),
@@ -606,6 +624,31 @@ mod tests {
             "35 mm  ·  f/2.8  ·  1/250 s  ·  ISO 400"
         );
         assert_eq!(info.gear_line(), "NIKON Z 6_2  ·  NIKKOR Z 24-70mm f/4 S");
+        assert_eq!(info.model.as_deref(), Some("NIKON Z 6_2"));
+    }
+
+    /// A drone writes "DJI" + "FC7503", but some of its files only the model: still one camera.
+    #[test]
+    fn the_model_tells_cameras_apart() {
+        let with_make = camera_info(&exif_from(&[
+            field(Tag::Make, Value::Ascii(vec![b"DJI".to_vec()])),
+            field(Tag::Model, Value::Ascii(vec![b"FC7503".to_vec()])),
+        ]));
+        let model_only = camera_info(&exif_from(&[field(
+            Tag::Model,
+            Value::Ascii(vec![b"FC7503".to_vec()]),
+        )]));
+        assert_eq!(with_make.camera.as_deref(), Some("DJI FC7503"));
+        let id = |info: &CameraInfo| info.model.as_deref().map(camera_id);
+        assert_eq!(id(&with_make), id(&model_only));
+        assert_eq!(camera_id("Pixel 7a"), camera_id(" pixel 7A "));
+        assert_ne!(camera_id("Pixel 7a"), camera_id("moto g42"));
+        // Without a model the make stands in.
+        let make_only = camera_info(&exif_from(&[field(
+            Tag::Make,
+            Value::Ascii(vec![b"Ricoh".to_vec()]),
+        )]));
+        assert_eq!(make_only.model.as_deref(), Some("Ricoh"));
     }
 
     fn rationals(values: &[(u32, u32)]) -> Value {

@@ -54,6 +54,8 @@ pub struct Known {
     pub rating: Rating,
     pub label: Option<Label>,
     pub taken_ms: Option<i64>,
+    /// `metadata::camera_id` of the camera model; only one camera's photos form a series.
+    pub camera: Option<u64>,
     /// `None` until the file has been indexed.
     pub fingerprint: Option<u64>,
     pub scores: Scores,
@@ -207,6 +209,7 @@ fn known_from(record: &crate::db::FileRecord) -> Known {
         rating: record.rating,
         label: record.label,
         taken_ms: record.image.taken_ms,
+        camera: record.image.camera.as_deref().map(metadata::camera_id),
         fingerprint: Some(record.fingerprint),
         scores: record.image.scores,
     }
@@ -553,15 +556,19 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
                 meta.rating.value,
                 meta.label.known(),
             )?;
-            shared
-                .db
-                .put_metadata(record.fingerprint, meta.camera.taken_ms, metadata::VERSION)?;
+            shared.db.put_metadata(
+                record.fingerprint,
+                meta.camera.taken_ms,
+                meta.camera.model.as_deref(),
+                metadata::VERSION,
+            )?;
             shared.board.set(
                 path,
                 Known {
                     rating: meta.rating.value,
                     label: meta.label.known(),
                     taken_ms: meta.camera.taken_ms,
+                    camera: meta.camera.model.as_deref().map(metadata::camera_id),
                     fingerprint: Some(record.fingerprint),
                     scores: record.image.scores,
                 },
@@ -694,9 +701,12 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
         record.scores.aesthetic25 = Some(value);
         lap("v2.5", &mut timings);
     }
-    shared
-        .db
-        .put_metadata(fingerprint, meta.camera.taken_ms, metadata::VERSION)?;
+    shared.db.put_metadata(
+        fingerprint,
+        meta.camera.taken_ms,
+        meta.camera.model.as_deref(),
+        metadata::VERSION,
+    )?;
     log::debug!("analysed {}: {timings:?} ms", path.display());
 
     shared.board.set(
@@ -705,6 +715,7 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
             rating: meta.rating.value,
             label: meta.label.known(),
             taken_ms: meta.camera.taken_ms,
+            camera: meta.camera.model.as_deref().map(metadata::camera_id),
             fingerprint: Some(fingerprint),
             scores: record.scores,
         },

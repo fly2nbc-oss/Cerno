@@ -232,6 +232,7 @@ impl CernoApp {
             rating: known.rating,
             label: known.label,
             taken_ms: known.taken_ms,
+            camera: known.camera,
             fingerprint: known.fingerprint,
             scores: known.scores,
             personal: self.analyzer.personal(path),

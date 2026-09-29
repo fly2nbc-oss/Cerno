@@ -66,6 +66,7 @@ const ADDED_IMAGE_COLUMNS: &[(&str, &str)] = &[
     ("faces_version", "INTEGER NOT NULL DEFAULT 0"),
     ("taken_ms", "INTEGER"),
     ("metadata_version", "INTEGER NOT NULL DEFAULT 0"),
+    ("camera", "TEXT"),
 ];
 
 /// Columns added to `files` after the first release.
@@ -75,7 +76,7 @@ const ADDED_FILE_COLUMNS: &[(&str, &str)] = &[("label", "TEXT")];
 const IMAGE_COLUMNS: &str = "i.sharpness, i.sharpness_version, i.aesthetic, i.aesthetic_model,
     i.aesthetic25, i.aesthetic25_model, i.highlights, i.shadows, i.exposure_version,
     i.eyes, i.faces, i.faces_version, i.thumbnail IS NOT NULL, i.embedding,
-    i.taken_ms, i.metadata_version";
+    i.taken_ms, i.metadata_version, i.camera";
 
 /// Cheap identity check for a file: if size or mtime changed, the fingerprint is recomputed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,6 +132,8 @@ pub struct ImageRecord {
     /// or when the file has no capture time.
     pub taken_ms: Option<i64>,
     pub metadata_version: i64,
+    /// Camera model (`CameraInfo::model`): only photos of one camera form a series.
+    pub camera: Option<String>,
 }
 
 /// What the index knows about one path.
@@ -182,6 +185,7 @@ fn image_from_row(row: &Row<'_>, at: usize) -> rusqlite::Result<ImageRecord> {
             .map(|b| blob_to_f32(&b)),
         taken_ms: row.get(at + 14)?,
         metadata_version: row.get::<_, Option<i64>>(at + 15)?.unwrap_or(0),
+        camera: row.get(at + 16)?,
     })
 }
 
@@ -348,18 +352,21 @@ impl Db {
         Ok(())
     }
 
-    /// Capture time for a fingerprint. The images row already exists (the thumbnail does).
+    /// Capture time and camera model for a fingerprint. The images row already exists (the
+    /// thumbnail does).
     pub fn put_metadata(
         &self,
         fingerprint: u64,
         taken_ms: Option<i64>,
+        camera: Option<&str>,
         version: i64,
     ) -> Result<()> {
         self.conn()
             .prepare_cached(
-                "UPDATE images SET taken_ms = ?2, metadata_version = ?3 WHERE fingerprint = ?1",
+                "UPDATE images SET taken_ms = ?2, camera = ?3, metadata_version = ?4
+                 WHERE fingerprint = ?1",
             )?
-            .execute(params![fingerprint as i64, taken_ms, version])?;
+            .execute(params![fingerprint as i64, taken_ms, camera, version])?;
         Ok(())
     }
 
@@ -745,9 +752,12 @@ mod tests {
         assert_eq!(record.image.exposure_version, 0);
         assert_eq!(record.image.metadata_version, 0);
         assert_eq!(record.label, None);
-        db.put_metadata(9, Some(1_000), 1).unwrap();
+        assert_eq!(record.image.camera, None);
+        db.put_metadata(9, Some(1_000), Some("Pixel 7a"), 2)
+            .unwrap();
         assert_eq!(db.image(9).unwrap().taken_ms, Some(1_000));
-        assert_eq!(db.image(9).unwrap().metadata_version, 1);
+        assert_eq!(db.image(9).unwrap().camera.as_deref(), Some("Pixel 7a"));
+        assert_eq!(db.image(9).unwrap().metadata_version, 2);
         db.put_faces(9, None, 0, 1).unwrap();
         assert_eq!(db.image(9).unwrap().scores.faces, Some(0));
     }

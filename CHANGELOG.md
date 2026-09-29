@@ -29,6 +29,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 - Hints fade after about 5 s; errors stay until `Esc` or a click.
 - The start screen is a small card with the five keys to begin with; `H` shows the full help (with its own "Edit" section), also over the start screen.
 - Six font sizes instead of fifteen; section titles and the series line are muted, the accent marks the current photo and interaction only; label blue is clearly different from the accent.
+- A series only holds photos of one camera model: two phones or a phone and a drone firing at the same moment make two series instead of one. Photos without camera data only form series with each other. After the update Cerno reads every photo's metadata once more (no new analysis).
 
 ### Fixed
 
