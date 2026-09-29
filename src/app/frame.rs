@@ -114,9 +114,6 @@ impl CernoApp {
                 None => known.map(|k| k.rating).unwrap_or_default(),
             };
             let place = series.get(i).and_then(|place| *place);
-            let more = (self.options.best_of_series && place.is_some_and(|p| p.len > 1))
-                .then(|| place.map(|p| p.len - 1))
-                .flatten();
             filmstrip::CellInfo {
                 rating,
                 blurry,
@@ -124,7 +121,6 @@ impl CernoApp {
                 label: self.label_of(path, None),
                 series_id: place.map(|p| p.id),
                 in_current_series: place.is_some_and(|p| Some(p.id) == current_series),
-                more,
                 duplicate_of: duplicates
                     .get(i)
                     .and_then(|p| p.as_ref())

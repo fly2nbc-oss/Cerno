@@ -230,8 +230,6 @@ pub struct Texts {
     pub auto_advance_on: &'static str,
     /// Position within a series, 1-based, and how many photos the series has.
     pub series_position: fn(u32, u32) -> String,
-    /// How many further photos the series hides (`+3`).
-    pub series_more: fn(u32) -> String,
     pub duplicate_of: fn(&str) -> String,
     /// Marks a rejected photo (info bar, compare label).
     pub rejected: &'static str,
@@ -255,7 +253,6 @@ pub struct Texts {
     pub cmd_delete_rejected: fn(usize) -> String,
     pub cmd_auto_advance: &'static str,
     pub cmd_subfolders: &'static str,
-    pub cmd_best_of_series: &'static str,
     pub menu_sort: &'static str,
     pub menu_filter: &'static str,
     pub menu_view: &'static str,
@@ -456,7 +453,6 @@ mod tests {
             assert!((t.cmd_delete_rejected)(7).contains('7'), "{name}");
             let series = (t.series_position)(3, 7);
             assert!(series.contains('3') && series.contains('7'), "{name}");
-            assert!((t.series_more)(4).contains('4'), "{name}");
             assert!((t.duplicate_of)("a.jpg").contains("a.jpg"), "{name}");
             assert!((t.keeps_this)("A").contains('A'), "{name}");
             assert!((t.deleting)(1).contains('1'), "{name}");

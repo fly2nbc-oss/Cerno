@@ -14,7 +14,7 @@ use super::gate::Change;
 
 impl CernoApp {
     /// Rates the current photo. `advance` moves on afterwards, unless the photo itself
-    /// dropped out of the view (a filter or "best of series") – that already lands on the next one.
+    /// dropped out of the view (a filter) – that already lands on the next one.
     pub(super) fn set_rating(&mut self, ctx: &egui::Context, rating: Rating, advance: bool) {
         if let Some(path) = self.view.get(self.current).cloned() {
             self.rate(ctx, path, rating, advance);
@@ -115,8 +115,7 @@ impl CernoApp {
     }
 
     fn rating_affects_view(&self) -> bool {
-        self.options.best_of_series
-            || !self.options.filter.is_all()
+        !self.options.filter.is_all()
             || matches!(self.options.sort, SortKey::Rating | SortKey::Taken)
     }
 

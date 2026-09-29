@@ -208,7 +208,6 @@ impl CernoApp {
                 .and_then(|s| SortKey::from_id(&s))
                 .unwrap_or(SortKey::Name),
             filter,
-            best_of_series: db.setting("best_of_series").as_deref() == Some("1"),
         };
         let auto_advance = db.setting("auto_advance").as_deref() == Some("1");
         let subfolders = db.setting("subfolders").as_deref() == Some("1");

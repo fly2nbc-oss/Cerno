@@ -47,7 +47,6 @@ enum Action {
     Label(Option<Label>),
     AutoAdvance,
     Subfolders,
-    BestOfSeries,
     Straighten,
     RotateCcw,
     RotateCw,
@@ -225,8 +224,6 @@ impl CernoApp {
                     Row::new(Action::Zoom, t.cmd_zoom, key("Z")).toggle(self.zoom.is_zoomed()),
                     Row::new(Action::Fullscreen, t.cmd_fullscreen, key("F")),
                     Row::new(Action::Subfolders, t.cmd_subfolders, None).toggle(self.subfolders),
-                    Row::new(Action::BestOfSeries, t.cmd_best_of_series, None)
-                        .toggle(self.options.best_of_series),
                     Row::new(Action::AutoAdvance, t.cmd_auto_advance, None)
                         .toggle(self.auto_advance),
                 ],
@@ -438,9 +435,6 @@ impl CernoApp {
                 if let Some(dir) = self.dir.clone() {
                     self.open(ctx, &dir);
                 }
-            }
-            Action::BestOfSeries => {
-                self.change_options(ctx, |o| o.best_of_series = !o.best_of_series);
             }
             Action::Language(lang) => self.set_language(ctx, lang),
             Action::Models => self.models_open = true,

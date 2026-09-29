@@ -7,6 +7,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Changed
+
+- A series only holds photos of one camera model: two phones or a phone and a drone firing at the same moment make two series instead of one. Photos without camera data only form series with each other. After the update Cerno reads every photo's metadata once more (no new analysis).
+
+### Removed
+
+- "Best of each series" and its `+n` count: a series always shows all its photos. Hiding them let the next frame of a burst slip into a rejected photo's place unnoticed, so after "Delete rejected photos" the look-alike frames seemed to be rejected photos that had come back. Series stay marked in the filmstrip and the info bar, and capture-time order still puts the sharpest first.
+
 ## [1.0.0] – 2026-09-29
 
 The first release with packages. It also contains the changes of 0.9.0 (capture-time sort, colour labels, series, subfolders, duplicate marks, auto-advance), which had no release of its own.
