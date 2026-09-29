@@ -121,15 +121,18 @@ Or drop a folder onto the window / `Ctrl+O`. When moving the binary, keep beside
 | `Delete` | Delete (into `.originals` beside the photo after 5 s; `Esc` undoes) |
 | `C` | Compare: pin the current photo on the left / leave compare mode |
 | `A` / `D` | Compare: keep left / keep right – the other one is rejected, compare mode ends |
+| `M` | Only photos similar to this one (in compare mode: to the pinned one) / all again |
 | `Z`, double-click | Toggle fit ↔ 100 % |
 | `Enter` | Play a video in the default player |
 | `+` / `-`, mouse wheel | Zoom in / out |
 | Drag | Pan while zoomed |
+| `O` | Check overlay: sharpest edges → clipped highlights and shadows → off |
 | `T` | Toggle the filter bar (sort and filter) |
 | `Tab` | Toggle the details panel (mouse wheel scrolls it) |
 | `I` | Expand or collapse the explanations in the details panel |
 | `B` | Description tab: comment and keywords (`Enter` adds a keyword, `Esc` leaves the field) |
 | `F6` | Toggle the filmstrip |
+| `F7` | Grid of all photos: `↑`/`↓` a row, `PageUp`/`PageDown` a screen, `+`/`-` the size; `Enter` or a double-click opens the photo |
 | `Shift+Tab` | Filter bar, details panel and filmstrip together (the info bar always stays) |
 | `F`, `F11` | Toggle full screen |
 | `S` | Straighten (JPEG): mouse wheel or arrows rotate, `Shift` is finer |
@@ -142,7 +145,7 @@ Or drop a folder onto the window / `Ctrl+O`. When moving the binary, keep beside
 | `Ctrl+M` | Action menu: copy, move or delete the photos on screen |
 | `Ctrl+L` | Switch language (DE → EN → FR → ES → IT) |
 | `H` / `F1` / `?` | Help page with all shortcuts |
-| `Esc` | Close help or the menu, undo pending deletions, then leave zoom, compare mode, fullscreen |
+| `Esc` | Close help or the menu, undo pending deletions, then leave zoom, compare mode, the grid, fullscreen |
 | `Ctrl+O` | Open folder |
 
 ---
