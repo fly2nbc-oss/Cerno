@@ -172,6 +172,7 @@ pub fn run(mode: Mode, sources: &[PathBuf], dest_dir: &Path, files: &FileLocks) 
         match result {
             Ok(()) => {
                 log::info!("{} {} → {}", verb(mode), src.display(), dest.display());
+                carry_sidecar(mode, src, &dest);
                 outcome.done.push((src.clone(), dest));
             }
             Err(err) => {
@@ -181,6 +182,22 @@ pub fn run(mode: Mode, sources: &[PathBuf], dest_dir: &Path, files: &FileLocks) 
         }
     }
     outcome
+}
+
+/// A RAW's or video's marks live in its XMP sidecar: it goes (or is copied) along. One already
+/// at the destination is left as it is.
+fn carry_sidecar(mode: Mode, src: &Path, dest: &Path) {
+    let (from, to) = (crate::sidecar::path_of(src), crate::sidecar::path_of(dest));
+    if !crate::sidecar::applies(src) || !from.is_file() {
+        return;
+    }
+    if to.exists() {
+        log::warn!("sidecar {} exists already – kept", to.display());
+        return;
+    }
+    if let Err(err) = apply(mode, &from, &to) {
+        log::warn!("could not {} {}: {err}", verb(mode), from.display());
+    }
 }
 
 fn verb(mode: Mode) -> &'static str {
@@ -291,6 +308,31 @@ mod tests {
         assert_eq!(outcome.done.len(), 1);
         assert!(!src.exists());
         assert_eq!(fs::read(&outcome.done[0].1).unwrap(), b"moved");
+
+        fs::remove_dir_all(&src_dir).unwrap();
+        fs::remove_dir_all(&dest_dir).unwrap();
+    }
+
+    /// A RAW's marks are in its sidecar: moving it takes `IMG_7.xmp` along; a JPEG's name twin
+    /// is not its sidecar and stays.
+    #[test]
+    fn a_raw_takes_its_sidecar_along() {
+        let src_dir = temp_dir("side-src");
+        let dest_dir = temp_dir("side-dest");
+        let raw = write_old(&src_dir, "IMG_7.CR2", b"raw");
+        write_old(&src_dir, "IMG_7.xmp", b"<x:xmpmeta xmp:Rating='4'/>");
+        let jpeg = write_old(&src_dir, "IMG_8.JPG", b"jpeg");
+        write_old(&src_dir, "IMG_8.xmp", b"someone else's");
+
+        let outcome = run(Mode::Move, &[raw, jpeg], &dest_dir, &FileLocks::default());
+        assert_eq!(outcome.done.len(), 2);
+        assert_eq!(
+            fs::read(dest_dir.join("IMG_7.xmp")).unwrap(),
+            b"<x:xmpmeta xmp:Rating='4'/>"
+        );
+        assert!(!src_dir.join("IMG_7.xmp").exists());
+        assert!(src_dir.join("IMG_8.xmp").exists(), "not the JPEG's");
+        assert!(!dest_dir.join("IMG_8.xmp").exists());
 
         fs::remove_dir_all(&src_dir).unwrap();
         fs::remove_dir_all(&dest_dir).unwrap();

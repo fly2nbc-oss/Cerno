@@ -224,7 +224,10 @@ pub static TEXTS: Texts = Texts {
     cmd_rotate_cw: "Girar 90° a la derecha",
     cmd_crop: "Recorte",
     cmd_undo: "Deshacer",
-    edit_not_jpeg: "Enderezar y recortar solo funciona con JPEG.",
+    edit_not_jpeg: "Enderezar, recortar, girar y Ctrl+Z solo funcionan con JPEG.",
+    video_play_hint: "Intro: reproducir",
+    video_no_ffmpeg: "Sin vista previa: Cerno necesita ffmpeg (p. ej. winget install Gyan.FFmpeg)",
+    video_play_failed: |err| format!("No se puede reproducir el vídeo: {err}"),
     edit_writing: "Escribiendo la foto…",
     edit_cancelled: "Se muestra otra foto: edición cancelada",
     busy_editing: "La edición sigue abierta: Intro aplica, Esc cancela",
@@ -310,6 +313,10 @@ pub static TEXTS: Texts = Texts {
         (
             "Mayús+Tab",
             "Barra de filtros, detalles y tira de miniaturas a la vez",
+        ),
+        (
+            "Intro",
+            "Reproducir un vídeo en el reproductor predeterminado",
         ),
     ],
     help_edit: [

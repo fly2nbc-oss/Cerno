@@ -4,6 +4,7 @@
 use std::path::Path;
 
 use crate::i18n;
+use crate::library;
 use crate::transfer::Mode as TransferMode;
 
 use super::CernoApp;
@@ -37,8 +38,10 @@ pub(super) enum Blocked {
     /// The photo is being moved to another folder.
     Moving,
     /// The index could not be opened: an edit's kept original would have no row to find it
-    /// by (`Ctrl+Z`) or to delete it after 30 days.
+    /// by (`Ctrl+Z`).
     NoIndex,
+    /// Straighten, crop, quarter turns and `Ctrl+Z` exist for JPEG only.
+    NotJpeg,
 }
 
 impl Blocked {
@@ -50,6 +53,7 @@ impl Blocked {
             Self::Copying => t.busy_copying,
             Self::Moving => t.busy_moving,
             Self::NoIndex => t.edit_needs_index,
+            Self::NotJpeg => t.edit_not_jpeg,
         }
     }
 }
@@ -113,6 +117,11 @@ impl CernoApp {
                 no_index: self.db.is_in_memory(),
             },
         )
+        .or_else(|| {
+            let edit = matches!(change, Change::Edit | Change::Rewrite);
+            let jpeg = path.is_none_or(|p| library::format_of(p) == Some(library::Format::Jpeg));
+            (edit && !jpeg).then_some(Blocked::NotJpeg)
+        })
     }
 
     /// `true` when `change` may go ahead; otherwise a hint says why not.

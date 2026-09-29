@@ -34,6 +34,21 @@ enum Side {
 }
 
 impl CernoApp {
+    /// `Enter` on a video: it plays in the system's player. Nothing for a photo.
+    pub(super) fn play_video(&mut self) {
+        let Some(path) = self.view.get(self.current) else {
+            return;
+        };
+        if library::format_of(path) != Some(library::Format::Video) {
+            return;
+        }
+        if let Err(err) = crate::video::play(path) {
+            self.notice = Some(Notice::error((i18n::t().video_play_failed)(&format!(
+                "{err:#}"
+            ))));
+        }
+    }
+
     /// `C`: pin the current photo on the left and show the next one on the right – or leave
     /// compare mode.
     pub(super) fn toggle_compare(&mut self, ctx: &egui::Context) {
@@ -200,6 +215,14 @@ impl CernoApp {
         );
         if slot.side == Side::Single {
             self.draw_edit_overlay(ui, &frame);
+        }
+        if self
+            .view
+            .get(slot.index)
+            .is_some_and(|p| library::format_of(p) == Some(library::Format::Video))
+        {
+            let note = self.no_ffmpeg.then_some(i18n::t().video_no_ffmpeg);
+            overlays::video_badge(ui, slot.area, note);
         }
         if needs_full && full.is_none() {
             self.loader.request_full(slot.index);

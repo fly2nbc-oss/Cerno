@@ -11,6 +11,41 @@ use crate::metadata::Rating;
 use crate::theme::{text, tokens};
 use crate::ui::{icons, stars};
 
+/// Over a video's frame, near the bottom: a painted play sign and "Enter: play"; above it,
+/// when there is no frame, why (`note`).
+pub fn video_badge(ui: &Ui, area: Rect, note: Option<&str>) {
+    let painter = ui.painter().with_clip_rect(area);
+    let galley = painter.layout_no_wrap(
+        i18n::t().video_play_hint.to_owned(),
+        FontId::proportional(text::BODY),
+        tokens::TEXT,
+    );
+    let size = vec2(galley.size().x + 46.0, 34.0);
+    let pill = Rect::from_center_size(pos2(area.center().x, area.bottom() - 44.0), size);
+    painter.rect_filled(pill, 17.0, Color32::from_black_alpha(170));
+    let c = pos2(pill.left() + 20.0, pill.center().y);
+    painter.add(eframe::egui::Shape::convex_polygon(
+        vec![
+            c + vec2(-4.0, -7.0),
+            c + vec2(8.0, 0.0),
+            c + vec2(-4.0, 7.0),
+        ],
+        tokens::TEXT,
+        Stroke::NONE,
+    ));
+    let text_pos = pos2(pill.left() + 34.0, pill.center().y - galley.size().y / 2.0);
+    painter.galley(text_pos, galley, tokens::TEXT);
+    if let Some(note) = note {
+        painter.text(
+            pos2(area.center().x, pill.top() - 10.0),
+            Align2::CENTER_BOTTOM,
+            note,
+            FontId::proportional(text::SMALL),
+            tokens::MUTED,
+        );
+    }
+}
+
 /// Compare mode: `LEFT  name  ★★★  A keeps this` in the top left corner of a photo.
 pub fn compare_label(ui: &Ui, area: Rect, side: &str, name: &str, rating: Rating, hint: &str) {
     let painter = ui.painter().with_clip_rect(area);

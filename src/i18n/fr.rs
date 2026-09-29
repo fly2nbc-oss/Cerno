@@ -227,7 +227,10 @@ pub static TEXTS: Texts = Texts {
     cmd_rotate_cw: "Pivoter de 90° vers la droite",
     cmd_crop: "Recadrer",
     cmd_undo: "Annuler la retouche",
-    edit_not_jpeg: "Redressement et recadrage uniquement pour les JPEG.",
+    edit_not_jpeg: "Redressement, recadrage, rotation et Ctrl+Z uniquement pour les JPEG.",
+    video_play_hint: "Entrée : lire",
+    video_no_ffmpeg: "Pas d'aperçu : Cerno a besoin de ffmpeg (p. ex. winget install Gyan.FFmpeg)",
+    video_play_failed: |err| format!("Impossible de lire la vidéo : {err}"),
     edit_writing: "Écriture de la photo…",
     edit_cancelled: "Une autre photo est affichée – retouche annulée",
     busy_editing: "La retouche est encore ouverte – Entrée applique, Échap annule",
@@ -320,6 +323,7 @@ pub static TEXTS: Texts = Texts {
         ("I", "Détails : déplier ou replier toutes les explications"),
         ("F6", "Pellicule"),
         ("Maj+Tab", "Barre de filtres, détails et pellicule ensemble"),
+        ("Entrée", "Lire une vidéo dans le lecteur par défaut"),
     ],
     help_edit: [
         (

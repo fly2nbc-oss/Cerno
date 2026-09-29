@@ -220,7 +220,10 @@ pub static TEXTS: Texts = Texts {
     cmd_rotate_cw: "Rotate 90° clockwise",
     cmd_crop: "Crop",
     cmd_undo: "Undo",
-    edit_not_jpeg: "Straighten and crop work on JPEG only.",
+    edit_not_jpeg: "Straighten, crop, turns and Ctrl+Z work on JPEG only.",
+    video_play_hint: "Enter: play",
+    video_no_ffmpeg: "No preview frame: Cerno needs ffmpeg for it (e.g. winget install Gyan.FFmpeg)",
+    video_play_failed: |err| format!("Cannot play the video: {err}"),
     edit_writing: "Writing the photo…",
     edit_cancelled: "Another photo is shown – the edit was cancelled",
     busy_editing: "The edit is still open – Enter applies, Esc cancels",
@@ -298,6 +301,7 @@ pub static TEXTS: Texts = Texts {
         ("I", "Details: expand or collapse all explanations"),
         ("F6", "Filmstrip"),
         ("Shift+Tab", "Filter bar, details and filmstrip together"),
+        ("Enter", "Play a video in the default player"),
     ],
     help_edit: [
         (

@@ -8,7 +8,6 @@ use eframe::egui::{self, Event, Key, MouseWheelUnit, Pos2, Rect, Sense};
 
 use crate::edit::{self, Ratio};
 use crate::i18n;
-use crate::library;
 use crate::loader::Lookup;
 use crate::ui::{edit as edit_ui, viewer};
 
@@ -117,11 +116,8 @@ impl CernoApp {
         let Some(path) = self.view.get(self.current).cloned() else {
             return false;
         };
+        // Also refuses anything but JPEG (`Blocked::NotJpeg`).
         if !self.allowed(Change::Edit, Some(&path)) {
-            return false;
-        }
-        if library::format_of(&path) != Some(library::Format::Jpeg) {
-            self.notice = Some(Notice::hint(i18n::t().edit_not_jpeg));
             return false;
         }
         matches!(self.loader.get(self.current), Lookup::Ready(_))
@@ -277,10 +273,6 @@ impl CernoApp {
             return;
         };
         if !self.allowed(Change::Rewrite, Some(&path)) {
-            return;
-        }
-        if library::format_of(&path) != Some(library::Format::Jpeg) {
-            self.notice = Some(Notice::hint(i18n::t().edit_not_jpeg));
             return;
         }
         self.edit_busy = true;

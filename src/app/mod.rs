@@ -142,6 +142,8 @@ pub struct CernoApp {
     started: Instant,
     logged_first_frame: bool,
     logged_first_photo: bool,
+    /// ffmpeg was not found at start: videos show a placeholder instead of a frame.
+    no_ffmpeg: bool,
     /// Straighten or crop, while it is open. The saved zoom comes back on Enter or Esc.
     edit: Option<EditSession>,
     /// Encodes a confirmed edit. Joined on exit so the write is not lost.
@@ -278,6 +280,7 @@ impl CernoApp {
             started,
             logged_first_frame: false,
             logged_first_photo: false,
+            no_ffmpeg: crate::video::locate().is_none(),
             edit: None,
             edit_thread: None,
             edit_busy: false,

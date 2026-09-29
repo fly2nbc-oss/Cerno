@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **More formats**, kept simple: PNG, TIFF, WebP, BMP and GIF (first frame); **RAW** files (CR2, CR3, NEF, ARW, RAF, ORF, RW2, PEF, SRW, DNG, …) by the full-size preview they carry, with the camera's orientation; **videos** (MP4, MOV, M4V, AVI, MKV, MTS, …) by one frame when [ffmpeg](https://ffmpeg.org) is installed – `Enter` plays them in the default player. Straighten, crop, turns and `Ctrl+Z` stay JPEG-only and are greyed out in the menu for everything else.
+- Stars and colour labels of proprietary RAW, BMP and video are written into an **XMP sidecar** beside the file (`IMG_1.xmp`, as Lightroom names it) – a RAW is never rewritten, a video of several gigabytes not copied for a star. Delete, copy and move take the sidecar along.
+
 ### Changed
 
 - The menu (`Ctrl+K`) is grouped by what a command acts on: **This photo** (stars, reject, colour label, compare, straighten, crop, turns, undo, delete), **Photos on screen** (sort, filter, refresh order, copy, move, delete, delete rejected), **View** (panels, zoom, full screen), **Settings** (auto advance, subfolders, language, models & data) and Help. Stars and deleting the current photo are in the menu now; colours appear once for marking and once, clearly apart, as a filter; no row appears or disappears at the top level. Submenus can hold submenus. The action menu (`Ctrl+M`) offers "Delete rejected photos" too.

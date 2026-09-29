@@ -218,7 +218,10 @@ pub static TEXTS: Texts = Texts {
     cmd_rotate_cw: "Ruota di 90° a destra",
     cmd_crop: "Ritaglio",
     cmd_undo: "Annulla modifica",
-    edit_not_jpeg: "Raddrizza e ritaglio solo per JPEG.",
+    edit_not_jpeg: "Raddrizza, ritaglio, rotazione e Ctrl+Z solo per JPEG.",
+    video_play_hint: "Invio: riproduci",
+    video_no_ffmpeg: "Nessuna anteprima: a Cerno serve ffmpeg (ad es. winget install Gyan.FFmpeg)",
+    video_play_failed: |err| format!("Impossibile riprodurre il video: {err}"),
     edit_writing: "Scrittura della foto…",
     edit_cancelled: "È visualizzata un'altra foto – modifica annullata",
     busy_editing: "La modifica è ancora aperta – Invio applica, Esc annulla",
@@ -317,6 +320,7 @@ pub static TEXTS: Texts = Texts {
             "Maiusc+Tab",
             "Barra dei filtri, dettagli e striscia di miniature insieme",
         ),
+        ("Invio", "Riproduci un video nel lettore predefinito"),
     ],
     help_edit: [
         (

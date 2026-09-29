@@ -222,7 +222,10 @@ pub static TEXTS: Texts = Texts {
     cmd_rotate_cw: "90° im Uhrzeigersinn",
     cmd_crop: "Ausschnitt",
     cmd_undo: "Rückgängig",
-    edit_not_jpeg: "Ausrichten und Ausschnitt gibt es nur für JPEG.",
+    edit_not_jpeg: "Ausrichten, Ausschnitt, Drehen und Strg+Z gibt es nur für JPEG.",
+    video_play_hint: "Enter: abspielen",
+    video_no_ffmpeg: "Kein Vorschaubild: dafür braucht Cerno ffmpeg (z. B. winget install Gyan.FFmpeg)",
+    video_play_failed: |err| format!("Kann das Video nicht abspielen: {err}"),
     edit_writing: "Foto wird geschrieben…",
     edit_cancelled: "Anderes Foto – Bearbeitung verworfen",
     busy_editing: "Die Bearbeitung ist noch offen – Enter übernimmt, Esc verwirft",
@@ -315,6 +318,7 @@ pub static TEXTS: Texts = Texts {
             "Umschalt+Tab",
             "Filterleiste, Details und Filmstreifen zusammen",
         ),
+        ("Enter", "Video im Standard-Player abspielen"),
     ],
     help_edit: [
         (
