@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use eframe::egui::{self, Id, LayerId, Order, Rect};
 
 use crate::i18n::{self, Lang};
-use crate::ui::details::{DetailsMode, all_expanded, set_all_expanded};
+use crate::ui::details::{DetailsMode, DetailsTab, all_expanded, set_all_expanded};
 use crate::ui::icons::Panel;
 use crate::ui::overlays;
 
@@ -33,14 +33,14 @@ impl CernoApp {
         }
     }
 
-    fn save_panels(&self) {
+    pub(super) fn save_panels(&self) {
         let flag = |shown: bool| if shown { "1" } else { "0" };
         self.db.put_setting("top_bar", flag(self.show_toolbar));
         self.db.put_setting("filmstrip", flag(self.show_filmstrip));
         self.db.put_setting("details_mode", self.details.id());
     }
 
-    fn set_details(&mut self, mode: DetailsMode) {
+    pub(super) fn set_details(&mut self, mode: DetailsMode) {
         self.details = mode;
         if mode != DetailsMode::Off {
             self.details_last = mode;
@@ -58,8 +58,10 @@ impl CernoApp {
         self.save_panels();
     }
 
-    /// `I`: open the panel or expand/collapse all explanations.
+    /// `I`: open the panel or expand/collapse all explanations (on the values tab, where they
+    /// are).
     pub(super) fn toggle_explanations(&mut self) {
+        self.set_details_tab(DetailsTab::Values);
         if self.details == DetailsMode::Off {
             self.set_details(DetailsMode::On);
             set_all_expanded(&mut self.details_expanded, true);

@@ -54,6 +54,8 @@ struct KeyInput {
     keep_right: bool,
     /// `Enter`: play the current video in the system's player.
     play: bool,
+    /// `B`: the description tab (comment and keywords).
+    describe: bool,
     toggle_fullscreen: bool,
     escape: bool,
     toggle_toolbar: bool,
@@ -137,6 +139,7 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         keep_left: plain && i.key_pressed(Key::A),
         keep_right: plain && i.key_pressed(Key::D),
         play: plain && i.key_pressed(Key::Enter),
+        describe: plain && i.key_pressed(Key::B),
         // F and F11 full screen; T (`toggle_toolbar`) is the filter bar.
         toggle_fullscreen: i.key_pressed(Key::F11) || (plain && i.key_pressed(Key::F)),
         escape: i.key_pressed(Key::Escape),
@@ -177,6 +180,11 @@ impl CernoApp {
         let tabs = std::mem::take(&mut self.tab_presses);
         // The models card and a confirmation read their own Enter and Esc.
         if self.modal_open() {
+            return;
+        }
+        // A comment or keyword is being typed: the keys belong to its field (`Esc` leaves it).
+        // Otherwise `X` would reject, digits rate and `Space` move on while typing.
+        if ctx.egui_wants_keyboard_input() {
             return;
         }
 
@@ -298,6 +306,9 @@ impl CernoApp {
         }
         if keys.play {
             self.play_video();
+        }
+        if keys.describe {
+            self.open_description(ctx);
         }
         if keys.delete {
             self.delete_current(ctx);

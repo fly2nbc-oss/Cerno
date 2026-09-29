@@ -8,7 +8,7 @@ use eframe::egui::{self, Rect, pos2, vec2};
 use crate::i18n;
 use crate::loader::Lookup;
 use crate::theme::tokens;
-use crate::ui::details::{self, DetailsMode};
+use crate::ui::details::{self, DetailsMode, DetailsTab};
 use crate::ui::{filmstrip, filter_bar, help, info_bar, overlays, palette};
 
 use super::CernoApp;
@@ -213,11 +213,24 @@ impl CernoApp {
                 Some(palette::State::default())
             };
         }
-        if let Some(rect) = details_rect {
+        let Some(rect) = details_rect else {
+            // The panel is closed: a comment still being typed is written now.
+            self.commit_comment();
+            return;
+        };
+        let (tabs, body) = rect.split_top_bottom_at_y(rect.top() + details::TABS_HEIGHT);
+        if let Some(tab) = details::tabs(ui, tabs, self.details_tab) {
+            self.set_details_tab(tab);
+        }
+        if self.details_tab == DetailsTab::Description {
+            self.draw_description(ui, body, &path, image.as_deref());
+            return;
+        }
+        {
             let status = self.analyzer.status();
             details::draw(
                 ui,
-                rect,
+                body,
                 &details::Details {
                     scores,
                     personal,

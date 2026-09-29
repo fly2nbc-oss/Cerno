@@ -11,6 +11,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 - **More formats**, kept simple: PNG, TIFF, WebP, BMP and GIF (first frame); **RAW** files (CR2, CR3, NEF, ARW, RAF, ORF, RW2, PEF, SRW, DNG, …) by the full-size preview they carry, with the camera's orientation; **videos** (MP4, MOV, M4V, AVI, MKV, MTS, …) by one frame when [ffmpeg](https://ffmpeg.org) is installed – `Enter` plays them in the default player. Straighten, crop, turns and `Ctrl+Z` stay JPEG-only and are greyed out in the menu for everything else.
 - Stars and colour labels of proprietary RAW, BMP and video are written into an **XMP sidecar** beside the file (`IMG_1.xmp`, as Lightroom names it) – a RAW is never rewritten, a video of several gigabytes not copied for a star. Delete, copy and move take the sidecar along.
+- **Comment and keywords**: the details panel has a second tab, *Description* (`B`, also This photo › Comment and keywords). Keywords are added with `Enter` (several separated by commas) and removed with their ×; the comment is taken when its field is left. Cerno reads XMP and IPTC and writes both (IPTC as UTF-8), in the same background write as stars, with the file dates unchanged. While a field has the cursor, Cerno's keys stay out of it.
 
 ### Changed
 

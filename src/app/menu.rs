@@ -44,6 +44,7 @@ enum Action {
     Fullscreen,
     Rate(Rating),
     Reject,
+    Describe,
     DeleteCurrent,
     DeleteRejected,
     Label(Option<Label>),
@@ -341,6 +342,7 @@ impl CernoApp {
             Row::new(Action::Reject, t.cmd_reject, key("X"))
                 .toggle(rating == Rating::Rejected)
                 .disabled(mark),
+            Row::new(Action::Describe, t.cmd_description, key("B")).disabled(mark),
             Row::new(Action::Compare, t.cmd_compare, key("C")).toggle(self.pinned.is_some()),
             Row::new(Action::Straighten, t.cmd_straighten, key("S")).disabled(edit),
             Row::new(Action::Crop, t.cmd_crop, key("R")).disabled(edit),
@@ -482,6 +484,7 @@ impl CernoApp {
             }
             Action::Rate(rating) => self.set_rating(ctx, rating, false),
             Action::Reject => self.toggle_reject(ctx, false),
+            Action::Describe => self.open_description(ctx),
             Action::DeleteCurrent => self.delete_current(ctx),
             Action::DeleteRejected => self.delete_rejected(ctx),
             Action::Label(label) => match label {

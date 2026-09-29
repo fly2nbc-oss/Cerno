@@ -200,6 +200,35 @@ pub struct FileMetadata {
     /// EXIF orientation 1..=8 (1 = as stored).
     pub orientation: u16,
     pub camera: CameraInfo,
+    pub description: Description,
+}
+
+/// A photo's comment and keywords as other programs show them: XMP `dc:description` /
+/// `dc:subject`, else IPTC Caption-Abstract / Keywords. Written back through ExifTool's MWG
+/// tags, which keep IPTC, XMP and the EXIF description in step.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Description {
+    /// Empty: none.
+    pub comment: String,
+    pub keywords: Vec<String>,
+}
+
+impl Description {
+    /// Adds a keyword unless it is empty or already there (case-insensitive). Returns whether
+    /// it was added.
+    pub fn add_keyword(&mut self, keyword: &str) -> bool {
+        let keyword = keyword.trim();
+        if keyword.is_empty()
+            || self
+                .keywords
+                .iter()
+                .any(|k| k.to_lowercase() == keyword.to_lowercase())
+        {
+            return false;
+        }
+        self.keywords.push(keyword.to_owned());
+        true
+    }
 }
 
 /// Capture settings for the info bar.
@@ -332,6 +361,7 @@ pub fn read(bytes: &[u8]) -> FileMetadata {
         .and_then(parse_xmp_label)
         .as_deref()
         .map_or(LabelInfo::None, LabelInfo::parse);
+    let description = read_description(bytes, xmp.as_deref());
 
     FileMetadata {
         rating: RatingInfo {
@@ -342,6 +372,210 @@ pub fn read(bytes: &[u8]) -> FileMetadata {
         label,
         orientation,
         camera,
+        description,
+    }
+}
+
+/// XMP first (what current programs write), IPTC IIM for older files. Each part on its own:
+/// a file may have XMP keywords but only an IPTC caption.
+fn read_description(bytes: &[u8], xmp: Option<&str>) -> Description {
+    let iim = iptc_iim(bytes);
+    let comment = xmp
+        .and_then(|x| xmp_alt_default(x, "dc:description"))
+        .or_else(|| iim.as_ref().and_then(|i| i.caption.clone()))
+        .unwrap_or_default();
+    let keywords = xmp
+        .and_then(|x| xmp_bag(x, "dc:subject"))
+        .or_else(|| iim.map(|i| i.keywords).filter(|k| !k.is_empty()))
+        .unwrap_or_default();
+    Description {
+        comment: comment.trim().to_owned(),
+        keywords,
+    }
+}
+
+/// The `rdf:li` texts of an array property (`<dc:subject><rdf:Bag><rdf:li>…`).
+fn xmp_items(xmp: &str, property: &str) -> Option<Vec<(String, String)>> {
+    let open = format!("<{property}");
+    // `<dc:subjectCode` is another property: look on after it.
+    let mut search = xmp;
+    let rest = loop {
+        let start = search.find(&open)?;
+        let rest = &search[start + open.len()..];
+        if rest.starts_with(['>', ' ', '\t', '\r', '\n', '/']) {
+            break rest;
+        }
+        search = rest;
+    };
+    let body = &rest[..rest.find(&format!("</{property}>")).unwrap_or(0)];
+    let mut items = Vec::new();
+    let mut tail = body;
+    while let Some(pos) = tail.find("<rdf:li") {
+        tail = &tail[pos + "<rdf:li".len()..];
+        let Some(end_of_tag) = tail.find('>') else {
+            break;
+        };
+        let attributes = tail[..end_of_tag].to_owned();
+        if attributes.ends_with('/') {
+            tail = &tail[end_of_tag + 1..];
+            continue;
+        }
+        tail = &tail[end_of_tag + 1..];
+        let Some(close) = tail.find("</rdf:li>") else {
+            break;
+        };
+        items.push((attributes, xml_unescape(&tail[..close])));
+        tail = &tail[close..];
+    }
+    Some(items)
+}
+
+/// Keywords: every item of the bag, trimmed, empty ones left out.
+fn xmp_bag(xmp: &str, property: &str) -> Option<Vec<String>> {
+    let items = xmp_items(xmp, property)?;
+    Some(
+        items
+            .into_iter()
+            .map(|(_, text)| text.trim().to_owned())
+            .filter(|text| !text.is_empty())
+            .collect(),
+    )
+}
+
+/// A language alternative: the `x-default` entry, else the first one.
+fn xmp_alt_default(xmp: &str, property: &str) -> Option<String> {
+    let items = xmp_items(xmp, property)?;
+    items
+        .iter()
+        .find(|(attributes, _)| attributes.contains("x-default"))
+        .or(items.first())
+        .map(|(_, text)| text.clone())
+}
+
+fn xml_unescape(text: &str) -> String {
+    if !text.contains('&') {
+        return text.to_owned();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(amp) = rest.find('&') {
+        out.push_str(&rest[..amp]);
+        rest = &rest[amp..];
+        let Some(semi) = rest.find(';').filter(|&s| s <= 10) else {
+            out.push('&');
+            rest = &rest[1..];
+            continue;
+        };
+        let entity = &rest[1..semi];
+        let decoded = match entity {
+            "amp" => Some('&'),
+            "lt" => Some('<'),
+            "gt" => Some('>'),
+            "quot" => Some('"'),
+            "apos" => Some('\''),
+            _ => entity
+                .strip_prefix("#x")
+                .or_else(|| entity.strip_prefix("#X"))
+                .and_then(|hex| u32::from_str_radix(hex, 16).ok())
+                .or_else(|| entity.strip_prefix('#').and_then(|d| d.parse().ok()))
+                .and_then(char::from_u32),
+        };
+        match decoded {
+            Some(c) => {
+                out.push(c);
+                rest = &rest[semi + 1..];
+            }
+            None => {
+                out.push('&');
+                rest = &rest[1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Only what the IPTC IIM block says – for tests that check both copies were written.
+#[cfg(test)]
+pub fn iptc_description(bytes: &[u8]) -> Description {
+    iptc_iim(bytes)
+        .map(|iim| Description {
+            comment: iim.caption.unwrap_or_default(),
+            keywords: iim.keywords,
+        })
+        .unwrap_or_default()
+}
+
+/// IPTC IIM from a JPEG's Photoshop block (APP13, resource 0x0404).
+#[derive(Debug, Default, PartialEq)]
+struct Iim {
+    caption: Option<String>,
+    keywords: Vec<String>,
+}
+
+fn iptc_iim(bytes: &[u8]) -> Option<Iim> {
+    const PHOTOSHOP: &[u8] = b"Photoshop 3.0\0";
+    let search = &bytes[..bytes.len().min(512 * 1024)];
+    let mut pos = memmem::find(search, PHOTOSHOP)? + PHOTOSHOP.len();
+    let be16 = |at: usize| Some(u16::from_be_bytes(bytes.get(at..at + 2)?.try_into().ok()?));
+    let be32 = |at: usize| Some(u32::from_be_bytes(bytes.get(at..at + 4)?.try_into().ok()?));
+    while bytes.get(pos..pos + 4) == Some(b"8BIM") {
+        let id = be16(pos + 4)?;
+        // Pascal name, padded to an even length together with its length byte.
+        let name_len = usize::from(*bytes.get(pos + 6)?);
+        let size_at = pos + 6 + (name_len + 2) / 2 * 2;
+        let size = be32(size_at)? as usize;
+        let data = bytes.get(size_at + 4..size_at + 4 + size)?;
+        if id == 0x0404 {
+            return Some(parse_iim(data));
+        }
+        pos = size_at + 4 + size + size % 2;
+    }
+    None
+}
+
+fn parse_iim(data: &[u8]) -> Iim {
+    let mut utf8 = false;
+    let mut caption = None;
+    let mut keywords = Vec::new();
+    let mut i = 0;
+    while i + 5 <= data.len() && data[i] == 0x1C {
+        let (record, dataset) = (data[i + 1], data[i + 2]);
+        let size = usize::from(u16::from_be_bytes([data[i + 3], data[i + 4]]));
+        // Extended sizes (high bit) only occur for huge binary data; stop there.
+        if size & 0x8000 != 0 {
+            break;
+        }
+        let Some(value) = data.get(i + 5..i + 5 + size) else {
+            break;
+        };
+        match (record, dataset) {
+            (1, 90) => utf8 = value == [0x1B, 0x25, 0x47],
+            (2, 25) => keywords.push(value.to_vec()),
+            (2, 120) => caption = Some(value.to_vec()),
+            _ => {}
+        }
+        i += 5 + size;
+    }
+    // Without the UTF-8 marker, text that is valid UTF-8 still is (many programs leave the
+    // marker out); anything else is taken as Latin-1.
+    let text = |raw: &[u8]| -> String {
+        let decoded = if utf8 {
+            String::from_utf8_lossy(raw).into_owned()
+        } else {
+            std::str::from_utf8(raw)
+                .map(str::to_owned)
+                .unwrap_or_else(|_| raw.iter().map(|&b| char::from(b)).collect())
+        };
+        decoded.trim_matches(['\0', ' ']).trim().to_owned()
+    };
+    Iim {
+        caption: caption.map(|raw| text(&raw)).filter(|c| !c.is_empty()),
+        keywords: keywords
+            .iter()
+            .map(|raw| text(raw))
+            .filter(|k| !k.is_empty())
+            .collect(),
     }
 }
 
@@ -768,6 +1002,84 @@ mod tests {
         assert_eq!(info.exposure_line(), "4 mm (26 mm eq.)  ·  f/1.8");
         assert_eq!(info.gear_line(), "Sony ILCE-7M4");
         assert_eq!(CameraInfo::default().exposure_line(), "");
+    }
+
+    #[test]
+    fn xmp_comment_and_keywords() {
+        let xmp = r#"<x:xmpmeta><rdf:Description>
+            <dc:subjectCode>not the keywords</dc:subjectCode>
+            <dc:description><rdf:Alt>
+              <rdf:li xml:lang="de">Hallo</rdf:li>
+              <rdf:li xml:lang="x-default">Erste Zeile&#xA;Zweite &amp; mehr</rdf:li>
+            </rdf:Alt></dc:description>
+            <dc:subject><rdf:Bag>
+              <rdf:li>Straße</rdf:li><rdf:li> Äpfel </rdf:li><rdf:li></rdf:li><rdf:li/>
+            </rdf:Bag></dc:subject>
+            </rdf:Description></x:xmpmeta>"#;
+        let d = read_description(b"", Some(xmp));
+        assert_eq!(d.comment, "Erste Zeile\nZweite & mehr");
+        assert_eq!(d.keywords, ["Straße", "Äpfel"]);
+        // Only one language: that one.
+        let single = r#"<dc:description><rdf:Alt><rdf:li xml:lang="en">Only</rdf:li></rdf:Alt></dc:description>"#;
+        assert_eq!(read_description(b"", Some(single)).comment, "Only");
+        assert_eq!(read_description(b"", None), Description::default());
+        assert_eq!(
+            xml_unescape("a &lt;b&gt; &#252; &unknown; & c"),
+            "a <b> ü &unknown; & c"
+        );
+    }
+
+    /// A Photoshop APP13 block with IPTC datasets, as old cameras and programs write it.
+    fn app13(datasets: &[(u8, u8, &[u8])]) -> Vec<u8> {
+        let mut iim = Vec::new();
+        for (record, dataset, value) in datasets {
+            iim.extend([0x1C, *record, *dataset]);
+            iim.extend((value.len() as u16).to_be_bytes());
+            iim.extend(*value);
+        }
+        let mut out = b"\xFF\xD8\xFF\xED\0\0Photoshop 3.0\0".to_vec();
+        // An unrelated resource first, with an odd size (padded) and a one-letter name.
+        out.extend(b"8BIM\x04\x0C\x01x");
+        out.extend(3u32.to_be_bytes());
+        out.extend(b"abc\0");
+        out.extend(b"8BIM\x04\x04\0\0");
+        out.extend((iim.len() as u32).to_be_bytes());
+        out.extend(iim);
+        out
+    }
+
+    #[test]
+    fn iptc_iim_in_utf8_and_latin1() {
+        let utf8 = app13(&[
+            (1, 90, b"\x1B%G"),
+            (2, 25, "Straße".as_bytes()),
+            (2, 25, "Äpfel".as_bytes()),
+            (2, 120, "Grüße aus Köln".as_bytes()),
+        ]);
+        let d = read_description(&utf8, None);
+        assert_eq!(d.keywords, ["Straße", "Äpfel"]);
+        assert_eq!(d.comment, "Grüße aus Köln");
+
+        let latin1 = app13(&[(2, 25, b"Stra\xDFe"), (2, 120, b"Gr\xFC\xDFe")]);
+        let d = read_description(&latin1, None);
+        assert_eq!(d.keywords, ["Straße"]);
+        assert_eq!(d.comment, "Grüße");
+
+        // XMP wins where it has a value; IPTC fills the rest.
+        let xmp = "<dc:subject><rdf:Bag><rdf:li>neu</rdf:li></rdf:Bag></dc:subject>";
+        let d = read_description(&utf8, Some(xmp));
+        assert_eq!(d.keywords, ["neu"]);
+        assert_eq!(d.comment, "Grüße aus Köln");
+    }
+
+    #[test]
+    fn keywords_are_added_once() {
+        let mut d = Description::default();
+        assert!(d.add_keyword(" Urlaub "));
+        assert!(!d.add_keyword("urlaub"));
+        assert!(!d.add_keyword("  "));
+        assert!(d.add_keyword("Strand"));
+        assert_eq!(d.keywords, ["Urlaub", "Strand"]);
     }
 
     #[test]

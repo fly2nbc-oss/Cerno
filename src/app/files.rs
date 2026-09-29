@@ -108,6 +108,7 @@ impl CernoApp {
             for (src, _) in &outcome.done {
                 self.session_ratings.remove(src);
                 self.session_labels.remove(src);
+                self.session_descriptions.remove(src);
             }
             if self.pinned.as_ref().is_some_and(|path| gone.contains(path)) {
                 self.pinned = None;
@@ -226,6 +227,7 @@ impl CernoApp {
                     .collect();
                 for path in &done.deleted {
                     self.session_ratings.remove(path);
+                    self.session_descriptions.remove(path);
                     self.forget_deleted(path);
                 }
                 self.analyzer.taste_changed();

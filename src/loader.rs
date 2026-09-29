@@ -19,7 +19,7 @@ use eframe::egui::{self, ColorImage, TextureFilter, TextureHandle, TextureOption
 
 use crate::filelock::FileLocks;
 use crate::histogram::{self, RgbHistogram};
-use crate::metadata::{self, CameraInfo, LabelInfo, RatingInfo};
+use crate::metadata::{self, CameraInfo, Description, LabelInfo, RatingInfo};
 use crate::thumbs::{self, Thumbs};
 use crate::{decode, library};
 
@@ -41,6 +41,8 @@ pub struct LoadedImage {
     /// Colour label as stored in the file when it was decoded.
     pub label: LabelInfo,
     pub camera: CameraInfo,
+    /// Comment and keywords as stored in the file when it was decoded.
+    pub description: Description,
     pub load_ms: u128,
 }
 
@@ -507,6 +509,7 @@ fn load_display(shared: &Shared, job: &Job) -> Result<LoadedImage> {
         rating: meta.rating,
         label: meta.label,
         camera: meta.camera,
+        description: meta.description,
         load_ms: started.elapsed().as_millis(),
     })
 }

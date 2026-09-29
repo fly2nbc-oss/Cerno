@@ -252,6 +252,8 @@ pub struct Texts {
     pub cmd_compare: &'static str,
     pub cmd_zoom: &'static str,
     pub cmd_reject: &'static str,
+    /// Menu row (This photo): the Description tab of the details panel (`B`).
+    pub cmd_description: &'static str,
     pub cmd_delete_rejected: fn(usize) -> String,
     pub cmd_auto_advance: &'static str,
     pub cmd_subfolders: &'static str,
@@ -355,6 +357,22 @@ pub struct Texts {
     pub row_size: &'static str,
     pub row_load_time: &'static str,
     pub row_location: &'static str,
+    /// Details panel tabs: the analysis values …
+    pub tab_values: &'static str,
+    /// … and the photo's comment and keywords.
+    pub tab_description: &'static str,
+    pub section_comment: &'static str,
+    pub section_keywords: &'static str,
+    /// Placeholder of the empty comment field.
+    pub comment_hint: &'static str,
+    /// Placeholder of the field that adds a keyword.
+    pub keyword_hint: &'static str,
+    /// Tooltip of a keyword's ×.
+    pub keyword_remove: &'static str,
+    /// Under the fields: how they are used and where the values go.
+    pub description_note: &'static str,
+    /// While the photo is still loading, its comment and keywords are not known yet.
+    pub description_waiting: &'static str,
     pub row_laion: &'static str,
     pub row_v25: &'static str,
     pub row_personal: &'static str,
@@ -418,7 +436,7 @@ pub struct Texts {
     pub help_sections: [&'static str; 5],
     pub help_browse: [HelpRow; 5],
     pub help_rate: [HelpRow; 10],
-    pub help_view: [HelpRow; 10],
+    pub help_view: [HelpRow; 11],
     pub help_edit: [HelpRow; 5],
     pub help_more: [HelpRow; 5],
 }

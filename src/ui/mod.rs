@@ -1,6 +1,7 @@
 //! Drawing code for the parts of the window. State lives in `app/`.
 
 pub mod confirm;
+pub mod description;
 pub mod details;
 pub mod edit;
 pub mod filmstrip;
