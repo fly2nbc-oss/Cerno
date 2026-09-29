@@ -1,10 +1,11 @@
 name: CI
 
 # Pull requests: lint and tests only. Pushes to main, tags and manual runs also
-# build the four packages; a `v*` tag turns them into a draft release.
+# build the four packages (kept 14 days as run artifacts); a `v*` tag turns them
+# into a draft release.
 on:
   push:
-    branches: [main, ci/packaging]
+    branches: [main]
     tags: ["v*"]
     paths-ignore: ["**.md", "docs/**", "screenshots/**"]
   pull_request:
@@ -99,11 +100,13 @@ jobs:
           name: windows-installer
           path: dist/windows/cerno_*_x64-setup.exe
           if-no-files-found: error
+          retention-days: 14
       - uses: actions/upload-artifact@v7
         with:
           name: windows-portable
           path: dist/windows/cerno_*_x64-portable.zip
           if-no-files-found: error
+          retention-days: 14
 
   package-linux:
     name: Package (Linux AppImage, deb)
@@ -136,11 +139,13 @@ jobs:
           name: linux-appimage
           path: dist/linux/cerno_*_x86_64.AppImage
           if-no-files-found: error
+          retention-days: 14
       - uses: actions/upload-artifact@v7
         with:
           name: linux-deb
           path: dist/linux/cerno_*_amd64.deb
           if-no-files-found: error
+          retention-days: 14
       - uses: actions/upload-artifact@v7
         with:
           name: smoke-photo
@@ -148,11 +153,13 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-  # Each package on a clean system: the AppImage before any libheif is installed
-  # (it must bring its own), then the .deb through apt (its dependencies must
-  # resolve). Both open a HEIC photo under Xvfb; Cerno logs when it has drawn it.
+  # Each package on a clean system, opening a HEIC photo under Xvfb (Cerno logs
+  # when it has drawn it – the HEVC plugin is loaded with dlopen, so ldd alone
+  # can't tell). The AppImage gets only what every desktop has, and no libheif:
+  # it must bring its own. The .deb goes onto the bare image, so its Depends and
+  # Recommends alone must bring everything Cerno loads; only Xvfb is added.
   test-linux-packages:
-    name: Install test (${{ matrix.image }})
+    name: Install test (${{ matrix.package }}, ${{ matrix.image }})
     needs: package-linux
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -160,6 +167,7 @@ jobs:
       fail-fast: false
       matrix:
         image: ["ubuntu:24.04", "debian:trixie"]
+        package: [appimage, deb]
     container: ${{ matrix.image }}
     env:
       DEBIAN_FRONTEND: noninteractive
@@ -170,31 +178,34 @@ jobs:
           pattern: "{linux-*,smoke-photo}"
           merge-multiple: true
           path: pkg
-      - name: Display server and graphics drivers
+      - run: apt-get update
+      - name: AppImage
+        if: matrix.package == 'appimage'
         run: |
-          apt-get update
           apt-get install -y --no-install-recommends xvfb xauth mesa-vulkan-drivers libgl1-mesa-dri \
             libegl1 libvulkan1 libxkbcommon0 libxkbcommon-x11-0 libx11-6 libx11-xcb1 libxcursor1 \
             libxi6 libxcb1 libwayland-client0
-      - name: AppImage
-        run: |
           if dpkg-query -W -f='${Status}\n' 'libheif*' 2>/dev/null | grep -q '^install ok'; then
             echo "libheif is installed - the test would not show that the AppImage brings its own"
             exit 1
           fi
           chmod +x pkg/*.AppImage
           APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a timeout 30 pkg/cerno_*_x86_64.AppImage pkg/smoke.heic \
-            >appimage.log 2>&1 || true
-          cat appimage.log
-          grep -q "start-up: first photo drawn" appimage.log
+            >cerno.log 2>&1 || true
       - name: deb
+        if: matrix.package == 'deb'
         run: |
           apt-get install -y ./pkg/cerno_*_amd64.deb
+          apt-get install -y --no-install-recommends xvfb xauth
           ldd /usr/bin/cerno | tee ldd.txt
-          ! grep -q "not found" ldd.txt
-          xvfb-run -a timeout 30 cerno pkg/smoke.heic >deb.log 2>&1 || true
-          cat deb.log
-          grep -q "start-up: first photo drawn" deb.log
+          if grep -q "not found" ldd.txt; then exit 1; fi
+          xvfb-run -a timeout 30 cerno pkg/smoke.heic >cerno.log 2>&1 || true
+          # Recommended fonts: egui's bundled one lacks the arrows.
+          if grep -q "no system UI font found" cerno.log; then cat cerno.log; exit 1; fi
+      - name: Cerno drew the photo
+        run: |
+          cat cerno.log
+          grep -q "start-up: first photo drawn" cerno.log
 
   release:
     name: Draft release
@@ -205,6 +216,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
       - name: Tag matches Cargo.toml
         id: version
         run: |
