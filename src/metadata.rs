@@ -321,7 +321,8 @@ pub fn read_sidecar(path: &std::path::Path) -> FileMetadata {
     meta
 }
 
-/// The sidecar's rating and label replace the file's. It holds no Windows rating tags.
+/// The sidecar's rating, label, comment and keywords replace the file's. It holds no Windows
+/// rating tags.
 fn with_sidecar(meta: &mut FileMetadata, path: &std::path::Path) {
     if let Some(bytes) = crate::sidecar::read(path) {
         let side = read(&bytes);
@@ -331,6 +332,7 @@ fn with_sidecar(meta: &mut FileMetadata, path: &std::path::Path) {
             has_ms_photo_rating: false,
         };
         meta.label = side.label;
+        meta.description = side.description;
     }
 }
 

@@ -58,11 +58,13 @@ enum Message {
     Restore {
         path: PathBuf,
     },
-    /// Another program saved the file: the marks it dropped come back (`lost_marks`).
+    /// Another program saved the file: the marks it dropped come back (`lost_marks`,
+    /// `lost_description`).
     KeepMarks {
         path: PathBuf,
         rating: Rating,
         label: Option<Label>,
+        description: Description,
     },
     Shutdown,
 }
@@ -188,13 +190,21 @@ impl RatingWriter {
         let _ = self.tx.send(Message::Restore { path });
     }
 
-    /// Another program saved `path`: the rating and label Cerno knew go back where the file
-    /// now has none (Paint, for one, drops all metadata). What that program set itself stays.
-    pub fn keep_marks(&self, path: PathBuf, rating: Rating, label: Option<Label>) {
+    /// Another program saved `path`: the rating, label, comment and keywords Cerno knew go
+    /// back where the file now has none (Paint, for one, drops all metadata). What that
+    /// program set itself stays.
+    pub fn keep_marks(
+        &self,
+        path: PathBuf,
+        rating: Rating,
+        label: Option<Label>,
+        description: Description,
+    ) {
         let _ = self.tx.send(Message::KeepMarks {
             path,
             rating,
             label,
+            description,
         });
     }
 
@@ -308,18 +318,20 @@ fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
                 path,
                 rating,
                 label,
+                description,
             }) => {
                 let held = files.hold_write(&path);
                 let result = flush_pending(&mut pending, &mut exiftool, &path, status, files)
                     .and_then(|()| {
-                        let bytes = std::fs::read(&path).context("cannot read file")?;
-                        let meta = metadata::read(&bytes);
-                        match lost_marks(meta.rating.value, meta.label, rating, label) {
-                            (None, None) => Ok(None),
-                            (rating, label) => {
-                                write_marks(&mut exiftool, &path, rating, label, None)
-                            }
+                        // Where the marks live: a RAW's sidecar is not what the program saved.
+                        let meta = marks_on_disk(&path, crate::sidecar::applies(&path))?;
+                        let (rating, label) =
+                            lost_marks(meta.rating.value, meta.label, rating, label);
+                        let description = lost_description(&meta.description, &description);
+                        if rating.is_none() && label.is_none() && description.is_none() {
+                            return Ok(None);
                         }
+                        write_marks(&mut exiftool, &path, rating, label, description.as_ref())
                     });
                 drop(held);
                 note_marks(db, status, &path, result);
@@ -408,6 +420,13 @@ fn lost_marks(
     (rating, label)
 }
 
+/// Cerno's comment and keywords, when the save dropped both (a program that keeps one of
+/// them handles the description itself).
+fn lost_description(have: &Description, known: &Description) -> Option<Description> {
+    let empty = |d: &Description| d.comment.trim().is_empty() && d.keywords.is_empty();
+    (empty(have) && !empty(known)).then(|| known.clone())
+}
+
 struct Written {
     rating: Rating,
     label: Option<Label>,
@@ -432,7 +451,28 @@ fn write_marks(
     let path_str = target.to_str().context("path is not valid Unicode")?;
     // Read what is there right now: skips no-op writes and tells which extra rating tags
     // (Windows Explorer's) need to be kept in sync.
-    let meta = marks_on_disk(path, sidecar)?;
+    let on_disk = marks_on_disk(path, sidecar)?;
+    // A new sidecar starts empty and from then on replaces the file's own marks, so the first
+    // write into it carries all of them – a colour set on a RAW keeps its in-camera stars.
+    // Whether anything changes at all is still judged against the file.
+    let fresh = sidecar && !target.is_file();
+    let (meta, rating, label, description) = if fresh {
+        let changes = rating.is_some_and(|r| r != on_disk.rating.value)
+            || label.is_some_and(|l| label_needs_write(on_disk.label, l))
+            || description.is_some_and(|d| !description_args(d, &on_disk.description).is_empty());
+        if !changes {
+            return Ok(None);
+        }
+        let carried = description.map_or_else(|| on_disk.description.clone(), Clone::clone);
+        (
+            metadata::read(&[]),
+            Some(rating.unwrap_or(on_disk.rating.value)),
+            Some(label.unwrap_or(on_disk.label.known())),
+            Some(carried),
+        )
+    } else {
+        (on_disk, rating, label, description.cloned())
+    };
 
     let mut args = Vec::new();
     let mut written_rating = meta.rating.value;
@@ -449,11 +489,19 @@ fn write_marks(
         args.push(label_arg(label));
         written_label = label;
     }
-    if let Some(description) = description {
+    if let Some(description) = &description {
         args.extend(description_args(description, &meta.description));
     }
     if args.is_empty() {
-        return Ok(None);
+        if !fresh {
+            return Ok(None);
+        }
+        // All the file's marks are cleared: an empty sidecar says so.
+        crate::sidecar::ensure(path)?;
+        return Ok(Some(Written {
+            rating: written_rating,
+            label: written_label,
+        }));
     }
     if sidecar {
         crate::sidecar::ensure(path)?;
@@ -994,6 +1042,100 @@ mod tests {
         assert_eq!(metadata::read_sidecar(&raw).rating.value, Rating::Unrated);
         drop(exiftool);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// The first write into a new sidecar carries the RAW's own marks: a colour set on a RAW
+    /// with in-camera stars and a keyword keeps both, and a comment is read back from the
+    /// sidecar. Clearing a RAW's only mark leaves an empty sidecar that says so.
+    #[test]
+    fn a_new_sidecar_keeps_the_raws_own_marks() {
+        if crate::exiftool::locate().is_none() {
+            eprintln!("ExifTool not found – skipped");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("cerno-sidecar-c-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let in_camera = "II*\0<x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF \
+            xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'><rdf:Description \
+            rdf:about='' xmlns:xmp='http://ns.adobe.com/xap/1.0/' \
+            xmlns:dc='http://purl.org/dc/elements/1.1/' xmp:Rating='3'><dc:subject><rdf:Bag>\
+            <rdf:li>Berg</rdf:li></rdf:Bag></dc:subject></rdf:Description></rdf:RDF>\
+            </x:xmpmeta>";
+        let raw = dir.join("IMG_7.NEF");
+        std::fs::write(&raw, in_camera).unwrap();
+        let mut exiftool = None;
+
+        write_marks(&mut exiftool, &raw, None, Some(Some(Label::Green)), None).unwrap();
+        let side = metadata::read_sidecar(&raw);
+        assert_eq!(
+            side.rating.value,
+            Rating::Stars(3),
+            "in-camera stars carried"
+        );
+        assert_eq!(side.label, LabelInfo::Known(Label::Green));
+        assert_eq!(
+            side.description.keywords,
+            ["Berg"],
+            "in-camera keyword carried"
+        );
+        let comment = Description {
+            comment: "Gipfel".into(),
+            keywords: vec!["Berg".into()],
+        };
+        write_marks(&mut exiftool, &raw, None, None, Some(&comment)).unwrap();
+        let meta = metadata::read_for(&raw, in_camera.as_bytes());
+        assert_eq!(
+            meta.description, comment,
+            "the description comes from the sidecar"
+        );
+        assert_eq!(
+            std::fs::read(&raw).unwrap(),
+            in_camera.as_bytes(),
+            "RAW untouched"
+        );
+
+        // A RAW with only in-camera stars, cleared: nothing to write, but the sidecar must say
+        // "no stars" from now on.
+        let stars_only = in_camera.replace(
+            "<dc:subject><rdf:Bag><rdf:li>Berg</rdf:li></rdf:Bag></dc:subject>",
+            "",
+        );
+        let cleared = dir.join("IMG_8.NEF");
+        std::fs::write(&cleared, &stars_only).unwrap();
+        assert_eq!(
+            metadata::read_for(&cleared, stars_only.as_bytes())
+                .rating
+                .value,
+            Rating::Stars(3)
+        );
+        write_marks(&mut exiftool, &cleared, Some(Rating::Unrated), None, None).unwrap();
+        assert!(
+            crate::sidecar::path_of(&cleared).is_file(),
+            "the empty sidecar is written"
+        );
+        let meta = metadata::read_for(&cleared, stars_only.as_bytes());
+        assert_eq!(meta.rating.value, Rating::Unrated);
+        drop(exiftool);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_description_comes_back_only_when_the_save_dropped_it() {
+        let known = Description {
+            comment: "Gipfel".into(),
+            keywords: vec!["Berg".into()],
+        };
+        let none = Description::default();
+        assert_eq!(lost_description(&none, &known), Some(known.clone()));
+        // The program kept (or set) something of its own: that stays.
+        let own = Description {
+            comment: String::new(),
+            keywords: vec!["Tal".into()],
+        };
+        assert_eq!(lost_description(&own, &known), None);
+        // Nothing known, nothing to write.
+        assert_eq!(lost_description(&none, &none), None);
     }
 
     /// End-to-end through a real ExifTool; skipped when ExifTool isn't installed.

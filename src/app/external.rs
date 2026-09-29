@@ -222,11 +222,15 @@ impl CernoApp {
             });
         let rating = self.rating_of(path, image.as_deref());
         let label = self.label_of(path, image.as_deref());
+        let description = self
+            .description_of(path, image.as_deref())
+            .unwrap_or_default();
         if let Err(err) = self.db.forget_file(&path.to_string_lossy()) {
             log::warn!("index: {err:#}");
         }
         log::info!("changed elsewhere: {}", path.display());
-        self.writer.keep_marks(path.to_path_buf(), rating, label);
+        self.writer
+            .keep_marks(path.to_path_buf(), rating, label, description);
     }
 
     /// The writer is done with a photo another program saved: the new version is shown and
