@@ -7,7 +7,8 @@
 use std::path::PathBuf;
 
 use eframe::egui::{
-    Button, FontId, Id, Key, Label, Rect, RichText, ScrollArea, Stroke, TextEdit, Ui, UiBuilder,
+    Align, Button, FontId, Id, Key, Label, Layout, Rect, RichText, ScrollArea, Stroke, TextEdit,
+    Ui, UiBuilder, vec2,
 };
 
 use crate::i18n;
@@ -131,8 +132,9 @@ fn fields(
     let mut removed = None;
     if !current.keywords.is_empty() {
         indented(ui, |ui| {
-            ui.set_max_width(width);
-            ui.horizontal_wrapped(|ui| {
+            let row = Layout::left_to_right(Align::Center).with_main_wrap(true);
+            ui.allocate_ui_with_layout(vec2(width, 0.0), row, |ui| {
+                ui.set_max_width(width);
                 for (index, keyword) in current.keywords.iter().enumerate() {
                     let chip = Button::new(
                         RichText::new(format!("{keyword}  ×"))
@@ -195,17 +197,133 @@ fn section(ui: &mut Ui, title: &str) {
     });
 }
 
+/// Wrapped text needs a top-down block: in a horizontal layout egui never wraps it.
 fn note(ui: &mut Ui, message: &str) {
-    let width = ui.available_width() - 2.0 * PAD;
+    let width = (ui.available_width() - 2.0 * PAD).max(40.0);
     indented(ui, |ui| {
-        ui.set_max_width(width);
-        ui.add(
-            Label::new(
-                RichText::new(i18n::keep_together(message))
-                    .font(FontId::proportional(text::SMALL))
-                    .color(tokens::MUTED),
-            )
-            .wrap(),
-        );
+        ui.allocate_ui_with_layout(vec2(width, 0.0), Layout::top_down(Align::Min), |ui| {
+            ui.set_max_width(width);
+            ui.add(
+                Label::new(
+                    RichText::new(i18n::keep_together(message))
+                        .font(FontId::proportional(text::SMALL))
+                        .color(tokens::MUTED),
+                )
+                .wrap(),
+            );
+        });
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eframe::egui::{Context, Event, Modifiers, RawInput, pos2, vec2};
+
+    fn key(key: Key) -> Event {
+        Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        }
+    }
+
+    fn frame(
+        ctx: &Context,
+        drafts: &mut Drafts,
+        current: Option<&Description>,
+        events: Vec<Event>,
+    ) -> Output {
+        let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 700.0));
+        let panel = Rect::from_min_size(pos2(580.0, 0.0), vec2(320.0, 700.0));
+        let mut out = None;
+        let mut output = ctx.run_ui(
+            RawInput {
+                screen_rect: Some(window),
+                events,
+                ..Default::default()
+            },
+            |ui| out = Some(draw(ui, panel, current, drafts, None)),
+        );
+        output.textures_delta.clear();
+        out.expect("drawn")
+    }
+
+    fn photo(comment: &str, keywords: &[&str]) -> Description {
+        Description {
+            comment: comment.to_owned(),
+            keywords: keywords.iter().map(|k| (*k).to_owned()).collect(),
+        }
+    }
+
+    /// `B` puts the cursor into the keyword field; `Enter` adds (several with commas, none
+    /// twice) and the cursor stays for the next one.
+    #[test]
+    fn enter_adds_keywords_and_keeps_the_cursor() {
+        let ctx = Context::default();
+        let current = photo("alt", &["Urlaub"]);
+        let mut drafts = Drafts::default();
+        drafts.reset(PathBuf::from("a.jpg"), Some(&current));
+        drafts.focus_keyword = true;
+        frame(&ctx, &mut drafts, Some(&current), vec![]);
+        frame(&ctx, &mut drafts, Some(&current), vec![]);
+        assert!(ctx.memory(|m| m.has_focus(keyword_id())));
+
+        let out = frame(
+            &ctx,
+            &mut drafts,
+            Some(&current),
+            vec![Event::Text("Strand, urlaub; Berge".into()), key(Key::Enter)],
+        );
+        let changed = out.changed.expect("keywords added");
+        assert_eq!(changed, photo("alt", &["Urlaub", "Strand", "Berge"]));
+        assert!(drafts.keyword.is_empty());
+        frame(&ctx, &mut drafts, Some(&changed), vec![]);
+        assert!(
+            ctx.memory(|m| m.has_focus(keyword_id())),
+            "ready for the next"
+        );
+    }
+
+    /// Nothing is written while typing a comment; leaving the field takes it.
+    #[test]
+    fn the_comment_is_taken_when_its_field_is_left() {
+        let ctx = Context::default();
+        let current = photo("", &["Urlaub"]);
+        let mut drafts = Drafts::default();
+        drafts.reset(PathBuf::from("a.jpg"), Some(&current));
+        frame(&ctx, &mut drafts, Some(&current), vec![]);
+        ctx.memory_mut(|m| m.request_focus(comment_id()));
+        frame(&ctx, &mut drafts, Some(&current), vec![]);
+
+        let typing = frame(
+            &ctx,
+            &mut drafts,
+            Some(&current),
+            vec![Event::Text("Grüße aus Köln".into())],
+        );
+        assert!(typing.changed.is_none(), "not while typing");
+        assert!(drafts.comment_changed());
+        let left = frame(&ctx, &mut drafts, Some(&current), vec![key(Key::Escape)]);
+        assert_eq!(left.changed, Some(photo("Grüße aus Köln", &["Urlaub"])));
+    }
+
+    /// Before the file is read nothing can be typed – a write would replace keywords that are
+    /// not known yet.
+    #[test]
+    fn nothing_to_edit_while_loading() {
+        let ctx = Context::default();
+        let mut drafts = Drafts {
+            focus_keyword: true,
+            ..Drafts::default()
+        };
+        for _ in 0..2 {
+            let out = frame(&ctx, &mut drafts, None, vec![Event::Text("x".into())]);
+            assert!(out.changed.is_none());
+        }
+        assert!(!ctx.memory(|m| m.has_focus(keyword_id())));
+        assert!(drafts.keyword.is_empty());
+    }
 }
