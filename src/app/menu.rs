@@ -7,7 +7,7 @@ use eframe::egui::{self, Rect, ViewportCommand, pos2, vec2};
 
 use crate::i18n::{self, Lang};
 use crate::loader::Lookup;
-use crate::metadata::Label;
+use crate::metadata::{Label, Rating};
 use crate::transfer::Mode as TransferMode;
 use crate::ui::details::{DetailsMode, all_expanded};
 use crate::ui::icons::Panel;
@@ -42,7 +42,9 @@ enum Action {
     Compare,
     Zoom,
     Fullscreen,
+    Rate(Rating),
     Reject,
+    DeleteCurrent,
     DeleteRejected,
     Label(Option<Label>),
     AutoAdvance,
@@ -192,8 +194,9 @@ impl CernoApp {
         }
     }
 
-    /// Burger menu, grouped: view, sort, filter, edit, the current photo, labels, language.
-    /// Switches show a box, choices a tick on the current value.
+    /// Burger menu, grouped by what a command acts on: this photo, the photos on screen, the
+    /// view, the settings. Switches show a box, choices a tick on the current value; rows that
+    /// can't run now are greyed out with the reason as their tooltip.
     fn menu(&self) -> Vec<palette::Entry<Action>> {
         use palette::{Entry, Group, Row};
         let t = i18n::t();
@@ -204,6 +207,26 @@ impl CernoApp {
             Some(i18n::with_ctrl("O")),
         ))];
         if !self.all.is_empty() {
+            entries.push(Entry::Group(self.photo_group()));
+            let mut visible = vec![
+                Entry::Group(Group::new(
+                    t.menu_sort,
+                    None,
+                    SortKey::ALL
+                        .into_iter()
+                        .map(|sort| {
+                            Row::new(Action::Sort(sort), sort.label(), None)
+                                .choice(self.options.sort == sort)
+                        })
+                        .collect(),
+                )),
+                Entry::Group(Group::new(t.menu_filter, None, self.filter_rows())),
+            ];
+            if self.options.depends_on_scores() && self.board.version() != self.view_version {
+                visible.push(Entry::Row(Row::new(Action::Refresh, t.refresh_order, None)));
+            }
+            visible.extend(self.bulk_rows().into_iter().map(Entry::Row));
+            entries.push(Entry::Group(Group::nested(t.menu_visible, None, visible)));
             entries.push(Entry::Group(Group::new(
                 t.menu_view,
                 None,
@@ -223,116 +246,7 @@ impl CernoApp {
                     ),
                     Row::new(Action::Zoom, t.cmd_zoom, key("Z")).toggle(self.zoom.is_zoomed()),
                     Row::new(Action::Fullscreen, t.cmd_fullscreen, key("F")),
-                    Row::new(Action::Subfolders, t.cmd_subfolders, None).toggle(self.subfolders),
-                    Row::new(Action::AutoAdvance, t.cmd_auto_advance, None)
-                        .toggle(self.auto_advance),
                 ],
-            )));
-            entries.push(Entry::Group(Group::new(
-                t.menu_sort,
-                None,
-                SortKey::ALL
-                    .into_iter()
-                    .map(|sort| {
-                        Row::new(Action::Sort(sort), sort.label(), None)
-                            .choice(self.options.sort == sort)
-                    })
-                    .collect(),
-            )));
-            let mut filters: Vec<Row<Action>> = FilterKind::ALL
-                .into_iter()
-                .map(|kind| {
-                    let row = Row::new(Action::Filter(kind), kind.label(), None)
-                        .toggle(self.options.filter.contains(kind));
-                    match kind {
-                        FilterKind::Colour(label) => row.swatch(crate::theme::label_color(label)),
-                        _ => row,
-                    }
-                })
-                .collect();
-            if !self.options.filter.is_all() {
-                filters.insert(0, Row::new(Action::FilterClear, t.filter_clear, None));
-            }
-            entries.push(Entry::Group(Group::new(t.menu_filter, None, filters)));
-            // Rows that can't run now are greyed out, with the reason as their tooltip.
-            let current = self.view.get(self.current).map(PathBuf::as_path);
-            let edit = self.menu_block(Change::Edit, current);
-            let rewrite = self.menu_block(Change::Rewrite, current);
-            let mark = self.menu_block(Change::Mark, current);
-            entries.push(Entry::Group(Group::new(
-                t.menu_edit,
-                None,
-                vec![
-                    Row::new(Action::Straighten, t.cmd_straighten, key("S")).disabled(edit),
-                    Row::new(
-                        Action::RotateCcw,
-                        t.cmd_rotate_ccw,
-                        Some(format!("{}+←", t.key_ctrl)),
-                    )
-                    .disabled(rewrite),
-                    Row::new(
-                        Action::RotateCw,
-                        t.cmd_rotate_cw,
-                        Some(format!("{}+→", t.key_ctrl)),
-                    )
-                    .disabled(rewrite),
-                    Row::new(Action::Crop, t.cmd_crop, key("R")).disabled(edit),
-                    Row::new(Action::Undo, t.cmd_undo, Some(i18n::with_ctrl("Z")))
-                        .disabled(rewrite),
-                ],
-            )));
-            let mut photo = vec![
-                Row::new(Action::Compare, t.cmd_compare, key("C")).toggle(self.pinned.is_some()),
-                Row::new(Action::Reject, t.cmd_reject, key("X")).disabled(mark),
-            ];
-            let rejected = self.rejected().len();
-            if rejected > 0 {
-                photo.push(
-                    Row::new(
-                        Action::DeleteRejected,
-                        (t.cmd_delete_rejected)(rejected),
-                        None,
-                    )
-                    .disabled(self.menu_block(Change::Delete, None)),
-                );
-            }
-            entries.push(Entry::Group(Group::new(t.menu_photo, None, photo)));
-            let current_label = self.view.get(self.current).and_then(|path| {
-                let image = match self.loader.get(self.current) {
-                    Lookup::Ready(image) => Some(image),
-                    _ => None,
-                };
-                self.label_of(path, image.as_deref())
-            });
-            let labels = [
-                (Label::Red, Some("6")),
-                (Label::Yellow, Some("7")),
-                (Label::Green, Some("8")),
-                (Label::Blue, Some("9")),
-                (Label::Purple, None),
-            ]
-            .into_iter()
-            .map(|(label, shortcut)| {
-                Row::new(
-                    Action::Label(Some(label)),
-                    i18n::label_name(label),
-                    shortcut.map(str::to_owned),
-                )
-                .choice(current_label == Some(label))
-                .swatch(crate::theme::label_color(label))
-                .disabled(mark)
-            })
-            .collect();
-            entries.push(Entry::Group(Group::new(t.menu_labels, None, labels)));
-            if self.options.depends_on_scores() && self.board.version() != self.view_version {
-                entries.push(Entry::Row(Row::new(Action::Refresh, t.refresh_order, None)));
-            }
-        }
-        if self.analyzer.status().aesthetics == crate::analysis::ModelState::Missing {
-            entries.push(Entry::Row(Row::new(
-                Action::EnableAesthetics,
-                t.enable_aesthetics,
-                None,
             )));
         }
         let languages = Lang::ALL
@@ -341,19 +255,150 @@ impl CernoApp {
                 Row::new(Action::Language(lang), lang.name(), None).choice(i18n::current() == lang)
             })
             .collect();
-        entries.push(Entry::Row(Row::new(Action::Models, t.menu_models, None)));
-        entries.push(Entry::Group(Group::new(
-            t.menu_language,
-            Some(i18n::with_ctrl("L")),
-            languages,
-        )));
+        let mut settings = vec![
+            Entry::Row(
+                Row::new(Action::AutoAdvance, t.cmd_auto_advance, None).toggle(self.auto_advance),
+            ),
+            Entry::Row(
+                Row::new(Action::Subfolders, t.cmd_subfolders, None).toggle(self.subfolders),
+            ),
+            Entry::Group(Group::new(
+                t.menu_language,
+                Some(i18n::with_ctrl("L")),
+                languages,
+            )),
+            Entry::Row(Row::new(Action::Models, t.menu_models, None)),
+        ];
+        if self.analyzer.status().aesthetics == crate::analysis::ModelState::Missing {
+            settings.push(Entry::Row(Row::new(
+                Action::EnableAesthetics,
+                t.enable_aesthetics,
+                None,
+            )));
+        }
+        entries.push(Entry::Group(Group::nested(t.menu_settings, None, settings)));
         entries.push(Entry::Row(Row::new(Action::Help, t.help_title, key("H"))));
         entries
     }
 
-    /// The action menu under the filter bar's "Action" button (`Ctrl+M`).
-    fn action_entries(&self) -> Vec<palette::Entry<Action>> {
-        use palette::{Entry, Row};
+    /// "This photo": stars, rejection and colour, compare, the edits and deleting.
+    fn photo_group(&self) -> palette::Group<Action> {
+        use palette::{Entry, Group, Row};
+        let t = i18n::t();
+        let key = |k: &str| Some(k.to_owned());
+        let current = self.view.get(self.current).map(PathBuf::as_path);
+        let edit = self.menu_block(Change::Edit, current);
+        let rewrite = self.menu_block(Change::Rewrite, current);
+        let mark = self.menu_block(Change::Mark, current);
+        let image = match self.loader.get(self.current) {
+            Lookup::Ready(image) => Some(image),
+            _ => None,
+        };
+        let rating = current.map_or(Rating::Unrated, |path| {
+            self.rating_of(path, image.as_deref())
+        });
+        let colour = current.and_then(|path| self.label_of(path, image.as_deref()));
+
+        let stars = [Rating::Unrated]
+            .into_iter()
+            .chain((1..=5).map(Rating::Stars))
+            .map(|value| {
+                let (label, digit) = match value {
+                    Rating::Stars(n) => ((t.filter_stars)(n), n),
+                    _ => (t.filter_unrated.to_owned(), 0),
+                };
+                Row::new(Action::Rate(value), label, Some(digit.to_string()))
+                    .choice(rating == value)
+                    .disabled(mark)
+            })
+            .collect();
+        let mut labels: Vec<Row<Action>> = [
+            (Label::Red, Some("6")),
+            (Label::Yellow, Some("7")),
+            (Label::Green, Some("8")),
+            (Label::Blue, Some("9")),
+            (Label::Purple, None),
+        ]
+        .into_iter()
+        .map(|(label, shortcut)| {
+            Row::new(
+                Action::Label(Some(label)),
+                i18n::label_name(label),
+                shortcut.map(str::to_owned),
+            )
+            .choice(colour == Some(label))
+            .swatch(crate::theme::label_color(label))
+            .disabled(mark)
+        })
+        .collect();
+        labels.push(
+            Row::new(Action::Label(None), t.label_none, None)
+                .choice(colour.is_none())
+                .disabled(mark),
+        );
+
+        let rows = [
+            Row::new(Action::Reject, t.cmd_reject, key("X"))
+                .toggle(rating == Rating::Rejected)
+                .disabled(mark),
+            Row::new(Action::Compare, t.cmd_compare, key("C")).toggle(self.pinned.is_some()),
+            Row::new(Action::Straighten, t.cmd_straighten, key("S")).disabled(edit),
+            Row::new(Action::Crop, t.cmd_crop, key("R")).disabled(edit),
+            Row::new(
+                Action::RotateCcw,
+                t.cmd_rotate_ccw,
+                Some(format!("{}+←", t.key_ctrl)),
+            )
+            .disabled(rewrite),
+            Row::new(
+                Action::RotateCw,
+                t.cmd_rotate_cw,
+                Some(format!("{}+→", t.key_ctrl)),
+            )
+            .disabled(rewrite),
+            Row::new(Action::Undo, t.cmd_undo, Some(i18n::with_ctrl("Z"))).disabled(rewrite),
+            Row::new(
+                Action::DeleteCurrent,
+                t.selection_delete,
+                Some(t.key_delete.to_owned()),
+            )
+            .disabled(self.menu_block(Change::Delete, current)),
+        ];
+        let mut entries = vec![
+            Entry::Group(Group::new(t.menu_stars, None, stars)),
+            Entry::Group(Group::new(t.menu_labels, None, labels)),
+        ];
+        entries.extend(rows.into_iter().map(Entry::Row));
+        Group::nested(t.menu_this_photo, None, entries)
+    }
+
+    /// The filter boxes, with "Show all" on top while any is ticked.
+    fn filter_rows(&self) -> Vec<palette::Row<Action>> {
+        use palette::Row;
+        let mut filters: Vec<Row<Action>> = FilterKind::ALL
+            .into_iter()
+            .map(|kind| {
+                let row = Row::new(Action::Filter(kind), kind.label(), None)
+                    .toggle(self.options.filter.contains(kind));
+                match kind {
+                    FilterKind::Colour(label) => row.swatch(crate::theme::label_color(label)),
+                    _ => row,
+                }
+            })
+            .collect();
+        if !self.options.filter.is_all() {
+            filters.insert(
+                0,
+                Row::new(Action::FilterClear, i18n::t().filter_clear, None),
+            );
+        }
+        filters
+    }
+
+    /// What acts on many photos at once – the same in "Photos on screen" and in the action
+    /// menu: copy, move and delete what the filter shows, delete the rejected ones.
+    fn bulk_rows(&self) -> Vec<palette::Row<Action>> {
+        use palette::Row;
         let t = i18n::t();
         let transfer = if self.transfers.is_busy() {
             Some(t.transfer_busy)
@@ -361,13 +406,31 @@ impl CernoApp {
             self.menu_block(Change::Transfer, None)
         };
         let delete = self.menu_block(Change::Delete, None);
-        vec![
-            Entry::Row(Row::new(Action::Copy, t.transfer_copy, None).disabled(transfer)),
-            Entry::Row(Row::new(Action::Move, t.transfer_move, None).disabled(transfer)),
-            Entry::Row(
-                Row::new(Action::DeleteSelection, t.selection_delete, None).disabled(delete),
-            ),
-        ]
+        let mut rows = vec![
+            Row::new(Action::Copy, t.transfer_copy, None).disabled(transfer),
+            Row::new(Action::Move, t.transfer_move, None).disabled(transfer),
+            Row::new(Action::DeleteSelection, t.selection_delete, None).disabled(delete),
+        ];
+        let rejected = self.rejected().len();
+        if rejected > 0 {
+            rows.push(
+                Row::new(
+                    Action::DeleteRejected,
+                    (t.cmd_delete_rejected)(rejected),
+                    None,
+                )
+                .disabled(delete),
+            );
+        }
+        rows
+    }
+
+    /// The action menu under the filter bar's "Action" button (`Ctrl+M`).
+    fn action_entries(&self) -> Vec<palette::Entry<Action>> {
+        self.bulk_rows()
+            .into_iter()
+            .map(palette::Entry::Row)
+            .collect()
     }
 
     /// `Ctrl+M` or the button: the filter bar shows while the action menu is open.
@@ -417,7 +480,9 @@ impl CernoApp {
                 let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
                 ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!fullscreen));
             }
+            Action::Rate(rating) => self.set_rating(ctx, rating, false),
             Action::Reject => self.toggle_reject(ctx, false),
+            Action::DeleteCurrent => self.delete_current(ctx),
             Action::DeleteRejected => self.delete_rejected(ctx),
             Action::Label(label) => match label {
                 Some(label) => self.toggle_label(ctx, label, false),

@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ### Changed
 
+- The menu (`Ctrl+K`) is grouped by what a command acts on: **This photo** (stars, reject, colour label, compare, straighten, crop, turns, undo, delete), **Photos on screen** (sort, filter, refresh order, copy, move, delete, delete rejected), **View** (panels, zoom, full screen), **Settings** (auto advance, subfolders, language, models & data) and Help. Stars and deleting the current photo are in the menu now; colours appear once for marking and once, clearly apart, as a filter; no row appears or disappears at the top level. Submenus can hold submenus. The action menu (`Ctrl+M`) offers "Delete rejected photos" too.
 - A series only holds photos of one camera model: two phones or a phone and a drone firing at the same moment make two series instead of one. Photos without camera data only form series with each other. After the update Cerno reads every photo's metadata once more (no new analysis).
 
 ### Removed

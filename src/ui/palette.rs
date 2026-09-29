@@ -1,9 +1,10 @@
 //! Menus: the burger menu (`Ctrl+K` and the button at the bottom right) and the action menu
-//! under the filter bar's "Action" button (`Ctrl+M`). Groups with several values open a
-//! submenu, everything else is a row; shortcuts sit on the right.
+//! under the filter bar's "Action" button (`Ctrl+M`). Groups open a submenu – a group inside a
+//! group opens another one beside it – everything else is a row; shortcuts sit on the right.
 //!
-//! Keyboard: ↑/↓ move, Enter runs (or opens a submenu), → opens and ← closes a submenu, a
-//! letter jumps to the next row starting with it, Esc closes the submenu first, then the menu.
+//! Keyboard, always in the deepest open list: ↑/↓ move, Enter runs (or opens a submenu), →
+//! opens and ← closes a submenu, a letter jumps to the next row starting with it, Esc closes
+//! the deepest submenu first, then the menu.
 
 use eframe::egui::{
     Align2, Area, Color32, Context, CursorIcon, Event, FontId, Id, Key, Order, Rect, Sense, Stroke,
@@ -78,15 +79,25 @@ impl<A> Row<A> {
 pub struct Group<A> {
     pub label: String,
     pub shortcut: Option<String>,
-    pub rows: Vec<Row<A>>,
+    pub entries: Vec<Entry<A>>,
 }
 
 impl<A> Group<A> {
+    /// A submenu of rows.
     pub fn new(label: impl Into<String>, shortcut: Option<String>, rows: Vec<Row<A>>) -> Self {
+        Self::nested(label, shortcut, rows.into_iter().map(Entry::Row).collect())
+    }
+
+    /// A submenu that holds further submenus too.
+    pub fn nested(
+        label: impl Into<String>,
+        shortcut: Option<String>,
+        entries: Vec<Entry<A>>,
+    ) -> Self {
         Self {
             label: label.into(),
             shortcut,
-            rows,
+            entries,
         }
     }
 }
@@ -105,6 +116,27 @@ impl<A> Entry<A> {
     }
 }
 
+/// The list reached by opening the groups on `path` (one index per level), or `None` when the
+/// path no longer leads through groups.
+fn level<'a, A>(entries: &'a [Entry<A>], path: &[usize]) -> Option<&'a [Entry<A>]> {
+    let mut list = entries;
+    for &index in path {
+        match list.get(index)? {
+            Entry::Group(group) => list = &group.entries,
+            Entry::Row(_) => return None,
+        }
+    }
+    Some(list)
+}
+
+/// Where the keyboard lands in a list it opens: on the ticked choice, else on the first row.
+fn start_row<A>(entries: &[Entry<A>]) -> Option<usize> {
+    entries
+        .iter()
+        .position(|entry| matches!(entry, Entry::Row(row) if row.mark == Mark::Choice(true)))
+        .or(Some(0))
+}
+
 /// Where the menu opens.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Placement {
@@ -114,29 +146,44 @@ pub enum Placement {
     Below(Rect),
 }
 
-/// Open submenu and the highlighted rows (keyboard or mouse).
+/// Open submenus and the highlighted row on each level (keyboard or mouse).
 #[derive(Debug, Default)]
 pub struct State {
-    open: Option<usize>,
-    cursor: Option<usize>,
-    sub_cursor: Option<usize>,
+    /// The open group on each level, from the menu down: `[2, 0]` is the first entry of the
+    /// third one's submenu, opened.
+    open: Vec<usize>,
+    /// The highlighted row per level – one more than `open`, the deepest list has one too.
+    cursors: Vec<Option<usize>>,
 }
 
 impl State {
     /// The menu is rebuilt every frame and can shrink while it is open (a deletion ran out,
-    /// "Refresh order" went away). Indices that no longer point at a row are dropped.
+    /// "Refresh order" went away). The open path is cut where it no longer leads through a
+    /// group, and cursors that no longer point at a row are dropped.
     fn fit<A>(&mut self, entries: &[Entry<A>]) {
-        self.cursor = self.cursor.filter(|&i| i < entries.len());
-        self.open = self
-            .open
-            .filter(|&i| matches!(entries.get(i), Some(Entry::Group(_))));
-        let sub_rows = self.open.and_then(|i| match &entries[i] {
-            Entry::Group(group) => Some(group.rows.len()),
-            Entry::Row(_) => None,
-        });
-        self.sub_cursor = self
-            .sub_cursor
-            .filter(|&j| sub_rows.is_some_and(|len| j < len));
+        let depth = (0..self.open.len())
+            .find(|&k| level(entries, &self.open[..=k]).is_none())
+            .unwrap_or(self.open.len());
+        self.open.truncate(depth);
+        self.cursors.resize(depth + 1, None);
+        for k in 0..=depth {
+            let len = level(entries, &self.open[..k]).map_or(0, <[_]>::len);
+            self.cursors[k] = self.cursors[k].filter(|&i| i < len);
+        }
+    }
+
+    /// Opens the group at `index` on level `k`, closing whatever was open below it.
+    fn open_group(&mut self, k: usize, index: usize, start: Option<usize>) {
+        self.close_below(k);
+        self.cursors[k] = Some(index);
+        self.open.push(index);
+        self.cursors.push(start);
+    }
+
+    /// Closes the submenus below level `k`; the cursor on level `k` stays.
+    fn close_below(&mut self, k: usize) {
+        self.open.truncate(k);
+        self.cursors.truncate(k + 1);
     }
 }
 
@@ -191,85 +238,85 @@ pub fn show<A: Copy>(
             let backdrop = ui.allocate_rect(window, Sense::click());
             ui.painter()
                 .rect_filled(window, 0.0, Color32::from_black_alpha(80));
-            paint_card(ui.painter(), menu);
 
-            let mut submenu: Option<(usize, Rect)> = None;
-            for (index, entry) in entries.iter().enumerate() {
-                let row = Rect::from_min_size(
-                    pos2(
-                        menu.left() + 4.0,
-                        menu.top() + 4.0 + index as f32 * ROW_HEIGHT,
-                    ),
-                    vec2(menu.width() - 8.0, ROW_HEIGHT),
-                );
-                let lit = state.cursor == Some(index) && state.open.is_none_or(|o| o == index);
-                match entry {
-                    Entry::Row(item) => {
-                        let response =
-                            row_button(ui, row, id.with(("row", index)), RowLook::of(item), lit);
-                        if response.hovered {
-                            state.cursor = Some(index);
-                        }
-                        if response.clicked {
-                            run_row(item, &mut out);
-                        }
-                    }
-                    Entry::Group(group) => {
-                        let look = RowLook {
-                            label: &group.label,
-                            shortcut: group.shortcut.as_deref(),
-                            mark: Mark::None,
-                            swatch: None,
-                            submenu: true,
-                            disabled: None,
-                        };
-                        let response = row_button(ui, row, id.with(("group", index)), look, lit);
-                        if response.hovered && state.open.is_none() {
-                            state.cursor = Some(index);
-                        }
-                        if response.clicked {
-                            let open = state.open == Some(index);
-                            state.open = if open { None } else { Some(index) };
-                            state.cursor = Some(index);
-                            state.sub_cursor = None;
-                        }
-                        if state.open == Some(index) {
-                            submenu =
-                                Some((index, submenu_rect(window, menu, row, group.rows.len())));
-                        }
-                    }
-                }
-            }
-
-            if let Some((index, sub)) = submenu
-                && let Entry::Group(group) = &entries[index]
-            {
-                paint_card(ui.painter(), sub);
-                for (j, item) in group.rows.iter().enumerate() {
+            // The menu, then each open submenu beside the one it opened from.
+            let mut cards = vec![menu];
+            let mut list = entries;
+            let mut k = 0;
+            loop {
+                let card = cards[k];
+                paint_card(ui.painter(), card);
+                let mut next = None;
+                for (index, entry) in list.iter().enumerate() {
                     let row = Rect::from_min_size(
-                        pos2(sub.left() + 4.0, sub.top() + 4.0 + j as f32 * ROW_HEIGHT),
-                        vec2(sub.width() - 8.0, ROW_HEIGHT),
+                        pos2(
+                            card.left() + 4.0,
+                            card.top() + 4.0 + index as f32 * ROW_HEIGHT,
+                        ),
+                        vec2(card.width() - 8.0, ROW_HEIGHT),
                     );
-                    if row.bottom() > sub.bottom() {
+                    if row.bottom() > card.bottom() {
                         break;
                     }
-                    let lit = state.sub_cursor == Some(j);
-                    let response =
-                        row_button(ui, row, id.with(("sub", index, j)), RowLook::of(item), lit);
-                    if response.hovered {
-                        state.sub_cursor = Some(j);
-                    }
-                    if response.clicked {
-                        run_row(item, &mut out);
+                    let deepest = k == state.open.len();
+                    let lit = state.cursors[k] == Some(index)
+                        && state.open.get(k).is_none_or(|&o| o == index);
+                    match entry {
+                        Entry::Row(item) => {
+                            let response = row_button(
+                                ui,
+                                row,
+                                id.with(("row", k, index)),
+                                RowLook::of(item),
+                                lit,
+                            );
+                            if response.hovered {
+                                state.cursors[k] = Some(index);
+                            }
+                            if response.clicked {
+                                run_row(item, &mut out);
+                            }
+                        }
+                        Entry::Group(group) => {
+                            let look = RowLook {
+                                label: &group.label,
+                                shortcut: group.shortcut.as_deref(),
+                                mark: Mark::None,
+                                swatch: None,
+                                submenu: true,
+                                disabled: None,
+                            };
+                            let response =
+                                row_button(ui, row, id.with(("group", k, index)), look, lit);
+                            if response.hovered && deepest {
+                                state.cursors[k] = Some(index);
+                            }
+                            if response.clicked {
+                                if state.open.get(k) == Some(&index) {
+                                    state.close_below(k);
+                                    state.cursors[k] = Some(index);
+                                } else {
+                                    state.open_group(k, index, None);
+                                }
+                            }
+                            if state.open.get(k) == Some(&index) {
+                                let sub = submenu_rect(window, card, row, group.entries.len());
+                                next = Some((sub, group.entries.as_slice()));
+                            }
+                        }
                     }
                 }
+                let Some((sub, sub_list)) = next else {
+                    break;
+                };
+                cards.push(sub);
+                list = sub_list;
+                k += 1;
             }
 
             if backdrop.clicked() {
                 let pos = ui.input(|i| i.pointer.interact_pos());
-                let on_card = pos.is_some_and(|p| {
-                    menu.contains(p) || submenu.is_some_and(|(_, rect)| rect.contains(p))
-                });
+                let on_card = pos.is_some_and(|p| cards.iter().any(|card| card.contains(p)));
                 if !on_card {
                     out.close = true;
                 }
@@ -291,7 +338,7 @@ fn run_row<A: Copy>(row: &Row<A>, out: &mut Output<A>) {
 }
 
 /// Keys without modifiers, in the order they were pressed, taken out of the input so nothing
-/// below the menu sees them. Typed letters jump.
+/// below the menu sees them. They act on the deepest open list. Typed letters jump.
 fn keyboard<A: Copy>(ctx: &Context, state: &mut State, entries: &[Entry<A>], out: &mut Output<A>) {
     let (keys, letters) = ctx.input_mut(|i| {
         let mut keys = Vec::new();
@@ -326,59 +373,38 @@ fn keyboard<A: Copy>(ctx: &Context, state: &mut State, entries: &[Entry<A>], out
     });
 
     for key in keys {
-        let sub_rows = state.open.and_then(|index| match entries.get(index) {
-            Some(Entry::Group(group)) => Some(&group.rows),
-            _ => None,
-        });
-        match (key, sub_rows) {
-            (Key::Escape, Some(_)) | (Key::ArrowLeft, Some(_)) => {
-                state.open = None;
-                state.sub_cursor = None;
+        let depth = state.open.len();
+        let Some(list) = level(entries, &state.open) else {
+            continue;
+        };
+        let cursor = state.cursors[depth];
+        match key {
+            Key::Escape | Key::ArrowLeft if depth > 0 => {
+                let parent = state.open[depth - 1];
+                state.close_below(depth - 1);
+                state.cursors[depth - 1] = Some(parent);
             }
-            (Key::Escape, None) => out.close = true,
-            (Key::ArrowDown | Key::ArrowUp, Some(rows)) => {
-                state.sub_cursor = step(state.sub_cursor, rows.len(), key == Key::ArrowDown);
+            Key::Escape => out.close = true,
+            Key::ArrowDown | Key::ArrowUp => {
+                state.cursors[depth] = step(cursor, list.len(), key == Key::ArrowDown);
             }
-            (Key::ArrowDown | Key::ArrowUp, None) => {
-                state.cursor = step(state.cursor, entries.len(), key == Key::ArrowDown);
-            }
-            (Key::Enter, Some(rows)) => {
-                if let Some(row) = state.sub_cursor.and_then(|j| rows.get(j)) {
-                    run_row(row, out);
+            Key::Enter | Key::ArrowRight => match cursor.and_then(|i| Some((i, list.get(i)?))) {
+                Some((index, Entry::Group(group))) => {
+                    state.open_group(depth, index, start_row(&group.entries));
                 }
-            }
-            (Key::Enter | Key::ArrowRight, None) => {
-                match state.cursor.and_then(|i| Some((i, entries.get(i)?))) {
-                    Some((index, Entry::Group(group))) => {
-                        state.open = Some(index);
-                        state.sub_cursor = group
-                            .rows
-                            .iter()
-                            .position(|row| matches!(row.mark, Mark::Choice(true)))
-                            .or(Some(0));
-                    }
-                    Some((_, Entry::Row(row))) if key == Key::Enter => run_row(row, out),
-                    _ => {}
-                }
-            }
+                Some((_, Entry::Row(row))) if key == Key::Enter => run_row(row, out),
+                _ => {}
+            },
             _ => {}
         }
     }
 
     for letter in letters {
-        match state.open.and_then(|index| entries.get(index)) {
-            Some(Entry::Group(group)) => {
-                let labels: Vec<&str> = group.rows.iter().map(|r| r.label.as_str()).collect();
-                if let Some(j) = jump(&labels, state.sub_cursor, letter) {
-                    state.sub_cursor = Some(j);
-                }
-            }
-            _ => {
-                let labels: Vec<&str> = entries.iter().map(Entry::label).collect();
-                if let Some(i) = jump(&labels, state.cursor, letter) {
-                    state.cursor = Some(i);
-                    state.open = None;
-                }
+        let depth = state.open.len();
+        if let Some(list) = level(entries, &state.open) {
+            let labels: Vec<&str> = list.iter().map(Entry::label).collect();
+            if let Some(i) = jump(&labels, state.cursors[depth], letter) {
+                state.cursors[depth] = Some(i);
             }
         }
     }
@@ -411,15 +437,23 @@ fn jump(labels: &[&str], cursor: Option<usize>, letter: char) -> Option<usize> {
         })
 }
 
-/// Submenu to the left of its group, shifted so a long list stays inside the window.
-fn submenu_rect(window: Rect, menu: Rect, row: Rect, rows: usize) -> Rect {
+/// A submenu to the left of the list it opens from – or to its right when the window has no
+/// room on the left (a third level on a narrow window) – shifted so a long list stays inside.
+fn submenu_rect(window: Rect, parent: Rect, row: Rect, rows: usize) -> Rect {
     let sub_h = rows as f32 * ROW_HEIGHT + 8.0;
     let max_h = (window.height() - 16.0).max(ROW_HEIGHT + 8.0);
     let h = sub_h.min(max_h);
     let y = (row.top() - 4.0)
         .min(window.bottom() - 8.0 - h)
         .max(window.top() + 8.0);
-    let x = (menu.left() - WIDTH - 4.0).max(window.left() + 8.0);
+    let left = parent.left() - WIDTH - 4.0;
+    let x = if left >= window.left() + 8.0 {
+        left
+    } else {
+        (parent.right() + 4.0)
+            .min(window.right() - WIDTH - 8.0)
+            .max(window.left() + 8.0)
+    };
     Rect::from_min_size(pos2(x, y), vec2(WIDTH, h))
 }
 
@@ -628,8 +662,8 @@ mod tests {
             ],
         );
         assert!(out.run.is_none());
-        assert_eq!(state.open, Some(1));
-        assert_eq!(state.sub_cursor, Some(1), "starts on the ticked value");
+        assert_eq!(state.open, [1]);
+        assert_eq!(state.cursors[1], Some(1), "starts on the ticked value");
         // Up to "Name", Enter runs it and the menu stays open (a choice).
         let out = frame(
             &mut state,
@@ -641,9 +675,69 @@ mod tests {
         // Esc closes the submenu only, a second Esc the menu.
         let out = frame(&mut state, &entries, vec![key(Key::Escape)]);
         assert!(!out.close);
-        assert_eq!(state.open, None);
+        assert!(state.open.is_empty());
+        assert_eq!(state.cursors[0], Some(1), "back on the group");
         let out = frame(&mut state, &entries, vec![key(Key::Escape)]);
         assert!(out.close);
+    }
+
+    /// Dieses Foto › Sterne › 3: a submenu inside a submenu.
+    #[test]
+    fn submenus_nest() {
+        let entries = vec![
+            Entry::Row(Row::new(1, "Ordner öffnen", None)),
+            Entry::Group(Group::nested(
+                "Dieses Foto",
+                None,
+                vec![
+                    Entry::Group(Group::new(
+                        "Sterne",
+                        None,
+                        vec![
+                            Row::new(10, "Ohne Sterne", Some("0".into())).choice(false),
+                            Row::new(13, "3 Sterne", Some("3".into())).choice(true),
+                        ],
+                    )),
+                    Entry::Row(Row::new(20, "Ablehnen", Some("X".into())).toggle(false)),
+                ],
+            )),
+        ];
+        let mut state = State::default();
+        // Down twice to "Dieses Foto", → opens it on its first entry, → opens "Sterne" on
+        // the ticked value.
+        frame(
+            &mut state,
+            &entries,
+            vec![
+                key(Key::ArrowDown),
+                key(Key::ArrowDown),
+                key(Key::ArrowRight),
+                key(Key::ArrowRight),
+            ],
+        );
+        assert_eq!(state.open, [1, 0]);
+        assert_eq!(state.cursors, [Some(1), Some(0), Some(1)]);
+        let out = frame(&mut state, &entries, vec![key(Key::Enter)]);
+        assert_eq!(out.run, Some(13));
+        assert!(!out.close, "a choice keeps the menu open");
+        // ← closes only the deepest level; letters then jump inside "Dieses Foto".
+        frame(&mut state, &entries, vec![key(Key::ArrowLeft)]);
+        assert_eq!(state.open, [1]);
+        frame(&mut state, &entries, vec![Event::Text("a".into())]);
+        let out = frame(&mut state, &entries, vec![key(Key::Enter)]);
+        assert_eq!(out.run, Some(20));
+        // Up to "Sterne", → opens it again.
+        frame(
+            &mut state,
+            &entries,
+            vec![key(Key::ArrowUp), key(Key::ArrowRight)],
+        );
+        assert_eq!(state.open, [1, 0]);
+        // A menu that lost the nested group while open falls back instead of panicking.
+        let flat = vec![Entry::Row(Row::new(1, "Ordner öffnen", None))];
+        let out = frame(&mut state, &flat, vec![key(Key::Enter)]);
+        assert!(state.open.is_empty());
+        assert!(out.run.is_none());
     }
 
     #[test]
@@ -652,10 +746,10 @@ mod tests {
         let mut state = State::default();
         let out = frame(&mut state, &entries, vec![Event::Text("h".into())]);
         assert!(out.run.is_none());
-        assert_eq!(state.cursor, Some(2));
+        assert_eq!(state.cursors[0], Some(2));
         // "o" matches "Ordner öffnen" regardless of the accent on "ö" further in.
         frame(&mut state, &entries, vec![Event::Text("O".into())]);
-        assert_eq!(state.cursor, Some(0));
+        assert_eq!(state.cursors[0], Some(0));
     }
 
     #[test]
@@ -664,20 +758,19 @@ mod tests {
         let mut state = State::default();
         // Cursor on the last row, then the submenu of the group open.
         frame(&mut state, &entries, vec![key(Key::ArrowUp)]);
-        assert_eq!(state.cursor, Some(2));
+        assert_eq!(state.cursors[0], Some(2));
         let short = vec![Entry::Row(Row::new(1, "Ordner öffnen", None))];
         for key_event in [Key::ArrowDown, Key::Enter, Key::ArrowRight, Key::Escape] {
             let mut state = State {
-                open: Some(1),
-                cursor: Some(2),
-                sub_cursor: Some(1),
+                open: vec![1],
+                cursors: vec![Some(2), Some(1)],
             };
             frame(&mut state, &short, vec![key(key_event)]);
             frame(&mut state, &short, vec![Event::Text("x".into())]);
         }
         let out = frame(&mut state, &short, vec![key(Key::Enter)]);
         assert!(out.run.is_none(), "the old cursor points nowhere now");
-        assert_eq!(state.cursor, None);
+        assert_eq!(state.cursors[0], None);
     }
 
     #[test]

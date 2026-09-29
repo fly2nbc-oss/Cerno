@@ -181,6 +181,8 @@ pub struct Texts {
     /// Modifier key names as printed on this language's keyboards (`Strg`, `Umschalt`).
     pub key_ctrl: &'static str,
     pub key_shift: &'static str,
+    /// The Delete key as printed on keyboards (menu shortcuts).
+    pub key_delete: &'static str,
 
     // Toolbar.
     pub sort: fn(&str) -> String,
@@ -256,11 +258,19 @@ pub struct Texts {
     pub menu_sort: &'static str,
     pub menu_filter: &'static str,
     pub menu_view: &'static str,
-    pub menu_edit: &'static str,
-    pub menu_photo: &'static str,
     pub menu_labels: &'static str,
     pub menu_language: &'static str,
     pub menu_models: &'static str,
+    /// Menu group: everything that acts on the current photo.
+    pub menu_this_photo: &'static str,
+    /// Menu group: sorting and filtering, and what acts on every photo the filter shows.
+    pub menu_visible: &'static str,
+    /// Menu group: auto advance, subfolders, language, models.
+    pub menu_settings: &'static str,
+    /// Submenu of This photo: 0–5 stars.
+    pub menu_stars: &'static str,
+    /// Colour label submenu: remove the colour.
+    pub label_none: &'static str,
 
     // Straighten and crop.
     pub cmd_straighten: &'static str,
