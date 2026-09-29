@@ -41,6 +41,7 @@ enum Action {
     AllPanels,
     Compare,
     Zoom,
+    Overlay(crate::overlay::Mode),
     Fullscreen,
     Rate(Rating),
     Reject,
@@ -235,25 +236,42 @@ impl CernoApp {
             }
             visible.extend(self.bulk_rows().into_iter().map(Entry::Row));
             entries.push(Entry::Group(Group::nested(t.menu_visible, None, visible)));
-            entries.push(Entry::Group(Group::new(
+            let overlays = crate::overlay::Mode::ALL
+                .into_iter()
+                .map(|mode| {
+                    let label = match mode {
+                        crate::overlay::Mode::Off => t.overlay_off,
+                        crate::overlay::Mode::Sharpness => t.overlay_sharpness,
+                        crate::overlay::Mode::Exposure => t.overlay_exposure,
+                    };
+                    Row::new(Action::Overlay(mode), label, None).choice(self.overlay == mode)
+                })
+                .collect();
+            let row = |row| Entry::Row(row);
+            entries.push(Entry::Group(Group::nested(
                 t.menu_view,
                 None,
                 vec![
-                    Row::new(Action::TopBar, t.button_toolbar, key("T")).toggle(self.show_toolbar),
-                    Row::new(Action::Details, t.button_details, key("Tab"))
-                        .toggle(self.details != DetailsMode::Off),
-                    Row::new(Action::Filmstrip, t.button_filmstrip, key("F6"))
-                        .toggle(self.show_filmstrip),
-                    Row::new(
+                    row(Row::new(Action::TopBar, t.button_toolbar, key("T"))
+                        .toggle(self.show_toolbar)),
+                    row(Row::new(Action::Details, t.button_details, key("Tab"))
+                        .toggle(self.details != DetailsMode::Off)),
+                    row(Row::new(Action::Filmstrip, t.button_filmstrip, key("F6"))
+                        .toggle(self.show_filmstrip)),
+                    row(Row::new(
                         Action::AllPanels,
                         t.cmd_all_panels,
                         Some(i18n::with_shift("Tab")),
+                    )),
+                    row(
+                        Row::new(Action::Explanations, t.cmd_explanations, key("I")).toggle(
+                            self.details != DetailsMode::Off
+                                && all_expanded(&self.details_expanded),
+                        ),
                     ),
-                    Row::new(Action::Explanations, t.cmd_explanations, key("I")).toggle(
-                        self.details != DetailsMode::Off && all_expanded(&self.details_expanded),
-                    ),
-                    Row::new(Action::Zoom, t.cmd_zoom, key("Z")).toggle(self.zoom.is_zoomed()),
-                    Row::new(Action::Fullscreen, t.cmd_fullscreen, key("F")),
+                    row(Row::new(Action::Zoom, t.cmd_zoom, key("Z")).toggle(self.zoom.is_zoomed())),
+                    Entry::Group(Group::new(t.menu_overlay, key("O"), overlays)),
+                    row(Row::new(Action::Fullscreen, t.cmd_fullscreen, key("F"))),
                 ],
             )));
         }
@@ -554,6 +572,7 @@ impl CernoApp {
                     self.zoom.toggle(frame, None);
                 }
             }
+            Action::Overlay(mode) => self.set_overlay(mode),
             Action::Fullscreen => {
                 let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
                 ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!fullscreen));

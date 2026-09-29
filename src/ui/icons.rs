@@ -204,6 +204,26 @@ pub fn chevron(painter: &Painter, center: Pos2, open: bool, color: Color32) {
     painter.add(Shape::convex_polygon(points.to_vec(), color, Stroke::NONE));
 }
 
+/// An eye: show these values on the photo (the check overlay). The pupil is filled while on.
+pub fn eye(painter: &Painter, center: Pos2, on: bool, color: Color32) {
+    let (half_width, half_height) = (7.5, 4.5);
+    let stroke = Stroke::new(1.4, color);
+    for side in [-1.0, 1.0] {
+        let lid = (0..=12)
+            .map(|i| {
+                let t = i as f32 / 6.0 - 1.0;
+                center + vec2(t * half_width, side * half_height * (1.0 - t * t))
+            })
+            .collect();
+        painter.add(Shape::line(lid, stroke));
+    }
+    if on {
+        painter.circle_filled(center, 2.6, color);
+    } else {
+        painter.circle_stroke(center, 2.2, stroke);
+    }
+}
+
 /// Hover/active background shared by all icon buttons.
 pub fn button_background(painter: &Painter, rect: Rect, hovered: bool, active: bool) {
     let fill = match (hovered, active) {

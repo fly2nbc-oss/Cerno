@@ -58,6 +58,8 @@ struct KeyInput {
     describe: bool,
     /// `E`: edit the photo in the remembered program (or choose one).
     edit_elsewhere: bool,
+    /// `O`: the next check overlay (sharp edges, clipping, off).
+    overlay: bool,
     toggle_fullscreen: bool,
     escape: bool,
     toggle_toolbar: bool,
@@ -143,6 +145,8 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         play: plain && i.key_pressed(Key::Enter),
         describe: plain && i.key_pressed(Key::B),
         edit_elsewhere: plain && i.key_pressed(Key::E),
+        // Ctrl+O opens a folder.
+        overlay: plain && i.key_pressed(Key::O),
         // F and F11 full screen; T (`toggle_toolbar`) is the filter bar.
         toggle_fullscreen: i.key_pressed(Key::F11) || (plain && i.key_pressed(Key::F)),
         escape: i.key_pressed(Key::Escape),
@@ -335,6 +339,9 @@ impl CernoApp {
         if keys.cycle_details {
             self.toggle_explanations();
         }
+        if keys.overlay {
+            self.set_overlay(self.overlay.next());
+        }
         // Zoom keys act on the photo under the mouse, otherwise on the current (right) one.
         let pointer = ctx.pointer_hover_pos();
         let hovered = frames
@@ -443,6 +450,16 @@ mod tests {
         assert!(read(vec![key(Key::E, Key::E, plain)], plain).edit_elsewhere);
         let ctrl = Modifiers::COMMAND;
         assert!(!read(vec![key(Key::E, Key::E, ctrl)], ctrl).edit_elsewhere);
+    }
+
+    #[test]
+    fn o_switches_the_overlay_and_ctrl_o_opens_a_folder() {
+        let plain = Modifiers::NONE;
+        let keys = read(vec![key(Key::O, Key::O, plain)], plain);
+        assert!(keys.overlay && !keys.open);
+        let ctrl = Modifiers::COMMAND;
+        let keys = read(vec![key(Key::O, Key::O, ctrl)], ctrl);
+        assert!(keys.open && !keys.overlay);
     }
 
     #[test]

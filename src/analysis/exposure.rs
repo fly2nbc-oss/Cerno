@@ -5,9 +5,9 @@ pub const VERSION: i64 = 2;
 
 /// A pixel counts as blown out when all channels reach this value (white without detail – a
 /// saturated blue sky with only the blue channel at 255 is not blown) …
-const HIGHLIGHT: u8 = 250;
+pub const HIGHLIGHT: u8 = 250;
 /// … and as crushed black when all channels stay at or below this one.
-const SHADOW: u8 = 2;
+pub const SHADOW: u8 = 2;
 
 /// More clipped highlights than this is worth a warning.
 pub const HIGHLIGHTS_WARN: f32 = 0.01;

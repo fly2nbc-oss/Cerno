@@ -2,9 +2,11 @@
 //!
 //! Zoom and position survive switching photos, so a series can be compared at the same spot.
 
-use eframe::egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Vec2, epaint::Vertex, pos2, vec2};
+use eframe::egui::{
+    Color32, Mesh, Painter, Pos2, Rect, Shape, TextureHandle, Vec2, epaint::Vertex, pos2, vec2,
+};
 
-use crate::loader::{FullImage, LoadedImage};
+use crate::loader::{FullImage, LoadedImage, Tile};
 
 /// Largest zoom: 8 screen pixels per image pixel.
 const MAX_SCALE: f32 = 8.0;
@@ -114,14 +116,23 @@ impl Zoom {
     }
 }
 
-/// Draws the photo. Returns whether more detail than the display texture has is needed, i.e.
-/// the full-resolution image should be loaded.
+/// The check overlay of one photo, as far as it is computed: over the display image and tile
+/// by tile over the full resolution.
+#[derive(Default, Clone, Copy)]
+pub struct Overlay<'a> {
+    pub display: Option<&'a TextureHandle>,
+    pub full: Option<&'a [Tile]>,
+}
+
+/// Draws the photo, then the overlay over it in the same place. Returns whether more detail
+/// than the display texture has is needed, i.e. the full-resolution image should be loaded.
 pub fn draw(
     painter: &Painter,
     frame: &Frame,
     zoom: &Zoom,
     display: &LoadedImage,
     full: Option<&FullImage>,
+    overlay: Overlay<'_>,
     straighten: Option<f64>,
 ) -> bool {
     let rect = zoom.image_rect(frame);
@@ -144,19 +155,34 @@ pub fn draw(
     match full {
         Some(full) if needs_full => {
             let per_pixel = rect.width() / full.size[0] as f32;
-            for tile in &full.tiles {
-                let min = rect.min + vec2(tile.origin[0] as f32, tile.origin[1] as f32) * per_pixel;
-                let tile_rect = Rect::from_min_size(
-                    min,
-                    vec2(tile.size[0] as f32, tile.size[1] as f32) * per_pixel,
-                );
-                if tile_rect.intersects(frame.area) {
-                    painter.image(tile.texture.id(), tile_rect, uv, Color32::WHITE);
+            let tiles = |tiles: &[Tile]| {
+                for tile in tiles {
+                    let min =
+                        rect.min + vec2(tile.origin[0] as f32, tile.origin[1] as f32) * per_pixel;
+                    let tile_rect = Rect::from_min_size(
+                        min,
+                        vec2(tile.size[0] as f32, tile.size[1] as f32) * per_pixel,
+                    );
+                    if tile_rect.intersects(frame.area) {
+                        painter.image(tile.texture.id(), tile_rect, uv, Color32::WHITE);
+                    }
                 }
+            };
+            tiles(&full.tiles);
+            // Until the overlay's own tiles are there, the display one lies over it, softer.
+            match (overlay.full, overlay.display) {
+                (Some(overlay), _) => tiles(overlay),
+                (None, Some(overlay)) => {
+                    painter.image(overlay.id(), rect, uv, Color32::WHITE);
+                }
+                (None, None) => {}
             }
         }
         _ => {
             painter.image(display.texture.id(), rect, uv, Color32::WHITE);
+            if let Some(overlay) = overlay.display {
+                painter.image(overlay.id(), rect, uv, Color32::WHITE);
+            }
         }
     }
     needs_full

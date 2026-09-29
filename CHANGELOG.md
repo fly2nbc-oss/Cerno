@@ -7,6 +7,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **Check overlay** – `O` marks on the photo what the details panel measures:
+  - First the sharpest edges in purple (the photo's strongest 2 %, none on a blurred photo). Then blown highlights in red and crushed shadows in blue. Then it is off again.
+  - It works at 100 % and in compare mode.
+  - It is also in *View ▸ Overlay* and behind the eye next to *Sharpness* and *Exposure* in the details panel.
+
 ### Changed
 
 - The `.deb` recommends ffmpeg, so videos show a frame after a plain `apt install`.

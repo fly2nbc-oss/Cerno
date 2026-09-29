@@ -7,6 +7,10 @@
 //! Display images are decoded at monitor resolution. For zooming, the current image (and the
 //! pinned left image in compare mode) can also be loaded at full resolution, split into tiles
 //! that fit the GPU's texture limit.
+//!
+//! While the check overlay is on (`O`), the photos on screen and the current one's neighbours
+//! also get it, computed from the same decode – or from a new one, since a texture can't be
+//! read back.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -20,6 +24,7 @@ use eframe::egui::{self, ColorImage, TextureFilter, TextureHandle, TextureOption
 use crate::filelock::FileLocks;
 use crate::histogram::{self, RgbHistogram};
 use crate::metadata::{self, CameraInfo, Description, LabelInfo, RatingInfo};
+use crate::overlay::{self, Mode};
 use crate::thumbs::{self, Thumbs};
 use crate::{decode, library};
 
@@ -29,6 +34,12 @@ const PREFETCH_ORDER: [isize; 7] = [0, 1, -1, 2, 3, -2, -3];
 const KEEP_RADIUS: usize = 4;
 /// Upper bound for full-resolution tiles, below every GPU's limit we care about.
 const MAX_TILE: u32 = 4096;
+/// Mipmaps keep the picture crisp when the window is much smaller than the monitor. The
+/// overlay over it uses the same, so both shrink alike.
+const DISPLAY_TEXTURE: TextureOptions = TextureOptions {
+    mipmap_mode: Some(TextureFilter::Linear),
+    ..TextureOptions::LINEAR
+};
 
 pub struct LoadedImage {
     pub texture: TextureHandle,
@@ -88,6 +99,16 @@ struct State {
     /// Off until the first frame: before that only the current photo decodes, so the
     /// neighbours don't compete with the GPU and window set-up.
     prefetch: bool,
+    /// What the check overlay shows; `Off` computes nothing.
+    overlay: Mode,
+    /// Bumped when the overlay changes; overlays computed for an older one are discarded.
+    overlay_generation: u64,
+    /// Overlays of the display images. `None`: this photo has none (a video, a failed decode).
+    overlays: HashMap<usize, Option<TextureHandle>>,
+    overlay_in_flight: HashSet<usize>,
+    /// Overlays of the full-resolution images, tile for tile like `full`.
+    full_overlays: HashMap<usize, Option<Arc<Vec<Tile>>>>,
+    full_overlay_in_flight: HashSet<usize>,
     shutdown: bool,
 }
 
@@ -101,13 +122,38 @@ impl State {
         index == self.current || self.pinned == Some(index)
     }
 
+    /// The overlay is made for the photos on screen and the current one's neighbours, so
+    /// stepping on shows it at once; further ones would only cost memory.
+    fn wants_overlay(&self, index: usize) -> bool {
+        self.overlay != Mode::Off
+            && (index.abs_diff(self.current) <= 1 || self.pinned == Some(index))
+    }
+
+    /// See [`Loader::set_overlay`]. Whether anything changed.
+    fn set_overlay(&mut self, mode: Mode) -> bool {
+        if self.overlay == mode {
+            return false;
+        }
+        self.overlay = mode;
+        self.overlay_generation += 1;
+        self.overlays.clear();
+        self.full_overlays.clear();
+        self.overlay_in_flight.clear();
+        self.full_overlay_in_flight.clear();
+        true
+    }
+
     fn prune(&mut self) {
         let (current, pinned) = (self.current, self.pinned);
         let on_screen = |i: usize| i == current || pinned == Some(i);
+        let overlay_on = self.overlay != Mode::Off;
         self.cache
             .retain(|&i, _| i.abs_diff(current) <= KEEP_RADIUS || pinned == Some(i));
         self.full.retain(|&i, _| on_screen(i));
         self.want_full.retain(|&i| on_screen(i));
+        self.overlays
+            .retain(|&i, _| overlay_on && (i.abs_diff(current) <= 1 || pinned == Some(i)));
+        self.full_overlays.retain(|&i, _| on_screen(i));
     }
 
     /// See [`Loader::set_library`]. The same list again (compare mode on or off) keeps the
@@ -124,16 +170,10 @@ impl State {
         let positions: HashMap<&PathBuf, usize> =
             self.paths.iter().enumerate().map(|(i, p)| (p, i)).collect();
         let remap = |old: usize| old_paths.get(old).and_then(|p| positions.get(p)).copied();
-        let cache: Vec<_> = std::mem::take(&mut self.cache).into_iter().collect();
-        let full: Vec<_> = std::mem::take(&mut self.full).into_iter().collect();
-        self.cache = cache
-            .into_iter()
-            .filter_map(|(old, slot)| Some((remap(old)?, slot)))
-            .collect();
-        self.full = full
-            .into_iter()
-            .filter_map(|(old, image)| Some((remap(old)?, image)))
-            .collect();
+        remap_keys(&mut self.cache, &remap);
+        remap_keys(&mut self.full, &remap);
+        remap_keys(&mut self.overlays, &remap);
+        remap_keys(&mut self.full_overlays, &remap);
         drop(positions);
         self.generation += 1;
         self.current = current;
@@ -141,8 +181,18 @@ impl State {
         self.in_flight.clear();
         self.want_full.clear();
         self.full_in_flight.clear();
+        self.overlay_in_flight.clear();
+        self.full_overlay_in_flight.clear();
         self.prune();
     }
+}
+
+/// Moves the entries of `map` to the photos' places in a new list; photos no longer in it go.
+fn remap_keys<T>(map: &mut HashMap<usize, T>, remap: &impl Fn(usize) -> Option<usize>) {
+    *map = std::mem::take(map)
+        .into_iter()
+        .filter_map(|(old, value)| Some((remap(old)?, value)))
+        .collect();
 }
 
 struct Shared {
@@ -161,10 +211,14 @@ impl Shared {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
     Display,
     Full,
+    /// The overlay of a photo whose display image is already cached (decoded again).
+    Overlay,
+    /// The overlay tiles of a full-resolution image already loaded (decoded again).
+    FullOverlay,
 }
 
 struct Job {
@@ -173,6 +227,9 @@ struct Job {
     index: usize,
     path: PathBuf,
     target: [u32; 2],
+    /// The overlay to compute along with it; `Off` for none.
+    overlay: Mode,
+    overlay_generation: u64,
 }
 
 pub struct Loader {
@@ -200,6 +257,12 @@ impl Loader {
                 full: HashMap::new(),
                 full_in_flight: HashSet::new(),
                 prefetch: false,
+                overlay: Mode::Off,
+                overlay_generation: 0,
+                overlays: HashMap::new(),
+                overlay_in_flight: HashSet::new(),
+                full_overlays: HashMap::new(),
+                full_overlay_in_flight: HashSet::new(),
                 shutdown: false,
             }),
             wake: Condvar::new(),
@@ -259,11 +322,26 @@ impl Loader {
         let grew = target[0] > state.target[0] || target[1] > state.target[1];
         state.target = target;
         if grew {
-            state.cache.retain(|_, slot| match slot {
-                Slot::Ready(image) => !too_small(image, target),
-                Slot::Failed(_) => true,
-            });
+            let soft: Vec<usize> = state
+                .cache
+                .iter()
+                .filter(|(_, slot)| matches!(slot, Slot::Ready(image) if too_small(image, target)))
+                .map(|(&index, _)| index)
+                .collect();
+            for index in soft {
+                state.cache.remove(&index);
+                // Its overlay comes again with the new decode.
+                state.overlays.remove(&index);
+            }
             drop(state);
+            self.shared.wake.notify_all();
+        }
+    }
+
+    /// Switches the check overlay. Overlays of the previous one are dropped; the photos on
+    /// screen get the new one first.
+    pub fn set_overlay(&self, mode: Mode) {
+        if self.shared.lock().set_overlay(mode) {
             self.shared.wake.notify_all();
         }
     }
@@ -275,9 +353,13 @@ impl Loader {
         state.cache.remove(&index);
         state.full.remove(&index);
         state.want_full.remove(&index);
+        state.overlays.remove(&index);
+        state.full_overlays.remove(&index);
         state.generation += 1;
         state.in_flight.clear();
         state.full_in_flight.clear();
+        state.overlay_in_flight.clear();
+        state.full_overlay_in_flight.clear();
         drop(state);
         self.shared.wake.notify_all();
     }
@@ -311,6 +393,21 @@ impl Loader {
 
     pub fn full(&self, index: usize) -> Option<Arc<FullImage>> {
         self.shared.lock().full.get(&index).cloned().flatten()
+    }
+
+    /// The check overlay over the display image, once it is computed.
+    pub fn overlay(&self, index: usize) -> Option<TextureHandle> {
+        self.shared.lock().overlays.get(&index).cloned().flatten()
+    }
+
+    /// The check overlay's tiles over the full resolution, once they are computed.
+    pub fn full_overlay(&self, index: usize) -> Option<Arc<Vec<Tile>>> {
+        self.shared
+            .lock()
+            .full_overlays
+            .get(&index)
+            .cloned()
+            .flatten()
     }
 }
 
@@ -353,21 +450,24 @@ fn worker(shared: &Shared) {
                 // Decoded for a smaller screen than we now know we have: decode again.
                 if result
                     .as_ref()
-                    .is_ok_and(|image| too_small(image, state.target))
+                    .is_ok_and(|(image, _)| too_small(image, state.target))
                 {
                     drop(state);
                     shared.wake.notify_all();
                     continue;
                 }
-                let slot = match result {
-                    Ok(image) => Slot::Ready(Arc::new(image)),
+                let (slot, overlay) = match result {
+                    Ok((image, overlay)) => (Slot::Ready(Arc::new(image)), overlay),
                     Err(err) => {
                         log::warn!("{}: {err:#}", job.path.display());
-                        Slot::Failed(format!("{err:#}"))
+                        (Slot::Failed(format!("{err:#}")), None)
                     }
                 };
                 if state.keeps(job.index) {
                     state.cache.insert(job.index, slot);
+                }
+                if overlay_still_wanted(&state, &job) {
+                    state.overlays.insert(job.index, overlay);
                 }
             }
             Kind::Full => {
@@ -378,16 +478,64 @@ fn worker(shared: &Shared) {
                 }
                 state.full_in_flight.remove(&job.index);
                 if state.on_screen(job.index) {
-                    let full = result
-                        .map_err(|err| log::warn!("full size {}: {err:#}", job.path.display()))
-                        .ok()
-                        .map(Arc::new);
+                    let (full, overlay) = match result {
+                        Ok((full, overlay)) => (Some(Arc::new(full)), overlay),
+                        Err(err) => {
+                            log::warn!("full size {}: {err:#}", job.path.display());
+                            (None, None)
+                        }
+                    };
                     state.full.insert(job.index, full);
+                    if overlay_still_wanted(&state, &job) {
+                        state.full_overlays.insert(job.index, overlay.map(Arc::new));
+                    }
+                }
+            }
+            Kind::Overlay => {
+                let result = decode::catch_panic(|| load_overlay(shared, &job));
+                let mut state = shared.lock();
+                if state.generation != job.generation
+                    || state.overlay_generation != job.overlay_generation
+                {
+                    continue;
+                }
+                state.overlay_in_flight.remove(&job.index);
+                if state.wants_overlay(job.index) {
+                    let overlay = result
+                        .map_err(|err| log::warn!("overlay {}: {err:#}", job.path.display()))
+                        .ok()
+                        .flatten();
+                    state.overlays.insert(job.index, overlay);
+                }
+            }
+            Kind::FullOverlay => {
+                let result = decode::catch_panic(|| load_full_overlay(shared, &job));
+                let mut state = shared.lock();
+                if state.generation != job.generation
+                    || state.overlay_generation != job.overlay_generation
+                {
+                    continue;
+                }
+                state.full_overlay_in_flight.remove(&job.index);
+                if state.on_screen(job.index) {
+                    let overlay = result
+                        .map_err(|err| log::warn!("overlay {}: {err:#}", job.path.display()))
+                        .ok()
+                        .flatten();
+                    state.full_overlays.insert(job.index, overlay.map(Arc::new));
                 }
             }
         }
         shared.ctx.request_repaint();
     }
+}
+
+/// A decode that computed the overlay along with the picture: it still counts if the overlay
+/// has not changed meanwhile and the photo still needs one.
+fn overlay_still_wanted(state: &State, job: &Job) -> bool {
+    job.overlay != Mode::Off
+        && job.overlay_generation == state.overlay_generation
+        && state.wants_overlay(job.index)
 }
 
 fn job(state: &State, kind: Kind, index: usize) -> Job {
@@ -397,6 +545,12 @@ fn job(state: &State, kind: Kind, index: usize) -> Job {
         index,
         path: state.paths[index].clone(),
         target: state.target,
+        overlay: if state.wants_overlay(index) {
+            state.overlay
+        } else {
+            Mode::Off
+        },
+        overlay_generation: state.overlay_generation,
     }
 }
 
@@ -420,8 +574,34 @@ fn full_job(state: &mut State, index: usize) -> Option<Job> {
     Some(job(state, Kind::Full, index))
 }
 
-/// Current photo, its full resolution, the pinned photo and its full resolution, then the
-/// neighbours.
+/// The overlay of a photo whose display image came without one (the overlay was off then, or
+/// the photo too far away).
+fn overlay_job(state: &mut State, index: usize) -> Option<Job> {
+    if !state.wants_overlay(index)
+        || !matches!(state.cache.get(&index), Some(Slot::Ready(_)))
+        || state.overlays.contains_key(&index)
+        || !state.overlay_in_flight.insert(index)
+    {
+        return None;
+    }
+    Some(job(state, Kind::Overlay, index))
+}
+
+/// The overlay tiles of a full-resolution image that came without them.
+fn full_overlay_job(state: &mut State, index: usize) -> Option<Job> {
+    if state.overlay == Mode::Off
+        || !matches!(state.full.get(&index), Some(Some(_)))
+        || state.full_overlays.contains_key(&index)
+        || state.full_in_flight.contains(&index)
+        || !state.full_overlay_in_flight.insert(index)
+    {
+        return None;
+    }
+    Some(job(state, Kind::FullOverlay, index))
+}
+
+/// Current photo, its overlay and full resolution, the pinned photo likewise, then the
+/// neighbours (and the overlay of the next and previous one).
 fn next_job(state: &mut State) -> Option<Job> {
     let current = state.current;
     if let Some(job) = display_job(state, current) {
@@ -430,18 +610,25 @@ fn next_job(state: &mut State) -> Option<Job> {
     if !state.prefetch {
         return None;
     }
-    if let Some(job) = full_job(state, current) {
+    if let Some(job) = on_screen_job(state, current) {
         return Some(job);
     }
     if let Some(pinned) = state.pinned
-        && let Some(job) = display_job(state, pinned).or_else(|| full_job(state, pinned))
+        && let Some(job) = display_job(state, pinned).or_else(|| on_screen_job(state, pinned))
     {
         return Some(job);
     }
     PREFETCH_ORDER.into_iter().skip(1).find_map(|offset| {
         let index = current.checked_add_signed(offset)?;
-        display_job(state, index)
+        display_job(state, index).or_else(|| overlay_job(state, index))
     })
+}
+
+/// What a photo on screen may still need after its display image.
+fn on_screen_job(state: &mut State, index: usize) -> Option<Job> {
+    overlay_job(state, index)
+        .or_else(|| full_job(state, index))
+        .or_else(|| full_overlay_job(state, index))
 }
 
 /// Whether `image` has fewer pixels than a decode for `target` would produce.
@@ -477,7 +664,8 @@ fn picture(
     Ok((meta, decoded))
 }
 
-fn load_display(shared: &Shared, job: &Job) -> Result<LoadedImage> {
+/// The display image and, when the job asks for it, its overlay.
+fn load_display(shared: &Shared, job: &Job) -> Result<(LoadedImage, Option<TextureHandle>)> {
     let started = Instant::now();
     let (meta, decoded) = picture(shared, &job.path, job.target)?;
 
@@ -492,17 +680,14 @@ fn load_display(shared: &Shared, job: &Job) -> Result<LoadedImage> {
         [decoded.width as usize, decoded.height as usize],
         &decoded.rgb,
     );
-    // Mipmaps keep the picture crisp when the window is much smaller than the monitor.
-    let options = TextureOptions {
-        mipmap_mode: Some(TextureFilter::Linear),
-        ..TextureOptions::LINEAR
-    };
     // `Context` is `Send + Sync`: uploading here keeps the UI thread free.
-    let texture = shared
-        .ctx
-        .load_texture(library::file_name_lossy(&job.path), image, options);
+    let texture =
+        shared
+            .ctx
+            .load_texture(library::file_name_lossy(&job.path), image, DISPLAY_TEXTURE);
+    let overlay = display_overlay(shared, job, &decoded);
 
-    Ok(LoadedImage {
+    let image = LoadedImage {
         texture,
         histogram: histogram::compute(&decoded.rgb),
         original_size: decoded.original_size,
@@ -511,7 +696,38 @@ fn load_display(shared: &Shared, job: &Job) -> Result<LoadedImage> {
         camera: meta.camera,
         description: meta.description,
         load_ms: started.elapsed().as_millis(),
-    })
+    };
+    Ok((image, overlay))
+}
+
+/// Videos get no overlay: their frame is only a preview.
+fn takes_overlay(job: &Job) -> bool {
+    job.overlay != Mode::Off && library::format_of(&job.path) != Some(library::Format::Video)
+}
+
+/// The overlay over a display decode, when the job asks for one.
+fn display_overlay(
+    shared: &Shared,
+    job: &Job,
+    decoded: &decode::DecodedImage,
+) -> Option<TextureHandle> {
+    if !takes_overlay(job) {
+        return None;
+    }
+    let (w, h) = (decoded.width, decoded.height);
+    let threshold = overlay::threshold(job.overlay, &decoded.rgb, w, h);
+    let image = overlay::render(&decoded.rgb, w, h, [0, 0, w, h], job.overlay, threshold)?;
+    let name = format!("overlay:{}", job.path.display());
+    Some(shared.ctx.load_texture(name, image, DISPLAY_TEXTURE))
+}
+
+/// The overlay of a photo already cached: its display image once more, for the pixels.
+fn load_overlay(shared: &Shared, job: &Job) -> Result<Option<TextureHandle>> {
+    if !takes_overlay(job) {
+        return Ok(None);
+    }
+    let (_, decoded) = picture(shared, &job.path, job.target)?;
+    Ok(display_overlay(shared, job, &decoded))
 }
 
 /// The file's bytes, never while the rating writer is halfway through rewriting it.
@@ -520,17 +736,14 @@ fn read(files: &FileLocks, path: &Path) -> Result<Vec<u8>> {
     std::fs::read(path).context("cannot read file")
 }
 
-fn load_full(shared: &Shared, job: &Job) -> Result<FullImage> {
+/// The full resolution as tiles and, when the job asks for it, the overlay's tiles.
+fn load_full(shared: &Shared, job: &Job) -> Result<(FullImage, Option<Vec<Tile>>)> {
     let ctx = &shared.ctx;
     let (_, decoded) = picture(shared, &job.path, [u32::MAX; 2])?;
-
-    let max_side = ctx.input(|i| i.max_texture_side) as u32;
-    let tile_side = max_side.min(MAX_TILE);
     let (width, height) = (decoded.width, decoded.height);
-    let mut tiles = Vec::new();
-    for y0 in (0..height).step_by(tile_side as usize) {
-        for x0 in (0..width).step_by(tile_side as usize) {
-            let (tw, th) = (tile_side.min(width - x0), tile_side.min(height - y0));
+    let tiles = tile_regions(ctx, width, height)
+        .into_iter()
+        .map(|[x0, y0, tw, th]| {
             let mut rgb = Vec::with_capacity((tw * th * 3) as usize);
             for y in y0..y0 + th {
                 let start = ((y * width + x0) * 3) as usize;
@@ -542,17 +755,73 @@ fn load_full(shared: &Shared, job: &Job) -> Result<FullImage> {
                 image,
                 TextureOptions::LINEAR,
             );
-            tiles.push(Tile {
+            Tile {
                 texture,
                 origin: [x0, y0],
                 size: [tw, th],
-            });
-        }
-    }
-    Ok(FullImage {
+            }
+        })
+        .collect();
+    let full = FullImage {
         size: [width, height],
         tiles,
-    })
+    };
+    Ok((full, full_overlay_tiles(shared, job, &decoded)))
+}
+
+/// The overlay tiles of a full-resolution image already on screen: decoded once more.
+fn load_full_overlay(shared: &Shared, job: &Job) -> Result<Option<Vec<Tile>>> {
+    if !takes_overlay(job) {
+        return Ok(None);
+    }
+    let (_, decoded) = picture(shared, &job.path, [u32::MAX; 2])?;
+    Ok(full_overlay_tiles(shared, job, &decoded))
+}
+
+/// The overlay over a full-resolution decode, in the same tiles as the picture. One threshold
+/// for the whole photo, so the tiles mark alike.
+fn full_overlay_tiles(
+    shared: &Shared,
+    job: &Job,
+    decoded: &decode::DecodedImage,
+) -> Option<Vec<Tile>> {
+    if !takes_overlay(job) {
+        return None;
+    }
+    let (width, height) = (decoded.width, decoded.height);
+    let threshold = overlay::threshold(job.overlay, &decoded.rgb, width, height);
+    tile_regions(&shared.ctx, width, height)
+        .into_iter()
+        .map(|region| {
+            let [x0, y0, tw, th] = region;
+            let image =
+                overlay::render(&decoded.rgb, width, height, region, job.overlay, threshold)?;
+            let texture = shared.ctx.load_texture(
+                format!("overlay:{}:{x0}:{y0}", job.path.display()),
+                image,
+                TextureOptions::LINEAR,
+            );
+            Some(Tile {
+                texture,
+                origin: [x0, y0],
+                size: [tw, th],
+            })
+        })
+        .collect()
+}
+
+/// The tiles a full-resolution image is cut into: as large as the GPU allows, at most
+/// [`MAX_TILE`].
+fn tile_regions(ctx: &egui::Context, width: u32, height: u32) -> Vec<overlay::Region> {
+    let max_side = ctx.input(|i| i.max_texture_side) as u32;
+    let side = max_side.min(MAX_TILE);
+    let mut regions = Vec::new();
+    for y0 in (0..height).step_by(side as usize) {
+        for x0 in (0..width).step_by(side as usize) {
+            regions.push([x0, y0, side.min(width - x0), side.min(height - y0)]);
+        }
+    }
+    regions
 }
 
 #[cfg(test)]
@@ -576,12 +845,174 @@ mod tests {
             full: HashMap::new(),
             full_in_flight: HashSet::new(),
             prefetch: true,
+            overlay: Mode::Off,
+            overlay_generation: 0,
+            overlays: HashMap::new(),
+            overlay_in_flight: HashSet::new(),
+            full_overlays: HashMap::new(),
+            full_overlay_in_flight: HashSet::new(),
             shutdown: false,
         }
     }
 
     fn order(state: &mut State) -> Vec<(usize, bool)> {
         std::iter::from_fn(|| next_job(state).map(|j| (j.index, j.kind == Kind::Full))).collect()
+    }
+
+    /// Every job `next_job` hands out, with its kind and the overlay it computes.
+    fn jobs(state: &mut State) -> Vec<(usize, Kind, Mode)> {
+        std::iter::from_fn(|| next_job(state).map(|j| (j.index, j.kind, j.overlay))).collect()
+    }
+
+    /// A decoded display image, as the cache holds it.
+    fn ready(ctx: &egui::Context) -> Slot {
+        let pixel = ColorImage::new([1, 1], vec![egui::Color32::BLACK]);
+        Slot::Ready(Arc::new(LoadedImage {
+            texture: ctx.load_texture("photo", pixel, TextureOptions::LINEAR),
+            histogram: [[0; 256]; 3],
+            original_size: [1, 1],
+            rating: RatingInfo::default(),
+            label: LabelInfo::None,
+            camera: CameraInfo::default(),
+            description: Description::default(),
+            load_ms: 0,
+        }))
+    }
+
+    #[test]
+    fn overlays_come_with_the_decodes_on_screen_and_next_to_it() {
+        let mut s = state(20, 10, Some(2));
+        s.set_overlay(Mode::Sharpness);
+        let sharp = Mode::Sharpness;
+        assert_eq!(
+            jobs(&mut s),
+            [
+                (10, Kind::Display, sharp),
+                (2, Kind::Display, sharp),
+                (11, Kind::Display, sharp),
+                (9, Kind::Display, sharp),
+                // Further away only the picture: an overlay there would only cost memory.
+                (12, Kind::Display, Mode::Off),
+                (13, Kind::Display, Mode::Off),
+                (8, Kind::Display, Mode::Off),
+                (7, Kind::Display, Mode::Off),
+            ]
+        );
+    }
+
+    #[test]
+    fn cached_photos_get_their_overlay_decoded_again() {
+        let ctx = egui::Context::default();
+        let mut s = state(20, 10, None);
+        for index in [9, 10, 11, 12] {
+            s.cache.insert(index, ready(&ctx));
+        }
+        assert!(
+            jobs(&mut s)
+                .iter()
+                .all(|&(_, kind, _)| kind == Kind::Display),
+            "without the overlay nothing is decoded again"
+        );
+        let mut s = state(20, 10, None);
+        for index in [9, 10, 11, 12] {
+            s.cache.insert(index, ready(&ctx));
+        }
+        s.set_overlay(Mode::Exposure);
+        let exposure = Mode::Exposure;
+        assert_eq!(
+            jobs(&mut s),
+            [
+                (10, Kind::Overlay, exposure),
+                (11, Kind::Overlay, exposure),
+                (9, Kind::Overlay, exposure),
+                (13, Kind::Display, Mode::Off),
+                (8, Kind::Display, Mode::Off),
+                (7, Kind::Display, Mode::Off),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_new_overlay_drops_the_old_ones_and_their_decodes() {
+        let ctx = egui::Context::default();
+        let mut s = state(20, 10, None);
+        s.set_overlay(Mode::Sharpness);
+        s.cache.insert(10, ready(&ctx));
+        s.overlays.insert(10, None);
+        s.overlay_in_flight.insert(11);
+        let old = job(&s, Kind::Overlay, 11);
+        assert!(
+            !s.set_overlay(Mode::Sharpness),
+            "the same mode changes nothing"
+        );
+        assert!(s.set_overlay(Mode::Exposure));
+        assert!(s.overlays.is_empty() && s.overlay_in_flight.is_empty());
+        assert_ne!(old.overlay_generation, s.overlay_generation);
+        assert!(
+            !overlay_still_wanted(&s, &old),
+            "a result for the old mode is dropped"
+        );
+        assert_eq!(
+            jobs(&mut s).first(),
+            Some(&(10, Kind::Overlay, Mode::Exposure))
+        );
+    }
+
+    #[test]
+    fn overlays_of_photos_moved_away_from_are_dropped() {
+        let mut s = state(20, 10, Some(2));
+        s.set_overlay(Mode::Sharpness);
+        for index in [2, 9, 10, 11, 12] {
+            s.overlays.insert(index, None);
+        }
+        s.current = 11;
+        s.prune();
+        let mut kept: Vec<usize> = s.overlays.keys().copied().collect();
+        kept.sort_unstable();
+        assert_eq!(kept, [2, 10, 11, 12]);
+        s.set_overlay(Mode::Off);
+        s.overlays.insert(11, None);
+        s.prune();
+        assert!(s.overlays.is_empty(), "no overlay is kept while it is off");
+    }
+
+    #[test]
+    fn full_resolution_overlays_wait_for_their_image() {
+        let mut s = state(20, 10, None);
+        s.set_overlay(Mode::Sharpness);
+        s.want_full.insert(10);
+        s.overlays.insert(10, None);
+        s.in_flight.insert(10);
+        // The full decode computes the overlay tiles along with it.
+        assert_eq!(
+            jobs(&mut s).first(),
+            Some(&(10, Kind::Full, Mode::Sharpness))
+        );
+        // Loaded without them (the overlay was off then): decoded once more for the overlay.
+        let mut s = state(20, 10, None);
+        s.in_flight.insert(10);
+        s.full.insert(10, None);
+        s.set_overlay(Mode::Sharpness);
+        s.overlays.insert(10, None);
+        assert!(
+            !jobs(&mut s)
+                .iter()
+                .any(|&(_, kind, _)| kind == Kind::FullOverlay),
+            "a failed full decode gets no overlay"
+        );
+        let mut s = state(20, 10, None);
+        s.in_flight.insert(10);
+        let loaded = FullImage {
+            size: [1, 1],
+            tiles: Vec::new(),
+        };
+        s.full.insert(10, Some(Arc::new(loaded)));
+        s.set_overlay(Mode::Sharpness);
+        s.overlays.insert(10, None);
+        assert_eq!(
+            jobs(&mut s).first(),
+            Some(&(10, Kind::FullOverlay, Mode::Sharpness))
+        );
     }
 
     #[test]

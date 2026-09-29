@@ -251,6 +251,20 @@ pub struct Texts {
     pub cmd_fullscreen: &'static str,
     pub cmd_compare: &'static str,
     pub cmd_zoom: &'static str,
+    /// View ▸ Overlay ▸ (`O`): marks on the photo.
+    pub menu_overlay: &'static str,
+    pub overlay_off: &'static str,
+    pub overlay_sharpness: &'static str,
+    pub overlay_exposure: &'static str,
+    /// In the info bar while the overlay is on.
+    pub overlay_fact_sharpness: &'static str,
+    pub overlay_fact_exposure: &'static str,
+    /// Hints when `O` switches, with the legend.
+    pub overlay_hint_sharpness: &'static str,
+    pub overlay_hint_exposure: &'static str,
+    pub overlay_hint_off: &'static str,
+    /// Tooltip of the eye next to Sharpness and Exposure in the details panel.
+    pub overlay_show_on_photo: &'static str,
     pub cmd_reject: &'static str,
     /// Menu row (This photo): the Description tab of the details panel (`B`).
     pub cmd_description: &'static str,
@@ -452,7 +466,7 @@ pub struct Texts {
     pub help_sections: [&'static str; 5],
     pub help_browse: [HelpRow; 5],
     pub help_rate: [HelpRow; 10],
-    pub help_view: [HelpRow; 11],
+    pub help_view: [HelpRow; 12],
     pub help_edit: [HelpRow; 6],
     pub help_more: [HelpRow; 5],
 }
