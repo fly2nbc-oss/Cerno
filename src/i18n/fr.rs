@@ -80,6 +80,17 @@ pub static TEXTS: Texts = Texts {
     menu_filter: "Filtre",
     menu_view: "Affichage",
     menu_labels: "Couleurs",
+    menu_external: "Modifier ailleurs",
+    external_other: "Autre programme …",
+    external_chooser: "« Ouvrir avec » du système …",
+    external_pick_title: "Choisir un programme pour modifier",
+    external_opened: |name| {
+        format!(
+            "Ouvert dans {name} – après l'enregistrement, Cerno affiche la nouvelle version ; l'original reste dans .originals"
+        )
+    },
+    external_reloaded: |name| format!("{name} a été enregistré ailleurs – rechargé"),
+    external_failed: |err| format!("Pas ouvert : {err}"),
     menu_language: "Langue",
     menu_models: "Modèles et données",
     menu_this_photo: "Cette photo",
@@ -341,6 +352,10 @@ pub static TEXTS: Texts = Texts {
         (
             "Ctrl+Z",
             "Récupérer l'original – il reste dans .originals à côté de la photo",
+        ),
+        (
+            "E",
+            "Modifier dans un autre programme – celui retenu, ou en choisir un",
         ),
     ],
     help_more: [

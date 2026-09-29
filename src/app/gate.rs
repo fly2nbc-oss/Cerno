@@ -20,6 +20,8 @@ pub(super) enum Change {
     Edit,
     /// Rewrite the file at once: quarter turn, `Ctrl+Z`.
     Rewrite,
+    /// Open it in another program, which may save over it (its first original is kept first).
+    External,
     /// Copy or move the photos on screen.
     Transfer,
 }
@@ -74,24 +76,29 @@ fn blocked(change: Change, now: Activity) -> Option<Blocked> {
         transfer,
         no_index,
     } = now;
-    if no_index && matches!(change, Change::Edit | Change::Rewrite) {
+    if no_index && matches!(change, Change::Edit | Change::Rewrite | Change::External) {
         return Some(Blocked::NoIndex);
     }
     match (change, transfer) {
         // A moved file is gone from here: nothing may queue up for its old path.
         (_, Some(TransferMode::Move)) => return Some(Blocked::Moving),
         // Marks may wait: the file lock keeps a rating write and the copy apart.
-        (Change::Delete | Change::Edit | Change::Rewrite, Some(TransferMode::Copy)) => {
+        (
+            Change::Delete | Change::Edit | Change::Rewrite | Change::External,
+            Some(TransferMode::Copy),
+        ) => {
             return Some(Blocked::Copying);
         }
         _ => {}
     }
     match change {
         Change::Mark => None,
-        Change::Delete | Change::Edit | Change::Rewrite | Change::Transfer if writing => {
+        Change::Delete | Change::Edit | Change::Rewrite | Change::External | Change::Transfer
+            if writing =>
+        {
             Some(Blocked::Writing)
         }
-        Change::Rewrite | Change::Transfer if editing => Some(Blocked::Editing),
+        Change::Rewrite | Change::External | Change::Transfer if editing => Some(Blocked::Editing),
         _ => None,
     }
 }
@@ -161,29 +168,31 @@ mod tests {
             ..idle
         };
         // Nothing going on: everything may happen.
-        for change in [Mark, Delete, Edit, Rewrite, Transfer] {
+        for change in [Mark, Delete, Edit, Rewrite, External, Transfer] {
             assert_eq!(blocked(change, idle), None, "{change:?}");
         }
         // A moved photo takes nothing, a copied one still takes marks.
-        for change in [Mark, Delete, Edit, Rewrite] {
+        for change in [Mark, Delete, Edit, Rewrite, External] {
             assert_eq!(blocked(change, moving), Some(Blocked::Moving));
         }
         assert_eq!(blocked(Mark, copying), None);
-        for change in [Delete, Edit, Rewrite] {
+        for change in [Delete, Edit, Rewrite, External] {
             assert_eq!(blocked(change, copying), Some(Blocked::Copying));
         }
         // An edit being written holds everything but marks.
         assert_eq!(blocked(Mark, writing), None);
-        for change in [Delete, Edit, Rewrite, Transfer] {
+        for change in [Delete, Edit, Rewrite, External, Transfer] {
             assert_eq!(blocked(change, writing), Some(Blocked::Writing));
         }
-        // An open session: no quarter turn, no Ctrl+Z, no copy or move until Enter or Esc.
+        // An open session: no quarter turn, no Ctrl+Z, no other program, no copy or move
+        // until Enter or Esc.
         assert_eq!(blocked(Rewrite, editing), Some(Blocked::Editing));
+        assert_eq!(blocked(External, editing), Some(Blocked::Editing));
         assert_eq!(blocked(Transfer, editing), Some(Blocked::Editing));
         assert_eq!(blocked(Mark, editing), None);
         assert_eq!(blocked(Edit, editing), None, "S/R switch the session");
         // Without the index file no edit at all – its kept original would be lost track of.
-        for change in [Edit, Rewrite] {
+        for change in [Edit, Rewrite, External] {
             assert_eq!(blocked(change, no_index), Some(Blocked::NoIndex));
         }
         for change in [Mark, Delete, Transfer] {

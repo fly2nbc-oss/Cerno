@@ -259,6 +259,20 @@ pub struct Texts {
     pub menu_filter: &'static str,
     pub menu_view: &'static str,
     pub menu_labels: &'static str,
+    /// Submenu of This photo: open it in another program (`E`).
+    pub menu_external: &'static str,
+    /// Pick a program file by hand (remembered).
+    pub external_other: &'static str,
+    /// The system's own chooser (Windows "Open with"; the default program on Linux) – not remembered.
+    pub external_chooser: &'static str,
+    /// Title of the file dialog for another program.
+    pub external_pick_title: &'static str,
+    /// The photo is open in another program.
+    pub external_opened: fn(&str) -> String,
+    /// Another program saved the photo; Cerno shows the new version.
+    pub external_reloaded: fn(&str) -> String,
+    /// The program could not be started (or the original not be kept).
+    pub external_failed: fn(&str) -> String,
     pub menu_language: &'static str,
     pub menu_models: &'static str,
     /// Menu group: everything that acts on the current photo.
@@ -413,7 +427,7 @@ pub struct Texts {
     pub help_browse: [HelpRow; 5],
     pub help_rate: [HelpRow; 10],
     pub help_view: [HelpRow; 9],
-    pub help_edit: [HelpRow; 5],
+    pub help_edit: [HelpRow; 6],
     pub help_more: [HelpRow; 5],
 }
 
@@ -485,6 +499,9 @@ mod tests {
             assert!(trained.contains("30") && trained.contains("0.7"), "{name}");
             assert!((t.taste_photos)(30).contains("30"), "{name}");
             assert!((t.edit_failed)("locked").contains("locked"), "{name}");
+            assert!((t.external_opened)("GIMP").contains("GIMP"), "{name}");
+            assert!((t.external_reloaded)("a.jpg").contains("a.jpg"), "{name}");
+            assert!((t.external_failed)("gone").contains("gone"), "{name}");
             assert_eq!(t.compare_left_badge.chars().count(), 1, "{name}");
         }
     }

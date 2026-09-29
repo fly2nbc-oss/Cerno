@@ -683,6 +683,7 @@ dependencies = [
  "sha2",
  "sys-locale",
  "ureq",
+ "windows",
  "winresource",
  "zune-core",
  "zune-jpeg",

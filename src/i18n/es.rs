@@ -80,6 +80,17 @@ pub static TEXTS: Texts = Texts {
     menu_filter: "Filtro",
     menu_view: "Vista",
     menu_labels: "Colores",
+    menu_external: "Editar en otro programa",
+    external_other: "Otro programa …",
+    external_chooser: "«Abrir con» del sistema …",
+    external_pick_title: "Elegir un programa para editar",
+    external_opened: |name| {
+        format!(
+            "Abierto en {name}: al guardar, Cerno muestra la nueva versión; el original queda en .originals"
+        )
+    },
+    external_reloaded: |name| format!("{name} se guardó en otro programa: recargado"),
+    external_failed: |err| format!("No se abrió: {err}"),
     menu_language: "Idioma",
     menu_models: "Modelos y datos",
     menu_this_photo: "Esta foto",
@@ -330,6 +341,7 @@ pub static TEXTS: Texts = Texts {
             "Ctrl+Z",
             "Recuperar el original – se queda en .originals junto a la foto",
         ),
+        ("E", "Editar en otro programa: el recordado o elegir uno"),
     ],
     help_more: [
         ("Ctrl+K", "Menú: todas las funciones"),

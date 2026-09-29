@@ -44,6 +44,9 @@ zune-jpeg = "0.5.15"
 [target.'cfg(windows)'.dependencies]
 # DirectML runs on every DX12 GPU (AMD, Intel, NVIDIA).
 ort = { version = "2.0.0-rc.13", default-features = false, features = ["directml"] }
+# The programs Windows offers for a file type ("Open with"), for editing a photo elsewhere.
+# The same version wgpu already brings in.
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_Shell_Common"] }
 
 [target.'cfg(windows)'.build-dependencies]
 # Embeds assets/icon.ico and the version info into the exe (uses the Windows SDK's rc.exe).

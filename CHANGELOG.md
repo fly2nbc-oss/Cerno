@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **Edit elsewhere** (`E`, or *This photo › Edit elsewhere* in the menu): opens the current photo in a program the system registers for its type, in one picked by hand, or through the system's *Open with* dialog. The choice is remembered, and the same submenu switches to another program. The first original goes to `.originals` before; when the program saves, Cerno reloads the photo, analyses it again and writes back the stars and colour label the save dropped.
+
 ### Changed
 
 - The menu (`Ctrl+K`) is grouped by what a command acts on: **This photo** (stars, reject, colour label, compare, straighten, crop, turns, undo, delete), **Photos on screen** (sort, filter, refresh order, copy, move, delete, delete rejected), **View** (panels, zoom, full screen), **Settings** (auto advance, subfolders, language, models & data) and Help. Stars and deleting the current photo are in the menu now; colours appear once for marking and once, clearly apart, as a filter; no row appears or disappears at the top level. Submenus can hold submenus. The action menu (`Ctrl+M`) offers "Delete rejected photos" too.

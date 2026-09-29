@@ -80,6 +80,17 @@ pub static TEXTS: Texts = Texts {
     menu_filter: "Filter",
     menu_view: "View",
     menu_labels: "Colour labels",
+    menu_external: "Edit elsewhere",
+    external_other: "Other program …",
+    external_chooser: "System “Open with” …",
+    external_pick_title: "Choose a program to edit with",
+    external_opened: |name| {
+        format!(
+            "Opened in {name} – once saved there, Cerno shows the new version; the original stays in .originals"
+        )
+    },
+    external_reloaded: |name| format!("{name} was saved elsewhere – reloaded"),
+    external_failed: |err| format!("Not opened: {err}"),
     menu_language: "Language",
     menu_models: "Models & data",
     menu_this_photo: "This photo",
@@ -316,6 +327,10 @@ pub static TEXTS: Texts = Texts {
         (
             "Ctrl+Z",
             "Bring back the original – it stays in .originals beside the photo",
+        ),
+        (
+            "E",
+            "Edit in another program – the remembered one, or choose one",
         ),
     ],
     help_more: [

@@ -16,6 +16,7 @@
 
 mod browse;
 mod editing;
+mod external;
 mod files;
 mod frame;
 mod gate;
@@ -142,6 +143,15 @@ pub struct CernoApp {
     started: Instant,
     logged_first_frame: bool,
     logged_first_photo: bool,
+    /// The program `E` opens photos in (remembered).
+    external_editor: Option<crate::external::Editor>,
+    /// The programs the system offers, per file extension (asked once).
+    editors: HashMap<String, Vec<crate::external::Editor>>,
+    /// Photos opened in another program, watched for saves.
+    watched: Vec<external::Watched>,
+    /// A program being started (its original kept first).
+    launching: Option<std::sync::mpsc::Receiver<external::Launched>>,
+    external_checked: Instant,
     /// Straighten or crop, while it is open. The saved zoom comes back on Enter or Esc.
     edit: Option<EditSession>,
     /// Encodes a confirmed edit. Joined on exit so the write is not lost.
@@ -214,6 +224,9 @@ impl CernoApp {
         // Only the photo, the filmstrip and the info bar by default.
         let show_toolbar = db.setting("top_bar").as_deref() == Some("1");
         let show_filmstrip = db.setting("filmstrip").as_deref() != Some("0");
+        let external_editor = db
+            .setting(external::SETTING)
+            .and_then(|text| crate::external::Editor::from_setting(&text));
         let details = db
             .setting("details_mode")
             .and_then(|m| DetailsMode::from_id(&m))
@@ -278,6 +291,11 @@ impl CernoApp {
             started,
             logged_first_frame: false,
             logged_first_photo: false,
+            external_editor,
+            editors: HashMap::new(),
+            watched: Vec::new(),
+            launching: None,
+            external_checked: Instant::now(),
             edit: None,
             edit_thread: None,
             edit_busy: false,
@@ -314,6 +332,7 @@ impl CernoApp {
     fn poll_background(&mut self, ctx: &egui::Context) {
         self.process_deletions(ctx);
         self.poll_transfer(ctx);
+        self.poll_external(ctx);
         self.poll_edits();
         self.refresh_marks(ctx);
         if let Some(removal) = self.analyzer.take_removal() {

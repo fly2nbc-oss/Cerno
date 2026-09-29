@@ -315,6 +315,10 @@ impl CernoApp {
         }
         let writing = i18n::t().edit_writing;
         for outcome in self.writer.poll_edits() {
+            if outcome.elsewhere {
+                self.reload_saved(&outcome.path);
+                continue;
+            }
             self.edit_busy = false;
             match outcome.error {
                 Some(err) => self.notice = Some(Notice::error((i18n::t().edit_failed)(&err))),
@@ -332,7 +336,7 @@ impl CernoApp {
         }
     }
 
-    fn refresh_edited(&mut self, path: &Path) {
+    pub(super) fn refresh_edited(&mut self, path: &Path) {
         if let Some(index) = self.view.iter().position(|candidate| candidate == path) {
             self.loader.invalidate(index);
         }
