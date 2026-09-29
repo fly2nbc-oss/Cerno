@@ -134,11 +134,17 @@ fn level<'a, A>(entries: &'a [Entry<A>], path: &[usize]) -> Option<&'a [Entry<A>
     Some(list)
 }
 
-/// Where the keyboard lands in a list it opens: on the ticked choice, else on the first row.
+/// Where the keyboard lands in a list it opens: on the ticked choice, else on the first row
+/// that can run (a greyed-out "Show all" heads the filters while nothing is filtered).
 fn start_row<A>(entries: &[Entry<A>]) -> Option<usize> {
     entries
         .iter()
         .position(|entry| matches!(entry, Entry::Row(row) if row.mark == Mark::Choice(true)))
+        .or_else(|| {
+            entries
+                .iter()
+                .position(|entry| !matches!(entry, Entry::Row(row) if row.disabled.is_some()))
+        })
         .or(Some(0))
 }
 
@@ -788,6 +794,21 @@ mod tests {
         let out = frame(&mut state, &short, vec![key(Key::Enter)]);
         assert!(out.run.is_none(), "the old cursor points nowhere now");
         assert_eq!(state.cursors[0], None);
+    }
+
+    #[test]
+    fn a_list_opens_on_its_first_row_that_can_run() {
+        let entries: Vec<Entry<u8>> = vec![
+            Entry::Row(Row::new(0, "Alle anzeigen", None).disabled(Some("kein Filter"))),
+            Entry::Row(Row::new(1, "1★", None).toggle(false)),
+            Entry::Row(Row::new(2, "2★", None).toggle(false)),
+        ];
+        assert_eq!(start_row(&entries), Some(1));
+        let choices: Vec<Entry<u8>> = vec![
+            Entry::Row(Row::new(0, "Name", None).choice(false)),
+            Entry::Row(Row::new(1, "Datum", None).choice(true)),
+        ];
+        assert_eq!(start_row(&choices), Some(1), "a ticked choice still wins");
     }
 
     #[test]

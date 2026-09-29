@@ -193,6 +193,8 @@ pub struct Texts {
     pub filter_duplicate: &'static str,
     pub filter_duplicate_tooltip: &'static str,
     pub filter_clear: &'static str,
+    /// Why "Show all" is greyed out: nothing is filtered.
+    pub filter_none_active: &'static str,
     pub refresh_order: &'static str,
     pub refresh_order_tooltip: &'static str,
     pub analyzing_progress: fn(usize, usize) -> String,

@@ -13,6 +13,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ### Fixed
 
+- The filter bar holds still:
+  - *Show all* has a fixed place, greyed out while nothing is filtered, so ticking the first filter no longer pushes every box away from the pointer.
+  - The sort box is as wide as its longest entry.
+  - *Action* stays at the right edge while the analysis count ticks up.
+  - In the menu, *Show all* is always the first filter row, so the highlighted row stays on the filter just ticked.
+  - A filter bar that appeared because a filter hid every photo stays while the pointer is on it.
 - Linux: the last row of *Edit elsewhere* promised the system's *Open with* dialog, but Linux opens the default program without asking; it now says *Open with the default program*.
 
 ## [1.1.0] – 2026-09-29

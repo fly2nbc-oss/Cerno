@@ -20,6 +20,7 @@ pub static TEXTS: Texts = Texts {
     filter_duplicate: "Duplicati",
     filter_duplicate_tooltip: "Ogni foto tranne il primo percorso identico",
     filter_clear: "Mostra tutte",
+    filter_none_active: "Nessun filtro attivo",
     refresh_order: "Aggiorna ordine",
     refresh_order_tooltip: "Dopo l'ordinamento e il filtro sono arrivati nuovi punteggi",
     analyzing_progress: |done, total| format!("Analisi {done} / {total}"),
