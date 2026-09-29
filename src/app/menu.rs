@@ -540,6 +540,19 @@ impl CernoApp {
     }
 
     fn run(&mut self, ctx: &egui::Context, action: Action, frames: &[viewer::Frame]) {
+        // Like their keys: these need the single photo, so the grid steps aside first.
+        if self.grid
+            && matches!(
+                action,
+                Action::Compare
+                    | Action::Straighten
+                    | Action::Crop
+                    | Action::Zoom
+                    | Action::Overlay(_)
+            )
+        {
+            self.set_grid(false);
+        }
         match action {
             Action::Open => self.pick_folder(ctx),
             Action::Sort(sort) => self.change_options(ctx, |o| o.sort = sort),
