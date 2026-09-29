@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Changed
+
+- The `.deb` recommends ffmpeg, so videos show a frame after a plain `apt install`.
+
 ### Fixed
 
 - Linux: the last row of *Edit elsewhere* promised the system's *Open with* dialog, but Linux opens the default program without asking; it now says *Open with the default program*.

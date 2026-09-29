@@ -84,7 +84,7 @@ Cerno (Latin *cerno* – "I sift, discern, see clearly") is a native Rust deskto
 | `cerno_<version>_x64-setup.exe` | Windows 10/11 installer – per user into `%LOCALAPPDATA%\Cerno`, no admin rights; uninstall from Apps & features |
 | `cerno_<version>_x64-portable.zip` | Windows portable – unzip anywhere, run `Cerno\cerno.exe` (VC++ runtime included) |
 | `cerno_<version>_x86_64.AppImage` | Linux portable – `chmod +x`, run; HEIC libraries included; needs glibc 2.39+ (Ubuntu 24.04, Debian 13, Fedora 40 or newer) |
-| `cerno_<version>_amd64.deb` | Ubuntu 24.04+ / Debian 13+ – `sudo apt install ./cerno_<version>_amd64.deb` pulls in libheif's HEVC plugin and ExifTool |
+| `cerno_<version>_amd64.deb` | Ubuntu 24.04+ / Debian 13+ – `sudo apt install ./cerno_<version>_amd64.deb` pulls in libheif's HEVC plugin, ExifTool and ffmpeg |
 
 The Windows files are not code-signed yet, so SmartScreen asks once (*More info* → *Run anyway*). Installed or portable, Cerno keeps its index and models in `%LOCALAPPDATA%\Cerno\data` (Linux: `~/.local/share/cerno`); uninstalling leaves them unless you tick *Delete the application data*. Kept originals and deleted photos are in the `.originals` folders beside your photos and are never touched by uninstalling.
 
@@ -96,7 +96,9 @@ cargo run --release --features heic -- "D:/Photos/2026-09 Trip"
 
 Or drop a folder onto the window / `Ctrl+O`. When moving the binary, keep beside `cerno.exe`: `DirectML.dll`, and from a `--features heic` build the HEIC DLLs (`heif.dll`, `libde265.dll`) and the `licenses/` folder.
 
-**Requirement:** [ExifTool](https://exiftool.org/) on `PATH` for writing ratings and colour labels (Windows: `winget install OliverBetz.ExifTool`, Debian/Ubuntu: `apt install libimage-exiftool-perl`). Viewing works without it. `CERNO_EXIFTOOL` can point to a specific executable.
+**Requirement:** [ExifTool](https://exiftool.org/) on `PATH` for writing ratings, colour labels, comments and keywords (Windows: `winget install OliverBetz.ExifTool`, Debian/Ubuntu: `apt install libimage-exiftool-perl`). Viewing works without it. `CERNO_EXIFTOOL` can point to a specific executable.
+
+**Optional:** [ffmpeg](https://ffmpeg.org/) on `PATH` shows a frame of each video (Windows: `winget install Gyan.FFmpeg`, Debian/Ubuntu: `apt install ffmpeg`); without it videos show a placeholder and still play with `Enter`. `CERNO_FFMPEG` can point to a specific executable.
 
 ---
 
