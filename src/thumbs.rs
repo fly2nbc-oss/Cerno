@@ -1,4 +1,4 @@
-//! Filmstrip thumbnails as GPU textures.
+//! Filmstrip and grid thumbnails as GPU textures.
 //!
 //! Four sources: the display loader (downscaled from what it just decoded – instant for the
 //! neighbourhood), the analysis pass (every image, also stored in the database), the
@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result, anyhow};
 use eframe::egui::{self, ColorImage, TextureFilter, TextureHandle, TextureOptions};
@@ -24,12 +25,17 @@ use crate::{decode, video};
 
 /// Longest side of a thumbnail in pixels.
 pub const THUMB_SIZE: u32 = 256;
-/// Textures kept at most; the filmstrip shows a few dozen. The analysis adds one for every
-/// photo of the folder, so the least recently drawn ones go once there are more.
+/// Textures kept at least; the filmstrip shows a few dozen. The analysis adds one for every
+/// photo of the folder, so the least recently drawn ones go once there are more. The grid
+/// raises the limit to what it shows (`Thumbs::set_visible`).
 const MAX_TEXTURES: usize = 400;
-/// Evicting in batches keeps the sort off the per-photo path.
-const EVICT_SLACK: usize = MAX_TEXTURES / 4;
-/// A video the strip has not asked for in this many egui passes has been scrolled out.
+/// Room kept above the visible cells, so scrolling a little doesn't reload.
+const VISIBLE_RESERVE: usize = 100;
+/// A database request not repeated for this long is dropped: its cell has scrolled out of
+/// view.
+const STALE: Duration = Duration::from_secs(1);
+/// A video the strip or the grid has not asked for in this many egui passes has been
+/// scrolled out.
 const STALE_PASSES: u64 = 2;
 
 pub struct Thumbs {
@@ -51,10 +57,22 @@ struct Inner {
 }
 
 /// Textures with the time they were last asked for (a counter, not a clock).
-#[derive(Default)]
 struct Textures {
     map: HashMap<PathBuf, (TextureHandle, u64)>,
     tick: u64,
+    /// How many are kept; a quarter more may pile up before the oldest go in one batch, which
+    /// keeps the sort off the per-photo path.
+    capacity: usize,
+}
+
+impl Default for Textures {
+    fn default() -> Self {
+        Self {
+            map: HashMap::new(),
+            tick: 0,
+            capacity: MAX_TEXTURES,
+        }
+    }
 }
 
 impl Textures {
@@ -70,9 +88,9 @@ impl Textures {
     fn insert(&mut self, path: PathBuf, texture: TextureHandle) {
         self.tick += 1;
         self.map.insert(path, (texture, self.tick));
-        if self.map.len() > MAX_TEXTURES + EVICT_SLACK {
+        if self.map.len() > self.capacity + self.capacity / 4 {
             let mut ticks: Vec<u64> = self.map.values().map(|(_, used)| *used).collect();
-            let cut = ticks.len() - MAX_TEXTURES;
+            let cut = ticks.len() - self.capacity;
             let (_, oldest_kept, _) = ticks.select_nth_unstable(cut);
             let oldest_kept = *oldest_kept;
             self.map.retain(|_, (_, used)| *used >= oldest_kept);
@@ -82,8 +100,9 @@ impl Textures {
 
 #[derive(Default)]
 struct Queue {
-    pending: VecDeque<PathBuf>,
-    queued: HashSet<PathBuf>,
+    /// Waiting for a database load, with when each was last asked for: the newest goes first,
+    /// so the cells on screen fill before the ones scrolled past.
+    wanted: HashMap<PathBuf, Instant>,
     /// Not in the database (yet); the analysis pass will insert them.
     misses: HashSet<PathBuf>,
     /// Bumped when a photo is edited, so a database load that started earlier is dropped.
@@ -114,8 +133,13 @@ impl Queue {
             self.videos.push_back(path.to_path_buf());
             return Some(Lane::Video);
         }
-        if !self.misses.contains(path) && self.queued.insert(path.to_path_buf()) {
-            self.pending.push_back(path.to_path_buf());
+        // Asked again, it only moves up: the newest request goes first.
+        if !self.misses.contains(path)
+            && self
+                .wanted
+                .insert(path.to_path_buf(), Instant::now())
+                .is_none()
+        {
             return Some(Lane::Database);
         }
         None
@@ -180,6 +204,12 @@ impl Thumbs {
         None
     }
 
+    /// The grid shows this many cells: keep at least that many textures (with some reserve),
+    /// or they would be dropped and reloaded every frame. `0` when it closes.
+    pub fn set_visible(&self, cells: usize) {
+        lock(&self.inner.textures).capacity = (cells + VISIBLE_RESERVE).max(MAX_TEXTURES);
+    }
+
     pub fn contains(&self, path: &Path) -> bool {
         lock(&self.inner.textures).map.contains_key(path)
     }
@@ -201,8 +231,7 @@ impl Thumbs {
     pub fn clear(&self) {
         lock(&self.inner.textures).map.clear();
         let mut queue = lock(&self.inner.queue);
-        queue.pending.clear();
-        queue.queued.clear();
+        queue.wanted.clear();
         queue.misses.clear();
         queue.videos.clear();
         queue.videos_asked.clear();
@@ -257,8 +286,7 @@ fn worker(inner: &Inner) {
                 if inner.shutdown.load(Ordering::Relaxed) {
                     return;
                 }
-                if let Some(path) = queue.pending.pop_front() {
-                    queue.queued.remove(&path);
+                if let Some(path) = next_wanted(&mut queue.wanted, Instant::now()) {
                     let token = queue.fresh.get(&path).copied().unwrap_or(0);
                     break (path, token);
                 }
@@ -327,6 +355,17 @@ fn video_thumbnail(path: &Path) -> (u32, u32, Vec<u8>) {
         video::blank([THUMB_SIZE; 2])
     });
     (image.width, image.height, image.rgb)
+}
+
+/// The most recently asked-for path; requests that went stale are dropped first.
+fn next_wanted(wanted: &mut HashMap<PathBuf, Instant>, now: Instant) -> Option<PathBuf> {
+    wanted.retain(|_, asked| now.saturating_duration_since(*asked) < STALE);
+    let newest = wanted
+        .iter()
+        .max_by_key(|(_, asked)| **asked)
+        .map(|(path, _)| path.clone())?;
+    wanted.remove(&newest);
+    Some(newest)
 }
 
 fn load_from_db(db: &Db, path: &Path) -> Result<Option<(u32, u32, Vec<u8>)>> {
@@ -403,10 +442,49 @@ mod tests {
             textures.insert(PathBuf::from(format!("{i}.jpg")), texture(i));
             // The filmstrip asks for the photo on screen every frame.
             assert!(textures.get(&visible).is_some());
-            assert!(textures.map.len() <= MAX_TEXTURES + EVICT_SLACK);
+            assert!(textures.map.len() <= MAX_TEXTURES + MAX_TEXTURES / 4);
         }
         assert!(textures.map.contains_key(Path::new("2000.jpg")));
         assert!(!textures.map.contains_key(Path::new("1.jpg")));
+    }
+
+    /// The grid keeps as many textures as it shows.
+    #[test]
+    fn a_larger_capacity_keeps_more() {
+        let ctx = egui::Context::default();
+        let mut textures = Textures {
+            capacity: 900,
+            ..Textures::default()
+        };
+        for i in 0..1_000 {
+            let texture = ctx.load_texture(
+                format!("t{i}"),
+                ColorImage::from_rgb([1, 1], &[0, 0, 0]),
+                TextureOptions::LINEAR,
+            );
+            textures.insert(PathBuf::from(format!("{i}.jpg")), texture);
+        }
+        assert_eq!(textures.map.len(), 1_000, "below capacity plus a quarter");
+    }
+
+    /// Scrolling asks for new cells: they come first, and cells no longer on screen are dropped.
+    #[test]
+    fn newest_requests_first_stale_ones_dropped() {
+        let start = Instant::now();
+        let at = |ms| start + Duration::from_millis(ms);
+        let mut wanted = HashMap::from([
+            (PathBuf::from("old.jpg"), at(0)),
+            (PathBuf::from("a.jpg"), at(900)),
+            (PathBuf::from("b.jpg"), at(1_100)),
+        ]);
+        let now = at(1_200);
+        assert_eq!(next_wanted(&mut wanted, now), Some(PathBuf::from("b.jpg")));
+        assert!(
+            !wanted.contains_key(Path::new("old.jpg")),
+            "asked for 1.2 s ago"
+        );
+        assert_eq!(next_wanted(&mut wanted, now), Some(PathBuf::from("a.jpg")));
+        assert_eq!(next_wanted(&mut wanted, now), None);
     }
 
     #[test]
@@ -414,8 +492,14 @@ mod tests {
         let mut queue = Queue::default();
         assert_eq!(queue.request(Path::new("clip.MP4"), 1), Some(Lane::Video));
         assert_eq!(queue.request(Path::new("clip.MP4"), 2), None, "queued once");
-        assert!(queue.pending.is_empty() && queue.misses.is_empty());
+        assert!(queue.wanted.is_empty() && queue.misses.is_empty());
         assert_eq!(queue.request(Path::new("a.jpg"), 2), Some(Lane::Database));
+        assert_eq!(
+            queue.request(Path::new("a.jpg"), 3),
+            None,
+            "waiting already"
+        );
+        assert!(queue.wanted.contains_key(Path::new("a.jpg")));
         assert_eq!(queue.next_video(2), Some(PathBuf::from("clip.MP4")));
         assert_eq!(queue.next_video(2), None);
         // Asked for again after its frame came and went (an eviction): queued anew.

@@ -10,7 +10,8 @@ use crate::library;
 use crate::loader::Lookup;
 use crate::theme::tokens;
 use crate::ui::details::{self, DetailsMode, DetailsTab};
-use crate::ui::{filmstrip, filter_bar, help, info_bar, overlays, palette};
+use crate::ui::{cells, filmstrip, filter_bar, grid, help, info_bar, overlays, palette};
+use crate::view;
 
 use super::CernoApp;
 use super::menu::ConfirmAction;
@@ -49,7 +50,8 @@ impl CernoApp {
             area.max.y = r.min.y;
             r
         });
-        let filmstrip = (info.is_some() && self.show_filmstrip).then(|| {
+        // The grid shows every photo already: its space goes to the grid.
+        let filmstrip = (info.is_some() && self.show_filmstrip && !self.grid).then(|| {
             let r = Rect::from_min_max(
                 pos2(window.min.x, area.max.y - filmstrip::HEIGHT),
                 pos2(window.max.x, area.max.y),
@@ -85,6 +87,8 @@ impl CernoApp {
             }
         } else if self.view.is_empty() {
             overlays::centred_message(ui, area, i18n::t().no_match, tokens::MUTED);
+        } else if self.grid {
+            self.draw_grid(ui, area);
         } else {
             // Navigation may have changed the photos; lay them out again.
             let slots = self.slots(area);
@@ -92,44 +96,65 @@ impl CernoApp {
         }
     }
 
-    pub(super) fn draw_filmstrip(&mut self, ui: &mut egui::Ui, rect: Rect) {
-        let ctx = ui.ctx().clone();
-        let paths = Arc::clone(&self.view.paths);
-        let series = Arc::clone(&self.view.series);
-        let duplicates = Arc::clone(&self.view.duplicate_of);
-        let grouped = self.view.grouped;
-        let pinned = self.pinned_index();
-        let current_series = series
+    /// What the cell of view index `i` shows, for the filmstrip and the grid. `around` is the
+    /// pinned photo and the current series, looked up once per frame.
+    fn cell_info(
+        &self,
+        i: usize,
+        percentiles: &view::Percentiles,
+        around: (Option<usize>, Option<u32>),
+    ) -> cells::CellInfo {
+        let (pinned, current_series) = around;
+        let path = &self.view.paths[i];
+        let known = self.board.get(path);
+        let blurry = known
+            .filter(|k| percentiles.is_blurry(&k.scores))
+            .and_then(|k| percentiles.subject(&k.scores))
+            .map(|(p, eyes)| (i18n::t().blurry_tooltip)(eyes, p * 100.0));
+        let rating = match self.session_ratings.get(path) {
+            Some(rating) => *rating,
+            None => known.map(|k| k.rating).unwrap_or_default(),
+        };
+        let place = self.view.series.get(i).and_then(|place| *place);
+        cells::CellInfo {
+            current: i == self.current,
+            rating,
+            blurry,
+            pinned: pinned == Some(i),
+            label: self.label_of(path, None),
+            series_id: place.map(|p| p.id),
+            in_current_series: place.is_some_and(|p| Some(p.id) == current_series),
+            duplicate_of: self
+                .view
+                .duplicate_of
+                .get(i)
+                .and_then(|p| p.as_ref())
+                .map(|original| self.photo_name(original)),
+            video: library::format_of(path) == Some(library::Format::Video),
+        }
+    }
+
+    /// The pinned photo and the current photo's series, for [`Self::cell_info`].
+    fn around_current(&self) -> (Option<usize>, Option<u32>) {
+        let series = self
+            .view
+            .series
             .get(self.current)
             .and_then(|place| *place)
             .map(|p| p.id);
-        // Percentiles need `&mut self`; take them before borrowing `self` in the closure.
-        let percentiles = self.percentiles().clone();
+        (self.pinned_index(), series)
+    }
+
+    pub(super) fn draw_filmstrip(&mut self, ui: &mut egui::Ui, rect: Rect) {
+        let ctx = ui.ctx().clone();
+        let paths = Arc::clone(&self.view.paths);
+        let grouped = self.view.grouped;
+        // Brought up to date first (`&mut self`), then only read while the cells are drawn.
+        self.percentiles();
+        let percentiles = &self.percentiles.1;
+        let around = self.around_current();
         let strip = filmstrip::draw(ui, rect, &paths, self.current, &self.thumbs, grouped, |i| {
-            let path = &paths[i];
-            let known = self.board.get(path);
-            let blurry = known
-                .filter(|k| percentiles.is_blurry(&k.scores))
-                .and_then(|k| percentiles.subject(&k.scores))
-                .map(|(p, eyes)| (i18n::t().blurry_tooltip)(eyes, p * 100.0));
-            let rating = match self.session_ratings.get(path) {
-                Some(rating) => *rating,
-                None => known.map(|k| k.rating).unwrap_or_default(),
-            };
-            let place = series.get(i).and_then(|place| *place);
-            filmstrip::CellInfo {
-                rating,
-                blurry,
-                pinned: pinned == Some(i),
-                label: self.label_of(path, None),
-                series_id: place.map(|p| p.id),
-                in_current_series: place.is_some_and(|p| Some(p.id) == current_series),
-                duplicate_of: duplicates
-                    .get(i)
-                    .and_then(|p| p.as_ref())
-                    .map(|original| self.photo_name(original)),
-                video: library::format_of(path) == Some(library::Format::Video),
-            }
+            self.cell_info(i, percentiles, around)
         });
         if let Some(index) = strip.clicked
             && self.edit.is_none()
@@ -139,6 +164,47 @@ impl CernoApp {
         if strip.step != 0 && !self.help_open && self.edit.is_none() {
             let target = self.current.saturating_add_signed(strip.step);
             self.go_to(&ctx, target, strip.step.signum());
+        }
+    }
+
+    /// The grid (`F7`) instead of the photo: a click moves the cursor (the current photo), a
+    /// double click opens it, Ctrl + wheel changes the size.
+    fn draw_grid(&mut self, ui: &mut egui::Ui, rect: Rect) {
+        let ctx = ui.ctx().clone();
+        let paths = Arc::clone(&self.view.paths);
+        let grouped = self.view.grouped;
+        let follow = self.grid_shown != Some(self.current);
+        self.grid_shown = Some(self.current);
+        self.percentiles();
+        let percentiles = &self.percentiles.1;
+        let around = self.around_current();
+        let shown = grid::Shown {
+            paths: &paths,
+            current: self.current,
+            grouped,
+            step: self.grid_step,
+            follow,
+        };
+        let out = grid::draw(ui, rect, &shown, &self.thumbs, |i| {
+            self.cell_info(i, percentiles, around)
+        });
+        self.thumbs.set_visible(out.visible);
+        self.grid_columns = out.columns;
+        self.grid_page = out.page;
+        if out.resize != 0 {
+            self.resize_grid(out.resize);
+        }
+        let covered = self.help_open || self.palette.is_some() || self.action_menu.is_some();
+        if covered {
+            return;
+        }
+        if let Some(index) = out.opened {
+            self.go_to(&ctx, index, 1);
+            self.set_grid(false);
+        } else if let Some(index) = out.clicked {
+            self.go_to(&ctx, index, 1);
+            // A click is no reason to scroll.
+            self.grid_shown = Some(self.current);
         }
     }
 

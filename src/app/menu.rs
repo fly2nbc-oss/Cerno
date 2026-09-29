@@ -42,6 +42,7 @@ enum Action {
     Compare,
     Zoom,
     Overlay(crate::overlay::Mode),
+    Grid,
     Fullscreen,
     Rate(Rating),
     Reject,
@@ -273,6 +274,7 @@ impl CernoApp {
                     ),
                     row(Row::new(Action::Zoom, t.cmd_zoom, key("Z")).toggle(self.zoom.is_zoomed())),
                     Entry::Group(Group::new(t.menu_overlay, key("O"), overlays)),
+                    row(Row::new(Action::Grid, t.cmd_grid, key("F7")).toggle(self.grid)),
                     row(Row::new(Action::Fullscreen, t.cmd_fullscreen, key("F"))),
                 ],
             )));
@@ -566,6 +568,7 @@ impl CernoApp {
                 }
             }
             Action::Overlay(mode) => self.set_overlay(mode),
+            Action::Grid => self.set_grid(!self.grid),
             Action::Fullscreen => {
                 let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
                 ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!fullscreen));

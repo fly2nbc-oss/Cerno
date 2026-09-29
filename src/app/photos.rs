@@ -112,6 +112,29 @@ impl CernoApp {
         }));
     }
 
+    /// `F7`: the grid instead of the single photo, or back. While it shows only its cursor
+    /// photo is decoded, and the thumbnail cache keeps what it shows. Not during a straighten
+    /// or crop session.
+    pub(super) fn set_grid(&mut self, on: bool) {
+        if on && (self.edit.is_some() || self.view.is_empty()) {
+            return;
+        }
+        self.grid = on;
+        self.grid_shown = None;
+        self.loader.set_prefetch(!on);
+        if !on {
+            self.thumbs.set_visible(0);
+        }
+    }
+
+    /// `+`/`−` or Ctrl + wheel in the grid: the cell size, a step at a time.
+    pub(super) fn resize_grid(&mut self, steps: i32) {
+        let last = crate::ui::grid::STEPS.len() as i32 - 1;
+        self.grid_step = (self.grid_step as i32 + steps).clamp(0, last) as usize;
+        // The cursor stays in view at the new size.
+        self.grid_shown = None;
+    }
+
     /// Photo slots on screen: one, or pinned left + current right in compare mode.
     pub(super) fn slots(&self, area: Rect) -> Vec<Slot> {
         match self.pinned_index() {

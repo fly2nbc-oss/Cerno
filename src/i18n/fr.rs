@@ -98,6 +98,7 @@ pub static TEXTS: Texts = Texts {
     overlay_hint_exposure: "Exposition : rouge = brûlé, bleu = bouché",
     overlay_hint_off: "Superposition désactivée",
     overlay_show_on_photo: "Afficher sur la photo (O)",
+    cmd_grid: "Grille",
     cmd_reject: "Rejeter",
     cmd_description: "Commentaire et mots-clés",
     cmd_delete_rejected: |n| format!("Supprimer les photos rejetées ({n})"),
@@ -378,6 +379,10 @@ pub static TEXTS: Texts = Texts {
             "O",
             "Superposition : contours nets → lumières et ombres écrêtées → désactivée",
         ),
+        (
+            "F7",
+            "Grille de toutes les photos : ↑ ↓ une ligne, + − taille, Entrée ouvre la photo",
+        ),
         ("Maj+Tab", "Barre de filtres, détails et pellicule ensemble"),
         ("Entrée", "Lire une vidéo dans le lecteur par défaut"),
         (
@@ -419,6 +424,9 @@ pub static TEXTS: Texts = Texts {
         ),
         ("Ctrl+L", "Changer de langue"),
         ("H, F1, ?", "Cette aide"),
-        ("Esc", "Revenir en arrière : zoom, comparaison, plein écran"),
+        (
+            "Esc",
+            "Revenir en arrière : zoom, comparaison, grille, plein écran",
+        ),
     ],
 };

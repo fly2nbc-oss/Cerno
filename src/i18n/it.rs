@@ -96,6 +96,7 @@ pub static TEXTS: Texts = Texts {
     overlay_hint_exposure: "Esposizione: rosso = bruciato, blu = nero chiuso",
     overlay_hint_off: "Sovrapposizione disattivata",
     overlay_show_on_photo: "Mostra sulla foto (O)",
+    cmd_grid: "Griglia",
     cmd_reject: "Rifiuta",
     cmd_description: "Commento e parole chiave",
     cmd_delete_rejected: |n| format!("Elimina le foto rifiutate ({n})"),
@@ -368,6 +369,10 @@ pub static TEXTS: Texts = Texts {
             "Sovrapposizione: bordi nitidi → luci e ombre tagliate → disattivata",
         ),
         (
+            "F7",
+            "Griglia di tutte le foto: ↑ ↓ una riga, + − dimensione, Invio apre la foto",
+        ),
+        (
             "Maiusc+Tab",
             "Barra dei filtri, dettagli e striscia di miniature insieme",
         ),
@@ -402,6 +407,9 @@ pub static TEXTS: Texts = Texts {
         ("Ctrl+M", "Azione: copia, sposta o elimina le foto in vista"),
         ("Ctrl+L", "Cambia lingua"),
         ("H, F1, ?", "Questa guida"),
-        ("Esc", "Torna indietro: zoom, confronto, schermo intero"),
+        (
+            "Esc",
+            "Torna indietro: zoom, confronto, griglia, schermo intero",
+        ),
     ],
 };

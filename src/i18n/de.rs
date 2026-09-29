@@ -96,6 +96,7 @@ pub static TEXTS: Texts = Texts {
     overlay_hint_exposure: "Belichtung: Rot = ausgefressen, Blau = abgesoffen",
     overlay_hint_off: "Overlay aus",
     overlay_show_on_photo: "Auf dem Foto zeigen (O)",
+    cmd_grid: "Raster",
     cmd_reject: "Ablehnen",
     cmd_description: "Kommentar und Stichwörter",
     cmd_delete_rejected: |n| format!("Abgelehnte Fotos löschen ({n})"),
@@ -366,6 +367,10 @@ pub static TEXTS: Texts = Texts {
             "Overlay: scharfe Kanten → Über- und Unterbelichtung → aus",
         ),
         (
+            "F7",
+            "Raster aller Fotos: ↑ ↓ eine Zeile, + − Größe, Enter öffnet das Foto",
+        ),
+        (
             "Umschalt+Tab",
             "Filterleiste, Details und Filmstreifen zusammen",
         ),
@@ -406,6 +411,6 @@ pub static TEXTS: Texts = Texts {
         ),
         ("Strg+L", "Sprache wechseln"),
         ("H, F1, ?", "Diese Hilfe"),
-        ("Esc", "Schritt zurück: Zoom, Vergleich, Vollbild"),
+        ("Esc", "Schritt zurück: Zoom, Vergleich, Raster, Vollbild"),
     ],
 };

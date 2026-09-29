@@ -286,6 +286,8 @@ pub struct Texts {
     pub overlay_hint_off: &'static str,
     /// Tooltip of the eye next to Sharpness and Exposure in the details panel.
     pub overlay_show_on_photo: &'static str,
+    /// View ▸ (`F7`): every photo as a thumbnail.
+    pub cmd_grid: &'static str,
     pub cmd_reject: &'static str,
     /// Menu row (This photo): the Description tab of the details panel (`B`).
     pub cmd_description: &'static str,
@@ -487,7 +489,7 @@ pub struct Texts {
     pub help_sections: [&'static str; 5],
     pub help_browse: [HelpRow; 5],
     pub help_rate: [HelpRow; 10],
-    pub help_view: [HelpRow; 13],
+    pub help_view: [HelpRow; 14],
     pub help_edit: [HelpRow; 6],
     pub help_more: [HelpRow; 5],
 }

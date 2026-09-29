@@ -96,6 +96,7 @@ pub static TEXTS: Texts = Texts {
     overlay_hint_exposure: "Exposición: rojo = quemado, azul = negro empastado",
     overlay_hint_off: "Superposición desactivada",
     overlay_show_on_photo: "Mostrar en la foto (O)",
+    cmd_grid: "Cuadrícula",
     cmd_reject: "Rechazar",
     cmd_description: "Comentario y palabras clave",
     cmd_delete_rejected: |n| format!("Eliminar las fotos rechazadas ({n})"),
@@ -362,6 +363,10 @@ pub static TEXTS: Texts = Texts {
             "Superposición: bordes nítidos → luces y sombras recortadas → desactivada",
         ),
         (
+            "F7",
+            "Cuadrícula de todas las fotos: ↑ ↓ una fila, + − tamaño, Intro abre la foto",
+        ),
+        (
             "Mayús+Tab",
             "Barra de filtros, detalles y tira de miniaturas a la vez",
         ),
@@ -404,7 +409,7 @@ pub static TEXTS: Texts = Texts {
         ("H, F1, ?", "Esta ayuda"),
         (
             "Esc",
-            "Volver atrás: zoom, modo comparación, pantalla completa",
+            "Volver atrás: zoom, modo comparación, cuadrícula, pantalla completa",
         ),
     ],
 };

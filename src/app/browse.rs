@@ -258,14 +258,19 @@ impl CernoApp {
         }
     }
 
-    /// Tells the analysis where the user is (in full-folder terms) and pauses it briefly.
+    /// Tells the analysis where the user is (in full-folder terms) and pauses it briefly – not
+    /// in the grid, which decodes no big photo and whose cursor moves fast.
     fn sync_analyzer(&self) {
-        if let Some(index) = self
+        if let Some(&index) = self
             .view
             .get(self.current)
             .and_then(|p| self.all_index.get(p))
         {
-            self.analyzer.set_current(*index);
+            if self.grid {
+                self.analyzer.set_current_quietly(index);
+            } else {
+                self.analyzer.set_current(index);
+            }
         }
     }
 

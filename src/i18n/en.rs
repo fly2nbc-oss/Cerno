@@ -96,6 +96,7 @@ pub static TEXTS: Texts = Texts {
     overlay_hint_exposure: "Exposure: red = blown out, blue = crushed black",
     overlay_hint_off: "Overlay off",
     overlay_show_on_photo: "Show on the photo (O)",
+    cmd_grid: "Grid",
     cmd_reject: "Reject",
     cmd_description: "Comment and keywords",
     cmd_delete_rejected: |n| format!("Delete rejected photos ({n})"),
@@ -351,6 +352,10 @@ pub static TEXTS: Texts = Texts {
             "O",
             "Overlay: sharp edges → clipped highlights and shadows → off",
         ),
+        (
+            "F7",
+            "Grid of all photos: ↑ ↓ a row, + − size, Enter opens the photo",
+        ),
         ("Shift+Tab", "Filter bar, details and filmstrip together"),
         ("Enter", "Play a video in the default player"),
         ("B", "Description: edit the comment and keywords"),
@@ -386,6 +391,6 @@ pub static TEXTS: Texts = Texts {
         ),
         ("Ctrl+L", "Switch language"),
         ("H, F1, ?", "This help"),
-        ("Esc", "Step back: zoom, compare mode, full screen"),
+        ("Esc", "Step back: zoom, compare mode, grid, full screen"),
     ],
 };
