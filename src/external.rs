@@ -280,7 +280,7 @@ mod platform {
                 }
             }
         }
-        editors.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        editors.sort_by_key(|a| a.name.to_lowercase());
         editors
     }
 
@@ -437,7 +437,8 @@ mod tests {
         assert_eq!(Editor::from_setting(&editor.to_setting()), Some(editor));
         assert_eq!(Editor::from_setting("no tab"), None);
         assert_eq!(Editor::from_setting("\tid"), None);
-        let picked = Editor::program(Path::new(r"D:\Tools\GIMP 3\gimp.exe"));
+        // Forward slashes: a separator on Windows and Linux alike.
+        let picked = Editor::program(Path::new("D:/Tools/GIMP 3/gimp.exe"));
         assert_eq!(picked.name, "gimp");
     }
 
