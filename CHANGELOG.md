@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+## [1.2.0] – 2026-09-30
+
+Checking and overview: an overlay for sharp edges and clipping, a filter for similar photos and a grid of the whole view. The filter bar holds still, and videos get thumbnails of their own.
+
 ### Added
 
 - **Check overlay** – `O` marks on the photo what the details panel measures:
