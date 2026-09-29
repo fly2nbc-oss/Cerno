@@ -263,6 +263,48 @@ impl CameraInfo {
     }
 }
 
+/// The metadata of the file at `path`, from its bytes. A RAW whose container the EXIF reader
+/// does not know (CR3, RAF, ORF, RW2 …) gives its camera data and orientation through its
+/// JPEG preview. Where the marks live in an XMP sidecar, rating and label come from there as
+/// soon as one exists – until then the file's own (a rating given in the camera) stay.
+pub fn read_for(path: &std::path::Path, bytes: &[u8]) -> FileMetadata {
+    let format = crate::library::format_of(path);
+    let mut meta = read(bytes);
+    if format.is_some_and(crate::library::Format::is_raw)
+        && meta.camera.model.is_none()
+        && let Some(preview) = crate::raw::preview(bytes)
+    {
+        let inner = read(preview);
+        meta.camera = inner.camera;
+        meta.orientation = inner.orientation;
+    }
+    if crate::sidecar::applies(path) {
+        with_sidecar(&mut meta, path);
+    }
+    meta
+}
+
+/// Only what the photo's sidecar says (defaults without one): for a video, which is never read
+/// whole, and for the writer once the sidecar exists.
+pub fn read_sidecar(path: &std::path::Path) -> FileMetadata {
+    let mut meta = read(&[]);
+    with_sidecar(&mut meta, path);
+    meta
+}
+
+/// The sidecar's rating and label replace the file's. It holds no Windows rating tags.
+fn with_sidecar(meta: &mut FileMetadata, path: &std::path::Path) {
+    if let Some(bytes) = crate::sidecar::read(path) {
+        let side = read(&bytes);
+        meta.rating = RatingInfo {
+            value: side.rating.value,
+            has_exif_rating: false,
+            has_ms_photo_rating: false,
+        };
+        meta.label = side.label;
+    }
+}
+
 pub fn read(bytes: &[u8]) -> FileMetadata {
     let exif = exif::Reader::new()
         .read_from_container(&mut Cursor::new(bytes))

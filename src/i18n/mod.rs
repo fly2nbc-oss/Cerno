@@ -279,6 +279,12 @@ pub struct Texts {
     pub cmd_crop: &'static str,
     pub cmd_undo: &'static str,
     pub edit_not_jpeg: &'static str,
+    /// Over a video's frame: how to play it.
+    pub video_play_hint: &'static str,
+    /// Over a video's placeholder when ffmpeg is not installed.
+    pub video_no_ffmpeg: &'static str,
+    /// The system's player could not be started.
+    pub video_play_failed: fn(&str) -> String,
     pub edit_writing: &'static str,
     /// The edited photo is no longer the current one (a copy finished, a filter changed).
     pub edit_cancelled: &'static str,
@@ -412,7 +418,7 @@ pub struct Texts {
     pub help_sections: [&'static str; 5],
     pub help_browse: [HelpRow; 5],
     pub help_rate: [HelpRow; 10],
-    pub help_view: [HelpRow; 9],
+    pub help_view: [HelpRow; 10],
     pub help_edit: [HelpRow; 5],
     pub help_more: [HelpRow; 5],
 }
@@ -485,6 +491,7 @@ mod tests {
             assert!(trained.contains("30") && trained.contains("0.7"), "{name}");
             assert!((t.taste_photos)(30).contains("30"), "{name}");
             assert!((t.edit_failed)("locked").contains("locked"), "{name}");
+            assert!((t.video_play_failed)("no app").contains("no app"), "{name}");
             assert_eq!(t.compare_left_badge.chars().count(), 1, "{name}");
         }
     }

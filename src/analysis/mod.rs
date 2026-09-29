@@ -204,10 +204,19 @@ fn is_complete(image: &ImageRecord, caps: Capabilities) -> bool {
     scores_complete(image, caps) && image.metadata_version == metadata::VERSION
 }
 
-fn known_from(record: &crate::db::FileRecord) -> Known {
+/// What the index knows. For a photo whose marks live in a sidecar the sidecar has the last
+/// word: another program may have changed it without touching the photo's stamp.
+fn known_from(path: &Path, record: &crate::db::FileRecord) -> Known {
+    let (mut rating, mut label) = (record.rating, record.label);
+    if crate::sidecar::applies(path)
+        && let Some(bytes) = crate::sidecar::read(path)
+    {
+        let side = metadata::read(&bytes);
+        (rating, label) = (side.rating.value, side.label.known());
+    }
     Known {
-        rating: record.rating,
-        label: record.label,
+        rating,
+        label,
         taken_ms: record.image.taken_ms,
         camera: record.image.camera.as_deref().map(metadata::camera_id),
         fingerprint: Some(record.fingerprint),
@@ -314,7 +323,7 @@ impl Analyzer {
             };
             if let Ok(Some(record)) = self.shared.db.lookup(&path.to_string_lossy(), stamp) {
                 remember_embedding(&self.shared, path, record.image.embedding.as_deref());
-                self.shared.board.set(path, known_from(&record));
+                self.shared.board.set(path, known_from(path, &record));
             }
         }
         log::info!(
@@ -524,6 +533,20 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
     if files.busy(path) {
         return Ok(Outcome::Retry);
     }
+    // Nothing to measure in a video; its marks (sidecar) still go on the board, for the
+    // filters, the filmstrip and "Delete rejected photos". No index row.
+    if library::format_of(path) == Some(library::Format::Video) {
+        let meta = metadata::read_sidecar(path);
+        shared.board.set(
+            path,
+            Known {
+                rating: meta.rating.value,
+                label: meta.label.known(),
+                ..Known::default()
+            },
+        );
+        return Ok(Outcome::Done);
+    }
     let generation = files.generation(path);
     // Written meanwhile (the stamp can stay the same: same size, dates put back)?
     let changed = || files.busy(path) || files.generation(path) != generation;
@@ -539,13 +562,13 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
     if let Some(record) = shared.db.lookup(&key, stamp)? {
         remember_embedding(shared, path, record.image.embedding.as_deref());
         if is_complete(&record.image, caps) {
-            shared.board.set(path, known_from(&record));
+            shared.board.set(path, known_from(path, &record));
             return Ok(Outcome::Done);
         }
         // Scores are done; only the capture time (and a fresh read of rating/label) is missing.
         if scores_complete(&record.image, caps) {
             let bytes = read(files, path)?;
-            let meta = metadata::read(&bytes);
+            let meta = metadata::read_for(path, &bytes);
             if changed() {
                 return Ok(Outcome::Retry);
             }
@@ -591,7 +614,7 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
 
     let format = library::format_of(path).context("unsupported file type")?;
     let bytes = read(files, path)?;
-    let meta = metadata::read(&bytes);
+    let meta = metadata::read_for(path, &bytes);
     let image = decode::decode_for_display(
         &bytes,
         format,

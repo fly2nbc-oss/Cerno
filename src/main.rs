@@ -18,10 +18,13 @@ mod metadata;
 mod originals;
 mod paths;
 mod rating;
+mod raw;
+mod sidecar;
 mod theme;
 mod thumbs;
 mod transfer;
 mod ui;
+mod video;
 mod view;
 
 use std::path::PathBuf;

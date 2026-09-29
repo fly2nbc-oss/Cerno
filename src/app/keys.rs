@@ -52,6 +52,8 @@ struct KeyInput {
     compare: bool,
     keep_left: bool,
     keep_right: bool,
+    /// `Enter`: play the current video in the system's player.
+    play: bool,
     toggle_fullscreen: bool,
     escape: bool,
     toggle_toolbar: bool,
@@ -134,6 +136,7 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         compare: plain && i.key_pressed(Key::C),
         keep_left: plain && i.key_pressed(Key::A),
         keep_right: plain && i.key_pressed(Key::D),
+        play: plain && i.key_pressed(Key::Enter),
         // F and F11 full screen; T (`toggle_toolbar`) is the filter bar.
         toggle_fullscreen: i.key_pressed(Key::F11) || (plain && i.key_pressed(Key::F)),
         escape: i.key_pressed(Key::Escape),
@@ -292,6 +295,9 @@ impl CernoApp {
         }
         if keys.keep_right {
             self.keep_right(ctx);
+        }
+        if keys.play {
+            self.play_video();
         }
         if keys.delete {
             self.delete_current(ctx);

@@ -3,24 +3,70 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-const JPEG_EXTENSIONS: &[&str] = &["jpg", "jpeg", "jpe", "jfif"];
-const HEIF_EXTENSIONS: &[&str] = &["heic", "heif", "hif"];
+/// File extensions per format, lower case.
+const EXTENSIONS: &[(Format, &[&str])] = &[
+    (Format::Jpeg, &["jpg", "jpeg", "jpe", "jfif"]),
+    (Format::Heif, &["heic", "heif", "hif"]),
+    (Format::Png, &["png"]),
+    (Format::Tiff, &["tif", "tiff"]),
+    (Format::WebP, &["webp"]),
+    (Format::Bmp, &["bmp"]),
+    (Format::Gif, &["gif"]),
+    (Format::Dng, &["dng"]),
+    (
+        Format::Raw,
+        &[
+            "cr2", "cr3", "nef", "nrw", "arw", "srf", "sr2", "raf", "orf", "rw2", "pef", "srw",
+            "3fr", "erf", "mrw", "x3f",
+        ],
+    ),
+    (
+        Format::Video,
+        &[
+            "mp4", "mov", "m4v", "avi", "mkv", "mts", "m2ts", "3gp", "webm", "wmv", "mpg", "mpeg",
+        ],
+    ),
+];
 
+/// What Cerno can show. Only JPEG can be straightened, cropped and turned; RAW (except DNG),
+/// BMP and videos keep their marks in an XMP sidecar (`IMG_1.xmp`) instead of the file.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Format {
     Jpeg,
     Heif,
+    Png,
+    Tiff,
+    WebP,
+    Bmp,
+    /// The first frame.
+    Gif,
+    /// Adobe's open RAW: shown by its embedded preview, marks written into it like a JPEG.
+    Dng,
+    /// A camera RAW, shown by the largest JPEG preview it carries.
+    Raw,
+    /// Shown by one frame (ffmpeg), played in the system's player.
+    Video,
+}
+
+impl Format {
+    /// Marks go into an XMP sidecar: proprietary RAW is not rewritten, BMP holds no metadata,
+    /// and a star must not mean rewriting a video of several gigabytes.
+    pub fn marks_in_sidecar(self) -> bool {
+        matches!(self, Self::Raw | Self::Bmp | Self::Video)
+    }
+
+    /// Shown through an embedded JPEG preview.
+    pub fn is_raw(self) -> bool {
+        matches!(self, Self::Raw | Self::Dng)
+    }
 }
 
 pub fn format_of(path: &Path) -> Option<Format> {
     let ext = path.extension()?.to_str()?.to_ascii_lowercase();
-    if JPEG_EXTENSIONS.contains(&ext.as_str()) {
-        Some(Format::Jpeg)
-    } else if HEIF_EXTENSIONS.contains(&ext.as_str()) {
-        Some(Format::Heif)
-    } else {
-        None
-    }
+    EXTENSIONS
+        .iter()
+        .find(|(_, list)| list.contains(&ext.as_str()))
+        .map(|(format, _)| *format)
 }
 
 /// The images of one folder, in natural filename order (relative path, when subfolders are
@@ -339,7 +385,17 @@ mod tests {
     fn formats_by_extension() {
         assert_eq!(format_of(Path::new("x/P1.JPG")), Some(Format::Jpeg));
         assert_eq!(format_of(Path::new("x/P1.heic")), Some(Format::Heif));
-        assert_eq!(format_of(Path::new("x/P1.png")), None);
+        assert_eq!(format_of(Path::new("x/P1.PNG")), Some(Format::Png));
+        assert_eq!(format_of(Path::new("x/IMG_1.CR3")), Some(Format::Raw));
+        assert_eq!(format_of(Path::new("x/IMG_1.dng")), Some(Format::Dng));
+        assert_eq!(format_of(Path::new("x/clip.MOV")), Some(Format::Video));
+        assert_eq!(
+            format_of(Path::new("x/IMG_1.xmp")),
+            None,
+            "sidecars are not photos"
+        );
         assert_eq!(format_of(Path::new("x/noext")), None);
+        assert!(Format::Raw.marks_in_sidecar() && Format::Video.marks_in_sidecar());
+        assert!(!Format::Dng.marks_in_sidecar() && !Format::Png.marks_in_sidecar());
     }
 }

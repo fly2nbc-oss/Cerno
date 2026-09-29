@@ -26,8 +26,8 @@ pub struct DecodedImage {
 }
 
 /// Decodes and scales the image down to fit `max_size` (never up). `orientation` is the EXIF
-/// value and only honoured for JPEG: libheif already applies the HEIF `irot`/`imir` transforms.
-/// JPEG pixels come out in sRGB (see [`to_srgb`]).
+/// value, honoured for everything but HEIC: libheif already applies the HEIF `irot`/`imir`
+/// transforms. JPEG pixels (and RAW previews) come out in sRGB (see [`to_srgb`]).
 pub fn decode_for_display(
     bytes: &[u8],
     format: Format,
@@ -60,6 +60,17 @@ fn decode(
             let (w, h, rgb) = decode_heif(bytes)?;
             (w, h, rgb, 1)
         }
+        Format::Png | Format::Tiff | Format::WebP | Format::Bmp | Format::Gif => {
+            let (w, h, rgb) = decode_raster(bytes, format)?;
+            (w, h, rgb, orientation)
+        }
+        // The embedded preview is stored like the sensor; the RAW's orientation turns it.
+        Format::Dng | Format::Raw => {
+            let preview = crate::raw::preview(bytes).context("no preview image in the RAW file")?;
+            let (w, h, rgb) = decode_jpeg(preview, srgb)?;
+            (w, h, rgb, orientation)
+        }
+        Format::Video => bail!("a video has no picture of its own (see `video::poster`)"),
     };
 
     let swaps = swaps_axes(orientation);
@@ -143,6 +154,40 @@ fn decode_heif(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>)> {
 #[cfg(not(feature = "heic"))]
 fn decode_heif(_bytes: &[u8]) -> Result<(u32, u32, Vec<u8>)> {
     bail!("HEIC support is not built in (build with `--features heic`)")
+}
+
+/// PNG, TIFF, WebP, BMP and GIF (its first frame) through the `image` crate. Transparent parts
+/// are laid on neutral grey. No colour conversion: most of these files are sRGB anyway.
+fn decode_raster(bytes: &[u8], format: Format) -> Result<(u32, u32, Vec<u8>)> {
+    use image::{ImageFormat, ImageReader};
+    let kind = match format {
+        Format::Png => ImageFormat::Png,
+        Format::Tiff => ImageFormat::Tiff,
+        Format::WebP => ImageFormat::WebP,
+        Format::Bmp => ImageFormat::Bmp,
+        _ => ImageFormat::Gif,
+    };
+    let reader = || ImageReader::with_format(std::io::Cursor::new(bytes), kind);
+    let (w, h) = reader()
+        .into_dimensions()
+        .map_err(|e| anyhow!("{kind:?} header unreadable: {e}"))?;
+    check_size(u64::from(w), u64::from(h))?;
+    let mut decoder = reader();
+    // The size is checked above; the crate's own allocation limit is lower than ours.
+    decoder.no_limits();
+    let rgba = decoder
+        .decode()
+        .map_err(|e| anyhow!("{kind:?} decoding failed: {e}"))?
+        .into_rgba8();
+    const BACKGROUND: u32 = 0x80;
+    let mut rgb = Vec::with_capacity(w as usize * h as usize * 3);
+    for px in rgba.pixels() {
+        let alpha = u32::from(px[3]);
+        for &c in &px.0[..3] {
+            rgb.push(((u32::from(c) * alpha + BACKGROUND * (255 - alpha) + 127) / 255) as u8);
+        }
+    }
+    Ok((w, h, rgb))
 }
 
 /// The header's size, checked before anything is allocated for it (see [`MAX_PIXELS`]).
@@ -375,6 +420,49 @@ fn convert_with_cms(rgb: &mut [u8], icc: &[u8]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Each of the five formats the `image` crate reads, written by the same crate: a 2×1
+    /// image, left pixel opaque red, right one fully transparent (grey where alpha is kept).
+    #[test]
+    fn raster_formats_decode_with_transparency_on_grey() {
+        use image::{ImageFormat, RgbaImage};
+        let rgba = RgbaImage::from_raw(2, 1, vec![255, 0, 0, 255, 0, 0, 255, 0]).unwrap();
+        for (format, kind, alpha) in [
+            (Format::Png, ImageFormat::Png, true),
+            (Format::Tiff, ImageFormat::Tiff, true),
+            (Format::WebP, ImageFormat::WebP, true),
+            (Format::Bmp, ImageFormat::Bmp, true),
+            (Format::Gif, ImageFormat::Gif, true),
+        ] {
+            let mut bytes = std::io::Cursor::new(Vec::new());
+            rgba.write_to(&mut bytes, kind).unwrap();
+            let image = decode_for_display(bytes.get_ref(), format, 1, [100, 100])
+                .unwrap_or_else(|e| panic!("{format:?}: {e:#}"));
+            assert_eq!((image.width, image.height), (2, 1), "{format:?}");
+            assert_eq!(&image.rgb[..3], [255, 0, 0], "{format:?}");
+            if alpha {
+                assert_eq!(&image.rgb[3..], [128, 128, 128], "{format:?}: transparent → grey");
+            }
+        }
+        assert!(decode_for_display(b"not a png", Format::Png, 1, [9, 9]).is_err());
+    }
+
+    /// A RAW is shown by its embedded preview: here the fixture JPEG behind some bytes.
+    #[test]
+    fn a_raw_shows_its_preview() {
+        let jpeg = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/tiny.jpg"
+        ))
+        .unwrap();
+        let direct = decode_for_display(&jpeg, Format::Jpeg, 1, [64, 64]).unwrap();
+        let mut raw = b"II*\0 sensor data \xFF\xD8\xFF\x00 more".to_vec();
+        raw.extend(&jpeg);
+        let shown = decode_for_display(&raw, Format::Raw, 1, [64, 64]).unwrap();
+        assert_eq!((shown.width, shown.height), (direct.width, direct.height));
+        assert_eq!(shown.rgb, direct.rgb);
+        assert!(decode_for_display(b"II*\0 nothing", Format::Raw, 1, [9, 9]).is_err());
+    }
 
     /// 3×2 test image; every pixel's red channel is its letter:
     /// ```text

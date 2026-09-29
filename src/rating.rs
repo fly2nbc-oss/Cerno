@@ -336,12 +336,17 @@ fn write_marks(
     rating: Option<Rating>,
     label: Option<Option<Label>>,
 ) -> Result<Option<Written>> {
-    let path_str = path.to_str().context("path is not valid Unicode")?;
-    // Read what is in the file right now: skips no-op writes and tells which extra rating tags
+    // Where the marks live: in the file, or in its XMP sidecar (RAW, BMP, video).
+    let sidecar = crate::sidecar::applies(path);
+    let target = if sidecar {
+        crate::sidecar::path_of(path)
+    } else {
+        path.to_path_buf()
+    };
+    let path_str = target.to_str().context("path is not valid Unicode")?;
+    // Read what is there right now: skips no-op writes and tells which extra rating tags
     // (Windows Explorer's) need to be kept in sync.
-    let bytes = std::fs::read(path).context("cannot read file")?;
-    let meta = metadata::read(&bytes);
-    drop(bytes);
+    let meta = marks_on_disk(path, sidecar)?;
 
     let mut args = Vec::new();
     let mut written_rating = meta.rating.value;
@@ -361,8 +366,11 @@ fn write_marks(
     if args.is_empty() {
         return Ok(None);
     }
+    if sidecar {
+        crate::sidecar::ensure(path)?;
+    }
 
-    let snapshot = filetimes::Snapshot::capture(path).context("cannot read file times")?;
+    let snapshot = filetimes::Snapshot::capture(&target).context("cannot read file times")?;
     let tool = match exiftool {
         Some(tool) => tool,
         None => exiftool.insert(ExifTool::spawn()?),
@@ -381,10 +389,10 @@ fn write_marks(
     // ExifTool's `-P` goes through Perl floats and shifts the times by a few microseconds;
     // this puts back the exact values.
     if snapshot
-        .restore(path)
+        .restore(&target)
         .context("cannot restore file times")?
     {
-        log::debug!("restored exact file times of {}", path.display());
+        log::debug!("restored exact file times of {}", target.display());
     }
     let updated = ["1 image files updated", "1 image files unchanged"]
         .iter()
@@ -403,12 +411,28 @@ fn write_marks(
         "marks {:?} {:?} written to {}",
         written_rating,
         written_label,
-        path.display()
+        target.display()
     );
     Ok(Some(Written {
         rating: written_rating,
         label: written_label,
     }))
+}
+
+/// The marks as stored now. With a sidecar: only it (a video is never read whole). Before the
+/// first write a RAW or BMP shows its own marks – a rating given in the camera – so those are
+/// compared with.
+fn marks_on_disk(path: &Path, sidecar: bool) -> Result<metadata::FileMetadata> {
+    let video = crate::library::format_of(path) == Some(crate::library::Format::Video);
+    if sidecar && (video || crate::sidecar::path_of(path).is_file()) {
+        return Ok(metadata::read_sidecar(path));
+    }
+    let bytes = std::fs::read(path).context("cannot read file")?;
+    Ok(if sidecar {
+        metadata::read_for(path, &bytes)
+    } else {
+        metadata::read(&bytes)
+    })
 }
 
 fn label_needs_write(on_disk: LabelInfo, wanted: Option<Label>) -> bool {
@@ -770,6 +794,40 @@ mod tests {
                 "-XMP-microsoft:RatingPercent=",
             ]
         );
+    }
+
+    /// A RAW's marks go into `IMG_9.xmp` beside it – created on the first write – and the RAW
+    /// itself is never touched. Through a real ExifTool; skipped without one.
+    #[test]
+    fn raw_marks_go_into_the_sidecar() {
+        if crate::exiftool::locate().is_none() {
+            eprintln!("ExifTool not found – skipped");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("cerno-sidecar-w-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let raw = dir.join("Blüte IMG_9.NEF");
+        let untouched = b"II*\0 proprietary raw data".to_vec();
+        std::fs::write(&raw, &untouched).unwrap();
+        let mut exiftool = None;
+
+        write_marks(
+            &mut exiftool,
+            &raw,
+            Some(Rating::Stars(3)),
+            Some(Some(Label::Green)),
+        )
+        .unwrap();
+        assert_eq!(std::fs::read(&raw).unwrap(), untouched, "RAW untouched");
+        let meta = metadata::read_for(&raw, &untouched);
+        assert_eq!(meta.rating.value, Rating::Stars(3));
+        assert_eq!(meta.label, LabelInfo::Known(Label::Green));
+        // Back to no stars: the sidecar says so, not the camera.
+        write_marks(&mut exiftool, &raw, Some(Rating::Unrated), None).unwrap();
+        assert_eq!(metadata::read_sidecar(&raw).rating.value, Rating::Unrated);
+        drop(exiftool);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     /// End-to-end through a real ExifTool; skipped when ExifTool isn't installed.

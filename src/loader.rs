@@ -449,12 +449,35 @@ fn too_small(image: &LoadedImage, target: [u32; 2]) -> bool {
     (have[0] as u32) < wanted[0] || (have[1] as u32) < wanted[1]
 }
 
+/// The picture of `path`, fitted into `target`, and its metadata: a photo from its bytes
+/// (marks from the sidecar where they live there), a video from one frame – or a placeholder
+/// without ffmpeg – and its sidecar.
+fn picture(
+    shared: &Shared,
+    path: &Path,
+    target: [u32; 2],
+) -> Result<(metadata::FileMetadata, decode::DecodedImage)> {
+    let format = library::format_of(path).context("unsupported file type")?;
+    if format == library::Format::Video {
+        let meta = metadata::read_sidecar(path);
+        let decoded = match crate::video::poster(path) {
+            Ok(jpeg) => decode::decode_for_display(&jpeg, library::Format::Jpeg, 1, target)?,
+            Err(err) => {
+                log::info!("no frame of {}: {err:#}", path.display());
+                crate::video::placeholder(target)
+            }
+        };
+        return Ok((meta, decoded));
+    }
+    let bytes = read(&shared.files, path)?;
+    let meta = metadata::read_for(path, &bytes);
+    let decoded = decode::decode_for_display(&bytes, format, meta.orientation, target)?;
+    Ok((meta, decoded))
+}
+
 fn load_display(shared: &Shared, job: &Job) -> Result<LoadedImage> {
     let started = Instant::now();
-    let format = library::format_of(&job.path).context("unsupported file type")?;
-    let bytes = read(&shared.files, &job.path)?;
-    let meta = metadata::read(&bytes);
-    let decoded = decode::decode_for_display(&bytes, format, meta.orientation, job.target)?;
+    let (meta, decoded) = picture(shared, &job.path, job.target)?;
 
     // The neighbourhood's filmstrip thumbnails come almost for free from here.
     if !shared.thumbs.contains(&job.path)
@@ -496,11 +519,7 @@ fn read(files: &FileLocks, path: &Path) -> Result<Vec<u8>> {
 
 fn load_full(shared: &Shared, job: &Job) -> Result<FullImage> {
     let ctx = &shared.ctx;
-    let format = library::format_of(&job.path).context("unsupported file type")?;
-    let bytes = read(&shared.files, &job.path)?;
-    let meta = metadata::read(&bytes);
-    let decoded = decode::decode_for_display(&bytes, format, meta.orientation, [u32::MAX; 2])?;
-    drop(bytes);
+    let (_, decoded) = picture(shared, &job.path, [u32::MAX; 2])?;
 
     let max_side = ctx.input(|i| i.max_texture_side) as u32;
     let tile_side = max_side.min(MAX_TILE);

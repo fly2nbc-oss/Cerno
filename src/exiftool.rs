@@ -134,7 +134,7 @@ pub fn locate() -> Option<PathBuf> {
 
 /// The first `<entry>/<name>` that is a file, from the absolute entries only: an empty entry
 /// (`;;`, a trailing `;`) or a relative one would be looked up in the working directory.
-fn find_in_path(paths: &OsStr, name: &str) -> Option<PathBuf> {
+pub(crate) fn find_in_path(paths: &OsStr, name: &str) -> Option<PathBuf> {
     std::env::split_paths(paths)
         .filter(|dir| dir.is_absolute())
         .map(|dir| dir.join(name))

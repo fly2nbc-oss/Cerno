@@ -105,6 +105,15 @@ pub fn set_aside(photo: &Path) -> Result<PathBuf> {
     let name = photo.file_name().context("photo has no file name")?;
     let to = move_into(photo, &dir, name)?;
     log::info!("set aside: {} → {}", photo.display(), to.display());
+    // A RAW's or video's marks go with it, named like it.
+    let sidecar = crate::sidecar::path_of(photo);
+    if crate::sidecar::applies(photo) && sidecar.is_file() {
+        let paired = crate::sidecar::path_of(&to);
+        let name = paired.file_name().context("sidecar has no file name")?;
+        if let Err(err) = move_into(&sidecar, &dir, name) {
+            log::warn!("sidecar {}: {err:#}", sidecar.display());
+        }
+    }
     Ok(to)
 }
 
@@ -341,6 +350,24 @@ mod tests {
             b"original"
         );
         assert!(is_inside(&to));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A deleted RAW takes its marks along: `IMG_5.xmp` lands beside `IMG_5.NEF` in
+    /// `.originals`.
+    #[test]
+    fn a_deleted_raw_takes_its_sidecar_along() {
+        let root = temp("aside-raw");
+        let raw = root.join("IMG_5.NEF");
+        std::fs::write(&raw, b"raw").expect("raw");
+        std::fs::write(root.join("IMG_5.xmp"), b"marks").expect("sidecar");
+        let to = set_aside(&raw).expect("set aside");
+        assert_eq!(to, root.join(FOLDER).join("IMG_5.NEF"));
+        assert_eq!(
+            std::fs::read(root.join(FOLDER).join("IMG_5.xmp")).expect("sidecar moved"),
+            b"marks"
+        );
+        assert!(!root.join("IMG_5.xmp").exists());
         let _ = std::fs::remove_dir_all(&root);
     }
 
