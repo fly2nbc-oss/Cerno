@@ -143,6 +143,9 @@ pub struct CernoApp {
     action_anchor: Option<Rect>,
     /// `Ctrl+M` showed the hidden filter bar; closing the menu hides it again.
     toolbar_before_actions: Option<bool>,
+    /// The filter bar showed on its own (a filter hid everything) and the pointer is on it: it
+    /// stays until the pointer leaves.
+    toolbar_held: bool,
     /// `Tab` presses taken out of egui's input (`true` = with Shift), see `raw_input_hook`.
     tab_presses: Vec<bool>,
     /// When the language was last switched (the flag shows for a moment).
@@ -305,6 +308,7 @@ impl CernoApp {
             action_menu: None,
             action_anchor: None,
             toolbar_before_actions: None,
+            toolbar_held: false,
             tab_presses: Vec::new(),
             language_flash: None,
             notice,

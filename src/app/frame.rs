@@ -27,11 +27,13 @@ pub(super) struct Layout {
 
 impl CernoApp {
     /// The info bar always shows (once there is a photo); the filter bar also when a filter
-    /// hides everything, so it can be changed back.
+    /// hides everything, so it can be changed back – and then as long as the pointer is on it,
+    /// so it doesn't vanish under the click that resets the filter.
     pub(super) fn layout(&self, window: Rect) -> Layout {
         let mut area = window;
-        let toolbar =
-            (!self.all.is_empty() && (self.show_toolbar || self.view.is_empty())).then(|| {
+        let toolbar = (!self.all.is_empty()
+            && (self.show_toolbar || self.view.is_empty() || self.toolbar_held))
+            .then(|| {
                 let r = Rect::from_min_size(
                     window.min,
                     vec2(window.width(), filter_bar::TOOLBAR_HEIGHT),
@@ -267,6 +269,7 @@ impl CernoApp {
         };
         let mut options = self.options;
         let out = filter_bar::toolbar(ui, rect, &mut options, &info);
+        self.toolbar_held = !self.show_toolbar && ui.rect_contains_pointer(rect);
         self.action_anchor = out.actions_anchor;
         if out.toggle_actions {
             if self.action_menu.is_some() {

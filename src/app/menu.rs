@@ -12,7 +12,7 @@ use crate::transfer::Mode as TransferMode;
 use crate::ui::details::{DetailsMode, all_expanded};
 use crate::ui::icons::Panel;
 use crate::ui::{confirm, filter_bar, help, models, palette, viewer};
-use crate::view::{FilterKind, SortKey};
+use crate::view::{FilterKind, SortKey, ViewOptions};
 
 use super::gate::Change;
 use super::{CLIP_OFFER_SHOWN, CernoApp};
@@ -470,25 +470,7 @@ impl CernoApp {
 
     /// The filter boxes, with "Show all" on top while any is ticked.
     fn filter_rows(&self) -> Vec<palette::Row<Action>> {
-        use palette::Row;
-        let mut filters: Vec<Row<Action>> = FilterKind::ALL
-            .into_iter()
-            .map(|kind| {
-                let row = Row::new(Action::Filter(kind), kind.label(), None)
-                    .toggle(self.options.filter.contains(kind));
-                match kind {
-                    FilterKind::Colour(label) => row.swatch(crate::theme::label_color(label)),
-                    _ => row,
-                }
-            })
-            .collect();
-        if !self.options.filter.is_all() {
-            filters.insert(
-                0,
-                Row::new(Action::FilterClear, i18n::t().filter_clear, None),
-            );
-        }
-        filters
+        filter_rows(&self.options)
     }
 
     /// What acts on many photos at once – the same in "Photos on screen" and in the action
@@ -617,5 +599,44 @@ impl CernoApp {
             Action::DeleteSelection => self.delete_selection(ctx),
             Action::Help => self.help_open = true,
         }
+    }
+}
+
+/// Visible photos ▸ Filter ▸: "Show all" first – always, greyed out while nothing is filtered,
+/// so ticking the first filter doesn't push every row down under the cursor – then a switch per
+/// filter.
+fn filter_rows(options: &ViewOptions) -> Vec<palette::Row<Action>> {
+    use palette::Row;
+    let t = i18n::t();
+    let clear = Row::new(Action::FilterClear, t.filter_clear, None)
+        .disabled(options.filter.is_all().then_some(t.filter_none_active));
+    std::iter::once(clear)
+        .chain(FilterKind::ALL.into_iter().map(|kind| {
+            let row = Row::new(Action::Filter(kind), kind.label(), None)
+                .toggle(options.filter.contains(kind));
+            match kind {
+                FilterKind::Colour(label) => row.swatch(crate::theme::label_color(label)),
+                _ => row,
+            }
+        }))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Ticking the first filter keeps every row where it was; only "Show all" wakes up.
+    #[test]
+    fn filter_rows_stay_in_place() {
+        let none = ViewOptions::default();
+        let mut some = none;
+        some.filter.set(FilterKind::Stars(3), true);
+        let (before, after) = (filter_rows(&none), filter_rows(&some));
+        let actions =
+            |rows: &[palette::Row<Action>]| rows.iter().map(|r| r.action).collect::<Vec<_>>();
+        assert_eq!(actions(&before), actions(&after));
+        assert_eq!(before[0].action, Action::FilterClear);
+        assert!(before[0].disabled.is_some() && after[0].disabled.is_none());
     }
 }
