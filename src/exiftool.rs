@@ -64,15 +64,13 @@ impl ExifTool {
         })
     }
 
-    /// Runs one command. Arguments go one per line, so they must not contain line breaks.
+    /// Runs one command. Arguments go one per line; one with a line break (a comment) goes as a
+    /// C string (`#[CSTR]`), so it can't split into two.
     pub fn execute(&mut self, args: &[&str]) -> Result<Output> {
-        if args.iter().any(|a| a.contains(['\n', '\r'])) {
-            bail!("argument contains a line break");
-        }
         self.counter += 1;
         let sentinel = format!("{{ready{}}}", self.counter);
         for arg in args {
-            writeln!(self.stdin, "{arg}")?;
+            writeln!(self.stdin, "{}", arg_line(arg))?;
         }
         // `-echo4` prints the sentinel to stderr after processing, `-executeN` prints `{readyN}`
         // to stdout – that way both streams can be read to their end without guessing.
@@ -91,6 +89,25 @@ impl Drop for ExifTool {
         let _ = self.stdin.flush();
         let _ = self.child.wait();
     }
+}
+
+/// One argument as a line of ExifTool's argument stream. Plain unless it holds a line break;
+/// then a `#[CSTR]` line with C escapes (backslashes escaped too, only there).
+fn arg_line(arg: &str) -> std::borrow::Cow<'_, str> {
+    if !arg.contains(['\n', '\r']) {
+        return arg.into();
+    }
+    let mut line = String::from("#[CSTR]");
+    for c in arg.chars() {
+        match c {
+            '\\' => line.push_str("\\\\"),
+            '\n' => line.push_str("\\n"),
+            '\r' => line.push_str("\\r"),
+            '\t' => line.push_str("\\t"),
+            c => line.push(c),
+        }
+    }
+    line.into()
 }
 
 fn read_until_sentinel(reader: &mut impl BufRead, sentinel: &str) -> Result<String> {
@@ -162,6 +179,19 @@ mod tests {
         assert_eq!(
             find_in_path(&absolute, "tiny.jpg"),
             Some(fixtures.join("tiny.jpg"))
+        );
+    }
+
+    #[test]
+    fn a_line_break_turns_the_argument_into_a_c_string() {
+        assert_eq!(
+            arg_line(r"C:\Fotos\Ä.jpg"),
+            r"C:\Fotos\Ä.jpg",
+            "paths stay as they are"
+        );
+        assert_eq!(
+            arg_line("-MWG:Description=eins\nzwei\\drei"),
+            r"#[CSTR]-MWG:Description=eins\nzwei\\drei"
         );
     }
 }

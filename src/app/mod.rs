@@ -2,6 +2,7 @@
 //!
 //! - `browse`: opening a folder, the view (sort, filter), moving through it
 //! - `marks`: stars, rejection, colour labels
+//! - `describe`: comment and keywords (the details panel's description tab)
 //! - `files`: copy, move, delete with the countdown
 //! - `editing`: straighten, crop, quarter turns, `Ctrl+Z`
 //! - `gate`: one action at a time on a photo
@@ -15,6 +16,7 @@
 //! Drawing of the widgets themselves lives in `ui/`.
 
 mod browse;
+mod describe;
 mod editing;
 mod files;
 mod frame;
@@ -40,15 +42,15 @@ use crate::deletion::{self, DeleteQueue};
 use crate::filelock::FileLocks;
 use crate::i18n::{self, Lang};
 use crate::loader::Loader;
-use crate::metadata::{Label, Rating};
+use crate::metadata::{Description, Label, Rating};
 use crate::paths;
 use crate::rating::RatingWriter;
 use crate::theme::tokens;
 use crate::thumbs::Thumbs;
 use crate::transfer::Queue as TransferQueue;
-use crate::ui::details::{DetailRow, DetailsMode};
+use crate::ui::details::{DetailRow, DetailsMode, DetailsTab};
 use crate::ui::overlays;
-use crate::ui::{palette, viewer};
+use crate::ui::{description, palette, viewer};
 use crate::view::{FilterKind, Percentiles, PhotoFilter, SortKey, View, ViewOptions};
 
 use editing::EditSession;
@@ -103,6 +105,12 @@ pub struct CernoApp {
     session_ratings: HashMap<PathBuf, Rating>,
     /// Colour labels given in this session (`None` clears). They win over the file the same way.
     session_labels: HashMap<PathBuf, Option<Label>>,
+    /// Comments and keywords given in this session; they win over the file the same way.
+    session_descriptions: HashMap<PathBuf, Description>,
+    /// Which tab the details panel shows (`B` opens the description).
+    details_tab: DetailsTab,
+    /// The comment and keyword being typed in the description tab.
+    drafts: description::Drafts,
     /// `0`–`5`, `X` and `6`–`9` also move to the next photo.
     auto_advance: bool,
     /// The open folder includes nested folders.
@@ -218,6 +226,10 @@ impl CernoApp {
             .setting("details_mode")
             .and_then(|m| DetailsMode::from_id(&m))
             .unwrap_or(DetailsMode::Off);
+        let details_tab = db
+            .setting("details_tab")
+            .and_then(|id| DetailsTab::from_id(&id))
+            .unwrap_or(DetailsTab::Values);
 
         let mut app = Self {
             loader: Loader::new(
@@ -252,6 +264,9 @@ impl CernoApp {
             percentiles: (u64::MAX, Percentiles::default()),
             session_ratings: HashMap::new(),
             session_labels: HashMap::new(),
+            session_descriptions: HashMap::new(),
+            details_tab,
+            drafts: description::Drafts::default(),
             auto_advance,
             subfolders,
             target: None,
@@ -375,7 +390,11 @@ impl eframe::App for CernoApp {
 
     /// `Tab` toggles the details panel. egui would move keyboard focus to the next widget with
     /// it – and `Space` would then click that widget – so it never reaches egui.
-    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        // While a comment or keyword is being typed, `Tab` belongs to the field.
+        if ctx.egui_wants_keyboard_input() {
+            return;
+        }
         raw_input.events.retain(|event| match event {
             egui::Event::Key {
                 key: Key::Tab,
@@ -400,6 +419,8 @@ impl eframe::App for CernoApp {
         if let Some(thread) = self.edit_thread.take() {
             let _ = thread.join();
         }
+        // A comment still in its field is written with the rest.
+        self.commit_comment();
         self.writer.shutdown();
         for outcome in self.transfers.finish_now() {
             self.retarget_moved(&outcome);

@@ -1,5 +1,5 @@
-//! Writes ratings (stars or "rejected") into the original files – in the background, debounced, with the file
-//! dates preserved.
+//! Writes ratings (stars or "rejected"), colour labels, comments and keywords into the original
+//! files – in the background, debounced, with the file dates preserved.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -15,7 +15,7 @@ use crate::db::{Db, FileStamp};
 use crate::exiftool::ExifTool;
 use crate::filelock::FileLocks;
 use crate::filetimes;
-use crate::metadata::{self, Label, LabelInfo, Rating, RatingInfo};
+use crate::metadata::{self, Description, Label, LabelInfo, Rating, RatingInfo};
 
 /// Pressing 3 and then 4 within this time results in a single write.
 const DEBOUNCE: Duration = Duration::from_millis(400);
@@ -34,6 +34,11 @@ enum Message {
     SetLabel {
         path: PathBuf,
         label: Option<Label>,
+    },
+    /// Comment and keywords, replacing what the file has.
+    SetDescription {
+        path: PathBuf,
+        description: Description,
     },
     /// Quarter turn, lossless: only the EXIF orientation changes.
     RotateQuarter {
@@ -86,7 +91,22 @@ struct Pending {
     rating: Option<Rating>,
     /// `Some` means the user set a label (`None` inside clears it).
     label: Option<Option<Label>>,
+    description: Option<Description>,
     at: Instant,
+}
+
+impl Pending {
+    /// The entry for `path`, restarted: the debounce counts from the newest change.
+    fn of(pending: &mut HashMap<PathBuf, Pending>, path: PathBuf) -> &mut Pending {
+        let entry = pending.entry(path).or_insert_with(|| Pending {
+            rating: None,
+            label: None,
+            description: None,
+            at: Instant::now(),
+        });
+        entry.at = Instant::now();
+        entry
+    }
 }
 
 pub struct RatingWriter {
@@ -142,6 +162,11 @@ impl RatingWriter {
     /// `None` removes the colour label.
     pub fn set_label(&self, path: PathBuf, label: Option<Label>) {
         let _ = self.tx.send(Message::SetLabel { path, label });
+    }
+
+    /// The whole comment and keyword list; empty ones remove them from the file.
+    pub fn set_description(&self, path: PathBuf, description: Description) {
+        let _ = self.tx.send(Message::SetDescription { path, description });
     }
 
     /// Clockwise or counter-clockwise quarter turn, written as EXIF orientation.
@@ -218,23 +243,15 @@ fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
         match rx.recv_timeout(timeout) {
             Ok(Message::SetRating { path, rating }) => {
                 files.set_queued(&path, true);
-                let entry = pending.entry(path).or_insert_with(|| Pending {
-                    rating: None,
-                    label: None,
-                    at: Instant::now(),
-                });
-                entry.rating = Some(rating);
-                entry.at = Instant::now();
+                Pending::of(&mut pending, path).rating = Some(rating);
             }
             Ok(Message::SetLabel { path, label }) => {
                 files.set_queued(&path, true);
-                let entry = pending.entry(path).or_insert_with(|| Pending {
-                    rating: None,
-                    label: None,
-                    at: Instant::now(),
-                });
-                entry.label = Some(label);
-                entry.at = Instant::now();
+                Pending::of(&mut pending, path).label = Some(label);
+            }
+            Ok(Message::SetDescription { path, description }) => {
+                files.set_queued(&path, true);
+                Pending::of(&mut pending, path).description = Some(description);
             }
             // Every edit keeps the original first; without that copy it does not happen.
             Ok(Message::RotateQuarter { path, clockwise }) => {
@@ -282,7 +299,13 @@ fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
                 continue;
             };
             let held = files.hold_write(&path);
-            let result = write_marks(&mut exiftool, &path, marks.rating, marks.label);
+            let result = write_marks(
+                &mut exiftool,
+                &path,
+                marks.rating,
+                marks.label,
+                marks.description.as_ref(),
+            );
             files.set_queued(&path, false);
             drop(held);
             if let Ok(Some(written)) = &result {
@@ -328,13 +351,14 @@ struct Written {
     label: Option<Label>,
 }
 
-/// Writes the rating and/or colour label that changed. `Ok(None)` when the file already
-/// matches, so the dates are not touched.
+/// Writes the rating, colour label, comment and keywords – whatever changed – in one ExifTool
+/// call. `Ok(None)` when the file already matches, so the dates are not touched.
 fn write_marks(
     exiftool: &mut Option<ExifTool>,
     path: &Path,
     rating: Option<Rating>,
     label: Option<Option<Label>>,
+    description: Option<&Description>,
 ) -> Result<Option<Written>> {
     let path_str = path.to_str().context("path is not valid Unicode")?;
     // Read what is in the file right now: skips no-op writes and tells which extra rating tags
@@ -357,6 +381,9 @@ fn write_marks(
     {
         args.push(label_arg(label));
         written_label = label;
+    }
+    if let Some(description) = description {
+        args.extend(description_args(description, &meta.description));
     }
     if args.is_empty() {
         return Ok(None);
@@ -419,6 +446,39 @@ fn label_needs_write(on_disk: LabelInfo, wanted: Option<Label>) -> bool {
     }
 }
 
+/// Only the parts that changed. ExifTool's MWG tags write IPTC and XMP together (and the EXIF
+/// description): `MWG:Keywords` = IPTC Keywords + XMP `dc:subject`, `MWG:Description` = IPTC
+/// Caption-Abstract + XMP `dc:description` + EXIF ImageDescription. IPTC is marked and written
+/// as UTF-8, or umlauts would come out as Latin-1. Repeating `-MWG:Keywords=` builds the new
+/// list; one empty value removes them all.
+fn description_args(wanted: &Description, on_disk: &Description) -> Vec<String> {
+    let mut args = Vec::new();
+    if wanted.keywords != on_disk.keywords {
+        if wanted.keywords.is_empty() {
+            args.push("-MWG:Keywords=".to_owned());
+        }
+        for keyword in &wanted.keywords {
+            // One line each: keywords never hold line breaks.
+            let keyword = keyword.replace(['\r', '\n'], " ");
+            args.push(format!("-MWG:Keywords={}", keyword.trim()));
+        }
+    }
+    if wanted.comment.trim() != on_disk.comment {
+        args.push(format!("-MWG:Description={}", wanted.comment.trim()));
+    }
+    if !args.is_empty() {
+        let options = [
+            "-use",
+            "MWG",
+            "-charset",
+            "iptc=UTF8",
+            "-IPTC:CodedCharacterSet=UTF8",
+        ];
+        args.splice(0..0, options.map(str::to_owned));
+    }
+    args
+}
+
 fn label_arg(label: Option<Label>) -> String {
     match label {
         Some(label) => format!("-XMP-xmp:Label={}", label.xmp_name()),
@@ -468,7 +528,13 @@ fn flush_pending(
     let Some(marks) = pending.remove(path) else {
         return Ok(());
     };
-    let result = write_marks(exiftool, path, marks.rating, marks.label);
+    let result = write_marks(
+        exiftool,
+        path,
+        marks.rating,
+        marks.label,
+        marks.description.as_ref(),
+    );
     files.set_queued(path, false);
     if let Ok(mut status) = status.lock() {
         match &result {
@@ -529,7 +595,13 @@ fn restore_original(exiftool: &mut Option<ExifTool>, path: &Path, db: &Db) -> Re
     snapshot
         .restore(path)
         .context("cannot restore file times")?;
-    write_marks(exiftool, path, Some(now.rating.value), label)?;
+    write_marks(
+        exiftool,
+        path,
+        Some(now.rating.value),
+        label,
+        Some(&now.description),
+    )?;
     db.forget_file(&key).context("cannot drop the index row")?;
     log::info!("original restored: {}", path.display());
     Ok(())
@@ -828,17 +900,53 @@ mod tests {
             &path,
             Some(Rating::Stars(4)),
             Some(Some(Label::Red)),
+            None,
         )
         .unwrap();
         assert_eq!(on_disk(), Rating::Stars(4));
         assert_eq!(on_label(), LabelInfo::Known(Label::Red));
-        write_marks(&mut exiftool, &path, Some(Rating::Stars(4)), None).unwrap(); // no-op
-        write_marks(&mut exiftool, &path, Some(Rating::Rejected), None).unwrap();
+        write_marks(&mut exiftool, &path, Some(Rating::Stars(4)), None, None).unwrap(); // no-op
+        write_marks(&mut exiftool, &path, Some(Rating::Rejected), None, None).unwrap();
         assert_eq!(on_disk(), Rating::Rejected);
         assert_eq!(on_label(), LabelInfo::Known(Label::Red));
-        write_marks(&mut exiftool, &path, Some(Rating::Unrated), Some(None)).unwrap();
+        write_marks(
+            &mut exiftool,
+            &path,
+            Some(Rating::Unrated),
+            Some(None),
+            None,
+        )
+        .unwrap();
         assert_eq!(on_disk(), Rating::Unrated);
         assert_eq!(on_label(), LabelInfo::None);
+
+        // Comment (two lines, through ExifTool's C-string arguments) and umlaut keywords.
+        let description = Description {
+            comment: "Grüße aus Köln\nzweite Zeile".to_owned(),
+            keywords: vec!["Straße".to_owned(), "Äpfel".to_owned()],
+        };
+        write_marks(&mut exiftool, &path, None, None, Some(&description)).unwrap();
+        assert_eq!(read().description, description);
+        assert_eq!(on_label(), LabelInfo::None, "other marks untouched");
+        if name.ends_with(".jpg") {
+            // IPTC too (HEIC has no IPTC block), as UTF-8.
+            assert_eq!(
+                metadata::iptc_description(&fs::read(&path).unwrap()),
+                description
+            );
+        }
+        let unchanged = fs::read(&path).unwrap();
+        write_marks(&mut exiftool, &path, None, None, Some(&description)).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), unchanged, "same values: no write");
+        write_marks(
+            &mut exiftool,
+            &path,
+            None,
+            None,
+            Some(&Description::default()),
+        )
+        .unwrap();
+        assert_eq!(read().description, Description::default());
 
         let after = fs::metadata(&path).unwrap();
         assert_eq!(after.modified().unwrap(), before.modified().unwrap());
@@ -892,7 +1000,7 @@ mod tests {
         assert_ne!(read().orientation, before);
         let kept = dir.join(crate::originals::FOLDER).join("Ärger.jpg");
         assert_eq!(fs::read(&kept).unwrap(), untouched);
-        write_marks(&mut exiftool, &path, Some(Rating::Stars(4)), None).unwrap();
+        write_marks(&mut exiftool, &path, Some(Rating::Stars(4)), None, None).unwrap();
 
         restore_original(&mut exiftool, &path, &db).unwrap();
         let after = read();

@@ -3,8 +3,8 @@
 use std::collections::HashSet;
 
 use eframe::egui::{
-    Align, Color32, FontId, Hyperlink, Id, Label, Layout, Rect, RichText, ScrollArea, Sense,
-    Stroke, Ui, UiBuilder, vec2,
+    Align, Align2, Color32, CursorIcon, FontId, Hyperlink, Id, Label, Layout, Rect, RichText,
+    ScrollArea, Sense, Stroke, Ui, UiBuilder, vec2,
 };
 
 use crate::analysis::{ModelState, Status, aesthetic, exposure};
@@ -44,6 +44,77 @@ impl DetailsMode {
             _ => None,
         }
     }
+}
+
+/// What the panel shows: the analysis values or the photo's comment and keywords (`B`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DetailsTab {
+    Values,
+    Description,
+}
+
+impl DetailsTab {
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Values => "values",
+            Self::Description => "description",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        [Self::Values, Self::Description]
+            .into_iter()
+            .find(|tab| tab.id() == id)
+    }
+}
+
+/// Height of the tab strip at the top of the panel.
+pub const TABS_HEIGHT: f32 = 34.0;
+
+/// The two tabs at the top of the panel. Returns the other tab when it was clicked.
+pub fn tabs(ui: &mut Ui, rect: Rect, current: DetailsTab) -> Option<DetailsTab> {
+    let t = i18n::t();
+    let painter = ui.painter().with_clip_rect(rect);
+    painter.rect_filled(rect, 0.0, tokens::SURFACE);
+    let line = Stroke::new(1.0, tokens::LINE);
+    painter.vline(rect.left() + 0.5, rect.y_range(), line);
+    painter.hline(rect.x_range(), rect.bottom() - 0.5, line);
+    let half = rect.width() / 2.0;
+    let mut clicked = None;
+    for (i, (tab, label)) in [
+        (DetailsTab::Values, t.tab_values),
+        (DetailsTab::Description, t.tab_description),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let cell = Rect::from_min_size(
+            rect.min + vec2(half * i as f32, 0.0),
+            vec2(half, rect.height()),
+        );
+        let response = ui
+            .interact(cell, Id::new(("details-tab", i)), Sense::click())
+            .on_hover_cursor(CursorIcon::PointingHand);
+        let active = tab == current;
+        painter.text(
+            cell.center(),
+            Align2::CENTER_CENTER,
+            label,
+            FontId::proportional(text::BODY),
+            if active { tokens::TEXT } else { tokens::MUTED },
+        );
+        if active {
+            painter.hline(
+                cell.x_range().shrink(14.0),
+                rect.bottom() - 1.5,
+                Stroke::new(2.0, tokens::ACCENT),
+            );
+        }
+        if response.clicked() && !active {
+            clicked = Some(tab);
+        }
+    }
+    clicked
 }
 
 /// Rows that can expand to show an explanation (and CLIP attributes on the model row).
