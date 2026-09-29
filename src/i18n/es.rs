@@ -21,6 +21,17 @@ pub static TEXTS: Texts = Texts {
     filter_duplicate_tooltip: "Cada foto salvo la primera ruta idéntica",
     filter_clear: "Mostrar todas",
     filter_none_active: "Ningún filtro activo",
+    filter_similar: "≈ Parecidas",
+    filter_similar_to: |name| format!("≈ como {name}"),
+    menu_similar: "Fotos parecidas",
+    menu_similar_to: |name| format!("Parecidas a {name}"),
+    similar_tooltip: |percent| {
+        format!("Solo las fotos que se parecen a la actual (desde {percent:.0} %) – tecla M")
+    },
+    similar_fact: |percent| format!("Parecido {percent:.0} %"),
+    similar_needs_model: "Las fotos parecidas necesitan el modelo de estética (CLIP)",
+    similar_not_analysed: "Esta foto aún no se ha analizado",
+    similar_none: |percent| format!("Ninguna foto parecida (desde {percent:.0} %)"),
     refresh_order: "Actualizar orden",
     refresh_order_tooltip: "Hay puntuaciones nuevas desde que ordenaste y filtraste",
     analyzing_progress: |done, total| format!("Analizando {done} / {total}"),
@@ -72,6 +83,7 @@ pub static TEXTS: Texts = Texts {
     cmd_all_panels: "Barra de filtros, detalles y tira de miniaturas",
     cmd_fullscreen: "Pantalla completa",
     cmd_compare: "Comparar",
+    cmd_similar: "Mostrar solo fotos parecidas",
     cmd_zoom: "Foto completa ↔ 100 %",
     cmd_reject: "Rechazar",
     cmd_description: "Comentario y palabras clave",
@@ -333,6 +345,7 @@ pub static TEXTS: Texts = Texts {
         ("Tab", "Panel de detalles"),
         ("I", "Detalles: desplegar o plegar todas las explicaciones"),
         ("F6", "Tira de miniaturas"),
+        ("M", "Mostrar solo fotos parecidas – otra vez: todas"),
         (
             "Mayús+Tab",
             "Barra de filtros, detalles y tira de miniaturas a la vez",

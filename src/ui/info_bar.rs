@@ -47,6 +47,9 @@ pub struct InfoBar<'a> {
     pub saving: bool,
     /// Viewer zoom in percent while zoomed in.
     pub zoom: Option<f32>,
+    /// How alike the photo is to the one "similar photos" is about (0..=1), while that filter
+    /// is on.
+    pub similarity: Option<f32>,
 }
 
 #[derive(Default)]
@@ -121,6 +124,9 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     }
     if let Some(zoom) = bar.zoom {
         facts.push((t.zoom)(zoom));
+    }
+    if let Some(similarity) = bar.similarity {
+        facts.push((t.similar_fact)(similarity * 100.0));
     }
     if let Some((index, len)) = bar.series {
         facts.push((t.series_position)(index, len));
@@ -623,6 +629,7 @@ mod tests {
             blurry,
             saving: false,
             zoom: Some(100.0),
+            similarity: None,
         }
     }
 

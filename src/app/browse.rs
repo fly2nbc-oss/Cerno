@@ -61,6 +61,9 @@ impl CernoApp {
         self.all = Arc::clone(&library.paths);
         self.dir = Some(library.dir);
         self.pinned = None;
+        // "Similar photos" was about a photo of the previous folder.
+        self.options.similar = false;
+        self.similar_to = None;
         self.cancel_edit();
         self.thumbs.clear();
         // Only needed when the view depends on scores; the analysis fills the board anyway,
@@ -175,8 +178,63 @@ impl CernoApp {
         change: impl FnOnce(&mut ViewOptions),
     ) {
         change(&mut self.options);
+        self.options_changed(ctx);
+    }
+
+    /// New sort or filter: saved, and the view is built again. "Similar photos" switched off
+    /// (also by "Show all") forgets the photo it was about.
+    pub(super) fn options_changed(&mut self, ctx: &egui::Context) {
+        if !self.options.similar {
+            self.similar_to = None;
+        }
         self.save_options();
         self.rebuild_view(ctx, None);
+    }
+
+    /// `M`: only the photos like the current one – in compare mode like the pinned one – or
+    /// all again. It needs the photo's CLIP embedding; when no other photo is close enough,
+    /// the filter stays off and a hint says so. Photos without an embedding yet stay out until
+    /// "Refresh order" (the analysis brings them along with their scores).
+    pub(super) fn toggle_similar(&mut self, ctx: &egui::Context) {
+        if self.options.similar {
+            self.change_options(ctx, |o| o.similar = false);
+            return;
+        }
+        let t = i18n::t();
+        let Some(path) = self
+            .pinned
+            .clone()
+            .or_else(|| self.view.get(self.current).cloned())
+        else {
+            return;
+        };
+        let Some(reference) = self.analyzer.embedding_of(&path) else {
+            self.notice = Some(Notice::hint(if self.analyzer.clip_model_missing() {
+                t.similar_needs_model
+            } else {
+                t.similar_not_analysed
+            }));
+            return;
+        };
+        let any = self.all.iter().any(|other| {
+            *other != path
+                && self
+                    .analyzer
+                    .similarity(other, &reference)
+                    .is_some_and(|s| s >= view::SIMILAR_MIN)
+        });
+        if !any {
+            self.notice = Some(Notice::hint((t.similar_none)(view::SIMILAR_MIN * 100.0)));
+            return;
+        }
+        self.similar_to = Some((path, reference));
+        self.change_options(ctx, |o| o.similar = true);
+    }
+
+    /// The photo "similar photos" is about, while that filter is on, and how alike `path` is.
+    pub(super) fn similarity_to_reference(&self, path: &Path) -> Option<f32> {
+        let (_, reference) = self.similar_to.as_ref().filter(|_| self.options.similar)?;
+        self.analyzer.similarity(path, reference)
     }
 
     /// Moves to `index`, stepping over the pinned photo in `direction` in compare mode.
@@ -236,6 +294,7 @@ impl CernoApp {
             fingerprint: known.fingerprint,
             scores: known.scores,
             personal: self.analyzer.personal(path),
+            similarity: self.similarity_to_reference(path),
         })
     }
 

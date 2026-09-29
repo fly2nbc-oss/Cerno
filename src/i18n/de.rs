@@ -21,6 +21,17 @@ pub static TEXTS: Texts = Texts {
     filter_duplicate_tooltip: "Jedes Foto außer dem ersten gleichen Pfad",
     filter_clear: "Alle anzeigen",
     filter_none_active: "Kein Filter aktiv",
+    filter_similar: "≈ Ähnliche",
+    filter_similar_to: |name| format!("≈ wie {name}"),
+    menu_similar: "Ähnliche Fotos",
+    menu_similar_to: |name| format!("Ähnlich zu {name}"),
+    similar_tooltip: |percent| {
+        format!("Nur Fotos, die dem aktuellen ähneln (ab {percent:.0} %) – Taste M")
+    },
+    similar_fact: |percent| format!("Ähnlich {percent:.0} %"),
+    similar_needs_model: "Ähnliche Fotos brauchen das Ästhetik-Modell (CLIP)",
+    similar_not_analysed: "Dieses Foto ist noch nicht analysiert",
+    similar_none: |percent| format!("Keine ähnlichen Fotos (ab {percent:.0} %)"),
     refresh_order: "Reihenfolge aktualisieren",
     refresh_order_tooltip: "Seit dem Sortieren und Filtern sind neue Bewertungen dazugekommen",
     analyzing_progress: |done, total| format!("Analyse {done} / {total}"),
@@ -72,6 +83,7 @@ pub static TEXTS: Texts = Texts {
     cmd_all_panels: "Filterleiste, Details und Filmstreifen",
     cmd_fullscreen: "Vollbild",
     cmd_compare: "Vergleichen",
+    cmd_similar: "Nur ähnliche Fotos zeigen",
     cmd_zoom: "Ganzes Foto ↔ 100 %",
     cmd_reject: "Ablehnen",
     cmd_description: "Kommentar und Stichwörter",
@@ -337,6 +349,7 @@ pub static TEXTS: Texts = Texts {
         ("Tab", "Detailansicht"),
         ("I", "Details: alle Erklärungen auf- oder zuklappen"),
         ("F6", "Filmstreifen"),
+        ("M", "Nur ähnliche Fotos zeigen – noch einmal: wieder alle"),
         (
             "Umschalt+Tab",
             "Filterleiste, Details und Filmstreifen zusammen",

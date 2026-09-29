@@ -7,6 +7,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **Similar photos** – `M` shows only the photos that look like the current one: the cosine of their CLIP embeddings at 85 % or more. The threshold was measured on real folders: it keeps 90 % of the pairs within a two-second series and 0.4 % of photos taken an hour apart.
+  - It combines with the other filters, and in compare mode it is about the pinned photo.
+  - `M` again, *Show all* or the filter bar's last box brings every photo back; the info bar shows how alike the current photo is.
+  - It needs the aesthetics model (CLIP), and nothing is marked or hidden for good.
+
 ### Changed
 
 - The `.deb` recommends ffmpeg, so videos show a frame after a plain `apt install`.

@@ -44,6 +44,8 @@ enum Action {
     Fullscreen,
     Rate(Rating),
     Reject,
+    /// Only photos like this one (`M`), or all again.
+    Similar,
     Describe,
     DeleteCurrent,
     /// One of the programs the system offers, by its place in the list.
@@ -351,6 +353,7 @@ impl CernoApp {
                 .disabled(mark),
             Row::new(Action::Describe, t.cmd_description, key("B")).disabled(mark),
             Row::new(Action::Compare, t.cmd_compare, key("C")).toggle(self.pinned.is_some()),
+            Row::new(Action::Similar, t.cmd_similar, key("M")).toggle(self.options.similar),
             Row::new(Action::Straighten, t.cmd_straighten, key("S")).disabled(edit),
             Row::new(Action::Crop, t.cmd_crop, key("R")).disabled(edit),
             Row::new(
@@ -452,7 +455,11 @@ impl CernoApp {
 
     /// The filter boxes, with "Show all" on top while any is ticked.
     fn filter_rows(&self) -> Vec<palette::Row<Action>> {
-        filter_rows(&self.options)
+        let similar_to = self
+            .similar_to
+            .as_ref()
+            .map(|(path, _)| self.photo_name(path));
+        filter_rows(&self.options, similar_to.as_deref())
     }
 
     /// What acts on many photos at once – the same in "Photos on screen" and in the action
@@ -517,7 +524,11 @@ impl CernoApp {
             Action::Open => self.pick_folder(ctx),
             Action::Sort(sort) => self.change_options(ctx, |o| o.sort = sort),
             Action::Filter(kind) => self.change_options(ctx, |o| o.filter.toggle(kind)),
-            Action::FilterClear => self.change_options(ctx, |o| o.filter.clear()),
+            Action::FilterClear => self.change_options(ctx, |o| {
+                o.filter.clear();
+                o.similar = false;
+            }),
+            Action::Similar => self.toggle_similar(ctx),
             Action::Refresh => self.rebuild_view(ctx, None),
             Action::EnableAesthetics => self.ask(ConfirmAction::DownloadModel, false),
             Action::TopBar => self.toggle_panel(Panel::Top),
@@ -585,12 +596,19 @@ impl CernoApp {
 
 /// Visible photos ▸ Filter ▸: "Show all" first – always, greyed out while nothing is filtered,
 /// so ticking the first filter doesn't push every row down under the cursor – then a switch per
-/// filter.
-fn filter_rows(options: &ViewOptions) -> Vec<palette::Row<Action>> {
+/// filter, and "similar photos" last (named after its photo while on).
+fn filter_rows(options: &ViewOptions, similar_to: Option<&str>) -> Vec<palette::Row<Action>> {
     use palette::Row;
     let t = i18n::t();
+    let nothing = options.filter.is_all() && !options.similar;
     let clear = Row::new(Action::FilterClear, t.filter_clear, None)
-        .disabled(options.filter.is_all().then_some(t.filter_none_active));
+        .disabled(nothing.then_some(t.filter_none_active));
+    let similar_label = match similar_to.filter(|_| options.similar) {
+        Some(name) => (t.menu_similar_to)(name),
+        None => t.menu_similar.to_owned(),
+    };
+    let similar =
+        Row::new(Action::Similar, similar_label, Some("M".to_owned())).toggle(options.similar);
     std::iter::once(clear)
         .chain(FilterKind::ALL.into_iter().map(|kind| {
             let row = Row::new(Action::Filter(kind), kind.label(), None)
@@ -600,6 +618,7 @@ fn filter_rows(options: &ViewOptions) -> Vec<palette::Row<Action>> {
                 _ => row,
             }
         }))
+        .chain(std::iter::once(similar))
         .collect()
 }
 
@@ -613,11 +632,32 @@ mod tests {
         let none = ViewOptions::default();
         let mut some = none;
         some.filter.set(FilterKind::Stars(3), true);
-        let (before, after) = (filter_rows(&none), filter_rows(&some));
+        let (before, after) = (filter_rows(&none, None), filter_rows(&some, None));
         let actions =
             |rows: &[palette::Row<Action>]| rows.iter().map(|r| r.action).collect::<Vec<_>>();
         assert_eq!(actions(&before), actions(&after));
         assert_eq!(before[0].action, Action::FilterClear);
         assert!(before[0].disabled.is_some() && after[0].disabled.is_none());
+    }
+
+    /// "Similar photos" is always the last row; while on it names its photo and "Show all" can
+    /// switch it off.
+    #[test]
+    fn similar_photos_is_the_last_filter_row() {
+        let off = filter_rows(&ViewOptions::default(), Some("IMG_1.JPG"));
+        let on_options = ViewOptions {
+            similar: true,
+            ..ViewOptions::default()
+        };
+        let on = filter_rows(&on_options, Some("IMG_1.JPG"));
+        assert_eq!(off.len(), on.len());
+        let (last_off, last_on) = (off.last().unwrap(), on.last().unwrap());
+        assert_eq!(
+            (last_off.action, last_on.action),
+            (Action::Similar, Action::Similar)
+        );
+        assert_eq!(last_off.label, i18n::t().menu_similar);
+        assert!(last_on.label.contains("IMG_1.JPG"));
+        assert!(on[0].disabled.is_none(), "Show all switches it off");
     }
 }

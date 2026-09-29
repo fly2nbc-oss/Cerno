@@ -368,6 +368,18 @@ impl Analyzer {
         attributes::scores(&self.embedding(path)?)
     }
 
+    /// The CLIP embedding of `path`, once the analysis or the index has it.
+    pub fn embedding_of(&self, path: &Path) -> Option<Arc<[f32]>> {
+        self.embedding(path)
+    }
+
+    /// How alike `path` looks to the photo `reference` belongs to: the cosine of their CLIP
+    /// embeddings (1 = the same content). The embeddings are stored as the model gives them,
+    /// not normalised.
+    pub fn similarity(&self, path: &Path, reference: &[f32]) -> Option<f32> {
+        cosine(&self.embedding(path)?, reference)
+    }
+
     fn embedding(&self, path: &Path) -> Option<Arc<[f32]>> {
         self.shared
             .embeddings
@@ -423,6 +435,21 @@ impl Drop for Analyzer {
             let _ = worker.join();
         }
     }
+}
+
+/// Cosine of two vectors; `None` when their lengths differ or one is zero.
+fn cosine(a: &[f32], b: &[f32]) -> Option<f32> {
+    if a.len() != b.len() {
+        return None;
+    }
+    let (mut dot, mut aa, mut bb) = (0.0f32, 0.0f32, 0.0f32);
+    for (x, y) in a.iter().zip(b) {
+        dot += x * y;
+        aa += x * x;
+        bb += y * y;
+    }
+    let norms = (aa * bb).sqrt();
+    (norms > f32::EPSILON).then(|| dot / norms)
 }
 
 fn remember_embedding(shared: &Shared, path: &Path, embedding: Option<&[f32]>) {
@@ -826,6 +853,16 @@ pub fn fingerprint(thumb_rgb: &[u8], original_size: [u32; 2]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cosine_ignores_length_and_needs_matching_vectors() {
+        let a = [1.0, 2.0, 2.0];
+        assert!((cosine(&a, &[2.0, 4.0, 4.0]).unwrap() - 1.0).abs() < 1e-6);
+        assert!((cosine(&a, &[-1.0, -2.0, -2.0]).unwrap() + 1.0).abs() < 1e-6);
+        assert!(cosine(&[1.0, 0.0], &[0.0, 1.0]).unwrap().abs() < 1e-6);
+        assert_eq!(cosine(&a, &[1.0, 2.0]), None);
+        assert_eq!(cosine(&a, &[0.0; 3]), None);
+    }
 
     #[test]
     fn fingerprint_depends_on_pixels_and_size() {

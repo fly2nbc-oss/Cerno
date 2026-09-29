@@ -58,6 +58,8 @@ struct KeyInput {
     describe: bool,
     /// `E`: edit the photo in the remembered program (or choose one).
     edit_elsewhere: bool,
+    /// `M`: only photos like this one, or all again.
+    similar: bool,
     toggle_fullscreen: bool,
     escape: bool,
     toggle_toolbar: bool,
@@ -143,6 +145,8 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         play: plain && i.key_pressed(Key::Enter),
         describe: plain && i.key_pressed(Key::B),
         edit_elsewhere: plain && i.key_pressed(Key::E),
+        // Ctrl+M is the action menu.
+        similar: plain && i.key_pressed(Key::M),
         // F and F11 full screen; T (`toggle_toolbar`) is the filter bar.
         toggle_fullscreen: i.key_pressed(Key::F11) || (plain && i.key_pressed(Key::F)),
         escape: i.key_pressed(Key::Escape),
@@ -307,6 +311,9 @@ impl CernoApp {
         if keys.edit_elsewhere {
             self.edit_elsewhere();
         }
+        if keys.similar {
+            self.toggle_similar(ctx);
+        }
         if keys.keep_right {
             self.keep_right(ctx);
         }
@@ -443,6 +450,16 @@ mod tests {
         assert!(read(vec![key(Key::E, Key::E, plain)], plain).edit_elsewhere);
         let ctrl = Modifiers::COMMAND;
         assert!(!read(vec![key(Key::E, Key::E, ctrl)], ctrl).edit_elsewhere);
+    }
+
+    #[test]
+    fn m_filters_similar_photos_and_ctrl_m_opens_the_action_menu() {
+        let plain = Modifiers::NONE;
+        let keys = read(vec![key(Key::M, Key::M, plain)], plain);
+        assert!(keys.similar && !keys.actions);
+        let ctrl = Modifiers::COMMAND;
+        let keys = read(vec![key(Key::M, Key::M, ctrl)], ctrl);
+        assert!(keys.actions && !keys.similar);
     }
 
     #[test]
