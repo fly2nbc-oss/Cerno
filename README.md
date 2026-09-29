@@ -115,6 +115,7 @@ Or drop a folder onto the window / `Ctrl+O`. When moving the binary, keep beside
 | `C` | Compare: pin the current photo on the left / leave compare mode |
 | `A` / `D` | Compare: keep left / keep right – the other one is rejected, compare mode ends |
 | `Z`, double-click | Toggle fit ↔ 100 % |
+| `Enter` | Play a video in the default player |
 | `+` / `-`, mouse wheel | Zoom in / out |
 | Drag | Pan while zoomed |
 | `T` | Toggle the filter bar (sort and filter) |
@@ -155,6 +156,11 @@ Background analysis (nearest first) is stored in `%LOCALAPPDATA%\Cerno\data\cern
 | Rendering | wgpu (DX12 / Vulkan) | wgpu (Vulkan), X11 / Wayland |
 | JPEG | ✓ | ✓ |
 | HEIC | `--features heic` (vcpkg libheif) | `--features heic` (libheif ≥ 1.17) |
+| PNG, TIFF, WebP, BMP, GIF | ✓ | ✓ |
+| RAW (CR2, CR3, NEF, ARW, RAF, ORF, RW2, DNG, …) | ✓ – its embedded preview | ✓ – its embedded preview |
+| Video (MP4, MOV, …) | one frame via [ffmpeg](https://ffmpeg.org) if installed; `Enter` plays | same |
+
+Only JPEG can be straightened, cropped and turned. Stars, colour labels and keywords of proprietary RAW, BMP and video go into an XMP sidecar beside the file (`IMG_1.xmp`, as Lightroom names it), which delete, copy and move take along.
 | Aesthetics GPU | DirectML, CPU fallback | CPU; experimental `--features webgpu` |
 
 ---

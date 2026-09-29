@@ -441,7 +441,11 @@ mod tests {
             assert_eq!((image.width, image.height), (2, 1), "{format:?}");
             assert_eq!(&image.rgb[..3], [255, 0, 0], "{format:?}");
             if alpha {
-                assert_eq!(&image.rgb[3..], [128, 128, 128], "{format:?}: transparent → grey");
+                assert_eq!(
+                    &image.rgb[3..],
+                    [128, 128, 128],
+                    "{format:?}: transparent → grey"
+                );
             }
         }
         assert!(decode_for_display(b"not a png", Format::Png, 1, [9, 9]).is_err());

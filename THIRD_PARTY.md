@@ -40,3 +40,4 @@ The V2.5 head is deliberately kept out of the repository and the binary; Cerno r
 
 - **Segoe UI** (Windows) or DejaVu Sans / Noto Sans (Linux) as UI font – read from the system at start-up, not distributed.
 - **ExifTool** – separate program, called to write ratings; not distributed.
+- **ffmpeg** (optional) – separate program, called for one frame of each video; not distributed. Without it videos show a placeholder.
