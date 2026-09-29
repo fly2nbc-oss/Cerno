@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+## [1.1.0] – 2026-09-29
+
+More than JPEG and HEIC: PNG, TIFF, WebP, BMP, GIF, RAW and videos. Comments and keywords, editing in another program, and originals that are never deleted.
+
 ### Added
 
 - **More formats**, kept simple: PNG, TIFF, WebP, BMP and GIF (first frame); **RAW** files (CR2, CR3, NEF, ARW, RAF, ORF, RW2, PEF, SRW, DNG, …) by the full-size preview they carry, with the camera's orientation; **videos** (MP4, MOV, M4V, AVI, MKV, MTS, …) by one frame when [ffmpeg](https://ffmpeg.org) is installed – `Enter` plays them in the default player. Straighten, crop, turns and `Ctrl+Z` stay JPEG-only and are greyed out in the menu for everything else.
@@ -18,7 +22,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 - The menu (`Ctrl+K`) is grouped by what a command acts on: **This photo** (stars, reject, colour label, compare, straighten, crop, turns, undo, delete), **Photos on screen** (sort, filter, refresh order, copy, move, delete, delete rejected), **View** (panels, zoom, full screen), **Settings** (auto advance, subfolders, language, models & data) and Help. Stars and deleting the current photo are in the menu now; colours appear once for marking and once, clearly apart, as a filter; no row appears or disappears at the top level. Submenus can hold submenus. The action menu (`Ctrl+M`) offers "Delete rejected photos" too.
 - A series only holds photos of one camera model: two phones or a phone and a drone firing at the same moment make two series instead of one. Photos without camera data only form series with each other. After the update Cerno reads every photo's metadata once more (no new analysis).
-
 - **Originals are never deleted.** Deleting a photo (`Delete`, the action menu, "Delete rejected photos") moves it into a hidden `.originals` folder beside it instead of the trash. Before a photo's first straighten, crop or quarter turn, its original is copied there under the same name, and only that first original is kept – `Ctrl+Z` brings it back in one step and the copy stays. When Cerno moves a photo to another folder, its original moves along. Cerno never shows `.originals`, not even when that folder is opened.
 - The originals Cerno 1.0 kept in its data folder move into the `.originals` folder beside their photos at the first start.
 

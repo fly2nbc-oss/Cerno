@@ -1,6 +1,6 @@
 [package]
 name = "cerno"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2024"
 description = "Fast photo viewer and culling tool: instant switching, 1-5 star ratings, automatic sharpness and aesthetics scoring"
 license = "Apache-2.0"
