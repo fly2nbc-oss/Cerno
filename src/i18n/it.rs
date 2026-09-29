@@ -21,6 +21,17 @@ pub static TEXTS: Texts = Texts {
     filter_duplicate_tooltip: "Ogni foto tranne il primo percorso identico",
     filter_clear: "Mostra tutte",
     filter_none_active: "Nessun filtro attivo",
+    filter_similar: "≈ Simili",
+    filter_similar_to: |name| format!("≈ come {name}"),
+    menu_similar: "Foto simili",
+    menu_similar_to: |name| format!("Simili a {name}"),
+    similar_tooltip: |percent| {
+        format!("Solo le foto che somigliano a quella attuale (da {percent:.0} %) – tasto M")
+    },
+    similar_fact: |percent| format!("Somiglianza {percent:.0} %"),
+    similar_needs_model: "Le foto simili richiedono il modello di estetica (CLIP)",
+    similar_not_analysed: "Questa foto non è ancora stata analizzata",
+    similar_none: |percent| format!("Nessuna foto simile (da {percent:.0} %)"),
     refresh_order: "Aggiorna ordine",
     refresh_order_tooltip: "Dopo l'ordinamento e il filtro sono arrivati nuovi punteggi",
     analyzing_progress: |done, total| format!("Analisi {done} / {total}"),
@@ -73,6 +84,7 @@ pub static TEXTS: Texts = Texts {
     cmd_all_panels: "Barra dei filtri, dettagli e striscia di miniature",
     cmd_fullscreen: "Schermo intero",
     cmd_compare: "Confronta",
+    cmd_similar: "Mostra solo foto simili",
     cmd_zoom: "Foto intera ↔ 100 %",
     menu_overlay: "Sovrapposizione",
     overlay_off: "Disattivata",
@@ -350,6 +362,7 @@ pub static TEXTS: Texts = Texts {
         ("Tab", "Pannello dettagli"),
         ("I", "Dettagli: espandi o comprimi tutte le spiegazioni"),
         ("F6", "Striscia di miniature"),
+        ("M", "Mostra solo foto simili – di nuovo: tutte"),
         (
             "O",
             "Sovrapposizione: bordi nitidi → luci e ombre tagliate → disattivata",

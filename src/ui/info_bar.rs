@@ -49,6 +49,9 @@ pub struct InfoBar<'a> {
     pub zoom: Option<f32>,
     /// Which check overlay is on, while one is.
     pub overlay: Option<&'a str>,
+    /// How alike the photo is to the one "similar photos" is about (0..=1), while that filter
+    /// is on.
+    pub similarity: Option<f32>,
 }
 
 #[derive(Default)]
@@ -126,6 +129,9 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     }
     if let Some(overlay) = bar.overlay {
         facts.push(overlay.to_owned());
+    }
+    if let Some(similarity) = bar.similarity {
+        facts.push((t.similar_fact)(similarity * 100.0));
     }
     if let Some((index, len)) = bar.series {
         facts.push((t.series_position)(index, len));
@@ -629,6 +635,7 @@ mod tests {
             saving: false,
             zoom: Some(100.0),
             overlay: None,
+            similarity: None,
         }
     }
 

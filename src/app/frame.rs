@@ -206,6 +206,7 @@ impl CernoApp {
                 crate::overlay::Mode::Sharpness => Some(i18n::t().overlay_fact_sharpness),
                 crate::overlay::Mode::Exposure => Some(i18n::t().overlay_fact_exposure),
             },
+            similarity: self.similarity_to_reference(&path),
         };
         let out = info_bar::info_bar(ui, rect, &bar);
         if let Some(stars) = out.rating {
@@ -262,10 +263,15 @@ impl CernoApp {
     pub(super) fn draw_toolbar(&mut self, ui: &mut egui::Ui, rect: Rect) {
         let ctx = ui.ctx().clone();
         let status = self.analyzer.status();
+        let similar_to = self
+            .similar_to
+            .as_ref()
+            .map(|(path, _)| self.photo_name(path));
         let info = filter_bar::ToolbarInfo {
             stale: self.options.depends_on_scores() && self.board.version() != self.view_version,
             status: &status,
             actions_open: self.action_menu.is_some(),
+            similar_to: similar_to.as_deref(),
         };
         let mut options = self.options;
         let out = filter_bar::toolbar(ui, rect, &mut options, &info);
@@ -280,8 +286,10 @@ impl CernoApp {
         }
         if out.options_changed {
             self.options = options;
-            self.save_options();
-            self.rebuild_view(&ctx, None);
+            self.options_changed(&ctx);
+        }
+        if out.toggle_similar {
+            self.toggle_similar(&ctx);
         }
         if out.refresh {
             self.rebuild_view(&ctx, None);

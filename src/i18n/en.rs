@@ -21,6 +21,17 @@ pub static TEXTS: Texts = Texts {
     filter_duplicate_tooltip: "Every photo except the first identical path",
     filter_clear: "Show all",
     filter_none_active: "No filter is on",
+    filter_similar: "≈ Similar",
+    filter_similar_to: |name| format!("≈ like {name}"),
+    menu_similar: "Similar photos",
+    menu_similar_to: |name| format!("Similar to {name}"),
+    similar_tooltip: |percent| {
+        format!("Only photos that look like the current one (from {percent:.0} %) – key M")
+    },
+    similar_fact: |percent| format!("Similar {percent:.0} %"),
+    similar_needs_model: "Similar photos need the aesthetics model (CLIP)",
+    similar_not_analysed: "This photo has not been analysed yet",
+    similar_none: |percent| format!("No similar photos (from {percent:.0} %)"),
     refresh_order: "Refresh order",
     refresh_order_tooltip: "New scores arrived since sorting and filtering",
     analyzing_progress: |done, total| format!("Analyzing {done} / {total}"),
@@ -73,6 +84,7 @@ pub static TEXTS: Texts = Texts {
     cmd_all_panels: "Filter bar, details and filmstrip",
     cmd_fullscreen: "Full screen",
     cmd_compare: "Compare",
+    cmd_similar: "Show only similar photos",
     cmd_zoom: "Whole photo ↔ 100 %",
     menu_overlay: "Overlay",
     overlay_off: "Off",
@@ -334,6 +346,7 @@ pub static TEXTS: Texts = Texts {
         ("Tab", "Details panel"),
         ("I", "Details: expand or collapse all explanations"),
         ("F6", "Filmstrip"),
+        ("M", "Show only similar photos – again: all of them"),
         (
             "O",
             "Overlay: sharp edges → clipped highlights and shadows → off",

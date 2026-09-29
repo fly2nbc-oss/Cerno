@@ -195,6 +195,21 @@ pub struct Texts {
     pub filter_clear: &'static str,
     /// Why "Show all" is greyed out: nothing is filtered.
     pub filter_none_active: &'static str,
+    /// The filter bar's last box: only photos like the chosen one.
+    pub filter_similar: &'static str,
+    /// That box while it is on, with the (shortened) name of the photo it is about.
+    pub filter_similar_to: fn(&str) -> String,
+    /// Visible photos ▸ Filter ▸, the last row.
+    pub menu_similar: &'static str,
+    pub menu_similar_to: fn(&str) -> String,
+    /// Tooltip of the box; the threshold in percent.
+    pub similar_tooltip: fn(f32) -> String,
+    /// In the info bar while the filter is on: how alike the current photo is, in percent.
+    pub similar_fact: fn(f32) -> String,
+    /// Hints when `M` can't filter.
+    pub similar_needs_model: &'static str,
+    pub similar_not_analysed: &'static str,
+    pub similar_none: fn(f32) -> String,
     pub refresh_order: &'static str,
     pub refresh_order_tooltip: &'static str,
     pub analyzing_progress: fn(usize, usize) -> String,
@@ -254,6 +269,8 @@ pub struct Texts {
     pub cmd_all_panels: &'static str,
     pub cmd_fullscreen: &'static str,
     pub cmd_compare: &'static str,
+    /// This photo ▸ (`M`): only photos like this one.
+    pub cmd_similar: &'static str,
     pub cmd_zoom: &'static str,
     /// View ▸ Overlay ▸ (`O`): marks on the photo.
     pub menu_overlay: &'static str,
@@ -470,7 +487,7 @@ pub struct Texts {
     pub help_sections: [&'static str; 5],
     pub help_browse: [HelpRow; 5],
     pub help_rate: [HelpRow; 10],
-    pub help_view: [HelpRow; 12],
+    pub help_view: [HelpRow; 13],
     pub help_edit: [HelpRow; 6],
     pub help_more: [HelpRow; 5],
 }
@@ -522,6 +539,11 @@ mod tests {
             let series = (t.series_position)(3, 7);
             assert!(series.contains('3') && series.contains('7'), "{name}");
             assert!((t.duplicate_of)("a.jpg").contains("a.jpg"), "{name}");
+            assert!((t.filter_similar_to)("a.jpg").contains("a.jpg"), "{name}");
+            assert!((t.menu_similar_to)("a.jpg").contains("a.jpg"), "{name}");
+            assert!((t.similar_tooltip)(85.0).contains("85"), "{name}");
+            assert!((t.similar_fact)(93.4).contains("93"), "{name}");
+            assert!((t.similar_none)(85.0).contains("85"), "{name}");
             assert!((t.keeps_this)("A").contains('A'), "{name}");
             assert!((t.deleting)(1).contains('1'), "{name}");
             assert!((t.deleting)(12).contains("12"), "{name}");

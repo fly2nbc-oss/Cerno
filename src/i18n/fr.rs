@@ -21,6 +21,19 @@ pub static TEXTS: Texts = Texts {
     filter_duplicate_tooltip: "Chaque photo sauf le premier chemin identique",
     filter_clear: "Tout afficher",
     filter_none_active: "Aucun filtre actif",
+    filter_similar: "≈ Semblables",
+    filter_similar_to: |name| format!("≈ comme {name}"),
+    menu_similar: "Photos semblables",
+    menu_similar_to: |name| format!("Semblables à {name}"),
+    similar_tooltip: |percent| {
+        format!(
+            "Seulement les photos qui ressemblent à la photo actuelle (dès {percent:.0} %) – touche M"
+        )
+    },
+    similar_fact: |percent| format!("Ressemblance {percent:.0} %"),
+    similar_needs_model: "Les photos semblables ont besoin du modèle d'esthétique (CLIP)",
+    similar_not_analysed: "Cette photo n'est pas encore analysée",
+    similar_none: |percent| format!("Aucune photo semblable (dès {percent:.0} %)"),
     refresh_order: "Actualiser l'ordre",
     refresh_order_tooltip: "De nouveaux scores ont été calculés depuis le tri et le filtrage",
     analyzing_progress: |done, total| format!("Analyse {done} / {total}"),
@@ -73,6 +86,7 @@ pub static TEXTS: Texts = Texts {
     cmd_all_panels: "Barre de filtres, détails et pellicule",
     cmd_fullscreen: "Plein écran",
     cmd_compare: "Comparer",
+    cmd_similar: "N'afficher que les photos semblables",
     cmd_zoom: "Photo entière ↔ 100 %",
     menu_overlay: "Superposition",
     overlay_off: "Désactivée",
@@ -356,6 +370,10 @@ pub static TEXTS: Texts = Texts {
         ("Tab", "Panneau de détails"),
         ("I", "Détails : déplier ou replier toutes les explications"),
         ("F6", "Pellicule"),
+        (
+            "M",
+            "N'afficher que les photos semblables – encore : toutes",
+        ),
         (
             "O",
             "Superposition : contours nets → lumières et ombres écrêtées → désactivée",

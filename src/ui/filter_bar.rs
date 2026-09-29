@@ -19,6 +19,8 @@ pub struct ToolbarInfo<'a> {
     pub status: &'a Status,
     /// The action menu (copy, move, delete) is open.
     pub actions_open: bool,
+    /// Name of the photo "similar photos" is about, while that filter is on.
+    pub similar_to: Option<&'a str>,
 }
 
 #[derive(Default)]
@@ -26,6 +28,8 @@ pub struct ToolbarOutput {
     pub options_changed: bool,
     pub refresh: bool,
     pub download_model: bool,
+    /// The "similar" box was clicked; the app picks the photo it is about (like `M`).
+    pub toggle_similar: bool,
     /// The "Action" button was clicked (opens or closes the action menu).
     pub toggle_actions: bool,
     /// Where the "Action" button is, so the menu opens under it.
@@ -48,6 +52,7 @@ pub fn toolbar(
     let before = *options;
     let mut out = ToolbarOutput::default();
     let mut action_rect = None;
+    let mut similar_clicked = false;
     ui.scope_builder(
         UiBuilder::new()
             .max_rect(rect.shrink2(vec2(12.0, 0.0)))
@@ -83,13 +88,14 @@ pub fn toolbar(
                                     // all away from the pointer.
                                     if ui
                                         .add_enabled(
-                                            !options.filter.is_all(),
+                                            !options.filter.is_all() || options.similar,
                                             Button::new(t.filter_clear).small(),
                                         )
                                         .on_disabled_hover_text(t.filter_none_active)
                                         .clicked()
                                     {
                                         options.filter.clear();
+                                        options.similar = false;
                                     }
                                     for kind in FilterKind::ALL {
                                         let mut on = options.filter.contains(kind);
@@ -117,6 +123,10 @@ pub fn toolbar(
                                             options.filter.set(kind, on);
                                         }
                                     }
+                                    // Last, so its label – the photo's name while on – moves
+                                    // nothing.
+                                    similar_clicked =
+                                        similar_box(ui, options.similar, info.similar_to);
                                 });
                             });
                         overflow_hint(
@@ -160,6 +170,7 @@ pub fn toolbar(
         },
     );
     out.actions_anchor = action_rect;
+    out.toggle_similar = similar_clicked;
     out.options_changed = *options != before;
     out
 }
@@ -205,6 +216,30 @@ fn progress(ui: &mut Ui, done: usize, total: usize) {
             ui.label(text);
         },
     );
+}
+
+/// "≈ Similar", or "≈ like IMG_0012" while on (a long name shortened, whole in the tooltip).
+/// Whether it was clicked; the app decides which photo it is about.
+fn similar_box(ui: &mut Ui, on: bool, reference: Option<&str>) -> bool {
+    const LONGEST: usize = 18;
+    let t = i18n::t();
+    let label = match reference.filter(|_| on) {
+        Some(name) if name.chars().count() > LONGEST => {
+            let short: String = name.chars().take(LONGEST - 1).collect();
+            (t.filter_similar_to)(&format!("{short}…"))
+        }
+        Some(name) => (t.filter_similar_to)(name),
+        None => t.filter_similar.to_owned(),
+    };
+    let explain = (t.similar_tooltip)(crate::view::SIMILAR_MIN * 100.0);
+    let tooltip = match reference.filter(|_| on) {
+        Some(name) => format!("{}\n{explain}", (t.menu_similar_to)(name)),
+        None => explain,
+    };
+    let mut ticked = on;
+    ui.checkbox(&mut ticked, label)
+        .on_hover_text(tooltip)
+        .changed()
 }
 
 /// A colour label as a small square – filled and ticked when on; the name is the tooltip.
@@ -315,6 +350,16 @@ mod tests {
 
     /// The bar drawn in a wide window: where each text lands, and the Action button.
     fn bar(options: ViewOptions, stale: bool, status: &Status) -> (Vec<(String, Rect)>, Rect) {
+        bar_about(options, stale, status, None)
+    }
+
+    /// The same with "similar photos" about `similar_to`.
+    fn bar_about(
+        options: ViewOptions,
+        stale: bool,
+        status: &Status,
+        similar_to: Option<&str>,
+    ) -> (Vec<(String, Rect)>, Rect) {
         let ctx = Context::default();
         let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(1800.0, TOOLBAR_HEIGHT));
         let mut last = None;
@@ -332,6 +377,7 @@ mod tests {
                         stale,
                         status,
                         actions_open: false,
+                        similar_to,
                     };
                     action = toolbar(ui, screen, &mut options, &info).actions_anchor;
                 },
@@ -372,6 +418,26 @@ mod tests {
         let show_all = i18n::t().filter_clear;
         assert_eq!(left_of(&before, show_all), left_of(&after, show_all));
         assert_eq!(left_of(&before, "1★"), left_of(&after, "1★"));
+    }
+
+    /// The "similar" box is always there, last: switching it on names the photo and moves no
+    /// other box.
+    #[test]
+    fn the_similar_box_sits_last_and_moves_nothing() {
+        let done = status(1, 1);
+        let (off, _) = bar(ViewOptions::default(), false, &done);
+        let on = ViewOptions {
+            similar: true,
+            ..ViewOptions::default()
+        };
+        let long = "IMG_20260928_171203_HDR.jpg";
+        let (named, _) = bar_about(on, false, &done, Some("IMG_0012.JPG"));
+        let (shortened, _) = bar_about(on, false, &done, Some(long));
+        let t = i18n::t();
+        assert!(left_of(&off, t.filter_similar) > left_of(&off, "Duplicates"));
+        assert_eq!(left_of(&off, "1★"), left_of(&named, "1★"));
+        left_of(&named, &(t.filter_similar_to)("IMG_0012.JPG"));
+        left_of(&shortened, &(t.filter_similar_to)("IMG_20260928_1712…"));
     }
 
     /// The sort box is as wide for "Name" as for the longest sort.

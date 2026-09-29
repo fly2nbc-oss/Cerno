@@ -94,6 +94,9 @@ pub struct CernoApp {
     /// Compare mode: the photo pinned on the left. The current photo is shown on the right.
     pinned: Option<PathBuf>,
     options: ViewOptions,
+    /// The photo "similar photos" (`M`) is about and its CLIP embedding, while that filter is
+    /// on. The embedding stays even if the photo is deleted meanwhile.
+    similar_to: Option<(PathBuf, Arc<[f32]>)>,
     /// Score board version the view was built from.
     view_version: u64,
     /// When the view was last built (quiet refreshes are spaced out).
@@ -233,6 +236,7 @@ impl CernoApp {
                 .and_then(|s| SortKey::from_id(&s))
                 .unwrap_or(SortKey::Name),
             filter,
+            similar: false,
         };
         let auto_advance = db.setting("auto_advance").as_deref() == Some("1");
         let subfolders = db.setting("subfolders").as_deref() == Some("1");
@@ -279,6 +283,7 @@ impl CernoApp {
             current: 0,
             pinned: None,
             options,
+            similar_to: None,
             view_version: 0,
             view_built: Instant::now(),
             percentiles: (u64::MAX, Percentiles::default()),
