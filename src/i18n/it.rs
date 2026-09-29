@@ -72,6 +72,7 @@ pub static TEXTS: Texts = Texts {
     cmd_fullscreen: "Schermo intero",
     cmd_compare: "Confronta",
     cmd_zoom: "Foto intera ↔ 100 %",
+    cmd_grid: "Griglia",
     cmd_reject: "Rifiuta",
     cmd_description: "Commento e parole chiave",
     cmd_delete_rejected: |n| format!("Elimina le foto rifiutate ({n})"),
@@ -339,6 +340,10 @@ pub static TEXTS: Texts = Texts {
         ("I", "Dettagli: espandi o comprimi tutte le spiegazioni"),
         ("F6", "Striscia di miniature"),
         (
+            "F7",
+            "Griglia di tutte le foto: ↑ ↓ una riga, + − dimensione, Invio apre la foto",
+        ),
+        (
             "Maiusc+Tab",
             "Barra dei filtri, dettagli e striscia di miniature insieme",
         ),
@@ -373,6 +378,9 @@ pub static TEXTS: Texts = Texts {
         ("Ctrl+M", "Azione: copia, sposta o elimina le foto in vista"),
         ("Ctrl+L", "Cambia lingua"),
         ("H, F1, ?", "Questa guida"),
-        ("Esc", "Torna indietro: zoom, confronto, schermo intero"),
+        (
+            "Esc",
+            "Torna indietro: zoom, confronto, griglia, schermo intero",
+        ),
     ],
 };

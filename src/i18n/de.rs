@@ -72,6 +72,7 @@ pub static TEXTS: Texts = Texts {
     cmd_fullscreen: "Vollbild",
     cmd_compare: "Vergleichen",
     cmd_zoom: "Ganzes Foto ↔ 100 %",
+    cmd_grid: "Raster",
     cmd_reject: "Ablehnen",
     cmd_description: "Kommentar und Stichwörter",
     cmd_delete_rejected: |n| format!("Abgelehnte Fotos löschen ({n})"),
@@ -337,6 +338,10 @@ pub static TEXTS: Texts = Texts {
         ("I", "Details: alle Erklärungen auf- oder zuklappen"),
         ("F6", "Filmstreifen"),
         (
+            "F7",
+            "Raster aller Fotos: ↑ ↓ eine Zeile, + − Größe, Enter öffnet das Foto",
+        ),
+        (
             "Umschalt+Tab",
             "Filterleiste, Details und Filmstreifen zusammen",
         ),
@@ -377,6 +382,6 @@ pub static TEXTS: Texts = Texts {
         ),
         ("Strg+L", "Sprache wechseln"),
         ("H, F1, ?", "Diese Hilfe"),
-        ("Esc", "Schritt zurück: Zoom, Vergleich, Vollbild"),
+        ("Esc", "Schritt zurück: Zoom, Vergleich, Raster, Vollbild"),
     ],
 };

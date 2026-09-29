@@ -72,6 +72,7 @@ pub static TEXTS: Texts = Texts {
     cmd_fullscreen: "Full screen",
     cmd_compare: "Compare",
     cmd_zoom: "Whole photo ↔ 100 %",
+    cmd_grid: "Grid",
     cmd_reject: "Reject",
     cmd_description: "Comment and keywords",
     cmd_delete_rejected: |n| format!("Delete rejected photos ({n})"),
@@ -322,6 +323,10 @@ pub static TEXTS: Texts = Texts {
         ("Tab", "Details panel"),
         ("I", "Details: expand or collapse all explanations"),
         ("F6", "Filmstrip"),
+        (
+            "F7",
+            "Grid of all photos: ↑ ↓ a row, + − size, Enter opens the photo",
+        ),
         ("Shift+Tab", "Filter bar, details and filmstrip together"),
         ("Enter", "Play a video in the default player"),
         ("B", "Description: edit the comment and keywords"),
@@ -357,6 +362,6 @@ pub static TEXTS: Texts = Texts {
         ),
         ("Ctrl+L", "Switch language"),
         ("H, F1, ?", "This help"),
-        ("Esc", "Step back: zoom, compare mode, full screen"),
+        ("Esc", "Step back: zoom, compare mode, grid, full screen"),
     ],
 };

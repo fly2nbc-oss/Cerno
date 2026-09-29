@@ -37,6 +37,12 @@ const ZOOM_STEP: f32 = 1.25;
 struct KeyInput {
     next: bool,
     prev: bool,
+    /// Page Down / Page Up: one photo on, in the grid one screen.
+    page_down: bool,
+    page_up: bool,
+    /// `↓`/`↑`: a row in the grid.
+    down: bool,
+    up: bool,
     first: bool,
     last: bool,
     rating: Option<Rating>,
@@ -62,6 +68,8 @@ struct KeyInput {
     escape: bool,
     toggle_toolbar: bool,
     toggle_filmstrip: bool,
+    /// `F7`: the grid.
+    toggle_grid: bool,
     cycle_details: bool,
     help: bool,
     language: bool,
@@ -121,13 +129,17 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
     KeyInput {
         // Without Ctrl: Ctrl+Left/Right turn the photo instead.
         next: !i.modifiers.command
-            && [Key::ArrowRight, Key::Space, Key::PageDown]
+            && [Key::ArrowRight, Key::Space]
                 .iter()
                 .any(|k| i.key_pressed(*k)),
         prev: !i.modifiers.command
-            && [Key::ArrowLeft, Key::Backspace, Key::PageUp]
+            && [Key::ArrowLeft, Key::Backspace]
                 .iter()
                 .any(|k| i.key_pressed(*k)),
+        page_down: !i.modifiers.command && i.key_pressed(Key::PageDown),
+        page_up: !i.modifiers.command && i.key_pressed(Key::PageUp),
+        down: !i.modifiers.command && i.key_pressed(Key::ArrowDown),
+        up: !i.modifiers.command && i.key_pressed(Key::ArrowUp),
         first: i.key_pressed(Key::Home),
         last: i.key_pressed(Key::End),
         rating,
@@ -148,6 +160,7 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         escape: i.key_pressed(Key::Escape),
         toggle_toolbar: plain && i.key_pressed(Key::T),
         toggle_filmstrip: i.key_pressed(Key::F6),
+        toggle_grid: i.key_pressed(Key::F7),
         cycle_details: plain && i.key_pressed(Key::I),
         help: i.key_pressed(Key::F1)
             || i.key_pressed(Key::Questionmark)
@@ -250,6 +263,13 @@ impl CernoApp {
         tabs: &[bool],
         frames: &[viewer::Frame],
     ) {
+        // Editing, comparing and zooming need the single photo: the grid steps aside first.
+        if self.grid && (keys.straighten || keys.crop || keys.compare || keys.toggle_zoom) {
+            self.set_grid(false);
+        }
+        if keys.toggle_grid {
+            self.set_grid(!self.grid);
+        }
         if keys.straighten {
             self.begin_straighten();
         }
@@ -273,6 +293,23 @@ impl CernoApp {
         }
         if keys.prev {
             self.go_to(ctx, self.current.saturating_sub(1), -1);
+        }
+        // A screen of cells in the grid, one photo otherwise.
+        let page = if self.grid { self.grid_page.max(1) } else { 1 };
+        if keys.page_down {
+            self.go_to(ctx, self.current.saturating_add(page), 1);
+        }
+        if keys.page_up {
+            self.go_to(ctx, self.current.saturating_sub(page), -1);
+        }
+        if self.grid && (keys.down || keys.up) {
+            let target = crate::ui::grid::row_step(
+                self.grid_columns,
+                self.current,
+                self.view.len(),
+                keys.down,
+            );
+            self.go_to(ctx, target, if keys.down { 1 } else { -1 });
         }
         if keys.first {
             self.go_to(ctx, 0, 1);
@@ -310,8 +347,13 @@ impl CernoApp {
         if keys.keep_right {
             self.keep_right(ctx);
         }
+        // In the grid Enter opens the photo; a video plays from the single view.
         if keys.play {
-            self.play_video();
+            if self.grid {
+                self.set_grid(false);
+            } else {
+                self.play_video();
+            }
         }
         if keys.describe {
             self.open_description(ctx);
@@ -334,6 +376,10 @@ impl CernoApp {
         }
         if keys.cycle_details {
             self.toggle_explanations();
+        }
+        // In the grid + and − change the cell size.
+        if self.grid && (keys.zoom_in || keys.zoom_out) {
+            self.resize_grid(if keys.zoom_in { 1 } else { -1 });
         }
         // Zoom keys act on the photo under the mouse, otherwise on the current (right) one.
         let pointer = ctx.pointer_hover_pos();
@@ -364,6 +410,8 @@ impl CernoApp {
                 self.zoom.scale = None;
             } else if self.pinned.is_some() {
                 self.toggle_compare(ctx);
+            } else if self.grid {
+                self.set_grid(false);
             } else if keys.is_fullscreen {
                 ctx.send_viewport_cmd(ViewportCommand::Fullscreen(false));
             } else {
@@ -443,6 +491,21 @@ mod tests {
         assert!(read(vec![key(Key::E, Key::E, plain)], plain).edit_elsewhere);
         let ctrl = Modifiers::COMMAND;
         assert!(!read(vec![key(Key::E, Key::E, ctrl)], ctrl).edit_elsewhere);
+    }
+
+    #[test]
+    fn f7_the_grid_and_page_keys_on_their_own() {
+        let plain = Modifiers::NONE;
+        assert!(read(vec![key(Key::F7, Key::F7, plain)], plain).toggle_grid);
+        let keys = read(vec![key(Key::PageDown, Key::PageDown, plain)], plain);
+        assert!(
+            keys.page_down && !keys.next,
+            "a page is its own step in the grid"
+        );
+        let keys = read(vec![key(Key::ArrowDown, Key::ArrowDown, plain)], plain);
+        assert!(keys.down && !keys.next && !keys.up);
+        let ctrl = Modifiers::COMMAND;
+        assert!(!read(vec![key(Key::ArrowUp, Key::ArrowUp, ctrl)], ctrl).up);
     }
 
     #[test]

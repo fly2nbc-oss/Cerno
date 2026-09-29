@@ -118,6 +118,15 @@ pub struct CernoApp {
     subfolders: bool,
     target: Option<[u32; 2]>,
     zoom: viewer::Zoom,
+    /// The grid (`F7`) instead of the single photo; not saved.
+    grid: bool,
+    /// Its cell size, an index into `grid::STEPS`.
+    grid_step: usize,
+    /// The photo the grid last scrolled to: another current photo scrolls it into view.
+    grid_shown: Option<usize>,
+    /// Columns and cells per page of the last drawn grid, for `↑`/`↓` and Page Up / Down.
+    grid_columns: usize,
+    grid_page: usize,
     /// Top bar (`F`), filmstrip (`F6`) and details panel (`Tab`); the info bar always shows.
     show_toolbar: bool,
     show_filmstrip: bool,
@@ -286,6 +295,11 @@ impl CernoApp {
             subfolders,
             target: None,
             zoom: viewer::Zoom::default(),
+            grid: false,
+            grid_step: crate::ui::grid::DEFAULT_STEP,
+            grid_shown: None,
+            grid_columns: 1,
+            grid_page: 1,
             show_toolbar,
             show_filmstrip,
             details,
@@ -381,11 +395,15 @@ impl eframe::App for CernoApp {
         self.poll_background(&ctx);
 
         let layout = self.layout(window);
-        let frames: Vec<viewer::Frame> = self
-            .slots(layout.area)
-            .iter()
-            .filter_map(|slot| self.frame_of(&ctx, slot))
-            .collect();
+        // The grid shows no photo: zoom keys go to its cell size, not to a hidden photo.
+        let frames: Vec<viewer::Frame> = if self.grid {
+            Vec::new()
+        } else {
+            self.slots(layout.area)
+                .iter()
+                .filter_map(|slot| self.frame_of(&ctx, slot))
+                .collect()
+        };
         self.handle_keys(&ctx, &frames);
 
         ui.painter().rect_filled(window, 0.0, tokens::CANVAS);

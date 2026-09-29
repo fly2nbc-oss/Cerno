@@ -72,6 +72,7 @@ pub static TEXTS: Texts = Texts {
     cmd_fullscreen: "Plein écran",
     cmd_compare: "Comparer",
     cmd_zoom: "Photo entière ↔ 100 %",
+    cmd_grid: "Grille",
     cmd_reject: "Rejeter",
     cmd_description: "Commentaire et mots-clés",
     cmd_delete_rejected: |n| format!("Supprimer les photos rejetées ({n})"),
@@ -344,6 +345,10 @@ pub static TEXTS: Texts = Texts {
         ("Tab", "Panneau de détails"),
         ("I", "Détails : déplier ou replier toutes les explications"),
         ("F6", "Pellicule"),
+        (
+            "F7",
+            "Grille de toutes les photos : ↑ ↓ une ligne, + − taille, Entrée ouvre la photo",
+        ),
         ("Maj+Tab", "Barre de filtres, détails et pellicule ensemble"),
         ("Entrée", "Lire une vidéo dans le lecteur par défaut"),
         (
@@ -385,6 +390,9 @@ pub static TEXTS: Texts = Texts {
         ),
         ("Ctrl+L", "Changer de langue"),
         ("H, F1, ?", "Cette aide"),
-        ("Esc", "Revenir en arrière : zoom, comparaison, plein écran"),
+        (
+            "Esc",
+            "Revenir en arrière : zoom, comparaison, grille, plein écran",
+        ),
     ],
 };

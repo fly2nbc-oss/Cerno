@@ -41,6 +41,7 @@ enum Action {
     AllPanels,
     Compare,
     Zoom,
+    Grid,
     Fullscreen,
     Rate(Rating),
     Reject,
@@ -253,6 +254,7 @@ impl CernoApp {
                         self.details != DetailsMode::Off && all_expanded(&self.details_expanded),
                     ),
                     Row::new(Action::Zoom, t.cmd_zoom, key("Z")).toggle(self.zoom.is_zoomed()),
+                    Row::new(Action::Grid, t.cmd_grid, key("F7")).toggle(self.grid),
                     Row::new(Action::Fullscreen, t.cmd_fullscreen, key("F")),
                 ],
             )));
@@ -554,6 +556,7 @@ impl CernoApp {
                     self.zoom.toggle(frame, None);
                 }
             }
+            Action::Grid => self.set_grid(!self.grid),
             Action::Fullscreen => {
                 let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
                 ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!fullscreen));

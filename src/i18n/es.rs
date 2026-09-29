@@ -72,6 +72,7 @@ pub static TEXTS: Texts = Texts {
     cmd_fullscreen: "Pantalla completa",
     cmd_compare: "Comparar",
     cmd_zoom: "Foto completa ↔ 100 %",
+    cmd_grid: "Cuadrícula",
     cmd_reject: "Rechazar",
     cmd_description: "Comentario y palabras clave",
     cmd_delete_rejected: |n| format!("Eliminar las fotos rechazadas ({n})"),
@@ -333,6 +334,10 @@ pub static TEXTS: Texts = Texts {
         ("I", "Detalles: desplegar o plegar todas las explicaciones"),
         ("F6", "Tira de miniaturas"),
         (
+            "F7",
+            "Cuadrícula de todas las fotos: ↑ ↓ una fila, + − tamaño, Intro abre la foto",
+        ),
+        (
             "Mayús+Tab",
             "Barra de filtros, detalles y tira de miniaturas a la vez",
         ),
@@ -375,7 +380,7 @@ pub static TEXTS: Texts = Texts {
         ("H, F1, ?", "Esta ayuda"),
         (
             "Esc",
-            "Volver atrás: zoom, modo comparación, pantalla completa",
+            "Volver atrás: zoom, modo comparación, cuadrícula, pantalla completa",
         ),
     ],
 };

@@ -7,6 +7,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **Grid** – `F7` shows every photo of the view as a thumbnail.
+  - The cursor is the current photo, so stars, rejecting, colours, deleting and *move on* work as usual. `↑`/`↓` go a row, Page Up/Down a screen, `+`/`−` or Ctrl + wheel change the size.
+  - `Enter`, a double click, `F7` or `Esc` open the photo. Straighten, crop, compare and zoom open it first.
+  - In capture-time order a line separates the series and the current one is underlined; nothing is folded away.
+  - Only the rows on screen are drawn. While the grid shows, only its cursor photo is decoded and the analysis doesn't pause for it.
+
 ### Changed
 
 - The `.deb` recommends ffmpeg, so videos show a frame after a plain `apt install`.

@@ -301,9 +301,15 @@ impl Loader {
 
     /// Called once the window is up: decode the neighbours too.
     pub fn start_prefetch(&self) {
+        self.set_prefetch(true);
+    }
+
+    /// Whether the neighbours are decoded too. Off while the grid shows: only its cursor photo
+    /// is decoded then, not photos at monitor size that nobody sees.
+    pub fn set_prefetch(&self, on: bool) {
         let mut state = self.shared.lock();
-        if !state.prefetch {
-            state.prefetch = true;
+        if state.prefetch != on {
+            state.prefetch = on;
             drop(state);
             self.shared.wake.notify_all();
         }

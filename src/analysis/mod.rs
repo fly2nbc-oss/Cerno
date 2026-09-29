@@ -336,6 +336,12 @@ impl Analyzer {
     /// `current` indexes the full folder list; also pauses the analysis for a moment.
     pub fn set_current(&self, current: usize) {
         *lock(&self.shared.last_navigation) = Instant::now();
+        self.set_current_quietly(current);
+    }
+
+    /// The same without the pause: the grid decodes no big photo that could compete, and its
+    /// cursor moves fast – the analysis would hardly get on.
+    pub fn set_current_quietly(&self, current: usize) {
         lock(&self.shared.state).current = current;
     }
 
