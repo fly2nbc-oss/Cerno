@@ -34,8 +34,6 @@ pub struct CellInfo {
     pub series_id: Option<u32>,
     /// Same series as the photo in the middle of the strip.
     pub in_current_series: bool,
-    /// Further photos of the series hidden by "best of each series".
-    pub more: Option<u32>,
     /// Display name of the original when this photo is an exact copy.
     pub duplicate_of: Option<String>,
 }
@@ -211,15 +209,6 @@ pub fn draw(
         }
         if !tooltip.is_empty() {
             response.clone().on_hover_text(tooltip.join("\n"));
-        }
-        if let Some(more) = cell_info.more {
-            painter.text(
-                pos2(cell.right() - 4.0, cell.bottom() + 11.0),
-                Align2::RIGHT_CENTER,
-                (i18n::t().series_more)(more),
-                FontId::proportional(text::LABEL),
-                tokens::MUTED,
-            );
         }
     }
     StripOutput {

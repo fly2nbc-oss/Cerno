@@ -53,6 +53,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 - The menu no longer crashes when it gets shorter while it is open (e.g. a deletion runs out) and a key is pressed.
 - Filmstrip thumbnails stay at 400 textures while the analysis runs through a large folder; before, every analysed photo kept one in graphics memory.
 
+### Removed
+
+- "Best of each series" and its `+n` count: a series always shows all its photos. Hiding them let the next frame of a burst slip into a rejected photo's place unnoticed, so after "Delete rejected photos" the look-alike frames seemed to be rejected photos that had come back. Series stay marked in the filmstrip and the info bar, and capture-time order still puts the sharpest first.
+
 ## [0.9.0] – 2026-09-28
 
 ### Added

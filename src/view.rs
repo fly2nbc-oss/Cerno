@@ -291,8 +291,6 @@ fn colour_index(label: Label) -> usize {
 pub struct ViewOptions {
     pub sort: SortKey,
     pub filter: PhotoFilter,
-    /// One photo per series: the sharpest that is not rejected.
-    pub best_of_series: bool,
 }
 
 impl Default for ViewOptions {
@@ -300,7 +298,6 @@ impl Default for ViewOptions {
         Self {
             sort: SortKey::Name,
             filter: PhotoFilter::default(),
-            best_of_series: false,
         }
     }
 }
@@ -502,9 +499,6 @@ pub fn build(
 
     let places = series_places(&shown);
     let mut order: Vec<usize> = (0..shown.len()).collect();
-    if options.best_of_series {
-        order.retain(|&i| places[i].is_none_or(|place| place.index == 1));
-    }
     match options.sort {
         SortKey::Name => {}
         SortKey::Taken => order.sort_by(|&a, &b| taken_order(&shown, &places, a, b)),
@@ -994,18 +988,6 @@ mod tests {
         assert_eq!(view.series[3].unwrap().len, 2);
         assert!(view.series[5].is_none());
         assert!(view.grouped);
-
-        let best = ViewOptions {
-            sort: SortKey::Taken,
-            best_of_series: true,
-            ..ViewOptions::default()
-        };
-        let view = build(&all, best, lookup, &HashMap::new(), &HashMap::new(), |_| {
-            false
-        });
-        assert_eq!(names(&view.paths), "bef");
-        assert_eq!(view.series[0].unwrap().len, 3);
-        assert_eq!(view.series[1].unwrap().index, 1);
     }
 
     /// Windows names copies "IMG - Kopie.jpg"; they sort before "IMG.jpg" but are not the
