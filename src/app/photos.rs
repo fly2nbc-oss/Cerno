@@ -8,6 +8,7 @@ use crate::i18n;
 use crate::library;
 use crate::loader::{LoadedImage, Lookup};
 use crate::metadata::Rating;
+use crate::overlay;
 use crate::theme::tokens;
 use crate::ui::{overlays, viewer};
 
@@ -96,6 +97,19 @@ impl CernoApp {
         self.pinned = None;
         self.rate(ctx, loser, Rating::Rejected, false);
         self.rebuild_view(ctx, Some(winner));
+    }
+
+    /// `O` and View ▸ Overlay: sharp edges, clipped highlights and shadows, or nothing. A hint
+    /// says what the colours mean.
+    pub(super) fn set_overlay(&mut self, mode: overlay::Mode) {
+        self.overlay = mode;
+        self.loader.set_overlay(mode);
+        let t = i18n::t();
+        self.notice = Some(Notice::hint(match mode {
+            overlay::Mode::Off => t.overlay_hint_off,
+            overlay::Mode::Sharpness => t.overlay_hint_sharpness,
+            overlay::Mode::Exposure => t.overlay_hint_exposure,
+        }));
     }
 
     /// Photo slots on screen: one, or pinned left + current right in compare mode.
@@ -205,12 +219,25 @@ impl CernoApp {
             }
         }
         let full = self.loader.full(slot.index);
+        // Not over a straighten or crop session: the frame and grid need the photo alone.
+        let (overlay, full_overlay) = if self.overlay == overlay::Mode::Off || editing {
+            (None, None)
+        } else {
+            (
+                self.loader.overlay(slot.index),
+                self.loader.full_overlay(slot.index),
+            )
+        };
         let needs_full = viewer::draw(
             ui.painter(),
             &frame,
             &self.zoom,
             image,
             full.as_deref(),
+            viewer::Overlay {
+                display: overlay.as_ref(),
+                full: full_overlay.as_deref().map(Vec::as_slice),
+            },
             self.straighten_angle(),
         );
         if slot.side == Side::Single {

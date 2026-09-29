@@ -199,6 +199,11 @@ impl CernoApp {
             blurry: !comparing && scores.is_some_and(|s| percentiles.is_blurry(&s)),
             saving: self.writer.status().pending > 0,
             zoom: self.zoom.scale.map(|s| s * 100.0),
+            overlay: match self.overlay {
+                crate::overlay::Mode::Off => None,
+                crate::overlay::Mode::Sharpness => Some(i18n::t().overlay_fact_sharpness),
+                crate::overlay::Mode::Exposure => Some(i18n::t().overlay_fact_exposure),
+            },
         };
         let out = info_bar::info_bar(ui, rect, &bar);
         if let Some(stars) = out.rating {
@@ -228,24 +233,26 @@ impl CernoApp {
             self.draw_description(ui, body, &path, image.as_deref());
             return;
         }
-        {
-            let status = self.analyzer.status();
-            details::draw(
-                ui,
-                body,
-                &details::Details {
-                    scores,
-                    personal,
-                    frame_percentile: scores.and_then(|s| percentiles.frame(&s)),
-                    eyes_percentile: scores.and_then(|s| percentiles.eyes(&s)),
-                    attributes: self.analyzer.attributes(&path),
-                    histogram: image.as_deref().map(|i| &i.histogram),
-                    status: &status,
-                    file: image.as_deref().map(|i| (i.original_size, i.load_ms)),
-                    position: image.as_deref().and_then(|i| i.camera.gps),
-                },
-                &mut self.details_expanded,
-            );
+        let status = self.analyzer.status();
+        let overlay = details::draw(
+            ui,
+            body,
+            &details::Details {
+                scores,
+                personal,
+                frame_percentile: scores.and_then(|s| percentiles.frame(&s)),
+                eyes_percentile: scores.and_then(|s| percentiles.eyes(&s)),
+                attributes: self.analyzer.attributes(&path),
+                histogram: image.as_deref().map(|i| &i.histogram),
+                status: &status,
+                file: image.as_deref().map(|i| (i.original_size, i.load_ms)),
+                position: image.as_deref().and_then(|i| i.camera.gps),
+                overlay: self.overlay,
+            },
+            &mut self.details_expanded,
+        );
+        if let Some(mode) = overlay {
+            self.set_overlay(mode);
         }
     }
 

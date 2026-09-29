@@ -17,6 +17,7 @@ mod library;
 mod loader;
 mod metadata;
 mod originals;
+mod overlay;
 mod paths;
 mod rating;
 mod raw;

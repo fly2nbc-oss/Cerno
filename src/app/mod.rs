@@ -118,6 +118,8 @@ pub struct CernoApp {
     subfolders: bool,
     target: Option<[u32; 2]>,
     zoom: viewer::Zoom,
+    /// The check overlay over the photos (`O`); not saved.
+    overlay: crate::overlay::Mode,
     /// Top bar (`F`), filmstrip (`F6`) and details panel (`Tab`); the info bar always shows.
     show_toolbar: bool,
     show_filmstrip: bool,
@@ -286,6 +288,7 @@ impl CernoApp {
             subfolders,
             target: None,
             zoom: viewer::Zoom::default(),
+            overlay: crate::overlay::Mode::Off,
             show_toolbar,
             show_filmstrip,
             details,

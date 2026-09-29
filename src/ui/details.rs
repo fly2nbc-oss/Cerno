@@ -12,6 +12,7 @@ use crate::db::Scores;
 use crate::histogram::RgbHistogram;
 use crate::i18n;
 use crate::metadata;
+use crate::overlay;
 use crate::theme::{text, tokens};
 use crate::ui::icons;
 use crate::view::is_blurry;
@@ -162,6 +163,8 @@ pub struct Details<'a> {
     pub file: Option<([u32; 2], u128)>,
     /// GPS position (latitude, longitude) from the EXIF data.
     pub position: Option<(f64, f64)>,
+    /// What the check overlay shows; its eye is lit in that section.
+    pub overlay: overlay::Mode,
 }
 
 struct Value {
@@ -188,7 +191,13 @@ impl Value {
     }
 }
 
-pub fn draw(ui: &mut Ui, rect: Rect, d: &Details<'_>, expanded: &mut HashSet<DetailRow>) {
+/// Draws the panel. Returns the overlay an eye asks for (a lit eye turns it off).
+pub fn draw(
+    ui: &mut Ui,
+    rect: Rect,
+    d: &Details<'_>,
+    expanded: &mut HashSet<DetailRow>,
+) -> Option<overlay::Mode> {
     let painter = ui.painter().with_clip_rect(rect);
     painter.rect_filled(rect, 0.0, tokens::SURFACE);
     painter.vline(
@@ -208,12 +217,18 @@ pub fn draw(ui: &mut Ui, rect: Rect, d: &Details<'_>, expanded: &mut HashSet<Det
                 histogram(ui, hist);
                 ui.add_space(8.0);
             }
-            content(ui, d, expanded);
+            let overlay = content(ui, d, expanded);
             ui.add_space(PAD);
-        });
+            overlay
+        })
+        .inner
 }
 
-fn content(ui: &mut Ui, d: &Details<'_>, expanded: &mut HashSet<DetailRow>) {
+fn content(
+    ui: &mut Ui,
+    d: &Details<'_>,
+    expanded: &mut HashSet<DetailRow>,
+) -> Option<overlay::Mode> {
     let t = i18n::t();
     let scores = d.scores.unwrap_or_default();
     let status = d.status;
@@ -263,7 +278,18 @@ fn content(ui: &mut Ui, d: &Details<'_>, expanded: &mut HashSet<DetailRow>) {
         t.explain_personal,
     );
 
-    section(ui, t.section_sharpness);
+    let mut overlay = None;
+    // The eye shows this section on the photo; a lit one turns the overlay off again.
+    let mut eye = |ui: &mut Ui, title: &str, mode: overlay::Mode| {
+        if section_with_eye(ui, title, d.overlay == mode) {
+            overlay = Some(if d.overlay == mode {
+                overlay::Mode::Off
+            } else {
+                mode
+            });
+        }
+    };
+    eye(ui, t.section_sharpness, overlay::Mode::Sharpness);
     metric_row(
         ui,
         expanded,
@@ -298,7 +324,7 @@ fn content(ui: &mut Ui, d: &Details<'_>, expanded: &mut HashSet<DetailRow>) {
         t.explain_eyes,
     );
 
-    section(ui, t.section_exposure);
+    eye(ui, t.section_exposure, overlay::Mode::Exposure);
     let clipped = |share: Option<f32>, limit: f32| match share {
         Some(s) => Value {
             text: format!("{:.1} %", s * 100.0),
@@ -333,6 +359,7 @@ fn content(ui: &mut Ui, d: &Details<'_>, expanded: &mut HashSet<DetailRow>) {
             map_links(ui, (lat, lon));
         }
     }
+    overlay
 }
 
 fn histogram(ui: &mut Ui, hist: &RgbHistogram) {
@@ -387,6 +414,41 @@ fn section(ui: &mut Ui, title: &str) {
         );
     });
     ui.add_space(2.0);
+}
+
+/// A section title with the eye that shows the section's values on the photo, at the right
+/// like the values below it. Whether the eye was clicked.
+fn section_with_eye(ui: &mut Ui, title: &str, on: bool) -> bool {
+    ui.add_space(6.0);
+    let clicked = ui
+        .horizontal(|ui| {
+            ui.add_space(PAD);
+            ui.label(
+                RichText::new(title.to_uppercase())
+                    .font(FontId::proportional(text::LABEL))
+                    .color(tokens::MUTED),
+            );
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.add_space(PAD);
+                let (rect, response) = ui.allocate_exact_size(vec2(22.0, 14.0), Sense::click());
+                let colour = if on {
+                    tokens::ACCENT
+                } else if response.hovered() {
+                    tokens::TEXT
+                } else {
+                    tokens::MUTED
+                };
+                icons::eye(ui.painter(), rect.center(), on, colour);
+                response
+                    .on_hover_cursor(CursorIcon::PointingHand)
+                    .on_hover_text(i18n::t().overlay_show_on_photo)
+                    .clicked()
+            })
+            .inner
+        })
+        .inner;
+    ui.add_space(2.0);
+    clicked
 }
 
 fn metric_row(
@@ -647,6 +709,7 @@ mod tests {
             status: &status,
             file: None,
             position: None,
+            overlay: overlay::Mode::Off,
         };
         let mut expanded = HashSet::from([DetailRow::Laion]);
         let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 800.0));
@@ -693,6 +756,7 @@ mod tests {
             status: &status,
             file: None,
             position: None,
+            overlay: overlay::Mode::Off,
         };
         let mut expanded = HashSet::new();
         set_all_expanded(&mut expanded, true);
@@ -752,6 +816,7 @@ mod tests {
             status: &status,
             file: Some(([6000, 4000], 120)),
             position: Some(position),
+            overlay: overlay::Mode::Off,
         };
         let panel = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 1200.0));
         let frame = |events: Vec<Event>| {
@@ -813,6 +878,69 @@ mod tests {
             })
             .collect();
         assert_eq!(opened, [metadata::osm_url(position)]);
+    }
+
+    /// The eye next to "Sharpness" turns the sharpness overlay on, and off again when lit.
+    #[test]
+    fn the_eye_switches_the_overlay() {
+        let ctx = Context::default();
+        let status = status();
+        let panel = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 1200.0));
+        let run = |mode: overlay::Mode, events: Vec<Event>| {
+            let details = Details {
+                scores: None,
+                personal: None,
+                frame_percentile: None,
+                eyes_percentile: None,
+                attributes: None,
+                histogram: None,
+                status: &status,
+                file: None,
+                position: None,
+                overlay: mode,
+            };
+            let mut chosen = None;
+            let mut output = ctx.run_ui(
+                RawInput {
+                    screen_rect: Some(panel),
+                    events,
+                    ..Default::default()
+                },
+                |ui| chosen = draw(ui, panel, &details, &mut HashSet::new()),
+            );
+            output.textures_delta.clear();
+            (output, chosen)
+        };
+        let (output, _) = run(overlay::Mode::Off, Vec::new());
+        let title = output
+            .shapes
+            .iter()
+            .find_map(|clipped| match &clipped.shape {
+                Shape::Text(text) if text.galley.text().starts_with("SHARPNESS") => {
+                    Some(text.visual_bounding_rect())
+                }
+                _ => None,
+            })
+            .expect("the sharpness section is drawn");
+        let eye = pos2(panel.right() - PAD - 11.0, title.center().y);
+        let click = |mode| {
+            let button = |pressed| Event::PointerButton {
+                pos: eye,
+                button: PointerButton::Primary,
+                pressed,
+                modifiers: Modifiers::NONE,
+            };
+            run(mode, vec![Event::PointerMoved(eye)]);
+            run(mode, vec![button(true)]);
+            run(mode, vec![button(false)]).1
+        };
+        assert_eq!(click(overlay::Mode::Off), Some(overlay::Mode::Sharpness));
+        assert_eq!(click(overlay::Mode::Sharpness), Some(overlay::Mode::Off));
+        assert_eq!(
+            click(overlay::Mode::Exposure),
+            Some(overlay::Mode::Sharpness),
+            "from the other overlay straight to this one"
+        );
     }
 
     #[test]

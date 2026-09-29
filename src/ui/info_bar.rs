@@ -47,6 +47,8 @@ pub struct InfoBar<'a> {
     pub saving: bool,
     /// Viewer zoom in percent while zoomed in.
     pub zoom: Option<f32>,
+    /// Which check overlay is on, while one is.
+    pub overlay: Option<&'a str>,
 }
 
 #[derive(Default)]
@@ -121,6 +123,9 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     }
     if let Some(zoom) = bar.zoom {
         facts.push((t.zoom)(zoom));
+    }
+    if let Some(overlay) = bar.overlay {
+        facts.push(overlay.to_owned());
     }
     if let Some((index, len)) = bar.series {
         facts.push((t.series_position)(index, len));
@@ -623,6 +628,7 @@ mod tests {
             blurry,
             saving: false,
             zoom: Some(100.0),
+            overlay: None,
         }
     }
 
