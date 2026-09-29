@@ -3,7 +3,7 @@
 **Fast photo viewer and culling tool – instant switching, keyboard ratings, local sharpness and aesthetics scores, file dates untouched.**
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
-[![CI](https://img.shields.io/github/actions/workflow/status/fly2nbc-oss/Cerno/ci.yml?branch=main&label=CI&logo=github)](https://github.com/fly2nbc-oss/Cerno/actions/workflows/ci.yml)
+[![CI](https://github.com/fly2nbc-oss/Cerno/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/fly2nbc-oss/Cerno/actions/workflows/ci.yml)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-blue.svg)](#supported-platforms--formats)
 
 Cerno (Latin *cerno* – "I sift, discern, see clearly") is a native Rust desktop app built on **egui + wgpu**. Neighbours of the current photo are decoded in the background and kept as GPU textures, so switching feels instant. Ratings go straight into the file as `xmp:Rating`, which Lightroom, Bridge, digiKam and Windows Explorer read – without changing modification or creation dates. Sharpness and aesthetics run locally (DirectML on Windows) and live in Cerno's database, never in your photos.
