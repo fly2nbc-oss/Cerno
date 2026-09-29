@@ -406,7 +406,8 @@ impl CernoApp {
         if keys.escape {
             if self.deletions.countdown(Instant::now()).is_some() {
                 self.undo_deletions(ctx);
-            } else if self.zoom.is_zoomed() {
+            } else if self.zoom.is_zoomed() && !self.grid {
+                // The grid hides the photo: its zoom is left for when it shows again.
                 self.zoom.scale = None;
             } else if self.pinned.is_some() {
                 self.toggle_compare(ctx);
