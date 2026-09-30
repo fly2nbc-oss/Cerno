@@ -193,6 +193,11 @@ pub struct Texts {
     pub filter_duplicate: &'static str,
     pub filter_duplicate_tooltip: &'static str,
     pub filter_clear: &'static str,
+    /// The filter bar's photos / videos box and the same rows in Filter ▸.
+    pub media_all: &'static str,
+    pub media_photos: &'static str,
+    pub media_videos: &'static str,
+    pub media_no_videos: &'static str,
     /// Why "Show all" is greyed out: nothing is filtered.
     pub filter_none_active: &'static str,
     /// The filter bar's last box: only photos like the chosen one.

@@ -9,7 +9,7 @@ use eframe::egui::{
 use crate::analysis::{ModelState, Status};
 use crate::i18n;
 use crate::theme::{self, tokens};
-use crate::view::{FilterKind, SortKey, ViewOptions};
+use crate::view::{FilterKind, Media, SortKey, ViewOptions};
 
 pub const TOOLBAR_HEIGHT: f32 = 40.0;
 
@@ -24,6 +24,8 @@ pub struct ToolbarInfo<'a> {
     /// How many photos the view shows, and how many the folder has.
     pub shown: usize,
     pub total: usize,
+    /// The folder holds at least one video (else "photos / videos" has nothing to choose).
+    pub has_videos: bool,
 }
 
 #[derive(Default)]
@@ -79,6 +81,25 @@ pub fn toolbar(
                                     ui.selectable_value(&mut options.sort, key, key.label());
                                 }
                             });
+                        // Greyed out in a folder without videos – unless a saved "videos
+                        // only" has to be switched back.
+                        let choosable = info.has_videos || options.media != Media::All;
+                        ui.add_enabled_ui(choosable, |ui| {
+                            ComboBox::from_id_salt("media")
+                                .width(media_width(ui))
+                                .selected_text(options.media.label())
+                                .show_ui(ui, |ui| {
+                                    for media in Media::ALL {
+                                        ui.selectable_value(
+                                            &mut options.media,
+                                            media,
+                                            media.label(),
+                                        );
+                                    }
+                                });
+                        })
+                        .response
+                        .on_disabled_hover_text(t.media_no_videos);
                         let boxes = ScrollArea::horizontal()
                             .id_salt("filter-boxes")
                             .max_width(ui.available_width())
@@ -91,14 +112,13 @@ pub fn toolbar(
                                     // all away from the pointer.
                                     if ui
                                         .add_enabled(
-                                            !options.filter.is_all() || options.similar,
+                                            options.is_filtered(),
                                             Button::new(t.filter_clear).small(),
                                         )
                                         .on_disabled_hover_text(t.filter_none_active)
                                         .clicked()
                                     {
-                                        options.filter.clear();
-                                        options.similar = false;
+                                        options.clear_filters();
                                     }
                                     for kind in FilterKind::ALL {
                                         let mut on = options.filter.contains(kind);
@@ -155,7 +175,7 @@ pub fn toolbar(
                         if action.clicked() {
                             out.toggle_actions = true;
                         }
-                        count_badge(ui, info.shown, info.total, is_filtered(&before));
+                        count_badge(ui, info.shown, info.total, before.is_filtered());
                         if info.stale
                             && ui
                                 .button(t.refresh_order)
@@ -197,11 +217,6 @@ fn sort_width(ui: &Ui) -> f32 {
     widest + spacing.icon_spacing + spacing.icon_width + 2.0 * spacing.button_padding.x
 }
 
-/// Whether a filter hides photos right now: a box ticked or "similar photos" on.
-fn is_filtered(options: &ViewOptions) -> bool {
-    !options.filter.is_all() || options.similar
-}
-
 /// "12 of 340 photos" on the accent's subtle fill while a filter is on – what "Action" works
 /// on – and a muted "340 photos" otherwise. Its slot is as wide as the longest count the
 /// folder can show, so a changing number moves nothing.
@@ -235,6 +250,22 @@ fn count_badge(ui: &mut Ui, shown: usize, total: usize, filtered: bool) {
     }
     ui.painter().galley(at, galley, colour);
     response.on_hover_text(t.photos_badge_tooltip);
+}
+
+/// The photos / videos box is as wide as its longest entry, like the sort box.
+fn media_width(ui: &Ui) -> f32 {
+    let font = TextStyle::Button.resolve(ui.style());
+    let widest = Media::ALL
+        .into_iter()
+        .map(|media| {
+            ui.painter()
+                .layout_no_wrap(media.label().to_owned(), font.clone(), tokens::TEXT)
+                .size()
+                .x
+        })
+        .fold(0.0, f32::max);
+    let spacing = ui.spacing();
+    widest + spacing.icon_spacing + spacing.icon_width + 2.0 * spacing.button_padding.x
 }
 
 /// "Analysing 12 / 340", right-aligned in the width of the longest count, so the numbers
@@ -425,6 +456,7 @@ mod tests {
                         similar_to,
                         shown,
                         total,
+                        has_videos: true,
                     };
                     action = toolbar(ui, screen, &mut options, &info).actions_anchor;
                 },
@@ -502,6 +534,28 @@ mod tests {
             })
             .collect();
         assert!(lefts.windows(2).all(|pair| pair[0] == pair[1]), "{lefts:?}");
+    }
+
+    /// Photos, videos or both: the box keeps its width, so no filter box moves.
+    #[test]
+    fn another_media_choice_moves_no_box() {
+        let done = status(1, 1);
+        let lefts: Vec<f32> = Media::ALL
+            .into_iter()
+            .map(|media| {
+                let options = ViewOptions {
+                    media,
+                    ..ViewOptions::default()
+                };
+                left_of(&bar(options, false, &done).0, "1★")
+            })
+            .collect();
+        assert!(lefts.windows(2).all(|pair| pair[0] == pair[1]), "{lefts:?}");
+        let videos = ViewOptions {
+            media: Media::Videos,
+            ..ViewOptions::default()
+        };
+        left_of(&bar(videos, false, &done).0, Media::Videos.label());
     }
 
     /// "Action" stays at the right edge while the progress and "Refresh order" come and go,

@@ -52,7 +52,7 @@ use crate::transfer::Queue as TransferQueue;
 use crate::ui::details::{DetailsMode, DetailsTab};
 use crate::ui::overlays;
 use crate::ui::{description, palette, viewer};
-use crate::view::{FilterKind, Percentiles, PhotoFilter, SortKey, View, ViewOptions};
+use crate::view::{FilterKind, Media, Percentiles, PhotoFilter, SortKey, View, ViewOptions};
 
 use editing::EditSession;
 use menu::ConfirmAction;
@@ -246,6 +246,10 @@ impl CernoApp {
                 .unwrap_or(SortKey::Name),
             filter,
             similar: false,
+            media: db
+                .setting("media")
+                .and_then(|m| Media::from_id(&m))
+                .unwrap_or_default(),
         };
         let auto_advance = db.setting("auto_advance").as_deref() == Some("1");
         let subfolders = db.setting("subfolders").as_deref() == Some("1");

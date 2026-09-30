@@ -338,6 +338,10 @@ impl CernoApp {
             similar_to: similar_to.as_deref(),
             shown: self.view.len(),
             total: self.all.len(),
+            has_videos: self
+                .all
+                .iter()
+                .any(|p| library::format_of(p) == Some(library::Format::Video)),
         };
         let mut options = self.options;
         let out = filter_bar::toolbar(ui, rect, &mut options, &info);

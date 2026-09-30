@@ -8,6 +8,7 @@ use std::sync::Arc;
 use crate::analysis::{aesthetic, sharpness};
 use crate::db::Scores;
 use crate::i18n;
+use crate::library::{self, Format};
 use crate::metadata::{Label, Rating};
 
 /// Photos taken at most this far apart belong to one series.
@@ -295,6 +296,49 @@ fn colour_index(label: Label) -> usize {
 /// apart, 0.03 % of photos from different folders.
 pub const SIMILAR_MIN: f32 = 0.85;
 
+/// Photos, videos or both – together with the boxes, like "similar photos".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Media {
+    #[default]
+    All,
+    Photos,
+    Videos,
+}
+
+impl Media {
+    pub const ALL: [Media; 3] = [Self::All, Self::Photos, Self::Videos];
+
+    pub fn label(self) -> &'static str {
+        let t = i18n::t();
+        match self {
+            Self::All => t.media_all,
+            Self::Photos => t.media_photos,
+            Self::Videos => t.media_videos,
+        }
+    }
+
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Photos => "photos",
+            Self::Videos => "videos",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|media| media.id() == id)
+    }
+
+    /// Whether a file of this kind stays visible.
+    pub fn accepts(self, video: bool) -> bool {
+        match self {
+            Self::All => true,
+            Self::Photos => !video,
+            Self::Videos => video,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ViewOptions {
     pub sort: SortKey,
@@ -302,6 +346,8 @@ pub struct ViewOptions {
     /// Only photos like the chosen one (`M`, `Facts::similarity`), together with the boxes.
     /// Never saved: the photo it is about belongs to this folder.
     pub similar: bool,
+    /// Photos, videos or both; saved like the boxes.
+    pub media: Media,
 }
 
 impl Default for ViewOptions {
@@ -310,14 +356,31 @@ impl Default for ViewOptions {
             sort: SortKey::Name,
             filter: PhotoFilter::default(),
             similar: false,
+            media: Media::All,
         }
     }
 }
 
 impl ViewOptions {
-    /// Whether new analysis results can change the view (so a refresh makes sense).
+    /// Whether new analysis results can change the view (so a refresh makes sense). Photos or
+    /// videos only is decided by the file name, not by a score.
     pub fn depends_on_scores(&self) -> bool {
-        *self != Self::default()
+        Self {
+            media: Media::All,
+            ..*self
+        } != Self::default()
+    }
+
+    /// Whether anything hides photos: a box, "similar photos" or photos / videos only.
+    pub fn is_filtered(&self) -> bool {
+        !self.filter.is_all() || self.similar || self.media != Media::All
+    }
+
+    /// "Show all": every filter off, the sort stays.
+    pub fn clear_filters(&mut self) {
+        self.filter.clear();
+        self.similar = false;
+        self.media = Media::All;
     }
 }
 
@@ -516,7 +579,9 @@ pub fn build(
                     .facts
                     .and_then(|f| f.similarity)
                     .is_some_and(|s| s >= SIMILAR_MIN);
+            let video = library::format_of(entry.path) == Some(Format::Video);
             similar
+                && options.media.accepts(video)
                 && options
                     .filter
                     .accepts(entry.rating, blurry, is_duplicate, entry.label)
@@ -1209,6 +1274,64 @@ mod tests {
             |_| false,
         );
         assert_eq!(names(&view.paths), "c");
+    }
+
+    /// Photos or videos only goes together with the boxes (AND), decided by the file name.
+    #[test]
+    fn media_filter_goes_with_the_boxes() {
+        let all: Vec<PathBuf> = ["a.jpg", "b.mp4", "c.jpg", "d.mov"]
+            .map(PathBuf::from)
+            .to_vec();
+        let rated = |p: &Path| {
+            let name = p.to_string_lossy();
+            Some(Facts {
+                rating: if name.starts_with('a') || name.starts_with('b') {
+                    Rating::Stars(3)
+                } else {
+                    Rating::Unrated
+                },
+                ..Facts::default()
+            })
+        };
+        let shown = |options: ViewOptions| {
+            names(
+                &build(
+                    &all,
+                    options,
+                    rated,
+                    &HashMap::new(),
+                    &HashMap::new(),
+                    |_| false,
+                )
+                .paths,
+            )
+        };
+        let mut options = ViewOptions::default();
+        assert_eq!(shown(options), "a.jpgb.mp4c.jpgd.mov");
+        options.media = Media::Photos;
+        assert_eq!(shown(options), "a.jpgc.jpg");
+        options.media = Media::Videos;
+        assert_eq!(shown(options), "b.mp4d.mov");
+        options.filter.set(FilterKind::Stars(3), true);
+        assert_eq!(shown(options), "b.mp4");
+        assert!(options.is_filtered());
+        options.clear_filters();
+        assert_eq!(options, ViewOptions::default());
+    }
+
+    /// Photos or videos only is no reason to refresh the order when scores arrive.
+    #[test]
+    fn media_does_not_depend_on_scores() {
+        let options = ViewOptions {
+            media: Media::Videos,
+            ..ViewOptions::default()
+        };
+        assert!(!options.depends_on_scores());
+        assert!(options.is_filtered());
+        for media in Media::ALL {
+            assert_eq!(Media::from_id(media.id()), Some(media));
+        }
+        assert_eq!(Media::from_id("something"), None);
     }
 
     #[test]
