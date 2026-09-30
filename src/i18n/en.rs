@@ -294,9 +294,19 @@ pub static TEXTS: Texts = Texts {
     cmd_crop: "Crop",
     cmd_undo: "Undo",
     edit_not_jpeg: "Straighten, crop, turns and Ctrl+Z work on JPEG only.",
-    video_play_hint: "Enter: play",
+    video_play_hint: "Play (Enter)",
     video_no_ffmpeg: "No preview frame: Cerno needs ffmpeg for it (e.g. winget install Gyan.FFmpeg)",
     video_play_failed: |err| format!("Cannot play the video: {err}"),
+    video_played_instead: |ext, name| {
+        format!(
+            "Windows opens .{ext} with Cerno – so the video plays in {name}. Change the default player in Windows Settings › Default apps."
+        )
+    },
+    video_choose_player: |ext| {
+        format!(
+            "Windows opens .{ext} with Cerno – pick a player. Change the default player in Windows Settings › Default apps."
+        )
+    },
     edit_writing: "Writing the photo…",
     edit_cancelled: "Another photo is shown – the edit was cancelled",
     busy_editing: "The edit is still open – Enter applies, Esc cancels",

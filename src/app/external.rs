@@ -261,7 +261,8 @@ fn keep_and_start(
     Ok(seen)
 }
 
-fn extension(path: &Path) -> String {
+/// The lower-case extension that keys `CernoApp::editors`.
+pub(super) fn extension(path: &Path) -> String {
     path.extension()
         .map(|e| e.to_string_lossy().to_ascii_lowercase())
         .unwrap_or_default()

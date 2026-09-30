@@ -2,7 +2,8 @@
 //! hint, placeholder text and the language flag.
 
 use eframe::egui::{
-    Align2, Color32, CursorIcon, FontId, Painter, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2,
+    Align2, Color32, CursorIcon, FontId, Id, Painter, Rect, Response, Sense, Stroke, StrokeKind,
+    Ui, pos2, vec2,
 };
 
 use crate::analysis::aesthetic;
@@ -11,9 +12,9 @@ use crate::metadata::Rating;
 use crate::theme::{text, tokens};
 use crate::ui::{icons, stars};
 
-/// Over a video's frame, near the bottom: a painted play sign and "Enter: play"; above it,
-/// when there is no frame, why (`note`).
-pub fn video_badge(ui: &Ui, area: Rect, note: Option<&str>) {
+/// Over a video's frame, near the bottom: a button with a painted play sign and "Play
+/// (Enter)"; above it, when there is no frame, why (`note`).
+pub fn video_badge(ui: &Ui, area: Rect, note: Option<&str>, slot: usize) -> Response {
     let painter = ui.painter().with_clip_rect(area);
     let galley = painter.layout_no_wrap(
         i18n::t().video_play_hint.to_owned(),
@@ -22,7 +23,12 @@ pub fn video_badge(ui: &Ui, area: Rect, note: Option<&str>) {
     );
     let size = vec2(galley.size().x + 46.0, 34.0);
     let pill = Rect::from_center_size(pos2(area.center().x, area.bottom() - 44.0), size);
-    painter.rect_filled(pill, 17.0, Color32::from_black_alpha(170));
+    // Clickable: the play button plays the video.
+    let response = ui
+        .interact(pill, Id::new(("video-play", slot)), Sense::click())
+        .on_hover_cursor(CursorIcon::PointingHand);
+    let shade = if response.hovered() { 220 } else { 170 };
+    painter.rect_filled(pill, 17.0, Color32::from_black_alpha(shade));
     let c = pos2(pill.left() + 20.0, pill.center().y);
     painter.add(eframe::egui::Shape::convex_polygon(
         vec![
@@ -44,6 +50,7 @@ pub fn video_badge(ui: &Ui, area: Rect, note: Option<&str>) {
             tokens::MUTED,
         );
     }
+    response
 }
 
 /// Compare mode: `LEFT  name  ★★★  A keeps this` in the top left corner of a photo.

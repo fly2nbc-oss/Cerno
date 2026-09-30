@@ -298,9 +298,19 @@ pub static TEXTS: Texts = Texts {
     cmd_crop: "Ausschnitt",
     cmd_undo: "Rückgängig",
     edit_not_jpeg: "Ausrichten, Ausschnitt, Drehen und Strg+Z gibt es nur für JPEG.",
-    video_play_hint: "Enter: abspielen",
+    video_play_hint: "Abspielen (Enter)",
     video_no_ffmpeg: "Kein Vorschaubild: dafür braucht Cerno ffmpeg (z. B. winget install Gyan.FFmpeg)",
     video_play_failed: |err| format!("Kann das Video nicht abspielen: {err}"),
+    video_played_instead: |ext, name| {
+        format!(
+            "Windows öffnet .{ext} mit Cerno – das Video läuft deshalb in {name}. Den Standard-Player änderst du in den Windows-Einstellungen unter Standard-Apps."
+        )
+    },
+    video_choose_player: |ext| {
+        format!(
+            "Windows öffnet .{ext} mit Cerno – wähle einen Player. Den Standard-Player änderst du in den Windows-Einstellungen unter Standard-Apps."
+        )
+    },
     edit_writing: "Foto wird geschrieben…",
     edit_cancelled: "Anderes Foto – Bearbeitung verworfen",
     busy_editing: "Die Bearbeitung ist noch offen – Enter übernimmt, Esc verwirft",

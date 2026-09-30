@@ -1,10 +1,11 @@
 //! The photo area: one photo or two side by side (compare mode), mouse zoom and pan.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use eframe::egui::{self, CursorIcon, PointerButton, Rect, Sense, pos2, vec2};
 
 use crate::analysis::aesthetic;
+use crate::external;
 use crate::i18n;
 use crate::library;
 use crate::loader::{LoadedImage, Lookup};
@@ -38,16 +39,51 @@ enum Side {
 impl CernoApp {
     /// `Enter` on a video: it plays in the system's player. Nothing for a photo.
     pub(super) fn play_video(&mut self) {
-        let Some(path) = self.view.get(self.current) else {
-            return;
-        };
+        if let Some(path) = self.view.get(self.current).cloned() {
+            self.play(&path);
+        }
+    }
+
+    /// Plays a video in the system's player – never in Cerno itself. When the system would
+    /// hand it to Cerno ("Open with" once chose Cerno for the type), the first other program
+    /// the system offers plays it, else its chooser opens; a hint says why.
+    fn play(&mut self, path: &Path) {
         if library::format_of(path) != Some(library::Format::Video) {
             return;
         }
-        if let Err(err) = crate::video::play(path) {
-            self.notice = Some(Notice::error((i18n::t().video_play_failed)(&format!(
-                "{err:#}"
-            ))));
+        let t = i18n::t();
+        let result = if external::opens_with_cerno(path) {
+            self.play_elsewhere(path).map(Some)
+        } else {
+            crate::video::play(path).map(|()| None)
+        };
+        match result {
+            Ok(Some(hint)) => self.notice = Some(Notice::hint(hint)),
+            Ok(None) => {}
+            Err(err) => {
+                self.notice = Some(Notice::error((t.video_play_failed)(&format!("{err:#}"))));
+            }
+        }
+    }
+
+    /// The system's other programs for the type (asked once per type, like Edit elsewhere),
+    /// or its chooser. Returns the hint to show.
+    fn play_elsewhere(&mut self, path: &Path) -> anyhow::Result<String> {
+        let t = i18n::t();
+        let kind = super::external::extension(path);
+        let editors = self
+            .editors
+            .entry(kind.clone())
+            .or_insert_with(|| external::editors_for(path));
+        match external::other_than_cerno(editors).cloned() {
+            Some(player) => {
+                external::open(&player, path)?;
+                Ok((t.video_played_instead)(&kind, &player.name))
+            }
+            None => {
+                external::choose(path)?;
+                Ok((t.video_choose_player)(&kind))
+            }
         }
     }
 
@@ -273,7 +309,12 @@ impl CernoApp {
             .is_some_and(|p| library::format_of(p) == Some(library::Format::Video))
         {
             let note = self.no_ffmpeg.then_some(i18n::t().video_no_ffmpeg);
-            overlays::video_badge(ui, slot.area, note);
+            // A click on the play button plays it, like `Enter`.
+            if overlays::video_badge(ui, slot.area, note, slot.index).clicked()
+                && let Some(path) = self.view.get(slot.index).cloned()
+            {
+                self.play(&path);
+            }
         }
         if needs_full && full.is_none() {
             self.loader.request_full(slot.index);
