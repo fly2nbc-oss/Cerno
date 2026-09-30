@@ -65,19 +65,27 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # The runner image is part of the key: vcpkg's package hashes include the compiler, so a
+      # new image (2026-09-30: VS 2026) rebuilds everything, and only a new key saves the result.
       - name: vcpkg revision
         id: vcpkg
         shell: bash
-        run: echo "rev=$(sed -n 's/^rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "rev=$(sed -n 's/^rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml)" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageOS:-windows}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v6
         with:
           path: .vcpkg-cache
-          key: vcpkg-${{ steps.vcpkg.outputs.rev }}-x64-windows-libheif-core
+          key: vcpkg-${{ steps.vcpkg.outputs.rev }}-x64-windows-libheif-core-${{ steps.vcpkg.outputs.image }}
+          restore-keys: vcpkg-${{ steps.vcpkg.outputs.rev }}-x64-windows-libheif-core-
       - name: libheif (vcpkg, dynamic triplet)
         env:
           REV: ${{ steps.vcpkg.outputs.rev }}
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
+          # Always a fresh vcpkg: rust-cache restores target\ – vcpkg's tools in it without
+          # their executables – and vcpkg would take that msys2 root as extracted.
+          if (Test-Path target/vcpkg) { Remove-Item -Recurse -Force target/vcpkg }
           git init -q target/vcpkg
           git -C target/vcpkg fetch -q --depth 1 https://github.com/microsoft/vcpkg $env:REV
           git -C target/vcpkg checkout -q FETCH_HEAD
@@ -107,6 +115,10 @@ jobs:
           path: dist/windows/cerno_*_x64-portable.zip
           if-no-files-found: error
           retention-days: 14
+      # Keeps vcpkg out of rust-cache, which saves target\ after the last step.
+      - name: Drop vcpkg from the target cache
+        if: always()
+        run: if (Test-Path target/vcpkg) { Remove-Item -Recurse -Force target/vcpkg }
 
   package-linux:
     name: Package (Linux AppImage, deb)
