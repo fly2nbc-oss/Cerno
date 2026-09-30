@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use eframe::egui::{self, CursorIcon, PointerButton, Rect, Sense, pos2, vec2};
 
+use crate::analysis::aesthetic;
 use crate::i18n;
 use crate::library;
 use crate::loader::{LoadedImage, Lookup};
@@ -311,11 +312,7 @@ impl CernoApp {
         overlays::compare_scores(
             ui,
             slot.area,
-            [
-                scores.and_then(|s| s.aesthetic),
-                scores.and_then(|s| s.aesthetic25),
-            ],
-            self.analyzer.personal(&path),
+            scores.and_then(|s| aesthetic::combined(s.aesthetic, s.aesthetic25)),
             scores.and_then(|s| percentiles.subject(&s)),
         );
     }

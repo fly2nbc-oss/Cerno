@@ -106,43 +106,43 @@ pub fn compare_label(ui: &Ui, area: Rect, side: &str, name: &str, rating: Rating
     painter.galley(pos2(x + 2.0, y - hint.size().y / 2.0), hint, tokens::MUTED);
 }
 
-/// Compare mode: aesthetics and sharpness under the photo, just below the side label.
+/// Compare mode: aesthetics and sharpness under the photo, just below the side label –
+/// `Aesthetics 62 %   Eyes 80 %`, like the info bar.
 pub fn compare_scores(
     ui: &Ui,
     area: Rect,
-    aesthetics: [Option<f32>; 2],
-    personal: Option<f32>,
+    aesthetics: Option<f32>,
     sharpness: Option<(f32, bool)>,
 ) {
-    if aesthetics.iter().all(Option::is_none) && personal.is_none() && sharpness.is_none() {
-        return;
-    }
     let t = i18n::t();
-    let star = |v: Option<f32>| {
-        v.map(|v| format!("{:.1}", aesthetic::as_stars(v)))
-            .unwrap_or_else(|| "–".to_owned())
-    };
-    // `L 2.8 / V 4.0 / ☆ 2.3   Eyes 80 %` – the outline star is painted, like in the info bar.
-    const STAR_ROOM: f32 = 16.0;
-    let before = format!("L {} / V {} / ", star(aesthetics[0]), star(aesthetics[1]));
-    let mut after = personal
-        .map(|v| format!("{v:.1}"))
-        .unwrap_or_else(|| "–".to_owned());
+    let mut parts = Vec::new();
+    if let Some(score) = aesthetics {
+        parts.push(format!(
+            "{} {:.0} %",
+            t.section_aesthetics,
+            aesthetic::as_percent(score) * 100.0
+        ));
+    }
     if let Some((p, eyes)) = sharpness {
         let name = if eyes {
             t.meter_eyes
         } else {
             t.meter_sharpness
         };
-        after.push_str(&format!("   {name} {:.0} %", p * 100.0));
+        parts.push(format!("{name} {:.0} %", p * 100.0));
+    }
+    if parts.is_empty() {
+        return;
     }
     let painter = ui.painter().with_clip_rect(area);
-    let font = FontId::proportional(text::BODY);
-    let before = painter.layout_no_wrap(before, font.clone(), tokens::TEXT);
-    let after = painter.layout_no_wrap(after, font, tokens::TEXT);
+    let galley = painter.layout_no_wrap(
+        parts.join("   "),
+        FontId::proportional(text::BODY),
+        tokens::TEXT,
+    );
     let pill = Rect::from_min_size(
         area.min + vec2(10.0, 44.0),
-        vec2(before.size().x + STAR_ROOM + after.size().x + 24.0, 26.0),
+        vec2(galley.size().x + 24.0, 26.0),
     );
     painter.rect_filled(pill, 6.0, tokens::SURFACE.gamma_multiply(0.92));
     painter.rect_stroke(
@@ -152,13 +152,11 @@ pub fn compare_scores(
         StrokeKind::Inside,
     );
     let y = pill.center().y;
-    let mut x = pill.left() + 12.0;
-    let width = before.size().x;
-    painter.galley(pos2(x, y - before.size().y / 2.0), before, tokens::TEXT);
-    x += width;
-    stars::paint_star(&painter, pos2(x + 6.0, y), 5.0, false, tokens::MUTED);
-    x += STAR_ROOM;
-    painter.galley(pos2(x, y - after.size().y / 2.0), after, tokens::TEXT);
+    painter.galley(
+        pos2(pill.left() + 12.0, y - galley.size().y / 2.0),
+        galley,
+        tokens::TEXT,
+    );
 }
 
 /// Countdown for pending deletions, bottom centre of the photo area. The bar runs out, Esc

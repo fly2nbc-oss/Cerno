@@ -254,6 +254,8 @@ pub struct Texts {
     /// Tooltip of a video's cell in the filmstrip (the play sign).
     pub filmstrip_video: &'static str,
     pub star_tooltip: fn(u8) -> String,
+    /// Tooltip over the light stars: For you's prediction, 0..=5.
+    pub personal_hint: fn(f32) -> String,
     pub zoom: fn(f32) -> String,
     pub digital_zoom: fn(f64) -> String,
     pub button_toolbar: &'static str,
@@ -533,6 +535,7 @@ mod tests {
             let copied = (t.transfer_done)(false, 1, 0, "", "");
             assert!(copied.contains('1') && copied.contains('0'), "{name}");
             assert!((t.star_tooltip)(4).contains('4'), "{name}");
+            assert!((t.personal_hint)(2.4).contains("2.4"), "{name}");
             assert!((t.zoom)(250.0).contains("250"), "{name}");
             assert!((t.digital_zoom)(2.0).contains('2'), "{name}");
             assert!((t.button_language)(name).contains(name), "{name}");

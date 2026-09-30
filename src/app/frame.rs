@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use eframe::egui::{self, Rect, pos2, vec2};
 
+use crate::analysis::aesthetic;
 use crate::i18n;
 use crate::library;
 use crate::loader::Lookup;
@@ -251,12 +252,9 @@ impl CernoApp {
             auto_advance: self.auto_advance,
             analysed: scores.is_some(),
             aesthetics: if comparing {
-                [None, None]
+                None
             } else {
-                [
-                    scores.and_then(|s| s.aesthetic),
-                    scores.and_then(|s| s.aesthetic25),
-                ]
+                scores.and_then(|s| aesthetic::combined(s.aesthetic, s.aesthetic25))
             },
             personal: if comparing { None } else { personal },
             sharpness: if comparing {

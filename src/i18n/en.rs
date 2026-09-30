@@ -58,7 +58,7 @@ pub static TEXTS: Texts = Texts {
     label_green: "Green",
     label_blue: "Blue",
     label_purple: "Purple",
-    meter_aesthetics_tooltip: "L and V: aesthetics (LAION / V2.5). Outline star: For you – the stars Cerno thinks you would give. All on the scale 0–5\n– = not available yet",
+    meter_aesthetics_tooltip: "Aesthetics: the mean of LAION and V2.5 on a fixed scale – a photo reads the same in every folder. Sharpness instead compares with the other photos in the folder.\nSingle scores: details panel (Tab)",
     meter_sharpness: "Sharpness",
     meter_eyes: "Eyes",
     probably_blurry: "probably blurry",
@@ -70,6 +70,11 @@ pub static TEXTS: Texts = Texts {
     rejected: "Rejected",
     filmstrip_video: "Video",
     star_tooltip: |n| format!("{n} ★ – key {n}"),
+    personal_hint: |stars| {
+        format!(
+            "For you: {stars:.1} ★ – the stars Cerno thinks you would give. Not your rating yet"
+        )
+    },
     zoom: |percent| format!("Zoom {percent:.0} %"),
     digital_zoom: |ratio| format!("{ratio:.1}× digital zoom"),
     button_toolbar: "Filter bar",

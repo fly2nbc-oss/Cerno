@@ -58,7 +58,7 @@ pub static TEXTS: Texts = Texts {
     label_green: "Verde",
     label_blue: "Azul",
     label_purple: "Morado",
-    meter_aesthetics_tooltip: "L y V: estética (LAION / V2.5). Estrella hueca: Para ti – las estrellas que Cerno cree que darías. Todas de 0 a 5\n– = aún no disponible",
+    meter_aesthetics_tooltip: "Estética: media de LAION y V2.5 en una escala fija – una foto tiene el mismo valor en cualquier carpeta. La nitidez, en cambio, compara con las demás fotos de la carpeta.\nValores por separado: panel de detalles (Tab)",
     meter_sharpness: "Nitidez",
     meter_eyes: "Ojos",
     probably_blurry: "probablemente borrosa",
@@ -70,6 +70,11 @@ pub static TEXTS: Texts = Texts {
     rejected: "Rechazada",
     filmstrip_video: "Vídeo",
     star_tooltip: |n| format!("{n} ★ – tecla {n}"),
+    personal_hint: |stars| {
+        format!(
+            "Para ti: {stars:.1} ★ – las estrellas que Cerno cree que darías. Aún no es tu valoración"
+        )
+    },
     zoom: |percent| format!("Zoom {percent:.0} %"),
     digital_zoom: |ratio| format!("Zoom digital {ratio:.1}×"),
     button_toolbar: "Barra de filtros",

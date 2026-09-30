@@ -58,7 +58,7 @@ pub static TEXTS: Texts = Texts {
     label_green: "Grün",
     label_blue: "Blau",
     label_purple: "Lila",
-    meter_aesthetics_tooltip: "L und V: Ästhetik (LAION / V2.5). Umriss-Stern: Für dich – die Sterne, die du laut Cerno geben würdest. Alles auf der Skala 0–5\n– = noch nicht verfügbar",
+    meter_aesthetics_tooltip: "Ästhetik: Mittel aus LAION und V2.5 auf einer festen Skala – ein Foto hat in jedem Ordner denselben Wert. Die Schärfe vergleicht dagegen mit den anderen Fotos im Ordner.\nEinzelwerte: Detailfenster (Tab)",
     meter_sharpness: "Schärfe",
     meter_eyes: "Augen",
     probably_blurry: "wohl unscharf",
@@ -70,6 +70,11 @@ pub static TEXTS: Texts = Texts {
     rejected: "Abgelehnt",
     filmstrip_video: "Video",
     star_tooltip: |n| format!("{n} ★ – Taste {n}"),
+    personal_hint: |stars| {
+        format!(
+            "Für dich: {stars:.1} ★ – so viele Sterne würdest du laut Cerno geben. Noch nicht deine Bewertung"
+        )
+    },
     zoom: |percent| format!("Zoom {percent:.0} %"),
     digital_zoom: |ratio| format!("{ratio:.1}× Digitalzoom"),
     button_toolbar: "Filterleiste",
