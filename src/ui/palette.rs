@@ -17,7 +17,8 @@ use crate::theme::{text, tokens};
 use crate::ui::icons;
 
 const WIDTH: f32 = 340.0;
-/// The action menu under its button is narrower.
+/// The action menu under its button is narrower – unless a row needs more (its labels name a
+/// count, and French or Italian ones are long).
 const ANCHORED_WIDTH: f32 = 240.0;
 const ROW_HEIGHT: f32 = 32.0;
 
@@ -41,6 +42,8 @@ pub struct Row<A> {
     pub swatch: Option<Color32>,
     /// Why the row can't run right now (greyed out, the reason as its tooltip).
     pub disabled: Option<&'static str>,
+    /// What the row does, in more words than its label (its tooltip while it can run).
+    pub hint: Option<&'static str>,
 }
 
 impl<A> Row<A> {
@@ -52,7 +55,13 @@ impl<A> Row<A> {
             mark: Mark::None,
             swatch: None,
             disabled: None,
+            hint: None,
         }
+    }
+
+    pub fn hint(mut self, text: &'static str) -> Self {
+        self.hint = Some(text);
+        self
     }
 
     pub fn disabled(mut self, reason: Option<&'static str>) -> Self {
@@ -243,13 +252,11 @@ pub fn show<A: Copy>(
         }
         Placement::Below(anchor) => {
             let height = entries.len() as f32 * ROW_HEIGHT + 8.0;
-            let left = (anchor.right() - ANCHORED_WIDTH)
-                .min(window.right() - ANCHORED_WIDTH - 8.0)
+            let width = anchored_width(ctx, entries);
+            let left = (anchor.right() - width)
+                .min(window.right() - width - 8.0)
                 .max(window.left() + 8.0);
-            let menu = Rect::from_min_size(
-                pos2(left, anchor.bottom() + 4.0),
-                vec2(ANCHORED_WIDTH, height),
-            );
+            let menu = Rect::from_min_size(pos2(left, anchor.bottom() + 4.0), vec2(width, height));
             (menu, Id::new("action-menu"))
         }
     };
@@ -308,6 +315,7 @@ pub fn show<A: Copy>(
                                 swatch: None,
                                 submenu: true,
                                 disabled: None,
+                                hint: None,
                             };
                             let response =
                                 row_button(ui, row, id.with(("group", k, index)), look, lit);
@@ -497,6 +505,7 @@ struct RowLook<'a> {
     swatch: Option<Color32>,
     submenu: bool,
     disabled: Option<&'static str>,
+    hint: Option<&'static str>,
 }
 
 impl<'a> RowLook<'a> {
@@ -508,8 +517,31 @@ impl<'a> RowLook<'a> {
             swatch: row.swatch,
             submenu: false,
             disabled: row.disabled,
+            hint: row.hint,
         }
     }
+}
+
+/// The action menu is as wide as its longest row needs – at least `ANCHORED_WIDTH`, at most
+/// the burger menu's width. The row's label starts 30 pt in and keeps 10 pt free on the right,
+/// inside a card with 4 pt on each side.
+fn anchored_width<A>(ctx: &Context, entries: &[Entry<A>]) -> f32 {
+    let widest = entries
+        .iter()
+        .map(|entry| {
+            ctx.fonts_mut(|fonts| {
+                fonts
+                    .layout_no_wrap(
+                        entry.label().to_owned(),
+                        FontId::proportional(text::BODY),
+                        tokens::TEXT,
+                    )
+                    .size()
+                    .x
+            })
+        })
+        .fold(0.0, f32::max);
+    (widest + 30.0 + 10.0 + 8.0 + 4.0).clamp(ANCHORED_WIDTH, WIDTH)
 }
 
 struct RowResponse {
@@ -525,9 +557,12 @@ fn row_button(
     lit: bool,
 ) -> RowResponse {
     let mut response = ui.interact(row, id, Sense::click());
-    response = match look.disabled {
-        Some(reason) => response.on_hover_text(reason),
-        None => response.on_hover_cursor(CursorIcon::PointingHand),
+    response = match (look.disabled, look.hint) {
+        (Some(reason), _) => response.on_hover_text(reason),
+        (None, Some(hint)) => response
+            .on_hover_cursor(CursorIcon::PointingHand)
+            .on_hover_text(hint),
+        (None, None) => response.on_hover_cursor(CursorIcon::PointingHand),
     };
     let text_colour = if look.disabled.is_some() {
         tokens::MUTED
@@ -600,6 +635,26 @@ fn row_button(
 mod tests {
     use super::*;
     use eframe::egui::{Modifiers, RawInput};
+
+    /// A short action menu keeps its width; a long row (a count, French) widens it, up to the
+    /// burger menu's width.
+    #[test]
+    fn the_action_menu_grows_with_its_longest_row() {
+        let ctx = Context::default();
+        let mut widths = (0.0, 0.0, 0.0);
+        let mut output = ctx.run_ui(RawInput::default(), |_| {
+            let row = |label: &str| vec![Entry::Row(Row::new(0u8, label, None))];
+            widths = (
+                anchored_width(&ctx, &row("Kopieren")),
+                anchored_width(&ctx, &row("Supprimer les rejetées (1234 photos)")),
+                anchored_width(&ctx, &row(&"x".repeat(200))),
+            );
+        });
+        output.textures_delta.clear();
+        assert_eq!(widths.0, ANCHORED_WIDTH);
+        assert!(widths.1 > ANCHORED_WIDTH, "{widths:?}");
+        assert_eq!(widths.2, WIDTH);
+    }
 
     fn key(key: Key) -> Event {
         Event::Key {

@@ -53,6 +53,14 @@ pub static TEXTS: Texts = Texts {
     actions: "Azione",
     actions_tooltip: "Copia, sposta o elimina le foto in vista",
     selection_delete: "Elimina",
+    bulk_copy: |n| format!("Copia in … ({n} foto)"),
+    bulk_move: |n| format!("Sposta in … ({n} foto)"),
+    bulk_delete: |n| format!("Elimina ({n} foto)"),
+    bulk_delete_hint: "Tutte le foto che il filtro mostra. Dopo 5 secondi finiscono nella cartella nascosta .originals accanto a loro – niente viene eliminato per sempre, Esc le riporta indietro.",
+    delete_rejected_hint: "Tutte le foto rifiutate della cartella, anche quelle che il filtro nasconde. Dopo 5 secondi finiscono nella cartella nascosta .originals – niente viene eliminato per sempre.",
+    photos_shown: |shown, total| format!("{shown} di {total} foto"),
+    photos_count: |n| format!("{n} foto"),
+    photos_badge_tooltip: "Quante foto mostra ora il filtro – «Azione» agisce proprio su queste.",
     label_red: "Rosso",
     label_yellow: "Giallo",
     label_green: "Verde",
@@ -102,7 +110,7 @@ pub static TEXTS: Texts = Texts {
     cmd_grid: "Griglia",
     cmd_reject: "Rifiuta",
     cmd_description: "Commento e parole chiave",
-    cmd_delete_rejected: |n| format!("Elimina le foto rifiutate ({n})"),
+    cmd_delete_rejected: |n| format!("Elimina le rifiutate ({n} foto)"),
     cmd_auto_advance: "Avanza automaticamente",
     cmd_subfolders: "Includi sottocartelle",
     menu_sort: "Ordina",
@@ -137,7 +145,13 @@ pub static TEXTS: Texts = Texts {
     compare_left_badge: "S",
     keeps_this: |key| format!("{key} tiene questa"),
     compare_needs_two: "Per confrontare servono almeno due foto",
-    deleting: |n| format!("Eliminazione di {n} foto   ·   Esc per annullare"),
+    deleting: |n| {
+        if n == 1 {
+            "1 foto va nella cartella nascosta .originals   ·   Esc per annullare".to_owned()
+        } else {
+            format!("{n} foto vanno nella cartella nascosta .originals   ·   Esc per annullare")
+        }
+    },
     delete_failed: |n, name, err| format!("Impossibile eliminare {n} foto – {name}: {err}"),
     blurry_tooltip: |eyes, percent| {
         let what = if eyes {
@@ -153,8 +167,6 @@ pub static TEXTS: Texts = Texts {
     no_photos_in: |dir| format!("Nessun file JPEG o HEIC in {dir}"),
     rating_not_saved: |err| format!("Stelle non salvate – {err}"),
     open_folder: "Apri cartella",
-    transfer_copy: "Copia",
-    transfer_move: "Sposta",
     transfer_copy_cmd: "Copia tutto ciò che mostra il filtro attuale in …",
     transfer_move_cmd: "Sposta tutto ciò che mostra il filtro attuale in …",
     transfer_same_folder: "È già la cartella aperta",

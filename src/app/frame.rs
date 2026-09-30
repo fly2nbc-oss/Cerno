@@ -336,6 +336,8 @@ impl CernoApp {
             status: &status,
             actions_open: self.action_menu.is_some(),
             similar_to: similar_to.as_deref(),
+            shown: self.view.len(),
+            total: self.all.len(),
         };
         let mut options = self.options;
         let out = filter_bar::toolbar(ui, rect, &mut options, &info);

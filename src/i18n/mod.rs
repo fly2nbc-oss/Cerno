@@ -231,6 +231,18 @@ pub struct Texts {
     pub actions: &'static str,
     pub actions_tooltip: &'static str,
     pub selection_delete: &'static str,
+    /// The action menu's rows, with the number of photos the filter shows.
+    pub bulk_copy: fn(usize) -> String,
+    pub bulk_move: fn(usize) -> String,
+    pub bulk_delete: fn(usize) -> String,
+    /// Tooltip of the delete row: what goes, and where.
+    pub bulk_delete_hint: &'static str,
+    pub delete_rejected_hint: &'static str,
+    /// The filter bar's count while a filter is on: shown of all.
+    pub photos_shown: fn(usize, usize) -> String,
+    /// The filter bar's count without a filter.
+    pub photos_count: fn(usize) -> String,
+    pub photos_badge_tooltip: &'static str,
     pub label_red: &'static str,
     pub label_yellow: &'static str,
     pub label_green: &'static str,
@@ -382,8 +394,6 @@ pub struct Texts {
     pub no_photos_in: fn(&str) -> String,
     pub rating_not_saved: fn(&str) -> String,
     pub open_folder: &'static str,
-    pub transfer_copy: &'static str,
-    pub transfer_move: &'static str,
     pub transfer_copy_cmd: &'static str,
     pub transfer_move_cmd: &'static str,
     pub transfer_same_folder: &'static str,
@@ -542,6 +552,12 @@ mod tests {
             assert!((t.digital_zoom)(2.0).contains('2'), "{name}");
             assert!((t.button_language)(name).contains(name), "{name}");
             assert!((t.cmd_delete_rejected)(7).contains('7'), "{name}");
+            for count in [t.bulk_copy, t.bulk_move, t.bulk_delete, t.photos_count] {
+                assert!(count(12).contains("12"), "{name}");
+            }
+            assert!((t.photos_shown)(12, 340).contains("12"), "{name}");
+            assert!((t.photos_shown)(12, 340).contains("340"), "{name}");
+            assert!((t.deleting)(3).contains(".originals"), "{name}");
             let series = (t.series_position)(3, 7);
             assert!(series.contains('3') && series.contains('7'), "{name}");
             assert!((t.duplicate_of)("a.jpg").contains("a.jpg"), "{name}");

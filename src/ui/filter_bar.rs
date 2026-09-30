@@ -3,7 +3,7 @@
 use eframe::egui::containers::scroll_area::ScrollBarVisibility;
 use eframe::egui::{
     Align, Button, Color32, ComboBox, CursorIcon, Layout, Painter, Rect, Response, RichText,
-    ScrollArea, Sense, Sides, Stroke, StrokeKind, TextStyle, Ui, UiBuilder, vec2,
+    ScrollArea, Sense, Sides, Stroke, StrokeKind, TextStyle, Ui, UiBuilder, pos2, vec2,
 };
 
 use crate::analysis::{ModelState, Status};
@@ -21,6 +21,9 @@ pub struct ToolbarInfo<'a> {
     pub actions_open: bool,
     /// Name of the photo "similar photos" is about, while that filter is on.
     pub similar_to: Option<&'a str>,
+    /// How many photos the view shows, and how many the folder has.
+    pub shown: usize,
+    pub total: usize,
 }
 
 #[derive(Default)]
@@ -152,6 +155,7 @@ pub fn toolbar(
                         if action.clicked() {
                             out.toggle_actions = true;
                         }
+                        count_badge(ui, info.shown, info.total, is_filtered(&before));
                         if info.stale
                             && ui
                                 .button(t.refresh_order)
@@ -191,6 +195,46 @@ fn sort_width(ui: &Ui) -> f32 {
         .fold(0.0, f32::max);
     let spacing = ui.spacing();
     widest + spacing.icon_spacing + spacing.icon_width + 2.0 * spacing.button_padding.x
+}
+
+/// Whether a filter hides photos right now: a box ticked or "similar photos" on.
+fn is_filtered(options: &ViewOptions) -> bool {
+    !options.filter.is_all() || options.similar
+}
+
+/// "12 of 340 photos" on the accent's subtle fill while a filter is on – what "Action" works
+/// on – and a muted "340 photos" otherwise. Its slot is as wide as the longest count the
+/// folder can show, so a changing number moves nothing.
+fn count_badge(ui: &mut Ui, shown: usize, total: usize, filtered: bool) {
+    const PAD: f32 = 8.0;
+    let t = i18n::t();
+    let font = TextStyle::Body.resolve(ui.style());
+    let nines = 10usize.pow(total.max(1).to_string().len() as u32) - 1;
+    let widest = [(t.photos_shown)(nines, nines), (t.photos_count)(nines)]
+        .into_iter()
+        .map(|text| {
+            ui.painter()
+                .layout_no_wrap(text, font.clone(), tokens::TEXT)
+                .size()
+                .x
+        })
+        .fold(0.0, f32::max);
+    let (slot, response) = ui.allocate_exact_size(vec2(widest + 2.0 * PAD, 24.0), Sense::hover());
+    let (text, colour) = if filtered {
+        ((t.photos_shown)(shown, total), tokens::TEXT)
+    } else {
+        ((t.photos_count)(total), tokens::MUTED)
+    };
+    let galley = ui.painter().layout_no_wrap(text, font, colour);
+    let size = galley.size();
+    // Right-aligned, next to "Action".
+    let at = pos2(slot.right() - PAD - size.x, slot.center().y - size.y / 2.0);
+    if filtered {
+        let pill = Rect::from_min_size(at, size).expand2(vec2(PAD, 3.0));
+        ui.painter().rect_filled(pill, 4.0, tokens::ACCENT_SUBTLE);
+    }
+    ui.painter().galley(at, galley, colour);
+    response.on_hover_text(t.photos_badge_tooltip);
 }
 
 /// "Analysing 12 / 340", right-aligned in the width of the longest count, so the numbers
@@ -350,15 +394,16 @@ mod tests {
 
     /// The bar drawn in a wide window: where each text lands, and the Action button.
     fn bar(options: ViewOptions, stale: bool, status: &Status) -> (Vec<(String, Rect)>, Rect) {
-        bar_about(options, stale, status, None)
+        bar_about(options, stale, status, None, (340, 340))
     }
 
-    /// The same with "similar photos" about `similar_to`.
+    /// The same with "similar photos" about `similar_to` and `(shown, total)` photos.
     fn bar_about(
         options: ViewOptions,
         stale: bool,
         status: &Status,
         similar_to: Option<&str>,
+        (shown, total): (usize, usize),
     ) -> (Vec<(String, Rect)>, Rect) {
         let ctx = Context::default();
         let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(1800.0, TOOLBAR_HEIGHT));
@@ -378,6 +423,8 @@ mod tests {
                         status,
                         actions_open: false,
                         similar_to,
+                        shown,
+                        total,
                     };
                     action = toolbar(ui, screen, &mut options, &info).actions_anchor;
                 },
@@ -431,8 +478,8 @@ mod tests {
             ..ViewOptions::default()
         };
         let long = "IMG_20260928_171203_HDR.jpg";
-        let (named, _) = bar_about(on, false, &done, Some("IMG_0012.JPG"));
-        let (shortened, _) = bar_about(on, false, &done, Some(long));
+        let (named, _) = bar_about(on, false, &done, Some("IMG_0012.JPG"), (340, 340));
+        let (shortened, _) = bar_about(on, false, &done, Some(long), (340, 340));
         let t = i18n::t();
         assert!(left_of(&off, t.filter_similar) > left_of(&off, "Duplicates"));
         assert_eq!(left_of(&off, "1★"), left_of(&named, "1★"));
@@ -468,5 +515,30 @@ mod tests {
         assert_eq!(quiet, busy);
         let refresh = i18n::t().refresh_order;
         assert_eq!(left_of(&early, refresh), left_of(&late, refresh));
+    }
+
+    /// The count sits left of "Action": all photos without a filter, "shown of all" with one;
+    /// neither the number nor the filter moves the button or the progress.
+    #[test]
+    fn the_count_names_what_action_works_on() {
+        let done = status(5, 340);
+        let none = ViewOptions::default();
+        let mut some = none;
+        some.filter.set(FilterKind::Stars(3), true);
+        let (all, action) = bar_about(none, false, &done, None, (340, 340));
+        let (few, action_few) = bar_about(some, false, &done, None, (12, 340));
+        let (one, action_one) = bar_about(some, false, &done, None, (1, 340));
+        let t = i18n::t();
+        assert!(all.iter().any(|(text, _)| *text == (t.photos_count)(340)));
+        assert!(
+            few.iter()
+                .any(|(text, _)| *text == (t.photos_shown)(12, 340))
+        );
+        assert_eq!(action, action_few);
+        assert_eq!(action, action_one);
+        let progress = (t.analyzing_progress)(5, 340);
+        assert_eq!(left_of(&few, &progress), left_of(&one, &progress));
+        assert_eq!(left_of(&all, &progress), left_of(&few, &progress));
+        assert!(left_of(&few, &(t.photos_shown)(12, 340)) < action.left());
     }
 }

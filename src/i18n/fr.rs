@@ -55,6 +55,29 @@ pub static TEXTS: Texts = Texts {
     actions: "Action",
     actions_tooltip: "Copier, déplacer ou supprimer les photos affichées",
     selection_delete: "Supprimer",
+    bulk_copy: |n| {
+        format!(
+            "Copier vers … ({n} {})",
+            if n == 1 { "photo" } else { "photos" }
+        )
+    },
+    bulk_move: |n| {
+        format!(
+            "Déplacer vers … ({n} {})",
+            if n == 1 { "photo" } else { "photos" }
+        )
+    },
+    bulk_delete: |n| {
+        format!(
+            "Supprimer ({n} {})",
+            if n == 1 { "photo" } else { "photos" }
+        )
+    },
+    bulk_delete_hint: "Toutes les photos que le filtre affiche. Après 5 secondes, elles vont dans le dossier caché .originals à côté d'elles – rien n'est supprimé définitivement, Esc les ramène.",
+    delete_rejected_hint: "Toutes les photos rejetées du dossier, même celles que le filtre masque. Après 5 secondes, elles vont dans le dossier caché .originals – rien n'est supprimé définitivement.",
+    photos_shown: |shown, total| format!("{shown} sur {total} photos"),
+    photos_count: |n| format!("{n} {}", if n == 1 { "photo" } else { "photos" }),
+    photos_badge_tooltip: "Le nombre de photos que le filtre affiche – « Action » agit sur exactement celles-ci.",
     label_red: "Rouge",
     label_yellow: "Jaune",
     label_green: "Vert",
@@ -104,7 +127,12 @@ pub static TEXTS: Texts = Texts {
     cmd_grid: "Grille",
     cmd_reject: "Rejeter",
     cmd_description: "Commentaire et mots-clés",
-    cmd_delete_rejected: |n| format!("Supprimer les photos rejetées ({n})"),
+    cmd_delete_rejected: |n| {
+        format!(
+            "Supprimer les rejetées ({n} {})",
+            if n == 1 { "photo" } else { "photos" }
+        )
+    },
     cmd_auto_advance: "Avancer automatiquement",
     cmd_subfolders: "Inclure les sous-dossiers",
     menu_sort: "Trier",
@@ -141,9 +169,9 @@ pub static TEXTS: Texts = Texts {
     compare_needs_two: "Il faut au moins deux photos pour comparer",
     deleting: |n| {
         if n == 1 {
-            "1 photo en cours de suppression   ·   Esc pour annuler".to_owned()
+            "1 photo va dans le dossier caché .originals   ·   Esc pour annuler".to_owned()
         } else {
-            format!("{n} photos en cours de suppression   ·   Esc pour annuler")
+            format!("{n} photos vont dans le dossier caché .originals   ·   Esc pour annuler")
         }
     },
     delete_failed: |n, name, err| format!("Impossible de supprimer {n} photo(s) – {name} : {err}"),
@@ -163,8 +191,6 @@ pub static TEXTS: Texts = Texts {
     no_photos_in: |dir| format!("Aucun fichier JPEG ou HEIC dans {dir}"),
     rating_not_saved: |err| format!("Étoiles non enregistrées – {err}"),
     open_folder: "Ouvrir un dossier",
-    transfer_copy: "Copier",
-    transfer_move: "Déplacer",
     transfer_copy_cmd: "Copier tout ce que le filtre actuel affiche vers …",
     transfer_move_cmd: "Déplacer tout ce que le filtre actuel affiche vers …",
     transfer_same_folder: "C'est déjà le dossier ouvert",

@@ -53,6 +53,24 @@ pub static TEXTS: Texts = Texts {
     actions: "Action",
     actions_tooltip: "Copy, move or delete the photos on screen",
     selection_delete: "Delete",
+    bulk_copy: |n| {
+        format!(
+            "Copy to … ({n} {})",
+            if n == 1 { "photo" } else { "photos" }
+        )
+    },
+    bulk_move: |n| {
+        format!(
+            "Move to … ({n} {})",
+            if n == 1 { "photo" } else { "photos" }
+        )
+    },
+    bulk_delete: |n| format!("Delete ({n} {})", if n == 1 { "photo" } else { "photos" }),
+    bulk_delete_hint: "Every photo the filter shows now. After 5 seconds they move into the hidden .originals folder beside them – nothing is deleted for good, Esc brings them back.",
+    delete_rejected_hint: "Every rejected photo in the folder, also those the filter hides now. After 5 seconds they move into the hidden .originals folder – nothing is deleted for good.",
+    photos_shown: |shown, total| format!("{shown} of {total} photos"),
+    photos_count: |n| format!("{n} {}", if n == 1 { "photo" } else { "photos" }),
+    photos_badge_tooltip: "How many photos the filter shows now – Action works on exactly these.",
     label_red: "Red",
     label_yellow: "Yellow",
     label_green: "Green",
@@ -102,7 +120,12 @@ pub static TEXTS: Texts = Texts {
     cmd_grid: "Grid",
     cmd_reject: "Reject",
     cmd_description: "Comment and keywords",
-    cmd_delete_rejected: |n| format!("Delete rejected photos ({n})"),
+    cmd_delete_rejected: |n| {
+        format!(
+            "Delete rejected ({n} {})",
+            if n == 1 { "photo" } else { "photos" }
+        )
+    },
     cmd_auto_advance: "Auto advance",
     cmd_subfolders: "Include subfolders",
     menu_sort: "Sort",
@@ -139,9 +162,9 @@ pub static TEXTS: Texts = Texts {
     compare_needs_two: "Comparing needs at least two photos",
     deleting: |n| {
         if n == 1 {
-            "Deleting 1 photo   ·   Esc to undo".to_owned()
+            "Moving 1 photo into the hidden .originals folder   ·   Esc to undo".to_owned()
         } else {
-            format!("Deleting {n} photos   ·   Esc to undo")
+            format!("Moving {n} photos into the hidden .originals folder   ·   Esc to undo")
         }
     },
     delete_failed: |n, name, err| format!("Could not delete {n} photo(s) – {name}: {err}"),
@@ -155,8 +178,6 @@ pub static TEXTS: Texts = Texts {
     no_photos_in: |dir| format!("No JPEG or HEIC files in {dir}"),
     rating_not_saved: |err| format!("Rating not saved – {err}"),
     open_folder: "Open folder",
-    transfer_copy: "Copy",
-    transfer_move: "Move",
     transfer_copy_cmd: "Copy everything the current filter shows to …",
     transfer_move_cmd: "Move everything the current filter shows to …",
     transfer_same_folder: "That is already the open folder",

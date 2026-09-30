@@ -53,6 +53,24 @@ pub static TEXTS: Texts = Texts {
     actions: "Aktion",
     actions_tooltip: "Kopieren, Verschieben oder Löschen der angezeigten Fotos",
     selection_delete: "Löschen",
+    bulk_copy: |n| {
+        format!(
+            "Kopieren nach … ({n} {})",
+            if n == 1 { "Foto" } else { "Fotos" }
+        )
+    },
+    bulk_move: |n| {
+        format!(
+            "Verschieben nach … ({n} {})",
+            if n == 1 { "Foto" } else { "Fotos" }
+        )
+    },
+    bulk_delete: |n| format!("Löschen ({n} {})", if n == 1 { "Foto" } else { "Fotos" }),
+    bulk_delete_hint: "Alle Fotos, die der Filter gerade zeigt. Sie kommen nach 5 Sekunden in den versteckten Ordner .originals neben den Fotos – nichts wird endgültig gelöscht, Esc holt sie zurück.",
+    delete_rejected_hint: "Alle abgelehnten Fotos des Ordners, auch die, die der Filter gerade ausblendet. Sie kommen nach 5 Sekunden in den versteckten Ordner .originals – nichts wird endgültig gelöscht.",
+    photos_shown: |shown, total| format!("{shown} von {total} Fotos"),
+    photos_count: |n| format!("{n} {}", if n == 1 { "Foto" } else { "Fotos" }),
+    photos_badge_tooltip: "So viele Fotos zeigt der Filter gerade – auf genau diese wirkt „Aktion“.",
     label_red: "Rot",
     label_yellow: "Gelb",
     label_green: "Grün",
@@ -102,7 +120,12 @@ pub static TEXTS: Texts = Texts {
     cmd_grid: "Raster",
     cmd_reject: "Ablehnen",
     cmd_description: "Kommentar und Stichwörter",
-    cmd_delete_rejected: |n| format!("Abgelehnte Fotos löschen ({n})"),
+    cmd_delete_rejected: |n| {
+        format!(
+            "Abgelehnte löschen ({n} {})",
+            if n == 1 { "Foto" } else { "Fotos" }
+        )
+    },
     cmd_auto_advance: "Automatisch weiter",
     cmd_subfolders: "Unterordner einlesen",
     menu_sort: "Sortieren",
@@ -139,9 +162,11 @@ pub static TEXTS: Texts = Texts {
     compare_needs_two: "Zum Vergleichen braucht es mindestens zwei Fotos",
     deleting: |n| {
         if n == 1 {
-            "1 Foto wird gelöscht   ·   Esc macht es rückgängig".to_owned()
+            "1 Foto wird in den versteckten Ordner .originals verschoben   ·   Esc macht es rückgängig".to_owned()
         } else {
-            format!("{n} Fotos werden gelöscht   ·   Esc macht es rückgängig")
+            format!(
+                "{n} Fotos werden in den versteckten Ordner .originals verschoben   ·   Esc macht es rückgängig"
+            )
         }
     },
     delete_failed: |n, name, err| {
@@ -157,8 +182,6 @@ pub static TEXTS: Texts = Texts {
     no_photos_in: |dir| format!("Keine JPEG- oder HEIC-Dateien in {dir}"),
     rating_not_saved: |err| format!("Sterne nicht gespeichert – {err}"),
     open_folder: "Ordner öffnen",
-    transfer_copy: "Kopieren",
-    transfer_move: "Verschieben",
     transfer_copy_cmd: "Kopiere alles, was der aktuelle Filter zeigt, nach …",
     transfer_move_cmd: "Verschiebe alles, was der aktuelle Filter zeigt, nach …",
     transfer_same_folder: "Das ist schon der geöffnete Ordner",

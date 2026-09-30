@@ -486,10 +486,19 @@ impl CernoApp {
             self.menu_block(Change::Transfer, None)
         };
         let delete = self.menu_block(Change::Delete, None);
+        // Harmless first: copy, then move, then delete. Each row says how many photos it
+        // takes – the ones the filter shows; "rejected" counts the whole folder, and says so.
+        let shown = self.view.len();
         let mut rows = vec![
-            Row::new(Action::Copy, t.transfer_copy, None).disabled(transfer),
-            Row::new(Action::Move, t.transfer_move, None).disabled(transfer),
-            Row::new(Action::DeleteSelection, t.selection_delete, None).disabled(delete),
+            Row::new(Action::Copy, (t.bulk_copy)(shown), None)
+                .hint(t.transfer_copy_cmd)
+                .disabled(transfer),
+            Row::new(Action::Move, (t.bulk_move)(shown), None)
+                .hint(t.transfer_move_cmd)
+                .disabled(transfer),
+            Row::new(Action::DeleteSelection, (t.bulk_delete)(shown), None)
+                .hint(t.bulk_delete_hint)
+                .disabled(delete),
         ];
         let rejected = self.rejected().len();
         if rejected > 0 {
@@ -499,6 +508,7 @@ impl CernoApp {
                     (t.cmd_delete_rejected)(rejected),
                     None,
                 )
+                .hint(t.delete_rejected_hint)
                 .disabled(delete),
             );
         }

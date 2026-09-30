@@ -53,6 +53,14 @@ pub static TEXTS: Texts = Texts {
     actions: "Acción",
     actions_tooltip: "Copiar, mover o eliminar las fotos en pantalla",
     selection_delete: "Eliminar",
+    bulk_copy: |n| format!("Copiar a … ({n} {})", if n == 1 { "foto" } else { "fotos" }),
+    bulk_move: |n| format!("Mover a … ({n} {})", if n == 1 { "foto" } else { "fotos" }),
+    bulk_delete: |n| format!("Eliminar ({n} {})", if n == 1 { "foto" } else { "fotos" }),
+    bulk_delete_hint: "Todas las fotos que muestra el filtro. A los 5 segundos pasan a la carpeta oculta .originals junto a ellas – nada se borra para siempre, Esc las recupera.",
+    delete_rejected_hint: "Todas las fotos rechazadas de la carpeta, también las que el filtro oculta ahora. A los 5 segundos pasan a la carpeta oculta .originals – nada se borra para siempre.",
+    photos_shown: |shown, total| format!("{shown} de {total} fotos"),
+    photos_count: |n| format!("{n} {}", if n == 1 { "foto" } else { "fotos" }),
+    photos_badge_tooltip: "Cuántas fotos muestra ahora el filtro – «Acción» actúa exactamente sobre estas.",
     label_red: "Rojo",
     label_yellow: "Amarillo",
     label_green: "Verde",
@@ -102,7 +110,12 @@ pub static TEXTS: Texts = Texts {
     cmd_grid: "Cuadrícula",
     cmd_reject: "Rechazar",
     cmd_description: "Comentario y palabras clave",
-    cmd_delete_rejected: |n| format!("Eliminar las fotos rechazadas ({n})"),
+    cmd_delete_rejected: |n| {
+        format!(
+            "Eliminar las rechazadas ({n} {})",
+            if n == 1 { "foto" } else { "fotos" }
+        )
+    },
     cmd_auto_advance: "Avanzar automáticamente",
     cmd_subfolders: "Incluir subcarpetas",
     menu_sort: "Ordenar",
@@ -139,9 +152,9 @@ pub static TEXTS: Texts = Texts {
     compare_needs_two: "Para comparar hacen falta al menos dos fotos",
     deleting: |n| {
         if n == 1 {
-            "Eliminando 1 foto   ·   Esc para deshacer".to_owned()
+            "1 foto pasa a la carpeta oculta .originals   ·   Esc para deshacer".to_owned()
         } else {
-            format!("Eliminando {n} fotos   ·   Esc para deshacer")
+            format!("{n} fotos pasan a la carpeta oculta .originals   ·   Esc para deshacer")
         }
     },
     delete_failed: |n, name, err| format!("No se pudieron eliminar {n} foto(s) – {name}: {err}"),
@@ -159,8 +172,6 @@ pub static TEXTS: Texts = Texts {
     no_photos_in: |dir| format!("No hay archivos JPEG ni HEIC en {dir}"),
     rating_not_saved: |err| format!("Estrellas no guardadas – {err}"),
     open_folder: "Abrir carpeta",
-    transfer_copy: "Copiar",
-    transfer_move: "Mover",
     transfer_copy_cmd: "Copia todo lo que muestra el filtro actual a …",
     transfer_move_cmd: "Mueve todo lo que muestra el filtro actual a …",
     transfer_same_folder: "Esa ya es la carpeta abierta",
