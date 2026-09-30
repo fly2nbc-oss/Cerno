@@ -498,13 +498,14 @@ mod tests {
     /// and a Store app's id is never a program file.
     #[test]
     fn cerno_is_recognised_by_its_file_name() {
-        let own = Path::new(r"C:\src\Cerno\target\release\cerno.exe");
+        // Forward slashes: a separator on Windows and Linux alike.
+        let own = Path::new("C:/src/Cerno/target/release/cerno.exe");
         assert!(is_cerno(
-            Path::new(r"C:\Users\x\AppData\Local\Cerno\cerno.exe"),
+            Path::new("C:/Users/x/AppData/Local/Cerno/cerno.exe"),
             own
         ));
-        assert!(is_cerno(Path::new(r"D:\Tools\CERNO.EXE"), own));
-        assert!(!is_cerno(Path::new(r"C:\Program Files\VLC\vlc.exe"), own));
+        assert!(is_cerno(Path::new("D:/Tools/CERNO.EXE"), own));
+        assert!(!is_cerno(Path::new("C:/Program Files/VLC/vlc.exe"), own));
         assert!(!is_cerno(
             Path::new("Microsoft.ZuneVideo_8wekyb3d8bbwe!Microsoft.ZuneVideo"),
             own
