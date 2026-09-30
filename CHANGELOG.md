@@ -7,6 +7,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+## [1.3.0] – 2026-10-01
+
 Simpler to read: one aesthetics value, two numbers under the photo, explanations on hover, an action menu that says how many photos it takes. Videos play in a player again, and a filter shows photos or videos only.
 
 ### Added
