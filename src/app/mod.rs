@@ -29,7 +29,7 @@ mod notice;
 mod panels;
 mod photos;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -49,7 +49,7 @@ use crate::rating::RatingWriter;
 use crate::theme::tokens;
 use crate::thumbs::Thumbs;
 use crate::transfer::Queue as TransferQueue;
-use crate::ui::details::{DetailRow, DetailsMode, DetailsTab};
+use crate::ui::details::{DetailsMode, DetailsTab};
 use crate::ui::overlays;
 use crate::ui::{description, palette, viewer};
 use crate::view::{FilterKind, Percentiles, PhotoFilter, SortKey, View, ViewOptions};
@@ -138,8 +138,8 @@ pub struct CernoApp {
     details: DetailsMode,
     /// The stage `Tab` brings back.
     details_last: DetailsMode,
-    /// Which detail rows show their explanation (session-wide).
-    details_expanded: HashSet<DetailRow>,
+    /// The CLIP attributes are folded out in the details panel (session-wide).
+    attributes_open: bool,
     /// Help page over the photos (`H`, `F1`, `?`).
     help_open: bool,
     /// Models & data card (menu).
@@ -319,7 +319,7 @@ impl CernoApp {
             } else {
                 details
             },
-            details_expanded: HashSet::new(),
+            attributes_open: false,
             help_open: false,
             models_open: false,
             confirm: None,

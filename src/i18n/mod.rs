@@ -266,7 +266,6 @@ pub struct Texts {
     pub button_language: fn(&str) -> String,
 
     // Command menu (`Ctrl+K`).
-    pub cmd_explanations: &'static str,
     pub cmd_all_panels: &'static str,
     pub cmd_fullscreen: &'static str,
     pub cmd_compare: &'static str,
@@ -406,6 +405,8 @@ pub struct Texts {
     pub section_sharpness: &'static str,
     pub section_exposure: &'static str,
     pub section_attributes: &'static str,
+    /// The combined score's row in the details panel (`aesthetic::combined`).
+    pub row_aesthetics: &'static str,
     pub section_histogram: &'static str,
     pub section_file: &'static str,
     pub row_size: &'static str,
@@ -439,6 +440,7 @@ pub struct Texts {
     pub explain_laion: &'static str,
     pub explain_v25: &'static str,
     pub explain_personal: &'static str,
+    pub explain_aesthetics: &'static str,
     pub explain_frame: &'static str,
     pub explain_eyes: &'static str,
     pub explain_highlights: &'static str,
@@ -490,7 +492,7 @@ pub struct Texts {
     pub help_sections: [&'static str; 5],
     pub help_browse: [HelpRow; 5],
     pub help_rate: [HelpRow; 10],
-    pub help_view: [HelpRow; 14],
+    pub help_view: [HelpRow; 13],
     pub help_edit: [HelpRow; 6],
     pub help_more: [HelpRow; 5],
 }

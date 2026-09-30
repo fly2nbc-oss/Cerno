@@ -20,14 +20,9 @@ use ort::value::Tensor;
 
 use crate::decode;
 
-/// A score on the star scale, so it reads like the user's own stars: real photos score
-/// between 2 and 8, that range becomes 0–5 (the bars always used it).
-pub fn as_stars(score: f32) -> f32 {
-    ((score - 2.0) * 5.0 / 6.0).clamp(0.0, 5.0)
-}
-
-/// A score as a share of the same 2–8 range, for "Aesthetics 62 %". A fixed scale – the
-/// same photo reads the same in every folder, unlike the sharpness percentile.
+/// A score as a share for "Aesthetics 62 %": real photos score between 2 and 8, that range
+/// becomes 0–100 % (the star scale of 1.2 and earlier used the same range). A fixed scale –
+/// the same photo reads the same in every folder, unlike the sharpness percentile.
 pub fn as_percent(score: f32) -> f32 {
     ((score - 2.0) / 6.0).clamp(0.0, 1.0)
 }
@@ -307,15 +302,6 @@ fn linear_head(head: &[f32], embedding: &[f32]) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn scores_map_onto_the_star_scale() {
-        assert_eq!(as_stars(2.0), 0.0);
-        assert_eq!(as_stars(5.0), 2.5);
-        assert_eq!(as_stars(8.0), 5.0);
-        assert_eq!(as_stars(1.0), 0.0);
-        assert_eq!(as_stars(9.5), 5.0);
-    }
 
     #[test]
     fn percent_uses_the_same_range() {

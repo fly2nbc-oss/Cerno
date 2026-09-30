@@ -316,7 +316,7 @@ impl CernoApp {
                 position: image.as_deref().and_then(|i| i.camera.gps),
                 overlay: self.overlay,
             },
-            &mut self.details_expanded,
+            &mut self.attributes_open,
         );
         if let Some(mode) = overlay {
             self.set_overlay(mode);

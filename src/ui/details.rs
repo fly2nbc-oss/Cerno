@@ -1,10 +1,9 @@
-//! Side panel with analysis values of the current photo; explanations fold out per row.
-
-use std::collections::HashSet;
+//! Side panel with analysis values of the current photo. Each row explains itself when the
+//! pointer rests on it; only the CLIP attributes fold out (they are further values).
 
 use eframe::egui::{
-    Align, Align2, Color32, CursorIcon, FontId, Hyperlink, Id, Label, Layout, Rect, RichText,
-    ScrollArea, Sense, Stroke, Ui, UiBuilder, vec2,
+    Align, Align2, Color32, CursorIcon, FontId, Hyperlink, Id, Label, Layout, Rect, Response,
+    RichText, ScrollArea, Sense, Stroke, Ui, UiBuilder, vec2,
 };
 
 use crate::analysis::{ModelState, Status, aesthetic, exposure};
@@ -118,39 +117,6 @@ pub fn tabs(ui: &mut Ui, rect: Rect, current: DetailsTab) -> Option<DetailsTab> 
     clicked
 }
 
-/// Rows that can expand to show an explanation (and CLIP attributes on the model row).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum DetailRow {
-    Laion,
-    V25,
-    Personal,
-    Frame,
-    Eyes,
-    Highlights,
-    Shadows,
-}
-
-pub const EXPANDABLE_ROWS: &[DetailRow] = &[
-    DetailRow::Laion,
-    DetailRow::V25,
-    DetailRow::Personal,
-    DetailRow::Frame,
-    DetailRow::Eyes,
-    DetailRow::Highlights,
-    DetailRow::Shadows,
-];
-
-pub fn all_expanded(expanded: &HashSet<DetailRow>) -> bool {
-    EXPANDABLE_ROWS.iter().all(|row| expanded.contains(row))
-}
-
-pub fn set_all_expanded(expanded: &mut HashSet<DetailRow>, on: bool) {
-    expanded.clear();
-    if on {
-        expanded.extend(EXPANDABLE_ROWS);
-    }
-}
-
 pub struct Details<'a> {
     pub scores: Option<Scores>,
     pub personal: Option<f32>,
@@ -182,6 +148,11 @@ impl Value {
         }
     }
 
+    /// A share of 0..=1 as `62 %` with its bar.
+    fn percent(share: f32) -> Self {
+        Self::score(format!("{:.0} %", share * 100.0), share)
+    }
+
     fn note(text: impl Into<String>) -> Self {
         Self {
             text: text.into(),
@@ -191,12 +162,13 @@ impl Value {
     }
 }
 
-/// Draws the panel. Returns the overlay an eye asks for (a lit eye turns it off).
+/// Draws the panel. `attributes_open`: the CLIP attributes are folded out (a click on their
+/// row toggles it). Returns the overlay an eye asks for (a lit eye turns it off).
 pub fn draw(
     ui: &mut Ui,
     rect: Rect,
     d: &Details<'_>,
-    expanded: &mut HashSet<DetailRow>,
+    attributes_open: &mut bool,
 ) -> Option<overlay::Mode> {
     let painter = ui.painter().with_clip_rect(rect);
     painter.rect_filled(rect, 0.0, tokens::SURFACE);
@@ -217,55 +189,50 @@ pub fn draw(
                 histogram(ui, hist);
                 ui.add_space(8.0);
             }
-            let overlay = content(ui, d, expanded);
+            let overlay = content(ui, d, attributes_open);
             ui.add_space(PAD);
             overlay
         })
         .inner
 }
 
-fn content(
-    ui: &mut Ui,
-    d: &Details<'_>,
-    expanded: &mut HashSet<DetailRow>,
-) -> Option<overlay::Mode> {
+fn content(ui: &mut Ui, d: &Details<'_>, attributes_open: &mut bool) -> Option<overlay::Mode> {
     let t = i18n::t();
     let scores = d.scores.unwrap_or_default();
     let status = d.status;
     let taste = &status.taste;
+    let model_value = |score: Option<f32>, state: &ModelState| match score {
+        Some(v) => Value::percent(aesthetic::as_percent(v)),
+        None => Value::note(model_note(state)),
+    };
 
     section(ui, t.section_aesthetics);
     metric_row(
         ui,
-        expanded,
-        DetailRow::Laion,
-        t.row_laion,
-        match scores.aesthetic {
-            Some(v) => stars_value(aesthetic::as_stars(v)),
+        t.row_aesthetics,
+        match aesthetic::combined(scores.aesthetic, scores.aesthetic25) {
+            Some(v) => Value::percent(aesthetic::as_percent(v)),
             None => Value::note(model_note(&status.aesthetics)),
         },
-        t.explain_laion,
+        t.explain_aesthetics,
     );
-    if expanded.contains(&DetailRow::Laion) {
-        clip_details(ui, d);
-    }
     metric_row(
         ui,
-        expanded,
-        DetailRow::V25,
+        t.row_laion,
+        model_value(scores.aesthetic, &status.aesthetics),
+        t.explain_laion,
+    );
+    metric_row(
+        ui,
         t.row_v25,
-        match scores.aesthetic25 {
-            Some(v) => stars_value(aesthetic::as_stars(v)),
-            None => Value::note(model_note(&status.v25)),
-        },
+        model_value(scores.aesthetic25, &status.v25),
         t.explain_v25,
     );
+    attributes(ui, d, attributes_open);
 
     section(ui, t.row_personal);
     metric_row(
         ui,
-        expanded,
-        DetailRow::Personal,
         t.row_personal,
         match (d.personal, taste.model) {
             (Some(v), _) => Value::score(format!("{v:.1} ★"), v / 5.0),
@@ -292,8 +259,6 @@ fn content(
     eye(ui, t.section_sharpness, overlay::Mode::Sharpness);
     metric_row(
         ui,
-        expanded,
-        DetailRow::Frame,
         t.row_frame,
         match d.frame_percentile {
             Some(p) => Value {
@@ -308,8 +273,6 @@ fn content(
     );
     metric_row(
         ui,
-        expanded,
-        DetailRow::Eyes,
         t.row_eyes,
         match (d.eyes_percentile, scores.faces) {
             (Some(p), _) => Value {
@@ -335,16 +298,12 @@ fn content(
     };
     metric_row(
         ui,
-        expanded,
-        DetailRow::Highlights,
         t.row_highlights,
         clipped(scores.highlights, exposure::HIGHLIGHTS_WARN),
         t.explain_highlights,
     );
     metric_row(
         ui,
-        expanded,
-        DetailRow::Shadows,
         t.row_shadows,
         clipped(scores.shadows, exposure::SHADOWS_WARN),
         t.explain_shadows,
@@ -451,69 +410,67 @@ fn section_with_eye(ui: &mut Ui, title: &str, on: bool) -> bool {
     clicked
 }
 
-fn metric_row(
-    ui: &mut Ui,
-    expanded: &mut HashSet<DetailRow>,
-    id: DetailRow,
-    label: &str,
-    value: Value,
-    explain: &str,
-) {
-    let open = expanded.contains(&id);
-    let row_id = Id::new(("detail_row", id));
-    let response = ui
-        .horizontal(|ui| {
-            ui.add_space(PAD);
-            let (chevron_rect, _) = ui.allocate_exact_size(vec2(14.0, 18.0), Sense::hover());
-            icons::chevron(ui.painter(), chevron_rect.center(), open, tokens::MUTED);
-            ui.label(
+/// Label and value with its bar; the explanation shows while the pointer rests on the row.
+fn metric_row(ui: &mut Ui, label: &str, value: Value, explain: &str) {
+    let explain = i18n::keep_together(explain);
+    ui.horizontal(|ui| {
+        ui.add_space(PAD + 14.0);
+        // Not selectable: a selectable label takes the pointer, and the row's tooltip with it.
+        ui.add(
+            Label::new(
                 RichText::new(label)
                     .font(FontId::proportional(text::BODY))
                     .color(tokens::TEXT),
-            );
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                ui.add_space(PAD);
-                paint_value(ui, &value);
-            });
-        })
-        .response
-        .interact(Sense::click());
-    if response.clicked() {
-        if open {
-            expanded.remove(&id);
-        } else {
-            expanded.insert(id);
-        }
-        ui.ctx().request_repaint();
-    }
+            )
+            .selectable(false),
+        )
+        .on_hover_text(&explain);
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.add_space(PAD);
+            paint_value(ui, &value).on_hover_text(&explain);
+        });
+    })
+    .response
+    .interact(Sense::hover())
+    .on_hover_text(&explain);
     if value.fill.is_some() {
-        value_bar(ui, row_id, &value);
+        value_bar(ui, &value);
     }
-    if open {
-        ui.add_space(ROW_INNER);
-        explanation(ui, explain);
-        ui.add_space(ROW_INNER);
-    } else {
-        ui.add_space(4.0);
-    }
+    ui.add_space(4.0);
 }
 
-fn clip_details(ui: &mut Ui, d: &Details<'_>) {
+/// The one row that folds out: the six CLIP attributes, each a value of its own.
+fn attributes(ui: &mut Ui, d: &Details<'_>, open: &mut bool) {
     let t = i18n::t();
-    explanation(ui, t.explain_attributes);
+    let response = ui
+        .horizontal(|ui| {
+            ui.add_space(PAD);
+            let (chevron, _) = ui.allocate_exact_size(vec2(14.0, 18.0), Sense::hover());
+            icons::chevron(ui.painter(), chevron.center(), *open, tokens::MUTED);
+            ui.add(
+                Label::new(
+                    RichText::new(t.section_attributes)
+                        .font(FontId::proportional(text::BODY))
+                        .color(tokens::TEXT),
+                )
+                .selectable(false),
+            );
+        })
+        .response
+        .interact(Sense::click())
+        .on_hover_cursor(CursorIcon::PointingHand)
+        .on_hover_text(i18n::keep_together(t.explain_attributes));
+    if response.clicked() {
+        *open = !*open;
+        ui.ctx().request_repaint();
+    }
     ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        ui.add_space(PAD + 14.0);
-        ui.label(
-            RichText::new(t.section_attributes.to_uppercase())
-                .font(FontId::proportional(text::LABEL))
-                .color(tokens::MUTED),
-        );
-    });
-    ui.add_space(ROW_INNER);
+    if !*open {
+        return;
+    }
     for (i, name) in t.attributes.iter().enumerate() {
         let value = match d.attributes {
-            Some(a) => Value::score(format!("{:.0} %", a[i] * 100.0), a[i]),
+            Some(a) => Value::percent(a[i]),
             None => Value::note(t.note_needs_clip),
         };
         ui.horizontal(|ui| {
@@ -526,10 +483,11 @@ fn clip_details(ui: &mut Ui, d: &Details<'_>) {
             });
         });
         if value.fill.is_some() {
-            value_bar(ui, Id::new(("clip_attr", i)), &value);
+            value_bar(ui, &value);
         }
         ui.add_space(4.0);
     }
+    ui.add_space(ROW_INNER);
 }
 
 /// Muted label and a plain value, without a bar or a fold.
@@ -578,7 +536,7 @@ fn map_links(ui: &mut Ui, position: (f64, f64)) {
     ui.add_space(2.0);
 }
 
-fn paint_value(ui: &mut Ui, value: &Value) {
+fn paint_value(ui: &mut Ui, value: &Value) -> Response {
     let colour = if value.warn {
         tokens::STATUS_WARN
     } else {
@@ -594,14 +552,17 @@ fn paint_value(ui: &mut Ui, value: &Value) {
     } else {
         tokens::MUTED
     };
-    ui.label(
-        RichText::new(value.text.clone())
-            .font(FontId::proportional(size))
-            .color(text_colour),
-    );
+    ui.add(
+        Label::new(
+            RichText::new(value.text.clone())
+                .font(FontId::proportional(size))
+                .color(text_colour),
+        )
+        .selectable(false),
+    )
 }
 
-fn value_bar(ui: &mut Ui, _id: Id, value: &Value) {
+fn value_bar(ui: &mut Ui, value: &Value) {
     let Some(fill) = value.fill else {
         return;
     };
@@ -624,30 +585,6 @@ fn value_bar(ui: &mut Ui, _id: Id, value: &Value) {
         2.0,
         bar_colour,
     );
-}
-
-/// Muted text that wraps inside the panel. A label in a left-to-right layout never wraps in
-/// egui – it would widen the scroll area and push the values of every later row out of view.
-fn explanation(ui: &mut Ui, text: &str) {
-    let width = (ui.available_width() - 2.0 * PAD).max(40.0);
-    ui.horizontal(|ui| {
-        ui.add_space(PAD);
-        ui.allocate_ui_with_layout(vec2(width, 0.0), Layout::top_down(Align::Min), |ui| {
-            ui.set_max_width(width);
-            ui.add(
-                Label::new(
-                    RichText::new(i18n::keep_together(text))
-                        .font(FontId::proportional(text::BODY))
-                        .color(tokens::MUTED),
-                )
-                .wrap(),
-            );
-        });
-    });
-}
-
-fn stars_value(stars: f32) -> Value {
-    Value::score(format!("{stars:.1} ★"), stars / 5.0)
 }
 
 /// A model's state as a short word (`bereit`, `DirectML`, `lädt 42 %` …).
@@ -695,50 +632,8 @@ mod tests {
         assert_eq!(DetailsMode::from_id("off"), Some(DetailsMode::Off));
     }
 
-    #[test]
-    fn clip_fold_shows_attribute_labels() {
-        let ctx = Context::default();
-        let status = status();
-        let details = Details {
-            scores: None,
-            personal: None,
-            frame_percentile: None,
-            eyes_percentile: None,
-            attributes: Some([0.5; 6]),
-            histogram: None,
-            status: &status,
-            file: None,
-            position: None,
-            overlay: overlay::Mode::Off,
-        };
-        let mut expanded = HashSet::from([DetailRow::Laion]);
-        let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 800.0));
-        let mut output = ctx.run_ui(
-            RawInput {
-                screen_rect: Some(screen),
-                ..Default::default()
-            },
-            |ui| {
-                draw(ui, screen, &details, &mut expanded);
-            },
-        );
-        output.textures_delta.clear();
-        let has_quality = output.shapes.iter().any(|clipped| {
-            matches!(
-                &clipped.shape,
-                Shape::Text(text) if text.galley.text().contains("Overall quality")
-            )
-        });
-        assert!(has_quality, "CLIP attributes visible when expanded");
-    }
-
-    /// `I` expands every row: the explanations wrap inside the panel and every value stays
-    /// visible.
-    #[test]
-    fn expanded_rows_stay_inside_the_panel() {
-        let ctx = Context::default();
-        let status = status();
-        let details = Details {
+    fn details_with_scores(status: &Status) -> Details<'_> {
+        Details {
             scores: Some(Scores {
                 sharpness: Some(1.0),
                 aesthetic: Some(5.0),
@@ -753,26 +648,15 @@ mod tests {
             eyes_percentile: None,
             attributes: Some([0.5; 6]),
             histogram: None,
-            status: &status,
+            status,
             file: None,
             position: None,
             overlay: overlay::Mode::Off,
-        };
-        let mut expanded = HashSet::new();
-        set_all_expanded(&mut expanded, true);
-        let panel = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 2400.0));
-        let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH * 3.0, 2400.0));
-        let mut output = ctx.run_ui(
-            RawInput {
-                screen_rect: Some(screen),
-                ..Default::default()
-            },
-            |ui| {
-                draw(ui, panel, &details, &mut expanded);
-            },
-        );
-        output.textures_delta.clear();
-        let texts: Vec<(String, Rect)> = output
+        }
+    }
+
+    fn texts(output: &eframe::egui::FullOutput) -> Vec<(String, Rect)> {
+        output
             .shapes
             .iter()
             .filter_map(|clipped| match &clipped.shape {
@@ -781,9 +665,59 @@ mod tests {
                 }
                 _ => None,
             })
-            .collect();
-        let v25 = format!("{:.1} ★", aesthetic::as_stars(6.0));
-        for value in [v25.as_str(), "2.8 ★", "62 %", "50 %"] {
+            .collect()
+    }
+
+    #[test]
+    fn clip_fold_shows_attribute_labels() {
+        let status = status();
+        let details = details_with_scores(&status);
+        let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 1200.0));
+        let shows_quality = |mut open: bool| {
+            let ctx = Context::default();
+            let mut output = ctx.run_ui(
+                RawInput {
+                    screen_rect: Some(screen),
+                    ..Default::default()
+                },
+                |ui| {
+                    draw(ui, screen, &details, &mut open);
+                },
+            );
+            output.textures_delta.clear();
+            texts(&output)
+                .iter()
+                .any(|(text, _)| text.contains("Overall quality"))
+        };
+        assert!(
+            shows_quality(true),
+            "CLIP attributes visible when folded out"
+        );
+        assert!(!shows_quality(false), "and hidden otherwise");
+    }
+
+    /// Every value is drawn and stays inside the panel, the attributes folded out too; the
+    /// scores are percentages on the fixed scale.
+    #[test]
+    fn values_stay_inside_the_panel() {
+        let ctx = Context::default();
+        let status = status();
+        let details = details_with_scores(&status);
+        let panel = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 2400.0));
+        let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH * 3.0, 2400.0));
+        let mut output = ctx.run_ui(
+            RawInput {
+                screen_rect: Some(screen),
+                ..Default::default()
+            },
+            |ui| {
+                draw(ui, panel, &details, &mut true);
+            },
+        );
+        output.textures_delta.clear();
+        let texts = texts(&output);
+        // Aesthetics (5.0 + 6.0) / 2 = 5.5 → 58 %, LAION 5.0 → 50 %, V2.5 6.0 → 67 %.
+        for value in ["58 %", "50 %", "67 %", "2.8 ★", "62 %"] {
             assert!(
                 texts.iter().any(|(text, _)| text == value),
                 "value {value} is drawn"
@@ -797,6 +731,53 @@ mod tests {
                 panel.right()
             );
         }
+    }
+
+    /// Nothing folds out under a value any more: the explanation is the row's tooltip.
+    #[test]
+    fn a_row_explains_itself_on_hover() {
+        let ctx = Context::default();
+        ctx.all_styles_mut(|style| style.interaction.tooltip_delay = 0.0);
+        let status = status();
+        let details = details_with_scores(&status);
+        let panel = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 1200.0));
+        let frame = |events: Vec<Event>, time: f64| {
+            let mut output = ctx.run_ui(
+                RawInput {
+                    screen_rect: Some(panel),
+                    events,
+                    time: Some(time),
+                    ..Default::default()
+                },
+                |ui| {
+                    draw(ui, panel, &details, &mut false);
+                },
+            );
+            output.textures_delta.clear();
+            output
+        };
+        let explanation = i18n::keep_together(i18n::t().explain_v25);
+        let first = frame(Vec::new(), 0.0);
+        let shown = texts(&first);
+        assert!(
+            !shown.iter().any(|(text, _)| *text == explanation),
+            "no explanation without the pointer"
+        );
+        let row = shown
+            .iter()
+            .find(|(text, _)| text == "V2.5 (SigLIP)")
+            .map(|(_, rect)| rect.center())
+            .expect("the V2.5 row is drawn");
+        // egui waits until the pointer rests before it shows a tooltip.
+        frame(vec![Event::PointerMoved(row)], 0.1);
+        let mut hovered = Vec::new();
+        for n in 1..6 {
+            hovered = texts(&frame(Vec::new(), 0.1 + f64::from(n) * 0.3));
+        }
+        assert!(
+            hovered.iter().any(|(text, _)| *text == explanation),
+            "the explanation shows while the pointer rests on the row"
+        );
     }
 
     /// The File section shows the coordinates and links them to both maps; a click opens the
@@ -827,7 +808,7 @@ mod tests {
                     ..Default::default()
                 },
                 |ui| {
-                    draw(ui, panel, &details, &mut HashSet::new());
+                    draw(ui, panel, &details, &mut false);
                 },
             );
             output.textures_delta.clear();
@@ -906,7 +887,7 @@ mod tests {
                     events,
                     ..Default::default()
                 },
-                |ui| chosen = draw(ui, panel, &details, &mut HashSet::new()),
+                |ui| chosen = draw(ui, panel, &details, &mut false),
             );
             output.textures_delta.clear();
             (output, chosen)
@@ -941,15 +922,5 @@ mod tests {
             Some(overlay::Mode::Sharpness),
             "from the other overlay straight to this one"
         );
-    }
-
-    #[test]
-    fn expand_all_helpers() {
-        let mut expanded = HashSet::new();
-        assert!(!all_expanded(&expanded));
-        set_all_expanded(&mut expanded, true);
-        assert!(all_expanded(&expanded));
-        set_all_expanded(&mut expanded, false);
-        assert!(expanded.is_empty());
     }
 }

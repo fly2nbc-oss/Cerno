@@ -9,7 +9,7 @@ use crate::i18n::{self, Lang};
 use crate::loader::Lookup;
 use crate::metadata::{Label, Rating};
 use crate::transfer::Mode as TransferMode;
-use crate::ui::details::{DetailsMode, all_expanded};
+use crate::ui::details::DetailsMode;
 use crate::ui::icons::Panel;
 use crate::ui::{confirm, filter_bar, help, models, palette, viewer};
 use crate::view::{FilterKind, SortKey, ViewOptions};
@@ -36,7 +36,6 @@ enum Action {
     EnableAesthetics,
     TopBar,
     Details,
-    Explanations,
     Filmstrip,
     AllPanels,
     Compare,
@@ -266,12 +265,6 @@ impl CernoApp {
                         t.cmd_all_panels,
                         Some(i18n::with_shift("Tab")),
                     )),
-                    row(
-                        Row::new(Action::Explanations, t.cmd_explanations, key("I")).toggle(
-                            self.details != DetailsMode::Off
-                                && all_expanded(&self.details_expanded),
-                        ),
-                    ),
                     row(Row::new(Action::Zoom, t.cmd_zoom, key("Z")).toggle(self.zoom.is_zoomed())),
                     Entry::Group(Group::new(t.menu_overlay, key("O"), overlays)),
                     row(Row::new(Action::Grid, t.cmd_grid, key("F7")).toggle(self.grid)),
@@ -566,7 +559,6 @@ impl CernoApp {
             Action::EnableAesthetics => self.ask(ConfirmAction::DownloadModel, false),
             Action::TopBar => self.toggle_panel(Panel::Top),
             Action::Details => self.toggle_panel(Panel::Right),
-            Action::Explanations => self.toggle_explanations(),
             Action::Filmstrip => self.toggle_panel(Panel::Bottom),
             Action::AllPanels => self.toggle_all_panels(),
             Action::Compare => self.toggle_compare(ctx),
