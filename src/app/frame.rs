@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use eframe::egui::{self, Rect, pos2, vec2};
 
+use crate::analysis::aesthetic;
 use crate::i18n;
 use crate::library;
 use crate::loader::Lookup;
@@ -251,12 +252,9 @@ impl CernoApp {
             auto_advance: self.auto_advance,
             analysed: scores.is_some(),
             aesthetics: if comparing {
-                [None, None]
+                None
             } else {
-                [
-                    scores.and_then(|s| s.aesthetic),
-                    scores.and_then(|s| s.aesthetic25),
-                ]
+                scores.and_then(|s| aesthetic::combined(s.aesthetic, s.aesthetic25))
             },
             personal: if comparing { None } else { personal },
             sharpness: if comparing {
@@ -318,7 +316,7 @@ impl CernoApp {
                 position: image.as_deref().and_then(|i| i.camera.gps),
                 overlay: self.overlay,
             },
-            &mut self.details_expanded,
+            &mut self.attributes_open,
         );
         if let Some(mode) = overlay {
             self.set_overlay(mode);
@@ -338,6 +336,17 @@ impl CernoApp {
             status: &status,
             actions_open: self.action_menu.is_some(),
             similar_to: similar_to.as_deref(),
+            shown: self.view.len(),
+            // Photos waiting to be deleted have left the view already; they don't count.
+            total: self
+                .all
+                .iter()
+                .filter(|p| !self.deletions.is_hidden(p))
+                .count(),
+            has_videos: self
+                .all
+                .iter()
+                .any(|p| library::format_of(p) == Some(library::Format::Video)),
         };
         let mut options = self.options;
         let out = filter_bar::toolbar(ui, rect, &mut options, &info);

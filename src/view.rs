@@ -5,9 +5,10 @@ use std::path::{Path, PathBuf};
 
 use std::sync::Arc;
 
-use crate::analysis::sharpness;
+use crate::analysis::{aesthetic, sharpness};
 use crate::db::Scores;
 use crate::i18n;
+use crate::library::{self, Format};
 use crate::metadata::{Label, Rating};
 
 /// Photos taken at most this far apart belong to one series.
@@ -38,19 +39,18 @@ pub enum SortKey {
     /// Capture time, oldest first. Photos without a time stay at the end.
     Taken,
     Rating,
+    /// The one aesthetics score: the mean of LAION and V2.5 (`aesthetic::combined`).
     Aesthetics,
-    AestheticsV25,
     Personal,
     Sharpness,
 }
 
 impl SortKey {
-    pub const ALL: [SortKey; 7] = [
+    pub const ALL: [SortKey; 6] = [
         Self::Name,
         Self::Taken,
         Self::Rating,
         Self::Aesthetics,
-        Self::AestheticsV25,
         Self::Personal,
         Self::Sharpness,
     ];
@@ -61,8 +61,7 @@ impl SortKey {
             Self::Name => t.sort_name,
             Self::Taken => t.sort_taken,
             Self::Rating => t.sort_rating,
-            Self::Aesthetics => t.sort_laion,
-            Self::AestheticsV25 => t.sort_v25,
+            Self::Aesthetics => t.sort_aesthetics,
             Self::Personal => t.sort_personal,
             Self::Sharpness => t.sort_sharpness,
         }
@@ -74,13 +73,17 @@ impl SortKey {
             Self::Taken => "taken",
             Self::Rating => "rating",
             Self::Aesthetics => "aesthetics",
-            Self::AestheticsV25 => "aesthetics25",
             Self::Personal => "personal",
             Self::Sharpness => "sharpness",
         }
     }
 
+    /// A stored sort. Up to 1.2 LAION and V2.5 were sorted apart; a saved V2.5 sort
+    /// (`"aesthetics25"`) now means the combined score, like `"aesthetics"`.
     pub fn from_id(id: &str) -> Option<Self> {
+        if id == "aesthetics25" {
+            return Some(Self::Aesthetics);
+        }
         Self::ALL.into_iter().find(|k| k.id() == id)
     }
 }
@@ -293,6 +296,49 @@ fn colour_index(label: Label) -> usize {
 /// apart, 0.03 % of photos from different folders.
 pub const SIMILAR_MIN: f32 = 0.85;
 
+/// Photos, videos or both – together with the boxes, like "similar photos".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Media {
+    #[default]
+    All,
+    Photos,
+    Videos,
+}
+
+impl Media {
+    pub const ALL: [Media; 3] = [Self::All, Self::Photos, Self::Videos];
+
+    pub fn label(self) -> &'static str {
+        let t = i18n::t();
+        match self {
+            Self::All => t.media_all,
+            Self::Photos => t.media_photos,
+            Self::Videos => t.media_videos,
+        }
+    }
+
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Photos => "photos",
+            Self::Videos => "videos",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|media| media.id() == id)
+    }
+
+    /// Whether a file of this kind stays visible.
+    pub fn accepts(self, video: bool) -> bool {
+        match self {
+            Self::All => true,
+            Self::Photos => !video,
+            Self::Videos => video,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ViewOptions {
     pub sort: SortKey,
@@ -300,6 +346,8 @@ pub struct ViewOptions {
     /// Only photos like the chosen one (`M`, `Facts::similarity`), together with the boxes.
     /// Never saved: the photo it is about belongs to this folder.
     pub similar: bool,
+    /// Photos, videos or both; saved like the boxes.
+    pub media: Media,
 }
 
 impl Default for ViewOptions {
@@ -308,14 +356,31 @@ impl Default for ViewOptions {
             sort: SortKey::Name,
             filter: PhotoFilter::default(),
             similar: false,
+            media: Media::All,
         }
     }
 }
 
 impl ViewOptions {
-    /// Whether new analysis results can change the view (so a refresh makes sense).
+    /// Whether new analysis results can change the view (so a refresh makes sense). Photos or
+    /// videos only is decided by the file name, not by a score.
     pub fn depends_on_scores(&self) -> bool {
-        *self != Self::default()
+        Self {
+            media: Media::All,
+            ..*self
+        } != Self::default()
+    }
+
+    /// Whether anything hides photos: a box, "similar photos" or photos / videos only.
+    pub fn is_filtered(&self) -> bool {
+        !self.filter.is_all() || self.similar || self.media != Media::All
+    }
+
+    /// "Show all": every filter off, the sort stays.
+    pub fn clear_filters(&mut self) {
+        self.filter.clear();
+        self.similar = false;
+        self.media = Media::All;
     }
 }
 
@@ -514,7 +579,9 @@ pub fn build(
                     .facts
                     .and_then(|f| f.similarity)
                     .is_some_and(|s| s >= SIMILAR_MIN);
+            let video = library::format_of(entry.path) == Some(Format::Video);
             similar
+                && options.media.accepts(video)
                 && options
                     .filter
                     .accepts(entry.rating, blurry, is_duplicate, entry.label)
@@ -535,8 +602,9 @@ pub fn build(
                         Rating::Unrated => 0.0,
                         Rating::Rejected => -1.0,
                     }),
-                    SortKey::Aesthetics => entry.facts.and_then(|f| f.scores.aesthetic),
-                    SortKey::AestheticsV25 => entry.facts.and_then(|f| f.scores.aesthetic25),
+                    SortKey::Aesthetics => entry.facts.and_then(|f| {
+                        aesthetic::combined(f.scores.aesthetic, f.scores.aesthetic25)
+                    }),
                     SortKey::Personal => entry.facts.and_then(|f| f.personal),
                     SortKey::Sharpness => entry.sharp,
                 }
@@ -759,7 +827,6 @@ mod tests {
             scores: Scores {
                 sharpness,
                 aesthetic,
-                aesthetic25: aesthetic.map(|a| 10.0 - a),
                 ..Scores::default()
             },
             personal,
@@ -767,12 +834,23 @@ mod tests {
         }
     }
 
+    /// The same facts with a V2.5 score as well.
+    fn with_v25(mut facts: Facts, v25: f32) -> Facts {
+        facts.scores.aesthetic25 = Some(v25);
+        facts
+    }
+
     fn fixture() -> (Vec<PathBuf>, HashMap<PathBuf, Facts>) {
         let all: Vec<PathBuf> = ["a", "b", "c", "d", "e"].map(PathBuf::from).to_vec();
         let known = HashMap::from([
+            // Aesthetics: a (4.0 + 8.0) / 2 = 6.0, b LAION alone 6.5, c (5.0 + 4.0) / 2 = 4.5,
+            // d V2.5 alone 5.5.
             (
                 all[0].clone(),
-                facts(Rating::Stars(2), Some(4.0), Some(10.0), Some(1.0)),
+                with_v25(
+                    facts(Rating::Stars(2), Some(4.0), Some(10.0), Some(1.0)),
+                    8.0,
+                ),
             ),
             (
                 all[1].clone(),
@@ -780,11 +858,14 @@ mod tests {
             ),
             (
                 all[2].clone(),
-                facts(Rating::Stars(5), Some(5.0), Some(300.0), Some(4.5)),
+                with_v25(
+                    facts(Rating::Stars(5), Some(5.0), Some(300.0), Some(4.5)),
+                    4.0,
+                ),
             ),
             (
                 all[3].clone(),
-                facts(Rating::Stars(3), None, Some(200.0), Some(3.0)),
+                with_v25(facts(Rating::Stars(3), None, Some(200.0), Some(3.0)), 5.5),
             ),
             // "e" not analysed yet
         ]);
@@ -855,8 +936,7 @@ mod tests {
             )
         };
         assert_eq!(sorted(SortKey::Name), "abcde");
-        assert_eq!(sorted(SortKey::Aesthetics), "bcade");
-        assert_eq!(sorted(SortKey::AestheticsV25), "acbde");
+        assert_eq!(sorted(SortKey::Aesthetics), "badce");
         assert_eq!(sorted(SortKey::Personal), "cdabe");
         assert_eq!(sorted(SortKey::Sharpness), "bcdae");
         assert_eq!(sorted(SortKey::Rating), "cdabe");
@@ -1196,11 +1276,72 @@ mod tests {
         assert_eq!(names(&view.paths), "c");
     }
 
+    /// Photos or videos only goes together with the boxes (AND), decided by the file name.
+    #[test]
+    fn media_filter_goes_with_the_boxes() {
+        let all: Vec<PathBuf> = ["a.jpg", "b.mp4", "c.jpg", "d.mov"]
+            .map(PathBuf::from)
+            .to_vec();
+        let rated = |p: &Path| {
+            let name = p.to_string_lossy();
+            Some(Facts {
+                rating: if name.starts_with('a') || name.starts_with('b') {
+                    Rating::Stars(3)
+                } else {
+                    Rating::Unrated
+                },
+                ..Facts::default()
+            })
+        };
+        let shown = |options: ViewOptions| {
+            names(
+                &build(
+                    &all,
+                    options,
+                    rated,
+                    &HashMap::new(),
+                    &HashMap::new(),
+                    |_| false,
+                )
+                .paths,
+            )
+        };
+        let mut options = ViewOptions::default();
+        assert_eq!(shown(options), "a.jpgb.mp4c.jpgd.mov");
+        options.media = Media::Photos;
+        assert_eq!(shown(options), "a.jpgc.jpg");
+        options.media = Media::Videos;
+        assert_eq!(shown(options), "b.mp4d.mov");
+        options.filter.set(FilterKind::Stars(3), true);
+        assert_eq!(shown(options), "b.mp4");
+        assert!(options.is_filtered());
+        options.clear_filters();
+        assert_eq!(options, ViewOptions::default());
+    }
+
+    /// Photos or videos only is no reason to refresh the order when scores arrive.
+    #[test]
+    fn media_does_not_depend_on_scores() {
+        let options = ViewOptions {
+            media: Media::Videos,
+            ..ViewOptions::default()
+        };
+        assert!(!options.depends_on_scores());
+        assert!(options.is_filtered());
+        for media in Media::ALL {
+            assert_eq!(Media::from_id(media.id()), Some(media));
+        }
+        assert_eq!(Media::from_id("something"), None);
+    }
+
     #[test]
     fn ids_round_trip() {
         for key in SortKey::ALL {
             assert_eq!(SortKey::from_id(key.id()), Some(key));
         }
+        // The V2.5 sort of 1.2 and earlier is the combined score now.
+        assert_eq!(SortKey::from_id("aesthetics25"), Some(SortKey::Aesthetics));
+        assert_eq!(SortKey::from_id("laion"), None);
         let mut filter = PhotoFilter::default();
         for kind in FilterKind::ALL {
             filter.set(kind, true);

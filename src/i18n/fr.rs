@@ -20,6 +20,10 @@ pub static TEXTS: Texts = Texts {
     filter_duplicate: "Doublons",
     filter_duplicate_tooltip: "Chaque photo sauf le premier chemin identique",
     filter_clear: "Tout afficher",
+    media_all: "Photos et vidéos",
+    media_photos: "Photos seulement",
+    media_videos: "Vidéos seulement",
+    media_no_videos: "Ce dossier ne contient pas de vidéos",
     filter_none_active: "Aucun filtre actif",
     filter_similar: "≈ Semblables",
     filter_similar_to: |name| format!("≈ comme {name}"),
@@ -45,8 +49,7 @@ pub static TEXTS: Texts = Texts {
 
     sort_name: "Nom",
     sort_rating: "Étoiles",
-    sort_laion: "Esthétique (LAION)",
-    sort_v25: "Esthétique (V2.5)",
+    sort_aesthetics: "Esthétique",
     sort_personal: "Pour vous",
     sort_sharpness: "Netteté",
     sort_taken: "Date de prise",
@@ -56,12 +59,35 @@ pub static TEXTS: Texts = Texts {
     actions: "Action",
     actions_tooltip: "Copier, déplacer ou supprimer les photos affichées",
     selection_delete: "Supprimer",
+    bulk_copy: |n| {
+        format!(
+            "Copier vers … ({n} {})",
+            if n == 1 { "photo" } else { "photos" }
+        )
+    },
+    bulk_move: |n| {
+        format!(
+            "Déplacer vers … ({n} {})",
+            if n == 1 { "photo" } else { "photos" }
+        )
+    },
+    bulk_delete: |n| {
+        format!(
+            "Supprimer ({n} {})",
+            if n == 1 { "photo" } else { "photos" }
+        )
+    },
+    bulk_delete_hint: "Toutes les photos que le filtre affiche. Après 5 secondes, elles vont dans le dossier caché .originals à côté d'elles – rien n'est supprimé définitivement, Esc les ramène.",
+    delete_rejected_hint: "Toutes les photos rejetées du dossier, même celles que le filtre masque. Après 5 secondes, elles vont dans le dossier caché .originals – rien n'est supprimé définitivement.",
+    photos_shown: |shown, total| format!("{shown} sur {total} photos"),
+    photos_count: |n| format!("{n} {}", if n == 1 { "photo" } else { "photos" }),
+    photos_badge_tooltip: "Le nombre de photos que le filtre affiche – « Action » agit sur exactement celles-ci.",
     label_red: "Rouge",
     label_yellow: "Jaune",
     label_green: "Vert",
     label_blue: "Bleu",
     label_purple: "Violet",
-    meter_aesthetics_tooltip: "L et V : esthétique (LAION / V2.5). Étoile vide : Pour vous – les étoiles que Cerno pense que vous donneriez. Tous de 0 à 5\n– = pas encore disponible",
+    meter_aesthetics_tooltip: "Esthétique : moyenne de LAION et V2.5 sur une échelle fixe – une photo a la même valeur dans chaque dossier. La netteté, elle, compare avec les autres photos du dossier.\nValeurs séparées : panneau des détails (Tab)",
     meter_sharpness: "Netteté",
     meter_eyes: "Yeux",
     probably_blurry: "sans doute floue",
@@ -73,6 +99,11 @@ pub static TEXTS: Texts = Texts {
     rejected: "Rejetée",
     filmstrip_video: "Vidéo",
     star_tooltip: |n| format!("{n} ★ – touche {n}"),
+    personal_hint: |stars| {
+        format!(
+            "Pour vous : {stars:.1} ★ – les étoiles que Cerno pense que vous donneriez. Pas encore votre note"
+        )
+    },
     zoom: |percent| format!("Zoom {percent:.0} %"),
     digital_zoom: |ratio| format!("Zoom numérique {ratio:.1}×"),
     button_toolbar: "Barre de filtres",
@@ -82,7 +113,6 @@ pub static TEXTS: Texts = Texts {
     button_menu: "Menu",
     button_language: |name| format!("Langue : {name}"),
 
-    cmd_explanations: "Toutes les explications",
     cmd_all_panels: "Barre de filtres, détails et pellicule",
     cmd_fullscreen: "Plein écran",
     cmd_compare: "Comparer",
@@ -101,7 +131,12 @@ pub static TEXTS: Texts = Texts {
     cmd_grid: "Grille",
     cmd_reject: "Rejeter",
     cmd_description: "Commentaire et mots-clés",
-    cmd_delete_rejected: |n| format!("Supprimer les photos rejetées ({n})"),
+    cmd_delete_rejected: |n| {
+        format!(
+            "Supprimer les rejetées ({n} {})",
+            if n == 1 { "photo" } else { "photos" }
+        )
+    },
     cmd_auto_advance: "Avancer automatiquement",
     cmd_subfolders: "Inclure les sous-dossiers",
     menu_sort: "Trier",
@@ -138,9 +173,9 @@ pub static TEXTS: Texts = Texts {
     compare_needs_two: "Il faut au moins deux photos pour comparer",
     deleting: |n| {
         if n == 1 {
-            "1 photo en cours de suppression   ·   Esc pour annuler".to_owned()
+            "1 photo va dans le dossier caché .originals   ·   Esc pour annuler".to_owned()
         } else {
-            format!("{n} photos en cours de suppression   ·   Esc pour annuler")
+            format!("{n} photos vont dans le dossier caché .originals   ·   Esc pour annuler")
         }
     },
     delete_failed: |n, name, err| format!("Impossible de supprimer {n} photo(s) – {name} : {err}"),
@@ -160,8 +195,6 @@ pub static TEXTS: Texts = Texts {
     no_photos_in: |dir| format!("Aucun fichier JPEG ou HEIC dans {dir}"),
     rating_not_saved: |err| format!("Étoiles non enregistrées – {err}"),
     open_folder: "Ouvrir un dossier",
-    transfer_copy: "Copier",
-    transfer_move: "Déplacer",
     transfer_copy_cmd: "Copier tout ce que le filtre actuel affiche vers …",
     transfer_move_cmd: "Déplacer tout ce que le filtre actuel affiche vers …",
     transfer_same_folder: "C'est déjà le dossier ouvert",
@@ -192,6 +225,7 @@ pub static TEXTS: Texts = Texts {
     section_sharpness: "Netteté (dans le dossier)",
     section_exposure: "Exposition",
     section_attributes: "Critères CLIP",
+    row_aesthetics: "Esthétique (moyenne)",
     section_histogram: "Histogramme",
     section_file: "Fichier",
     row_size: "Taille",
@@ -221,9 +255,10 @@ pub static TEXTS: Texts = Texts {
         "Peu de bruit",
         "Colorée",
     ],
-    explain_laion: "La beauté de la photo aux yeux d'une IA qui a appris de nombreuses notes données par des personnes, convertie en étoiles de 0 à 5. La plupart des photos obtiennent 2 à 3, à partir de 4 c'est très bon.",
-    explain_v25: "Une IA plus récente pour la même question, meilleure avec les photos du quotidien. Même échelle d'étoiles.",
+    explain_laion: "La beauté de la photo aux yeux d'une IA qui a appris de nombreuses notes données par des personnes. Elle aime surtout les personnes, les portraits et les plats.",
+    explain_v25: "Une IA plus récente pour la même question, meilleure avec les photos du quotidien. Elle aime surtout les paysages, l'eau et les vues aériennes.",
     explain_personal: "Les étoiles que vous donneriez selon Cerno. Il apprend de vos propres étoiles et des photos que vous supprimez.",
+    explain_aesthetics: "La valeur sous la photo : la moyenne des deux IA ci-dessous, de 0 % (peu attrayante) à 100 % (très attrayante). La plupart des photos se situent entre 40 et 60 %, à partir de 80 % c'est très bon. L'échelle est fixe – une photo a la même valeur dans chaque dossier.",
     explain_frame: "La netteté des zones les plus nettes, comparée aux autres photos de ce dossier. 80 % signifie plus nette que 80 % d'entre elles.",
     explain_eyes: "La netteté au niveau des yeux, s'il y a un visage. Pour un portrait, c'est elle qui compte, pas l'arrière-plan.",
     explain_highlights: "Les zones d'un blanc pur, où il ne reste aucun détail. Au-delà de 1 %, mieux vaut vérifier.",
@@ -277,9 +312,19 @@ pub static TEXTS: Texts = Texts {
     cmd_crop: "Recadrer",
     cmd_undo: "Annuler la retouche",
     edit_not_jpeg: "Redressement, recadrage, rotation et Ctrl+Z uniquement pour les JPEG.",
-    video_play_hint: "Entrée : lire",
+    video_play_hint: "Lire (Entrée)",
     video_no_ffmpeg: "Pas d'aperçu : Cerno a besoin de ffmpeg (p. ex. winget install Gyan.FFmpeg)",
     video_play_failed: |err| format!("Impossible de lire la vidéo : {err}"),
+    video_played_instead: |ext, name| {
+        format!(
+            "Windows ouvre les .{ext} avec Cerno – la vidéo passe donc dans {name}. Changez le lecteur par défaut dans Paramètres Windows › Applications par défaut."
+        )
+    },
+    video_choose_player: |ext| {
+        format!(
+            "Windows ouvre les .{ext} avec Cerno – choisissez un lecteur. Changez le lecteur par défaut dans Paramètres Windows › Applications par défaut."
+        )
+    },
     edit_writing: "Écriture de la photo…",
     edit_cancelled: "Une autre photo est affichée – retouche annulée",
     busy_editing: "La retouche est encore ouverte – Entrée applique, Échap annule",
@@ -369,7 +414,6 @@ pub static TEXTS: Texts = Texts {
         ("F, F11", "Plein écran"),
         ("T", "Barre de filtres : trier et filtrer"),
         ("Tab", "Panneau de détails"),
-        ("I", "Détails : déplier ou replier toutes les explications"),
         ("F6", "Pellicule"),
         (
             "M",

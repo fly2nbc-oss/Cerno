@@ -3,10 +3,9 @@
 
 use std::sync::Arc;
 
-use eframe::egui::text::{CCursor, LayoutJob, TextFormat};
 use eframe::egui::{
-    Align, Align2, Color32, CursorIcon, FontId, Galley, Painter, Pos2, Rect, Sense, Stroke, Ui,
-    Vec2, pos2, vec2,
+    Align2, Color32, CursorIcon, FontId, Galley, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2,
+    pos2, vec2,
 };
 
 use crate::analysis::aesthetic;
@@ -36,9 +35,9 @@ pub struct InfoBar<'a> {
     pub auto_advance: bool,
     /// Some analysis result is known for this photo.
     pub analysed: bool,
-    /// LAION and V2.5 scores, 1..10.
-    pub aesthetics: [Option<f32>; 2],
-    /// Personal taste model, 0..=5.
+    /// The aesthetics score (`aesthetic::combined`), 1..10.
+    pub aesthetics: Option<f32>,
+    /// Personal taste model, 0..=5: light stars while the photo has no rating of its own.
     pub personal: Option<f32>,
     /// (percentile within the folder, measured at the eyes).
     pub sharpness: Option<(f32, bool)>,
@@ -84,7 +83,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     } else {
         vec![Meter {
             label: String::new(),
-            value: vec![Piece::Value(t.analyzing.to_owned())],
+            value: t.analyzing.to_owned(),
             fraction: None,
             color: tokens::MUTED,
             tooltip: None,
@@ -212,6 +211,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
         ui.interact(dot, ui.id().with("label-dot"), Sense::hover())
             .on_hover_text(i18n::label_name(label));
     }
+    let hint = hint_stars(bar.rating, bar.personal);
     for n in 1..=5u8 {
         let x = stars_left + f32::from(n - 1) * (STAR_SIZE + STAR_GAP);
         let star = Rect::from_min_size(pos2(x, row1 - STAR_SIZE / 2.0), Vec2::splat(STAR_SIZE));
@@ -223,12 +223,19 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
             )
             .on_hover_cursor(CursorIcon::PointingHand);
         let filled = bar.rating.stars().is_some_and(|r| n <= r);
-        let color = if filled || response.hovered() {
+        let outline = if filled || response.hovered() {
             tokens::ACCENT
         } else {
             tokens::MUTED
         };
-        stars::paint_star(painter, star.center(), STAR_SIZE / 2.0, filled, color);
+        if filled {
+            stars::paint_star(painter, star.center(), STAR_SIZE / 2.0, true, outline);
+        } else if n <= hint {
+            // For you: a light fill, recognisably not the user's own stars.
+            stars::paint_hint_star(painter, star.center(), STAR_SIZE / 2.0, HINT_FILL, outline);
+        } else {
+            stars::paint_star(painter, star.center(), STAR_SIZE / 2.0, false, outline);
+        }
         if response.clicked() {
             // Clicking the current rating again clears it.
             out.rating = Some(if bar.rating == Rating::Stars(n) {
@@ -237,7 +244,13 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
                 Rating::Stars(n)
             });
         }
-        response.on_hover_text((t.star_tooltip)(n));
+        let tooltip = match bar.personal {
+            Some(personal) if hint > 0 => {
+                format!("{}\n{}", (t.star_tooltip)(n), (t.personal_hint)(personal))
+            }
+            _ => (t.star_tooltip)(n),
+        };
+        response.on_hover_text(tooltip);
     }
     if bar.rating == Rating::Rejected {
         let x = stars_left + stars_width + 14.0;
@@ -287,17 +300,23 @@ fn fit_parts(
     }
 }
 
-/// `L 6.1 / V 6.5 / ☆ 2.4` (LAION / V2.5 / For you, all on the star scale, "–" while not
-/// known) and the sharpness meter.
+/// How many light stars For you shows: its prediction rounded to whole stars, only while the
+/// photo has no rating of its own (a rejection counts as one). Below half a star: none.
+fn hint_stars(rating: Rating, personal: Option<f32>) -> u8 {
+    match (rating, personal) {
+        (Rating::Unrated, Some(stars)) => stars.round().clamp(0.0, 5.0) as u8,
+        _ => 0,
+    }
+}
+
+/// The light fill of a For-you star: the accent, faint.
+const HINT_FILL: Color32 = Color32::from_rgba_premultiplied(0x2E, 0x47, 0x62, 0x80);
+
+/// Aesthetics and sharpness, both in percent with a bar – nothing else under the photo.
 fn meters(bar: &InfoBar<'_>) -> Vec<Meter> {
-    let [laion, v25] = bar.aesthetics;
     let mut meters = Vec::new();
-    if laion.is_some() || v25.is_some() || bar.personal.is_some() {
-        meters.push(scores_meter(
-            laion.map(aesthetic::as_stars),
-            v25.map(aesthetic::as_stars),
-            bar.personal,
-        ));
+    if let Some(score) = bar.aesthetics {
+        meters.push(aesthetics_meter(aesthetic::as_percent(score)));
     }
     if let Some((p, eyes)) = bar.sharpness {
         meters.push(sharpness_meter(p, eyes, bar.blurry));
@@ -305,27 +324,15 @@ fn meters(bar: &InfoBar<'_>) -> Vec<Meter> {
     meters
 }
 
-/// The three scores without a group label: the small letters say which model, the outline
-/// star is For you – filled stars are only ever the user's own rating.
-fn scores_meter(laion: Option<f32>, v25: Option<f32>, personal: Option<f32>) -> Meter {
-    let score =
-        |v: Option<f32>| Piece::Value(v.map_or_else(|| "–".to_owned(), |v| format!("{v:.1}")));
-    let slash = || Piece::Separator(" / ".to_owned());
+/// The one aesthetics score on its fixed scale (`aesthetic::as_percent`).
+fn aesthetics_meter(share: f32) -> Meter {
+    let t = i18n::t();
     Meter {
-        label: String::new(),
-        value: vec![
-            Piece::Prefix("L ".to_owned()),
-            score(laion),
-            slash(),
-            Piece::Prefix("V ".to_owned()),
-            score(v25),
-            slash(),
-            Piece::Star,
-            score(personal),
-        ],
-        fraction: None,
+        label: t.section_aesthetics.to_owned(),
+        value: format!("{:.0} %", share * 100.0),
+        fraction: Some(share),
         color: tokens::ACCENT,
-        tooltip: Some(i18n::t().meter_aesthetics_tooltip),
+        tooltip: Some(t.meter_aesthetics_tooltip),
         small: false,
     }
 }
@@ -343,7 +350,7 @@ fn sharpness_meter(percentile: f32, eyes: bool, blurry: bool) -> Meter {
         } else {
             name.to_owned()
         },
-        value: vec![Piece::Value(format!("{:.0} %", percentile * 100.0))],
+        value: format!("{:.0} %", percentile * 100.0),
         fraction: Some(percentile),
         color: if blurry {
             tokens::STATUS_WARN
@@ -360,10 +367,7 @@ fn widest_centre(painter: &Painter) -> f32 {
     [true, false]
         .into_iter()
         .map(|eyes| {
-            let meters = [
-                scores_meter(Some(8.8), Some(8.8), Some(8.8)),
-                sharpness_meter(1.0, eyes, true),
-            ];
+            let meters = [aesthetics_meter(1.0), sharpness_meter(1.0, eyes, true)];
             layout_meters(painter, &meters).width
         })
         .fold(0.0, f32::max)
@@ -418,27 +422,10 @@ fn icon_button(
     response.on_hover_text(tooltip).clicked()
 }
 
-/// Part of a meter's value text.
-#[derive(Clone)]
-enum Piece {
-    Value(String),
-    /// Small muted letter in front of a value.
-    Prefix(String),
-    /// Muted, value-sized (" / ").
-    Separator(String),
-    /// Room for the outline star painted in front of For you.
-    Star,
-}
-
-/// Non-breaking spaces at value size the outline star is painted over: a gap, the star, a
-/// gap.
-const STAR_PLACEHOLDER: &str = "\u{a0}\u{a0}\u{a0}\u{a0}\u{a0}";
-const STAR_PLACEHOLDER_CHARS: usize = 5;
-
 #[derive(Clone)]
 struct Meter {
     label: String,
-    value: Vec<Piece>,
+    value: String,
     /// Bar fill, 0.0..=1.0; `None` shows the value only.
     fraction: Option<f32>,
     color: Color32,
@@ -451,8 +438,6 @@ struct LaidMeter {
     label: Arc<Galley>,
     value: Arc<Galley>,
     meter: Meter,
-    /// Character index of each star placeholder in `value`.
-    stars: Vec<usize>,
 }
 
 struct LaidMeters {
@@ -483,32 +468,12 @@ fn layout_meters(painter: &Painter, meters: &[Meter]) -> LaidMeters {
                 tokens::TEXT
             };
             let size = if m.small { text::SMALL } else { text::VALUE };
-            let mut job = LayoutJob::default();
-            let mut stars = Vec::new();
-            let mut chars = 0;
-            for piece in &m.value {
-                let (text, size, color) = match piece {
-                    Piece::Value(text) => (text.as_str(), size, value_color),
-                    Piece::Prefix(text) => (text.as_str(), text::LABEL, tokens::MUTED),
-                    Piece::Separator(text) => (text.as_str(), size, tokens::MUTED),
-                    Piece::Star => {
-                        stars.push(chars);
-                        (STAR_PLACEHOLDER, size, tokens::MUTED)
-                    }
-                };
-                let mut format = TextFormat::simple(FontId::proportional(size), color);
-                if matches!(piece, Piece::Prefix(_) | Piece::Star) {
-                    format.valign = Align::Center;
-                }
-                chars += text.chars().count();
-                job.append(text, 0.0, format);
-            }
-            let value = painter.layout_job(job);
+            let value =
+                painter.layout_no_wrap(m.value.clone(), FontId::proportional(size), value_color);
             LaidMeter {
                 label,
                 value,
                 meter: m.clone(),
-                stars,
             }
         })
         .collect();
@@ -531,7 +496,7 @@ fn meter_width(laid: &LaidMeter) -> f32 {
     label + laid.value.size().x + bar
 }
 
-/// `LABEL  6.1  ▬▬▬▬▭▭` for each meter, centred on `centre`. Returns each meter's area and
+/// `LABEL  62 %  ▬▬▬▬▭▭` for each meter, centred on `centre`. Returns each meter's area and
 /// tooltip.
 fn paint_meters(
     painter: &Painter,
@@ -547,7 +512,6 @@ fn paint_meters(
             label,
             value,
             meter,
-            stars,
         } = item;
         let start = x;
         if label.size().x > 0.0 {
@@ -556,15 +520,6 @@ fn paint_meters(
             x += lw + METER_GAP;
         }
         let origin = pos2(x, y - value.size().y / 2.0);
-        for index in stars {
-            let from = value.pos_from_cursor(CCursor::new(index)).min.x;
-            let to = value
-                .pos_from_cursor(CCursor::new(index + STAR_PLACEHOLDER_CHARS))
-                .min
-                .x;
-            let centre = pos2(origin.x + (from + to) / 2.0, y);
-            stars::paint_star(painter, centre, 5.5, false, tokens::MUTED);
-        }
         let vw = value.size().x;
         painter.galley(origin, value, tokens::TEXT);
         x += vw;
@@ -592,7 +547,7 @@ mod tests {
     use super::*;
     use eframe::egui::{Context, RawInput, Shape};
 
-    fn texts_of(bar: &InfoBar<'_>, width: f32) -> Vec<(String, Rect)> {
+    fn shapes_of(bar: &InfoBar<'_>, width: f32) -> Vec<Shape> {
         let ctx = Context::default();
         let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(width, INFO_HEIGHT));
         let mut output = ctx.run_ui(
@@ -607,8 +562,15 @@ mod tests {
         output.textures_delta.clear();
         output
             .shapes
+            .into_iter()
+            .map(|clipped| clipped.shape)
+            .collect()
+    }
+
+    fn texts_of(bar: &InfoBar<'_>, width: f32) -> Vec<(String, Rect)> {
+        shapes_of(bar, width)
             .iter()
-            .filter_map(|clipped| match &clipped.shape {
+            .filter_map(|shape| match shape {
                 Shape::Text(text) => {
                     Some((text.galley.text().to_owned(), text.visual_bounding_rect()))
                 }
@@ -628,7 +590,7 @@ mod tests {
             duplicate_of: Some("IMG_0000 - Kopie.JPG".to_owned()),
             auto_advance: true,
             analysed: true,
-            aesthetics: [Some(6.0), Some(5.5)],
+            aesthetics: Some(5.6),
             personal: Some(3.1),
             sharpness: Some((0.1, true)),
             blurry,
@@ -650,9 +612,9 @@ mod tests {
             .expect("facts line");
         let scores_left = texts
             .iter()
-            .filter(|(text, _)| text.contains("L "))
+            .find(|(text, _)| text == "AESTHETICS")
             .map(|(_, rect)| rect.left())
-            .fold(f32::MAX, f32::min);
+            .expect("aesthetics meter");
         assert!(
             facts.1.right() < scores_left,
             "{:?} runs into the scores at {scores_left}",
@@ -674,5 +636,49 @@ mod tests {
         let full = "Duplicate of";
         assert!(!facts(true).contains(full), "760 px cannot show every part");
         assert_eq!(facts(true), facts(false));
+    }
+
+    /// Under the photo only aesthetics and sharpness, both in percent.
+    #[test]
+    fn centre_shows_aesthetics_and_sharpness_only() {
+        let texts: Vec<String> = texts_of(&bar(false), 1400.0)
+            .into_iter()
+            .map(|(text, _)| text)
+            .collect();
+        assert!(texts.iter().any(|t| t == "AESTHETICS"), "{texts:?}");
+        assert!(texts.iter().any(|t| t == "60 %"), "{texts:?}");
+        assert!(texts.iter().any(|t| t == "EYES"), "{texts:?}");
+        assert!(texts.iter().any(|t| t == "10 %"), "{texts:?}");
+        assert!(
+            !texts.iter().any(|t| t.contains("3.1")),
+            "For you is no number here"
+        );
+    }
+
+    #[test]
+    fn hint_stars_round_and_only_show_without_a_rating() {
+        assert_eq!(hint_stars(Rating::Unrated, Some(3.1)), 3);
+        assert_eq!(hint_stars(Rating::Unrated, Some(4.6)), 5);
+        assert_eq!(hint_stars(Rating::Unrated, Some(0.4)), 0);
+        assert_eq!(hint_stars(Rating::Unrated, None), 0);
+        assert_eq!(hint_stars(Rating::Stars(3), Some(3.1)), 0);
+        assert_eq!(hint_stars(Rating::Rejected, Some(4.0)), 0);
+    }
+
+    /// For you fills three stars lightly while there is no rating, none once there is one.
+    #[test]
+    fn for_you_paints_light_stars() {
+        let light = |rating| {
+            let mut bar = bar(false);
+            bar.rating = rating;
+            shapes_of(&bar, 1400.0)
+                .iter()
+                .filter(|shape| matches!(shape, Shape::Path(path) if path.fill == HINT_FILL))
+                .count()
+        };
+        // A pentagon and five tips per star.
+        assert_eq!(light(Rating::Unrated), 3 * 6);
+        assert_eq!(light(Rating::Stars(3)), 0);
+        assert_eq!(light(Rating::Rejected), 0);
     }
 }

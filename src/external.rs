@@ -81,6 +81,39 @@ pub fn choose(path: &Path) -> Result<()> {
     platform::choose(path)
 }
 
+/// Whether the system would open `path` with Cerno itself: once "Open with" chose Cerno for
+/// the type, Windows can treat it as the default. Handing a video to the system then only
+/// starts Cerno again.
+pub fn opens_with_cerno(path: &Path) -> bool {
+    let Some(extension) = path.extension().and_then(|e| e.to_str()) else {
+        return false;
+    };
+    match (
+        platform::default_program(&extension.to_ascii_lowercase()),
+        std::env::current_exe(),
+    ) {
+        (Some(program), Ok(own)) => is_cerno(&program, &own),
+        _ => false,
+    }
+}
+
+/// Whether `program` (a path, as `Editor::id` holds one) is a Cerno: any file named like the
+/// running one, so an installed copy counts next to a build run from the source tree.
+pub fn is_cerno(program: &Path, own: &Path) -> bool {
+    match (program.file_name(), own.file_name()) {
+        (Some(name), Some(own)) => name.eq_ignore_ascii_case(own),
+        _ => false,
+    }
+}
+
+/// The first program the system offers for `path` that is not Cerno.
+pub fn other_than_cerno(editors: &[Editor]) -> Option<&Editor> {
+    let own = std::env::current_exe().unwrap_or_default();
+    editors
+        .iter()
+        .find(|editor| !is_cerno(Path::new(&editor.id), &own))
+}
+
 #[cfg(windows)]
 mod platform {
     use std::path::Path;
@@ -91,9 +124,10 @@ mod platform {
         CoUninitialize, IDataObject,
     };
     use windows::Win32::UI::Shell::{
-        ASSOC_FILTER_RECOMMENDED, BHID_DataObject, IAssocHandler, IShellItem, OAIF_EXEC,
-        OAIF_HIDE_REGISTRATION, OPEN_AS_INFO_FLAGS, OPENASINFO, SHAssocEnumHandlers,
-        SHCreateItemFromParsingName, SHOpenWithDialog,
+        ASSOC_FILTER_RECOMMENDED, ASSOCF_NOTRUNCATE, ASSOCSTR_EXECUTABLE, AssocQueryStringW,
+        BHID_DataObject, IAssocHandler, IShellItem, OAIF_EXEC, OAIF_HIDE_REGISTRATION,
+        OPEN_AS_INFO_FLAGS, OPENASINFO, SHAssocEnumHandlers, SHCreateItemFromParsingName,
+        SHOpenWithDialog,
     };
     use windows::core::{HSTRING, PCWSTR, PWSTR};
 
@@ -195,6 +229,33 @@ mod platform {
             }
             Ok(false)
         })
+    }
+
+    /// The program file Windows opens the type with by default; `None` for a Store app (it
+    /// has no program file) or when nothing is registered.
+    pub fn default_program(extension: &str) -> Option<std::path::PathBuf> {
+        let assoc = HSTRING::from(format!(".{extension}"));
+        let verb = HSTRING::from("open");
+        let mut buffer = [0u16; 1024];
+        let mut len = buffer.len() as u32;
+        // SAFETY: `buffer` has room for `len` characters; on success the path in it ends
+        // with a NUL.
+        let result = unsafe {
+            AssocQueryStringW(
+                ASSOCF_NOTRUNCATE,
+                ASSOCSTR_EXECUTABLE,
+                &assoc,
+                &verb,
+                Some(PWSTR(buffer.as_mut_ptr())),
+                &mut len,
+            )
+        };
+        if result.is_err() {
+            return None;
+        }
+        let end = buffer.iter().position(|&c| c == 0).unwrap_or(buffer.len());
+        let text = String::from_utf16_lossy(&buffer[..end]);
+        (!text.is_empty()).then(|| std::path::PathBuf::from(text))
     }
 
     /// Windows' "Open with" dialog, on a thread of its own so the window keeps drawing. The
@@ -300,6 +361,11 @@ mod platform {
             .spawn()
             .with_context(|| format!("cannot start {program}"))?;
         Ok(true)
+    }
+
+    /// `xdg-open` picks the default itself, and `cerno.desktop` lists no video types.
+    pub fn default_program(_extension: &str) -> Option<PathBuf> {
+        None
     }
 
     /// No chooser here: the default program.
@@ -427,6 +493,44 @@ fn exec_args(exec: &str, path: &Path) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Any `cerno.exe` is Cerno – the installed one next to a build from the source tree –
+    /// and a Store app's id is never a program file.
+    #[test]
+    fn cerno_is_recognised_by_its_file_name() {
+        // Forward slashes: a separator on Windows and Linux alike.
+        let own = Path::new("C:/src/Cerno/target/release/cerno.exe");
+        assert!(is_cerno(
+            Path::new("C:/Users/x/AppData/Local/Cerno/cerno.exe"),
+            own
+        ));
+        assert!(is_cerno(Path::new("D:/Tools/CERNO.EXE"), own));
+        assert!(!is_cerno(Path::new("C:/Program Files/VLC/vlc.exe"), own));
+        assert!(!is_cerno(
+            Path::new("Microsoft.ZuneVideo_8wekyb3d8bbwe!Microsoft.ZuneVideo"),
+            own
+        ));
+        assert!(!is_cerno(Path::new(""), own));
+    }
+
+    /// A video that would open in Cerno plays in the next program the system offers.
+    #[test]
+    fn the_player_is_the_first_program_that_is_not_cerno() {
+        let own = std::env::current_exe().expect("the test binary has a path");
+        let editor = |name: &str, id: &str| Editor {
+            name: name.to_owned(),
+            id: id.to_owned(),
+        };
+        // The test binary stands in for Cerno: same file name.
+        let cerno = editor("Cerno", &own.to_string_lossy());
+        let films = editor(
+            "Films & TV",
+            "Microsoft.ZuneVideo_8wekyb3d8bbwe!Microsoft.ZuneVideo",
+        );
+        let offered = [cerno.clone(), films.clone()];
+        assert_eq!(other_than_cerno(&offered), Some(&films));
+        assert_eq!(other_than_cerno(&[cerno]), None);
+    }
 
     #[test]
     fn the_choice_is_stored_as_name_and_id() {

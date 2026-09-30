@@ -20,6 +20,10 @@ pub static TEXTS: Texts = Texts {
     filter_duplicate: "Duplicados",
     filter_duplicate_tooltip: "Cada foto salvo la primera ruta idéntica",
     filter_clear: "Mostrar todas",
+    media_all: "Fotos y vídeos",
+    media_photos: "Solo fotos",
+    media_videos: "Solo vídeos",
+    media_no_videos: "Esta carpeta no tiene vídeos",
     filter_none_active: "Ningún filtro activo",
     filter_similar: "≈ Parecidas",
     filter_similar_to: |name| format!("≈ como {name}"),
@@ -43,8 +47,7 @@ pub static TEXTS: Texts = Texts {
 
     sort_name: "Nombre",
     sort_rating: "Estrellas",
-    sort_laion: "Estética (LAION)",
-    sort_v25: "Estética (V2.5)",
+    sort_aesthetics: "Estética",
     sort_personal: "Para ti",
     sort_sharpness: "Nitidez",
     sort_taken: "Hora de captura",
@@ -54,12 +57,20 @@ pub static TEXTS: Texts = Texts {
     actions: "Acción",
     actions_tooltip: "Copiar, mover o eliminar las fotos en pantalla",
     selection_delete: "Eliminar",
+    bulk_copy: |n| format!("Copiar a … ({n} {})", if n == 1 { "foto" } else { "fotos" }),
+    bulk_move: |n| format!("Mover a … ({n} {})", if n == 1 { "foto" } else { "fotos" }),
+    bulk_delete: |n| format!("Eliminar ({n} {})", if n == 1 { "foto" } else { "fotos" }),
+    bulk_delete_hint: "Todas las fotos que muestra el filtro. A los 5 segundos pasan a la carpeta oculta .originals junto a ellas – nada se borra para siempre, Esc las recupera.",
+    delete_rejected_hint: "Todas las fotos rechazadas de la carpeta, también las que el filtro oculta ahora. A los 5 segundos pasan a la carpeta oculta .originals – nada se borra para siempre.",
+    photos_shown: |shown, total| format!("{shown} de {total} fotos"),
+    photos_count: |n| format!("{n} {}", if n == 1 { "foto" } else { "fotos" }),
+    photos_badge_tooltip: "Cuántas fotos muestra ahora el filtro – «Acción» actúa exactamente sobre estas.",
     label_red: "Rojo",
     label_yellow: "Amarillo",
     label_green: "Verde",
     label_blue: "Azul",
     label_purple: "Morado",
-    meter_aesthetics_tooltip: "L y V: estética (LAION / V2.5). Estrella hueca: Para ti – las estrellas que Cerno cree que darías. Todas de 0 a 5\n– = aún no disponible",
+    meter_aesthetics_tooltip: "Estética: media de LAION y V2.5 en una escala fija – una foto tiene el mismo valor en cualquier carpeta. La nitidez, en cambio, compara con las demás fotos de la carpeta.\nValores por separado: panel de detalles (Tab)",
     meter_sharpness: "Nitidez",
     meter_eyes: "Ojos",
     probably_blurry: "probablemente borrosa",
@@ -71,6 +82,11 @@ pub static TEXTS: Texts = Texts {
     rejected: "Rechazada",
     filmstrip_video: "Vídeo",
     star_tooltip: |n| format!("{n} ★ – tecla {n}"),
+    personal_hint: |stars| {
+        format!(
+            "Para ti: {stars:.1} ★ – las estrellas que Cerno cree que darías. Aún no es tu valoración"
+        )
+    },
     zoom: |percent| format!("Zoom {percent:.0} %"),
     digital_zoom: |ratio| format!("Zoom digital {ratio:.1}×"),
     button_toolbar: "Barra de filtros",
@@ -80,7 +96,6 @@ pub static TEXTS: Texts = Texts {
     button_menu: "Menú",
     button_language: |name| format!("Idioma: {name}"),
 
-    cmd_explanations: "Todas las explicaciones",
     cmd_all_panels: "Barra de filtros, detalles y tira de miniaturas",
     cmd_fullscreen: "Pantalla completa",
     cmd_compare: "Comparar",
@@ -99,7 +114,12 @@ pub static TEXTS: Texts = Texts {
     cmd_grid: "Cuadrícula",
     cmd_reject: "Rechazar",
     cmd_description: "Comentario y palabras clave",
-    cmd_delete_rejected: |n| format!("Eliminar las fotos rechazadas ({n})"),
+    cmd_delete_rejected: |n| {
+        format!(
+            "Eliminar las rechazadas ({n} {})",
+            if n == 1 { "foto" } else { "fotos" }
+        )
+    },
     cmd_auto_advance: "Avanzar automáticamente",
     cmd_subfolders: "Incluir subcarpetas",
     menu_sort: "Ordenar",
@@ -136,9 +156,9 @@ pub static TEXTS: Texts = Texts {
     compare_needs_two: "Para comparar hacen falta al menos dos fotos",
     deleting: |n| {
         if n == 1 {
-            "Eliminando 1 foto   ·   Esc para deshacer".to_owned()
+            "1 foto pasa a la carpeta oculta .originals   ·   Esc para deshacer".to_owned()
         } else {
-            format!("Eliminando {n} fotos   ·   Esc para deshacer")
+            format!("{n} fotos pasan a la carpeta oculta .originals   ·   Esc para deshacer")
         }
     },
     delete_failed: |n, name, err| format!("No se pudieron eliminar {n} foto(s) – {name}: {err}"),
@@ -156,8 +176,6 @@ pub static TEXTS: Texts = Texts {
     no_photos_in: |dir| format!("No hay archivos JPEG ni HEIC en {dir}"),
     rating_not_saved: |err| format!("Estrellas no guardadas – {err}"),
     open_folder: "Abrir carpeta",
-    transfer_copy: "Copiar",
-    transfer_move: "Mover",
     transfer_copy_cmd: "Copia todo lo que muestra el filtro actual a …",
     transfer_move_cmd: "Mueve todo lo que muestra el filtro actual a …",
     transfer_same_folder: "Esa ya es la carpeta abierta",
@@ -187,6 +205,7 @@ pub static TEXTS: Texts = Texts {
     section_sharpness: "Nitidez (en la carpeta)",
     section_exposure: "Exposición",
     section_attributes: "Atributos CLIP",
+    row_aesthetics: "Estética (media)",
     section_histogram: "Histograma",
     section_file: "Archivo",
     row_size: "Tamaño",
@@ -216,9 +235,10 @@ pub static TEXTS: Texts = Texts {
         "Poco ruido",
         "Colorida",
     ],
-    explain_laion: "Lo bonita que le parece la foto a una IA entrenada con muchas valoraciones de personas, convertido a estrellas de 0 a 5. La mayoría de las fotos obtiene 2–3; a partir de 4 es muy bueno.",
-    explain_v25: "Una IA más reciente para la misma pregunta, mejor con fotos del día a día. Misma escala de estrellas.",
+    explain_laion: "Lo bonita que le parece la foto a una IA entrenada con muchas valoraciones de personas. Le gustan sobre todo las personas, los retratos y la comida.",
+    explain_v25: "Una IA más reciente para la misma pregunta, mejor con fotos del día a día. Le gustan sobre todo los paisajes, el agua y las tomas aéreas.",
     explain_personal: "Las estrellas que Cerno cree que le darías. Aprende de tus propias estrellas y de las fotos que eliminas.",
+    explain_aesthetics: "El valor bajo la foto: la media de las dos IA de abajo, de 0 % (poco atractiva) a 100 % (muy atractiva). La mayoría de las fotos queda entre 40 y 60 %; a partir de 80 % es muy bueno. La escala es fija – una foto tiene el mismo valor en cualquier carpeta.",
     explain_frame: "La nitidez de las zonas más nítidas, comparada con las demás fotos de esta carpeta. 80 % significa más nítida que el 80 % de ellas.",
     explain_eyes: "Nitidez justo en los ojos, si hay una cara. En los retratos cuenta esto, no el fondo.",
     explain_highlights: "Zonas de blanco puro, sin ningún detalle. Más del 1 % merece un vistazo.",
@@ -272,9 +292,19 @@ pub static TEXTS: Texts = Texts {
     cmd_crop: "Recorte",
     cmd_undo: "Deshacer",
     edit_not_jpeg: "Enderezar, recortar, girar y Ctrl+Z solo funcionan con JPEG.",
-    video_play_hint: "Intro: reproducir",
+    video_play_hint: "Reproducir (Intro)",
     video_no_ffmpeg: "Sin vista previa: Cerno necesita ffmpeg (p. ej. winget install Gyan.FFmpeg)",
     video_play_failed: |err| format!("No se puede reproducir el vídeo: {err}"),
+    video_played_instead: |ext, name| {
+        format!(
+            "Windows abre los .{ext} con Cerno – por eso el vídeo se reproduce en {name}. Cambia el reproductor predeterminado en Configuración de Windows › Aplicaciones predeterminadas."
+        )
+    },
+    video_choose_player: |ext| {
+        format!(
+            "Windows abre los .{ext} con Cerno – elige un reproductor. Cambia el reproductor predeterminado en Configuración de Windows › Aplicaciones predeterminadas."
+        )
+    },
     edit_writing: "Escribiendo la foto…",
     edit_cancelled: "Se muestra otra foto: edición cancelada",
     busy_editing: "La edición sigue abierta: Intro aplica, Esc cancela",
@@ -355,7 +385,6 @@ pub static TEXTS: Texts = Texts {
         ("F, F11", "Pantalla completa"),
         ("T", "Barra de filtros: ordenar y filtrar"),
         ("Tab", "Panel de detalles"),
-        ("I", "Detalles: desplegar o plegar todas las explicaciones"),
         ("F6", "Tira de miniaturas"),
         ("M", "Mostrar solo fotos parecidas – otra vez: todas"),
         (

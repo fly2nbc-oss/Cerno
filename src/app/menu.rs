@@ -9,10 +9,10 @@ use crate::i18n::{self, Lang};
 use crate::loader::Lookup;
 use crate::metadata::{Label, Rating};
 use crate::transfer::Mode as TransferMode;
-use crate::ui::details::{DetailsMode, all_expanded};
+use crate::ui::details::DetailsMode;
 use crate::ui::icons::Panel;
 use crate::ui::{confirm, filter_bar, help, models, palette, viewer};
-use crate::view::{FilterKind, SortKey, ViewOptions};
+use crate::view::{FilterKind, Media, SortKey, ViewOptions};
 
 use super::gate::Change;
 use super::{CLIP_OFFER_SHOWN, CernoApp};
@@ -32,11 +32,11 @@ enum Action {
     Sort(SortKey),
     Filter(FilterKind),
     FilterClear,
+    Media(Media),
     Refresh,
     EnableAesthetics,
     TopBar,
     Details,
-    Explanations,
     Filmstrip,
     AllPanels,
     Compare,
@@ -266,12 +266,6 @@ impl CernoApp {
                         t.cmd_all_panels,
                         Some(i18n::with_shift("Tab")),
                     )),
-                    row(
-                        Row::new(Action::Explanations, t.cmd_explanations, key("I")).toggle(
-                            self.details != DetailsMode::Off
-                                && all_expanded(&self.details_expanded),
-                        ),
-                    ),
                     row(Row::new(Action::Zoom, t.cmd_zoom, key("Z")).toggle(self.zoom.is_zoomed())),
                     Entry::Group(Group::new(t.menu_overlay, key("O"), overlays)),
                     row(Row::new(Action::Grid, t.cmd_grid, key("F7")).toggle(self.grid)),
@@ -493,10 +487,19 @@ impl CernoApp {
             self.menu_block(Change::Transfer, None)
         };
         let delete = self.menu_block(Change::Delete, None);
+        // Harmless first: copy, then move, then delete. Each row says how many photos it
+        // takes – the ones the filter shows; "rejected" counts the whole folder, and says so.
+        let shown = self.view.len();
         let mut rows = vec![
-            Row::new(Action::Copy, t.transfer_copy, None).disabled(transfer),
-            Row::new(Action::Move, t.transfer_move, None).disabled(transfer),
-            Row::new(Action::DeleteSelection, t.selection_delete, None).disabled(delete),
+            Row::new(Action::Copy, (t.bulk_copy)(shown), None)
+                .hint(t.transfer_copy_cmd)
+                .disabled(transfer),
+            Row::new(Action::Move, (t.bulk_move)(shown), None)
+                .hint(t.transfer_move_cmd)
+                .disabled(transfer),
+            Row::new(Action::DeleteSelection, (t.bulk_delete)(shown), None)
+                .hint(t.bulk_delete_hint)
+                .disabled(delete),
         ];
         let rejected = self.rejected().len();
         if rejected > 0 {
@@ -506,6 +509,7 @@ impl CernoApp {
                     (t.cmd_delete_rejected)(rejected),
                     None,
                 )
+                .hint(t.delete_rejected_hint)
                 .disabled(delete),
             );
         }
@@ -557,16 +561,13 @@ impl CernoApp {
             Action::Open => self.pick_folder(ctx),
             Action::Sort(sort) => self.change_options(ctx, |o| o.sort = sort),
             Action::Filter(kind) => self.change_options(ctx, |o| o.filter.toggle(kind)),
-            Action::FilterClear => self.change_options(ctx, |o| {
-                o.filter.clear();
-                o.similar = false;
-            }),
+            Action::FilterClear => self.change_options(ctx, ViewOptions::clear_filters),
+            Action::Media(media) => self.change_options(ctx, |o| o.media = media),
             Action::Similar => self.toggle_similar(ctx),
             Action::Refresh => self.rebuild_view(ctx, None),
             Action::EnableAesthetics => self.ask(ConfirmAction::DownloadModel, false),
             Action::TopBar => self.toggle_panel(Panel::Top),
             Action::Details => self.toggle_panel(Panel::Right),
-            Action::Explanations => self.toggle_explanations(),
             Action::Filmstrip => self.toggle_panel(Panel::Bottom),
             Action::AllPanels => self.toggle_all_panels(),
             Action::Compare => self.toggle_compare(ctx),
@@ -630,12 +631,13 @@ impl CernoApp {
 }
 
 /// Visible photos ▸ Filter ▸: "Show all" first – always, greyed out while nothing is filtered,
-/// so ticking the first filter doesn't push every row down under the cursor – then a switch per
-/// filter, and "similar photos" last (named after its photo while on).
+/// so ticking the first filter doesn't push every row down under the cursor – then photos,
+/// videos or both, a switch per filter, and "similar photos" last (named after its photo while
+/// on).
 fn filter_rows(options: &ViewOptions, similar_to: Option<&str>) -> Vec<palette::Row<Action>> {
     use palette::Row;
     let t = i18n::t();
-    let nothing = options.filter.is_all() && !options.similar;
+    let nothing = !options.is_filtered();
     let clear = Row::new(Action::FilterClear, t.filter_clear, None)
         .disabled(nothing.then_some(t.filter_none_active));
     let similar_label = match similar_to.filter(|_| options.similar) {
@@ -644,7 +646,11 @@ fn filter_rows(options: &ViewOptions, similar_to: Option<&str>) -> Vec<palette::
     };
     let similar =
         Row::new(Action::Similar, similar_label, Some("M".to_owned())).toggle(options.similar);
+    let media = Media::ALL.into_iter().map(|media| {
+        Row::new(Action::Media(media), media.label(), None).choice(options.media == media)
+    });
     std::iter::once(clear)
+        .chain(media)
         .chain(FilterKind::ALL.into_iter().map(|kind| {
             let row = Row::new(Action::Filter(kind), kind.label(), None)
                 .toggle(options.filter.contains(kind));

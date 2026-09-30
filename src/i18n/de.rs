@@ -20,6 +20,10 @@ pub static TEXTS: Texts = Texts {
     filter_duplicate: "Dubletten",
     filter_duplicate_tooltip: "Jedes Foto außer dem ersten gleichen Pfad",
     filter_clear: "Alle anzeigen",
+    media_all: "Fotos und Videos",
+    media_photos: "Nur Fotos",
+    media_videos: "Nur Videos",
+    media_no_videos: "Dieser Ordner enthält keine Videos",
     filter_none_active: "Kein Filter aktiv",
     filter_similar: "≈ Ähnliche",
     filter_similar_to: |name| format!("≈ wie {name}"),
@@ -43,8 +47,7 @@ pub static TEXTS: Texts = Texts {
 
     sort_name: "Name",
     sort_rating: "Sterne",
-    sort_laion: "Ästhetik (LAION)",
-    sort_v25: "Ästhetik (V2.5)",
+    sort_aesthetics: "Ästhetik",
     sort_personal: "Für dich",
     sort_sharpness: "Schärfe",
     sort_taken: "Aufnahmezeit",
@@ -54,12 +57,30 @@ pub static TEXTS: Texts = Texts {
     actions: "Aktion",
     actions_tooltip: "Kopieren, Verschieben oder Löschen der angezeigten Fotos",
     selection_delete: "Löschen",
+    bulk_copy: |n| {
+        format!(
+            "Kopieren nach … ({n} {})",
+            if n == 1 { "Foto" } else { "Fotos" }
+        )
+    },
+    bulk_move: |n| {
+        format!(
+            "Verschieben nach … ({n} {})",
+            if n == 1 { "Foto" } else { "Fotos" }
+        )
+    },
+    bulk_delete: |n| format!("Löschen ({n} {})", if n == 1 { "Foto" } else { "Fotos" }),
+    bulk_delete_hint: "Alle Fotos, die der Filter gerade zeigt. Sie kommen nach 5 Sekunden in den versteckten Ordner .originals neben den Fotos – nichts wird endgültig gelöscht, Esc holt sie zurück.",
+    delete_rejected_hint: "Alle abgelehnten Fotos des Ordners, auch die, die der Filter gerade ausblendet. Sie kommen nach 5 Sekunden in den versteckten Ordner .originals – nichts wird endgültig gelöscht.",
+    photos_shown: |shown, total| format!("{shown} von {total} Fotos"),
+    photos_count: |n| format!("{n} {}", if n == 1 { "Foto" } else { "Fotos" }),
+    photos_badge_tooltip: "So viele Fotos zeigt der Filter gerade – auf genau diese wirkt „Aktion“.",
     label_red: "Rot",
     label_yellow: "Gelb",
     label_green: "Grün",
     label_blue: "Blau",
     label_purple: "Lila",
-    meter_aesthetics_tooltip: "L und V: Ästhetik (LAION / V2.5). Umriss-Stern: Für dich – die Sterne, die du laut Cerno geben würdest. Alles auf der Skala 0–5\n– = noch nicht verfügbar",
+    meter_aesthetics_tooltip: "Ästhetik: Mittel aus LAION und V2.5 auf einer festen Skala – ein Foto hat in jedem Ordner denselben Wert. Die Schärfe vergleicht dagegen mit den anderen Fotos im Ordner.\nEinzelwerte: Detailfenster (Tab)",
     meter_sharpness: "Schärfe",
     meter_eyes: "Augen",
     probably_blurry: "wohl unscharf",
@@ -71,6 +92,11 @@ pub static TEXTS: Texts = Texts {
     rejected: "Abgelehnt",
     filmstrip_video: "Video",
     star_tooltip: |n| format!("{n} ★ – Taste {n}"),
+    personal_hint: |stars| {
+        format!(
+            "Für dich: {stars:.1} ★ – so viele Sterne würdest du laut Cerno geben. Noch nicht deine Bewertung"
+        )
+    },
     zoom: |percent| format!("Zoom {percent:.0} %"),
     digital_zoom: |ratio| format!("{ratio:.1}× Digitalzoom"),
     button_toolbar: "Filterleiste",
@@ -80,7 +106,6 @@ pub static TEXTS: Texts = Texts {
     button_menu: "Menü",
     button_language: |name| format!("Sprache: {name}"),
 
-    cmd_explanations: "Alle Erklärungen",
     cmd_all_panels: "Filterleiste, Details und Filmstreifen",
     cmd_fullscreen: "Vollbild",
     cmd_compare: "Vergleichen",
@@ -93,13 +118,18 @@ pub static TEXTS: Texts = Texts {
     overlay_fact_sharpness: "Overlay: Schärfe",
     overlay_fact_exposure: "Overlay: Belichtung",
     overlay_hint_sharpness: "Schärfe: Lila markiert die schärfsten Kanten des Fotos",
-    overlay_hint_exposure: "Belichtung: Rot = ausgefressen, Blau = abgesoffen",
+    overlay_hint_exposure: "Belichtung: Rot = ausgebrannte Lichter, Blau = verlorene Tiefen",
     overlay_hint_off: "Overlay aus",
     overlay_show_on_photo: "Auf dem Foto zeigen (O)",
     cmd_grid: "Raster",
     cmd_reject: "Ablehnen",
     cmd_description: "Kommentar und Stichwörter",
-    cmd_delete_rejected: |n| format!("Abgelehnte Fotos löschen ({n})"),
+    cmd_delete_rejected: |n| {
+        format!(
+            "Abgelehnte löschen ({n} {})",
+            if n == 1 { "Foto" } else { "Fotos" }
+        )
+    },
     cmd_auto_advance: "Automatisch weiter",
     cmd_subfolders: "Unterordner einlesen",
     menu_sort: "Sortieren",
@@ -136,9 +166,11 @@ pub static TEXTS: Texts = Texts {
     compare_needs_two: "Zum Vergleichen braucht es mindestens zwei Fotos",
     deleting: |n| {
         if n == 1 {
-            "1 Foto wird gelöscht   ·   Esc macht es rückgängig".to_owned()
+            "1 Foto wird in den versteckten Ordner .originals verschoben   ·   Esc macht es rückgängig".to_owned()
         } else {
-            format!("{n} Fotos werden gelöscht   ·   Esc macht es rückgängig")
+            format!(
+                "{n} Fotos werden in den versteckten Ordner .originals verschoben   ·   Esc macht es rückgängig"
+            )
         }
     },
     delete_failed: |n, name, err| {
@@ -154,8 +186,6 @@ pub static TEXTS: Texts = Texts {
     no_photos_in: |dir| format!("Keine JPEG- oder HEIC-Dateien in {dir}"),
     rating_not_saved: |err| format!("Sterne nicht gespeichert – {err}"),
     open_folder: "Ordner öffnen",
-    transfer_copy: "Kopieren",
-    transfer_move: "Verschieben",
     transfer_copy_cmd: "Kopiere alles, was der aktuelle Filter zeigt, nach …",
     transfer_move_cmd: "Verschiebe alles, was der aktuelle Filter zeigt, nach …",
     transfer_same_folder: "Das ist schon der geöffnete Ordner",
@@ -185,6 +215,7 @@ pub static TEXTS: Texts = Texts {
     section_sharpness: "Schärfe (im Ordner)",
     section_exposure: "Belichtung",
     section_attributes: "CLIP-Merkmale",
+    row_aesthetics: "Ästhetik (Mittel)",
     section_histogram: "Histogramm",
     section_file: "Datei",
     row_size: "Größe",
@@ -205,7 +236,7 @@ pub static TEXTS: Texts = Texts {
     row_frame: "Ganzes Bild",
     row_eyes: "Augen",
     row_highlights: "Ausgebrannte Lichter",
-    row_shadows: "Abgesoffene Schatten",
+    row_shadows: "Verlorene Tiefen",
     attributes: [
         "Gesamtqualität",
         "Scharf",
@@ -214,9 +245,10 @@ pub static TEXTS: Texts = Texts {
         "Rauscharm",
         "Farbenfroh",
     ],
-    explain_laion: "Wie schön eine KI das Foto findet – sie hat dafür viele Bewertungen von Menschen gelernt –, umgerechnet auf Sterne 0–5. Die meisten Fotos bekommen 2–3, ab 4 ist sehr gut.",
-    explain_v25: "Eine neuere KI für dieselbe Frage, besser bei Alltagsfotos. Gleiche Sterne-Skala.",
+    explain_laion: "Wie schön eine KI das Foto findet – sie hat dafür viele Bewertungen von Menschen gelernt. Sie mag vor allem Menschen, Porträts und Essen.",
+    explain_v25: "Eine neuere KI für dieselbe Frage, besser bei Alltagsfotos. Sie mag vor allem Landschaft, Wasser und Luftaufnahmen.",
     explain_personal: "So viele Sterne würdest du laut Cerno vergeben. Es lernt aus deinen Sternen und den Fotos, die du löschst.",
+    explain_aesthetics: "Der Wert unter dem Foto: das Mittel aus den beiden KIs darunter, von 0 % (wenig ansprechend) bis 100 % (sehr ansprechend). Die meisten Fotos liegen bei 40–60 %, ab 80 % ist sehr gut. Die Skala ist fest – ein Foto hat in jedem Ordner denselben Wert.",
     explain_frame: "Wie scharf die schärfsten Stellen sind – im Vergleich zu den anderen Fotos im Ordner. 80 % heißt: schärfer als 80 % davon.",
     explain_eyes: "Schärfe direkt an den Augen, wenn ein Gesicht da ist. Bei Porträts zählt das, nicht der Hintergrund.",
     explain_highlights: "Stellen, die rein weiß sind und keine Zeichnung mehr haben. Ab 1 % lohnt ein Blick.",
@@ -270,9 +302,19 @@ pub static TEXTS: Texts = Texts {
     cmd_crop: "Ausschnitt",
     cmd_undo: "Rückgängig",
     edit_not_jpeg: "Ausrichten, Ausschnitt, Drehen und Strg+Z gibt es nur für JPEG.",
-    video_play_hint: "Enter: abspielen",
+    video_play_hint: "Abspielen (Enter)",
     video_no_ffmpeg: "Kein Vorschaubild: dafür braucht Cerno ffmpeg (z. B. winget install Gyan.FFmpeg)",
     video_play_failed: |err| format!("Kann das Video nicht abspielen: {err}"),
+    video_played_instead: |ext, name| {
+        format!(
+            "Windows öffnet .{ext} mit Cerno – das Video läuft deshalb in {name}. Den Standard-Player änderst du in den Windows-Einstellungen unter Standard-Apps."
+        )
+    },
+    video_choose_player: |ext| {
+        format!(
+            "Windows öffnet .{ext} mit Cerno – wähle einen Player. Den Standard-Player änderst du in den Windows-Einstellungen unter Standard-Apps."
+        )
+    },
     edit_writing: "Foto wird geschrieben…",
     edit_cancelled: "Anderes Foto – Bearbeitung verworfen",
     busy_editing: "Die Bearbeitung ist noch offen – Enter übernimmt, Esc verwirft",
@@ -359,7 +401,6 @@ pub static TEXTS: Texts = Texts {
         ("F, F11", "Vollbild"),
         ("T", "Filterleiste: sortieren und filtern"),
         ("Tab", "Detailansicht"),
-        ("I", "Details: alle Erklärungen auf- oder zuklappen"),
         ("F6", "Filmstreifen"),
         ("M", "Nur ähnliche Fotos zeigen – noch einmal: wieder alle"),
         (

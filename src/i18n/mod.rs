@@ -193,6 +193,11 @@ pub struct Texts {
     pub filter_duplicate: &'static str,
     pub filter_duplicate_tooltip: &'static str,
     pub filter_clear: &'static str,
+    /// The filter bar's photos / videos box and the same rows in Filter ▸.
+    pub media_all: &'static str,
+    pub media_photos: &'static str,
+    pub media_videos: &'static str,
+    pub media_no_videos: &'static str,
     /// Why "Show all" is greyed out: nothing is filtered.
     pub filter_none_active: &'static str,
     /// The filter bar's last box: only photos like the chosen one.
@@ -222,8 +227,7 @@ pub struct Texts {
     // Sorting and filtering.
     pub sort_name: &'static str,
     pub sort_rating: &'static str,
-    pub sort_laion: &'static str,
-    pub sort_v25: &'static str,
+    pub sort_aesthetics: &'static str,
     pub sort_personal: &'static str,
     pub sort_sharpness: &'static str,
     pub sort_taken: &'static str,
@@ -232,6 +236,18 @@ pub struct Texts {
     pub actions: &'static str,
     pub actions_tooltip: &'static str,
     pub selection_delete: &'static str,
+    /// The action menu's rows, with the number of photos the filter shows.
+    pub bulk_copy: fn(usize) -> String,
+    pub bulk_move: fn(usize) -> String,
+    pub bulk_delete: fn(usize) -> String,
+    /// Tooltip of the delete row: what goes, and where.
+    pub bulk_delete_hint: &'static str,
+    pub delete_rejected_hint: &'static str,
+    /// The filter bar's count while a filter is on: shown of all.
+    pub photos_shown: fn(usize, usize) -> String,
+    /// The filter bar's count without a filter.
+    pub photos_count: fn(usize) -> String,
+    pub photos_badge_tooltip: &'static str,
     pub label_red: &'static str,
     pub label_yellow: &'static str,
     pub label_green: &'static str,
@@ -255,6 +271,8 @@ pub struct Texts {
     /// Tooltip of a video's cell in the filmstrip (the play sign).
     pub filmstrip_video: &'static str,
     pub star_tooltip: fn(u8) -> String,
+    /// Tooltip over the light stars: For you's prediction, 0..=5.
+    pub personal_hint: fn(f32) -> String,
     pub zoom: fn(f32) -> String,
     pub digital_zoom: fn(f64) -> String,
     pub button_toolbar: &'static str,
@@ -265,7 +283,6 @@ pub struct Texts {
     pub button_language: fn(&str) -> String,
 
     // Command menu (`Ctrl+K`).
-    pub cmd_explanations: &'static str,
     pub cmd_all_panels: &'static str,
     pub cmd_fullscreen: &'static str,
     pub cmd_compare: &'static str,
@@ -340,6 +357,10 @@ pub struct Texts {
     pub video_no_ffmpeg: &'static str,
     /// The system's player could not be started.
     pub video_play_failed: fn(&str) -> String,
+    /// Windows would open the video with Cerno itself (extension, the program that plays it).
+    pub video_played_instead: fn(&str, &str) -> String,
+    /// The same with no other program: the system's chooser is open.
+    pub video_choose_player: fn(&str) -> String,
     pub edit_writing: &'static str,
     /// The edited photo is no longer the current one (a copy finished, a filter changed).
     pub edit_cancelled: &'static str,
@@ -382,8 +403,6 @@ pub struct Texts {
     pub no_photos_in: fn(&str) -> String,
     pub rating_not_saved: fn(&str) -> String,
     pub open_folder: &'static str,
-    pub transfer_copy: &'static str,
-    pub transfer_move: &'static str,
     pub transfer_copy_cmd: &'static str,
     pub transfer_move_cmd: &'static str,
     pub transfer_same_folder: &'static str,
@@ -405,6 +424,8 @@ pub struct Texts {
     pub section_sharpness: &'static str,
     pub section_exposure: &'static str,
     pub section_attributes: &'static str,
+    /// The combined score's row in the details panel (`aesthetic::combined`).
+    pub row_aesthetics: &'static str,
     pub section_histogram: &'static str,
     pub section_file: &'static str,
     pub row_size: &'static str,
@@ -438,6 +459,7 @@ pub struct Texts {
     pub explain_laion: &'static str,
     pub explain_v25: &'static str,
     pub explain_personal: &'static str,
+    pub explain_aesthetics: &'static str,
     pub explain_frame: &'static str,
     pub explain_eyes: &'static str,
     pub explain_highlights: &'static str,
@@ -489,7 +511,7 @@ pub struct Texts {
     pub help_sections: [&'static str; 5],
     pub help_browse: [HelpRow; 5],
     pub help_rate: [HelpRow; 10],
-    pub help_view: [HelpRow; 14],
+    pub help_view: [HelpRow; 13],
     pub help_edit: [HelpRow; 6],
     pub help_more: [HelpRow; 5],
 }
@@ -534,10 +556,17 @@ mod tests {
             let copied = (t.transfer_done)(false, 1, 0, "", "");
             assert!(copied.contains('1') && copied.contains('0'), "{name}");
             assert!((t.star_tooltip)(4).contains('4'), "{name}");
+            assert!((t.personal_hint)(2.4).contains("2.4"), "{name}");
             assert!((t.zoom)(250.0).contains("250"), "{name}");
             assert!((t.digital_zoom)(2.0).contains('2'), "{name}");
             assert!((t.button_language)(name).contains(name), "{name}");
             assert!((t.cmd_delete_rejected)(7).contains('7'), "{name}");
+            for count in [t.bulk_copy, t.bulk_move, t.bulk_delete, t.photos_count] {
+                assert!(count(12).contains("12"), "{name}");
+            }
+            assert!((t.photos_shown)(12, 340).contains("12"), "{name}");
+            assert!((t.photos_shown)(12, 340).contains("340"), "{name}");
+            assert!((t.deleting)(3).contains(".originals"), "{name}");
             let series = (t.series_position)(3, 7);
             assert!(series.contains('3') && series.contains('7'), "{name}");
             assert!((t.duplicate_of)("a.jpg").contains("a.jpg"), "{name}");
@@ -568,6 +597,12 @@ mod tests {
             assert!((t.taste_photos)(30).contains("30"), "{name}");
             assert!((t.edit_failed)("locked").contains("locked"), "{name}");
             assert!((t.video_play_failed)("no app").contains("no app"), "{name}");
+            let instead = (t.video_played_instead)("mp4", "Films & TV");
+            assert!(
+                instead.contains(".mp4") && instead.contains("Films & TV"),
+                "{name}"
+            );
+            assert!((t.video_choose_player)("mkv").contains(".mkv"), "{name}");
             assert!((t.external_opened)("GIMP").contains("GIMP"), "{name}");
             assert!((t.external_reloaded)("a.jpg").contains("a.jpg"), "{name}");
             assert!((t.external_failed)("gone").contains("gone"), "{name}");

@@ -20,6 +20,10 @@ pub static TEXTS: Texts = Texts {
     filter_duplicate: "Duplicates",
     filter_duplicate_tooltip: "Every photo except the first identical path",
     filter_clear: "Show all",
+    media_all: "Photos and videos",
+    media_photos: "Photos only",
+    media_videos: "Videos only",
+    media_no_videos: "This folder has no videos",
     filter_none_active: "No filter is on",
     filter_similar: "≈ Similar",
     filter_similar_to: |name| format!("≈ like {name}"),
@@ -43,8 +47,7 @@ pub static TEXTS: Texts = Texts {
 
     sort_name: "Name",
     sort_rating: "Rating",
-    sort_laion: "Aesthetics (LAION)",
-    sort_v25: "Aesthetics (V2.5)",
+    sort_aesthetics: "Aesthetics",
     sort_personal: "For you",
     sort_sharpness: "Sharpness",
     sort_taken: "Capture time",
@@ -54,12 +57,30 @@ pub static TEXTS: Texts = Texts {
     actions: "Action",
     actions_tooltip: "Copy, move or delete the photos on screen",
     selection_delete: "Delete",
+    bulk_copy: |n| {
+        format!(
+            "Copy to … ({n} {})",
+            if n == 1 { "photo" } else { "photos" }
+        )
+    },
+    bulk_move: |n| {
+        format!(
+            "Move to … ({n} {})",
+            if n == 1 { "photo" } else { "photos" }
+        )
+    },
+    bulk_delete: |n| format!("Delete ({n} {})", if n == 1 { "photo" } else { "photos" }),
+    bulk_delete_hint: "Every photo the filter shows now. After 5 seconds they move into the hidden .originals folder beside them – nothing is deleted for good, Esc brings them back.",
+    delete_rejected_hint: "Every rejected photo in the folder, also those the filter hides now. After 5 seconds they move into the hidden .originals folder – nothing is deleted for good.",
+    photos_shown: |shown, total| format!("{shown} of {total} photos"),
+    photos_count: |n| format!("{n} {}", if n == 1 { "photo" } else { "photos" }),
+    photos_badge_tooltip: "How many photos the filter shows now – Action works on exactly these.",
     label_red: "Red",
     label_yellow: "Yellow",
     label_green: "Green",
     label_blue: "Blue",
     label_purple: "Purple",
-    meter_aesthetics_tooltip: "L and V: aesthetics (LAION / V2.5). Outline star: For you – the stars Cerno thinks you would give. All on the scale 0–5\n– = not available yet",
+    meter_aesthetics_tooltip: "Aesthetics: the mean of LAION and V2.5 on a fixed scale – a photo reads the same in every folder. Sharpness instead compares with the other photos in the folder.\nSingle scores: details panel (Tab)",
     meter_sharpness: "Sharpness",
     meter_eyes: "Eyes",
     probably_blurry: "probably blurry",
@@ -71,6 +92,11 @@ pub static TEXTS: Texts = Texts {
     rejected: "Rejected",
     filmstrip_video: "Video",
     star_tooltip: |n| format!("{n} ★ – key {n}"),
+    personal_hint: |stars| {
+        format!(
+            "For you: {stars:.1} ★ – the stars Cerno thinks you would give. Not your rating yet"
+        )
+    },
     zoom: |percent| format!("Zoom {percent:.0} %"),
     digital_zoom: |ratio| format!("{ratio:.1}× digital zoom"),
     button_toolbar: "Filter bar",
@@ -80,7 +106,6 @@ pub static TEXTS: Texts = Texts {
     button_menu: "Menu",
     button_language: |name| format!("Language: {name}"),
 
-    cmd_explanations: "All explanations",
     cmd_all_panels: "Filter bar, details and filmstrip",
     cmd_fullscreen: "Full screen",
     cmd_compare: "Compare",
@@ -99,7 +124,12 @@ pub static TEXTS: Texts = Texts {
     cmd_grid: "Grid",
     cmd_reject: "Reject",
     cmd_description: "Comment and keywords",
-    cmd_delete_rejected: |n| format!("Delete rejected photos ({n})"),
+    cmd_delete_rejected: |n| {
+        format!(
+            "Delete rejected ({n} {})",
+            if n == 1 { "photo" } else { "photos" }
+        )
+    },
     cmd_auto_advance: "Auto advance",
     cmd_subfolders: "Include subfolders",
     menu_sort: "Sort",
@@ -136,9 +166,9 @@ pub static TEXTS: Texts = Texts {
     compare_needs_two: "Comparing needs at least two photos",
     deleting: |n| {
         if n == 1 {
-            "Deleting 1 photo   ·   Esc to undo".to_owned()
+            "Moving 1 photo into the hidden .originals folder   ·   Esc to undo".to_owned()
         } else {
-            format!("Deleting {n} photos   ·   Esc to undo")
+            format!("Moving {n} photos into the hidden .originals folder   ·   Esc to undo")
         }
     },
     delete_failed: |n, name, err| format!("Could not delete {n} photo(s) – {name}: {err}"),
@@ -152,8 +182,6 @@ pub static TEXTS: Texts = Texts {
     no_photos_in: |dir| format!("No JPEG or HEIC files in {dir}"),
     rating_not_saved: |err| format!("Rating not saved – {err}"),
     open_folder: "Open folder",
-    transfer_copy: "Copy",
-    transfer_move: "Move",
     transfer_copy_cmd: "Copy everything the current filter shows to …",
     transfer_move_cmd: "Move everything the current filter shows to …",
     transfer_same_folder: "That is already the open folder",
@@ -183,6 +211,7 @@ pub static TEXTS: Texts = Texts {
     section_sharpness: "Sharpness (within folder)",
     section_exposure: "Exposure",
     section_attributes: "CLIP attributes",
+    row_aesthetics: "Aesthetics (mean)",
     section_histogram: "Histogram",
     section_file: "File",
     row_size: "Size",
@@ -212,9 +241,10 @@ pub static TEXTS: Texts = Texts {
         "Low noise",
         "Colorful",
     ],
-    explain_laion: "How beautiful the photo looks to an AI trained on many human ratings, converted to stars 0–5. Most photos get 2–3, from 4 on it is very good.",
-    explain_v25: "A newer AI for the same question, better with everyday photos. Same star scale.",
+    explain_laion: "How beautiful the photo looks to an AI trained on many human ratings. It likes people, portraits and food most.",
+    explain_v25: "A newer AI for the same question, better with everyday photos. It likes landscapes, water and aerial shots most.",
     explain_personal: "The stars Cerno thinks you would give. It learns from your own stars and the photos you delete.",
+    explain_aesthetics: "The value under the photo: the mean of the two AIs below, from 0 % (unappealing) to 100 % (very appealing). Most photos land at 40–60 %, from 80 % on it is very good. The scale is fixed – a photo reads the same in every folder.",
     explain_frame: "How sharp the sharpest parts are, compared with the other photos in this folder. 80 % means sharper than 80 % of them.",
     explain_eyes: "Sharpness right at the eyes, if there is a face. For portraits this counts, not the background.",
     explain_highlights: "Parts that are pure white, without any detail left. More than 1 % is worth a look.",
@@ -268,9 +298,19 @@ pub static TEXTS: Texts = Texts {
     cmd_crop: "Crop",
     cmd_undo: "Undo",
     edit_not_jpeg: "Straighten, crop, turns and Ctrl+Z work on JPEG only.",
-    video_play_hint: "Enter: play",
+    video_play_hint: "Play (Enter)",
     video_no_ffmpeg: "No preview frame: Cerno needs ffmpeg for it (e.g. winget install Gyan.FFmpeg)",
     video_play_failed: |err| format!("Cannot play the video: {err}"),
+    video_played_instead: |ext, name| {
+        format!(
+            "Windows opens .{ext} with Cerno – so the video plays in {name}. Change the default player in Windows Settings › Default apps."
+        )
+    },
+    video_choose_player: |ext| {
+        format!(
+            "Windows opens .{ext} with Cerno – pick a player. Change the default player in Windows Settings › Default apps."
+        )
+    },
     edit_writing: "Writing the photo…",
     edit_cancelled: "Another photo is shown – the edit was cancelled",
     busy_editing: "The edit is still open – Enter applies, Esc cancels",
@@ -345,7 +385,6 @@ pub static TEXTS: Texts = Texts {
         ("F, F11", "Full screen"),
         ("T", "Filter bar: sort and filter"),
         ("Tab", "Details panel"),
-        ("I", "Details: expand or collapse all explanations"),
         ("F6", "Filmstrip"),
         ("M", "Show only similar photos – again: all of them"),
         (

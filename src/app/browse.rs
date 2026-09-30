@@ -160,6 +160,7 @@ impl CernoApp {
     pub(super) fn save_options(&self) {
         self.db.put_setting("sort", self.options.sort.id());
         self.db.put_setting("filter", &self.options.filter.id());
+        self.db.put_setting("media", self.options.media.id());
     }
 
     pub(super) fn pick_folder(&mut self, ctx: &egui::Context) {

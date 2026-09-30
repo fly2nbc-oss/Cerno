@@ -7,6 +7,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+Simpler to read: one aesthetics value, two numbers under the photo, explanations on hover, an action menu that says how many photos it takes. Videos play in a player again, and a filter shows photos or videos only.
+
+### Added
+
+- **Photos, videos or both** – a box after the sort in the filter bar (*Photos and videos*, *Photos only*, *Videos only*) and the same choices at the top of *Filter ▸*. It works together with the other filters, is saved like them, and *Show all* resets it. In a folder without videos it is greyed out.
+- **The filter bar counts** – left of *Action* it shows how many photos the filter leaves (*12 of 340 photos*, on a light accent while a filter is on; *340 photos* otherwise). That is what *Action* works on.
+- A click on *Play (Enter)* over a video plays it, like `Enter`.
+
+### Changed
+
+- **One aesthetics value** – the mean of LAION and V2.5 (LAION alone without V2.5) is *Aesthetics*. In a benchmark against a commercial culling tool's ratings (1934 photos in two folders, 2026-09-30) the mean agreed better than either model alone (Spearman 0.64 / 0.66 against 0.55–0.60). It is the only aesthetics sort now; a saved V2.5 sort becomes it.
+- **Two numbers under the photo** – the info bar shows *Aesthetics* and *Sharpness*, both in percent with a bar. Aesthetics is a fixed scale (the 2–8 range the star scale used), so a photo reads the same in every folder; sharpness still compares with the folder. Compare mode shows the same two.
+- **For you in the stars** – instead of a third number, For you lightly fills the empty stars of an unrated photo (its prediction rounded; none below half a star). The tooltip names the exact value; your own stars stay the bright ones.
+- **Details panel** – the explanations no longer fold open under each value: resting the pointer on a row shows it. The aesthetics section lists the mean, then LAION and V2.5 in percent, with what each model likes. The CLIP attributes fold open under their own row. `I` (all explanations) is gone.
+- **Action menu** – each row says how many photos it takes (*Copy to … (12 photos)*, *Move to …*, *Delete …*, *Delete rejected …*), and its tooltip says which ones and where deleted photos go. The menu grows with its longest row. The countdown names the hidden `.originals` folder.
+- German: *Abgesoffene Schatten* is now *Verlorene Tiefen*, and the exposure overlay's hint uses the same words.
+- The README is short and written for users; building and packaging moved to `CONTRIBUTING.md`.
+
+### Fixed
+
+- `Enter` on a video could start a second Cerno instead of a player: when *Open with › Cerno* had once been used for `.mp4`, Windows could hand videos back to Cerno. Cerno now asks Windows which program opens the type; if that is Cerno, the next program Windows offers plays the video (or the *Open with* dialog opens), and a hint says how to change the default.
+
 ## [1.2.0] – 2026-09-30
 
 Checking and overview: an overlay for sharp edges and clipping, a filter for similar photos and a grid of the whole view. The filter bar holds still, and videos get thumbnails of their own.

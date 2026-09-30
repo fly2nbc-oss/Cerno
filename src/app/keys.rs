@@ -74,7 +74,6 @@ struct KeyInput {
     toggle_filmstrip: bool,
     /// `F7`: the grid.
     toggle_grid: bool,
-    cycle_details: bool,
     help: bool,
     language: bool,
     palette: bool,
@@ -169,7 +168,6 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         toggle_toolbar: plain && i.key_pressed(Key::T),
         toggle_filmstrip: i.key_pressed(Key::F6),
         toggle_grid: i.key_pressed(Key::F7),
-        cycle_details: plain && i.key_pressed(Key::I),
         help: i.key_pressed(Key::F1)
             || i.key_pressed(Key::Questionmark)
             || (plain && i.key_pressed(Key::H)),
@@ -387,9 +385,6 @@ impl CernoApp {
         }
         if keys.toggle_filmstrip {
             self.toggle_panel(Panel::Bottom);
-        }
-        if keys.cycle_details {
-            self.toggle_explanations();
         }
         if keys.overlay {
             self.set_overlay(self.overlay.next());

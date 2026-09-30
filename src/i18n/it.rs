@@ -20,6 +20,10 @@ pub static TEXTS: Texts = Texts {
     filter_duplicate: "Duplicati",
     filter_duplicate_tooltip: "Ogni foto tranne il primo percorso identico",
     filter_clear: "Mostra tutte",
+    media_all: "Foto e video",
+    media_photos: "Solo foto",
+    media_videos: "Solo video",
+    media_no_videos: "Questa cartella non contiene video",
     filter_none_active: "Nessun filtro attivo",
     filter_similar: "≈ Simili",
     filter_similar_to: |name| format!("≈ come {name}"),
@@ -43,8 +47,7 @@ pub static TEXTS: Texts = Texts {
 
     sort_name: "Nome",
     sort_rating: "Stelle",
-    sort_laion: "Estetica (LAION)",
-    sort_v25: "Estetica (V2.5)",
+    sort_aesthetics: "Estetica",
     sort_personal: "Per te",
     sort_sharpness: "Nitidezza",
     sort_taken: "Ora di scatto",
@@ -54,12 +57,20 @@ pub static TEXTS: Texts = Texts {
     actions: "Azione",
     actions_tooltip: "Copia, sposta o elimina le foto in vista",
     selection_delete: "Elimina",
+    bulk_copy: |n| format!("Copia in … ({n} foto)"),
+    bulk_move: |n| format!("Sposta in … ({n} foto)"),
+    bulk_delete: |n| format!("Elimina ({n} foto)"),
+    bulk_delete_hint: "Tutte le foto che il filtro mostra. Dopo 5 secondi finiscono nella cartella nascosta .originals accanto a loro – niente viene eliminato per sempre, Esc le riporta indietro.",
+    delete_rejected_hint: "Tutte le foto rifiutate della cartella, anche quelle che il filtro nasconde. Dopo 5 secondi finiscono nella cartella nascosta .originals – niente viene eliminato per sempre.",
+    photos_shown: |shown, total| format!("{shown} di {total} foto"),
+    photos_count: |n| format!("{n} foto"),
+    photos_badge_tooltip: "Quante foto mostra ora il filtro – «Azione» agisce proprio su queste.",
     label_red: "Rosso",
     label_yellow: "Giallo",
     label_green: "Verde",
     label_blue: "Blu",
     label_purple: "Viola",
-    meter_aesthetics_tooltip: "L e V: estetica (LAION / V2.5). Stella vuota: Per te – le stelle che Cerno pensa daresti. Tutte da 0 a 5\n– = non ancora disponibile",
+    meter_aesthetics_tooltip: "Estetica: media di LAION e V2.5 su una scala fissa – una foto ha lo stesso valore in ogni cartella. La nitidezza invece confronta con le altre foto della cartella.\nValori separati: pannello dei dettagli (Tab)",
     meter_sharpness: "Nitidezza",
     meter_eyes: "Occhi",
     probably_blurry: "probabilmente sfocata",
@@ -71,6 +82,11 @@ pub static TEXTS: Texts = Texts {
     rejected: "Rifiutata",
     filmstrip_video: "Video",
     star_tooltip: |n| format!("{n} ★ – tasto {n}"),
+    personal_hint: |stars| {
+        format!(
+            "Per te: {stars:.1} ★ – le stelle che Cerno pensa daresti. Non è ancora il tuo voto"
+        )
+    },
     zoom: |percent| format!("Zoom {percent:.0} %"),
     digital_zoom: |ratio| format!("Zoom digitale {ratio:.1}×"),
     button_toolbar: "Barra dei filtri",
@@ -80,7 +96,6 @@ pub static TEXTS: Texts = Texts {
     button_menu: "Menu",
     button_language: |name| format!("Lingua: {name}"),
 
-    cmd_explanations: "Tutte le spiegazioni",
     cmd_all_panels: "Barra dei filtri, dettagli e striscia di miniature",
     cmd_fullscreen: "Schermo intero",
     cmd_compare: "Confronta",
@@ -99,7 +114,7 @@ pub static TEXTS: Texts = Texts {
     cmd_grid: "Griglia",
     cmd_reject: "Rifiuta",
     cmd_description: "Commento e parole chiave",
-    cmd_delete_rejected: |n| format!("Elimina le foto rifiutate ({n})"),
+    cmd_delete_rejected: |n| format!("Elimina le rifiutate ({n} foto)"),
     cmd_auto_advance: "Avanza automaticamente",
     cmd_subfolders: "Includi sottocartelle",
     menu_sort: "Ordina",
@@ -134,7 +149,13 @@ pub static TEXTS: Texts = Texts {
     compare_left_badge: "S",
     keeps_this: |key| format!("{key} tiene questa"),
     compare_needs_two: "Per confrontare servono almeno due foto",
-    deleting: |n| format!("Eliminazione di {n} foto   ·   Esc per annullare"),
+    deleting: |n| {
+        if n == 1 {
+            "1 foto va nella cartella nascosta .originals   ·   Esc per annullare".to_owned()
+        } else {
+            format!("{n} foto vanno nella cartella nascosta .originals   ·   Esc per annullare")
+        }
+    },
     delete_failed: |n, name, err| format!("Impossibile eliminare {n} foto – {name}: {err}"),
     blurry_tooltip: |eyes, percent| {
         let what = if eyes {
@@ -150,8 +171,6 @@ pub static TEXTS: Texts = Texts {
     no_photos_in: |dir| format!("Nessun file JPEG o HEIC in {dir}"),
     rating_not_saved: |err| format!("Stelle non salvate – {err}"),
     open_folder: "Apri cartella",
-    transfer_copy: "Copia",
-    transfer_move: "Sposta",
     transfer_copy_cmd: "Copia tutto ciò che mostra il filtro attuale in …",
     transfer_move_cmd: "Sposta tutto ciò che mostra il filtro attuale in …",
     transfer_same_folder: "È già la cartella aperta",
@@ -181,6 +200,7 @@ pub static TEXTS: Texts = Texts {
     section_sharpness: "Nitidezza (nella cartella)",
     section_exposure: "Esposizione",
     section_attributes: "Caratteristiche CLIP",
+    row_aesthetics: "Estetica (media)",
     section_histogram: "Istogramma",
     section_file: "File",
     row_size: "Dimensioni",
@@ -210,9 +230,10 @@ pub static TEXTS: Texts = Texts {
         "Poco rumore",
         "Colorata",
     ],
-    explain_laion: "Quanto è bella la foto per un'IA addestrata su molte valutazioni di persone, convertito in stelle da 0 a 5. La maggior parte delle foto ottiene 2–3, da 4 in su è molto buona.",
-    explain_v25: "Un'IA più recente per la stessa domanda, migliore con le foto di tutti i giorni. Stessa scala di stelle.",
+    explain_laion: "Quanto è bella la foto per un'IA addestrata su molte valutazioni di persone. Apprezza soprattutto persone, ritratti e cibo.",
+    explain_v25: "Un'IA più recente per la stessa domanda, migliore con le foto di tutti i giorni. Apprezza soprattutto paesaggi, acqua e riprese aeree.",
     explain_personal: "Le stelle che secondo Cerno daresti tu. Impara dalle tue stelle e dalle foto che elimini.",
+    explain_aesthetics: "Il valore sotto la foto: la media delle due IA qui sotto, da 0 % (poco attraente) a 100 % (molto attraente). La maggior parte delle foto sta tra 40 e 60 %, da 80 % in su è molto buona. La scala è fissa – una foto ha lo stesso valore in ogni cartella.",
     explain_frame: "Quanto sono nitide le parti più nitide, rispetto alle altre foto di questa cartella. 80 % significa: più nitida dell'80 % delle altre.",
     explain_eyes: "Nitidezza proprio sugli occhi, se c'è un volto. Nei ritratti conta questa, non lo sfondo.",
     explain_highlights: "Parti completamente bianche, senza più alcun dettaglio. Oltre l'1 % merita un'occhiata.",
@@ -266,9 +287,19 @@ pub static TEXTS: Texts = Texts {
     cmd_crop: "Ritaglio",
     cmd_undo: "Annulla modifica",
     edit_not_jpeg: "Raddrizza, ritaglio, rotazione e Ctrl+Z solo per JPEG.",
-    video_play_hint: "Invio: riproduci",
+    video_play_hint: "Riproduci (Invio)",
     video_no_ffmpeg: "Nessuna anteprima: a Cerno serve ffmpeg (ad es. winget install Gyan.FFmpeg)",
     video_play_failed: |err| format!("Impossibile riprodurre il video: {err}"),
+    video_played_instead: |ext, name| {
+        format!(
+            "Windows apre i file .{ext} con Cerno – il video parte quindi in {name}. Cambia il lettore predefinito in Impostazioni di Windows › App predefinite."
+        )
+    },
+    video_choose_player: |ext| {
+        format!(
+            "Windows apre i file .{ext} con Cerno – scegli un lettore. Cambia il lettore predefinito in Impostazioni di Windows › App predefinite."
+        )
+    },
     edit_writing: "Scrittura della foto…",
     edit_cancelled: "È visualizzata un'altra foto – modifica annullata",
     busy_editing: "La modifica è ancora aperta – Invio applica, Esc annulla",
@@ -361,7 +392,6 @@ pub static TEXTS: Texts = Texts {
         ("F, F11", "Schermo intero"),
         ("T", "Barra dei filtri: ordina e filtra"),
         ("Tab", "Pannello dettagli"),
-        ("I", "Dettagli: espandi o comprimi tutte le spiegazioni"),
         ("F6", "Striscia di miniature"),
         ("M", "Mostra solo foto simili – di nuovo: tutte"),
         (
