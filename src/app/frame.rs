@@ -337,7 +337,12 @@ impl CernoApp {
             actions_open: self.action_menu.is_some(),
             similar_to: similar_to.as_deref(),
             shown: self.view.len(),
-            total: self.all.len(),
+            // Photos waiting to be deleted have left the view already; they don't count.
+            total: self
+                .all
+                .iter()
+                .filter(|p| !self.deletions.is_hidden(p))
+                .count(),
             has_videos: self
                 .all
                 .iter()
