@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use std::sync::Arc;
 
-use crate::analysis::sharpness;
+use crate::analysis::{aesthetic, sharpness};
 use crate::db::Scores;
 use crate::i18n;
 use crate::metadata::{Label, Rating};
@@ -38,19 +38,18 @@ pub enum SortKey {
     /// Capture time, oldest first. Photos without a time stay at the end.
     Taken,
     Rating,
+    /// The one aesthetics score: the mean of LAION and V2.5 (`aesthetic::combined`).
     Aesthetics,
-    AestheticsV25,
     Personal,
     Sharpness,
 }
 
 impl SortKey {
-    pub const ALL: [SortKey; 7] = [
+    pub const ALL: [SortKey; 6] = [
         Self::Name,
         Self::Taken,
         Self::Rating,
         Self::Aesthetics,
-        Self::AestheticsV25,
         Self::Personal,
         Self::Sharpness,
     ];
@@ -61,8 +60,7 @@ impl SortKey {
             Self::Name => t.sort_name,
             Self::Taken => t.sort_taken,
             Self::Rating => t.sort_rating,
-            Self::Aesthetics => t.sort_laion,
-            Self::AestheticsV25 => t.sort_v25,
+            Self::Aesthetics => t.sort_aesthetics,
             Self::Personal => t.sort_personal,
             Self::Sharpness => t.sort_sharpness,
         }
@@ -74,13 +72,17 @@ impl SortKey {
             Self::Taken => "taken",
             Self::Rating => "rating",
             Self::Aesthetics => "aesthetics",
-            Self::AestheticsV25 => "aesthetics25",
             Self::Personal => "personal",
             Self::Sharpness => "sharpness",
         }
     }
 
+    /// A stored sort. Up to 1.2 LAION and V2.5 were sorted apart; a saved V2.5 sort
+    /// (`"aesthetics25"`) now means the combined score, like `"aesthetics"`.
     pub fn from_id(id: &str) -> Option<Self> {
+        if id == "aesthetics25" {
+            return Some(Self::Aesthetics);
+        }
         Self::ALL.into_iter().find(|k| k.id() == id)
     }
 }
@@ -535,8 +537,9 @@ pub fn build(
                         Rating::Unrated => 0.0,
                         Rating::Rejected => -1.0,
                     }),
-                    SortKey::Aesthetics => entry.facts.and_then(|f| f.scores.aesthetic),
-                    SortKey::AestheticsV25 => entry.facts.and_then(|f| f.scores.aesthetic25),
+                    SortKey::Aesthetics => entry.facts.and_then(|f| {
+                        aesthetic::combined(f.scores.aesthetic, f.scores.aesthetic25)
+                    }),
                     SortKey::Personal => entry.facts.and_then(|f| f.personal),
                     SortKey::Sharpness => entry.sharp,
                 }
@@ -759,7 +762,6 @@ mod tests {
             scores: Scores {
                 sharpness,
                 aesthetic,
-                aesthetic25: aesthetic.map(|a| 10.0 - a),
                 ..Scores::default()
             },
             personal,
@@ -767,12 +769,23 @@ mod tests {
         }
     }
 
+    /// The same facts with a V2.5 score as well.
+    fn with_v25(mut facts: Facts, v25: f32) -> Facts {
+        facts.scores.aesthetic25 = Some(v25);
+        facts
+    }
+
     fn fixture() -> (Vec<PathBuf>, HashMap<PathBuf, Facts>) {
         let all: Vec<PathBuf> = ["a", "b", "c", "d", "e"].map(PathBuf::from).to_vec();
         let known = HashMap::from([
+            // Aesthetics: a (4.0 + 8.0) / 2 = 6.0, b LAION alone 6.5, c (5.0 + 4.0) / 2 = 4.5,
+            // d V2.5 alone 5.5.
             (
                 all[0].clone(),
-                facts(Rating::Stars(2), Some(4.0), Some(10.0), Some(1.0)),
+                with_v25(
+                    facts(Rating::Stars(2), Some(4.0), Some(10.0), Some(1.0)),
+                    8.0,
+                ),
             ),
             (
                 all[1].clone(),
@@ -780,11 +793,14 @@ mod tests {
             ),
             (
                 all[2].clone(),
-                facts(Rating::Stars(5), Some(5.0), Some(300.0), Some(4.5)),
+                with_v25(
+                    facts(Rating::Stars(5), Some(5.0), Some(300.0), Some(4.5)),
+                    4.0,
+                ),
             ),
             (
                 all[3].clone(),
-                facts(Rating::Stars(3), None, Some(200.0), Some(3.0)),
+                with_v25(facts(Rating::Stars(3), None, Some(200.0), Some(3.0)), 5.5),
             ),
             // "e" not analysed yet
         ]);
@@ -855,8 +871,7 @@ mod tests {
             )
         };
         assert_eq!(sorted(SortKey::Name), "abcde");
-        assert_eq!(sorted(SortKey::Aesthetics), "bcade");
-        assert_eq!(sorted(SortKey::AestheticsV25), "acbde");
+        assert_eq!(sorted(SortKey::Aesthetics), "badce");
         assert_eq!(sorted(SortKey::Personal), "cdabe");
         assert_eq!(sorted(SortKey::Sharpness), "bcdae");
         assert_eq!(sorted(SortKey::Rating), "cdabe");
@@ -1201,6 +1216,9 @@ mod tests {
         for key in SortKey::ALL {
             assert_eq!(SortKey::from_id(key.id()), Some(key));
         }
+        // The V2.5 sort of 1.2 and earlier is the combined score now.
+        assert_eq!(SortKey::from_id("aesthetics25"), Some(SortKey::Aesthetics));
+        assert_eq!(SortKey::from_id("laion"), None);
         let mut filter = PhotoFilter::default();
         for kind in FilterKind::ALL {
             filter.set(kind, true);

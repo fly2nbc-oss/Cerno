@@ -26,6 +26,23 @@ pub fn as_stars(score: f32) -> f32 {
     ((score - 2.0) * 5.0 / 6.0).clamp(0.0, 5.0)
 }
 
+/// A score as a share of the same 2–8 range, for "Aesthetics 62 %". A fixed scale – the
+/// same photo reads the same in every folder, unlike the sharpness percentile.
+pub fn as_percent(score: f32) -> f32 {
+    ((score - 2.0) / 6.0).clamp(0.0, 1.0)
+}
+
+/// The one aesthetics score Cerno shows and sorts by: the mean of LAION and V2.5, or the one
+/// that is there. Against Excire's ratings the mean beat either model alone in both
+/// benchmark runs (2026-09-30, Spearman 0.64 / 0.66 against 0.55–0.60), and the two disagree
+/// often enough (0.46–0.74) that each adds something.
+pub fn combined(laion: Option<f32>, v25: Option<f32>) -> Option<f32> {
+    match (laion, v25) {
+        (Some(l), Some(v)) => Some((l + v) / 2.0),
+        (one, None) | (None, one) => one,
+    }
+}
+
 /// CLIP vision model, file name in the models directory.
 pub const MODEL_FILE: &str = "clip-vit-large-patch14-vision.onnx";
 /// Pinned to a commit, not `main`: a change in that repository must not reach Cerno, and
@@ -298,6 +315,23 @@ mod tests {
         assert_eq!(as_stars(8.0), 5.0);
         assert_eq!(as_stars(1.0), 0.0);
         assert_eq!(as_stars(9.5), 5.0);
+    }
+
+    #[test]
+    fn percent_uses_the_same_range() {
+        assert_eq!(as_percent(2.0), 0.0);
+        assert_eq!(as_percent(5.0), 0.5);
+        assert_eq!(as_percent(8.0), 1.0);
+        assert_eq!(as_percent(1.0), 0.0);
+        assert_eq!(as_percent(9.5), 1.0);
+    }
+
+    #[test]
+    fn combined_is_the_mean_or_the_one_there() {
+        assert_eq!(combined(Some(4.0), Some(6.0)), Some(5.0));
+        assert_eq!(combined(Some(4.0), None), Some(4.0));
+        assert_eq!(combined(None, Some(6.0)), Some(6.0));
+        assert_eq!(combined(None, None), None);
     }
 
     #[test]

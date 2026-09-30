@@ -222,8 +222,7 @@ pub struct Texts {
     // Sorting and filtering.
     pub sort_name: &'static str,
     pub sort_rating: &'static str,
-    pub sort_laion: &'static str,
-    pub sort_v25: &'static str,
+    pub sort_aesthetics: &'static str,
     pub sort_personal: &'static str,
     pub sort_sharpness: &'static str,
     pub sort_taken: &'static str,

@@ -43,8 +43,7 @@ pub static TEXTS: Texts = Texts {
 
     sort_name: "Nombre",
     sort_rating: "Estrellas",
-    sort_laion: "Estética (LAION)",
-    sort_v25: "Estética (V2.5)",
+    sort_aesthetics: "Estética",
     sort_personal: "Para ti",
     sort_sharpness: "Nitidez",
     sort_taken: "Hora de captura",
