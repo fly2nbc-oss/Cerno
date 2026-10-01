@@ -28,11 +28,14 @@ impl Default for Zoom {
     }
 }
 
-/// Geometry of one frame: view area, full image size and the display's pixel density.
+/// Geometry of one frame: view area, full image size, the display image's size and the
+/// display's pixel density.
 #[derive(Debug, Clone, Copy)]
 pub struct Frame {
     pub area: Rect,
     pub image_size: [u32; 2],
+    /// The display image (the loader's texture), decoded to fit the photo area.
+    pub display_size: [u32; 2],
     pub pixels_per_point: f32,
 }
 
@@ -47,6 +50,43 @@ impl Frame {
         let size = self.size();
         (area.x / size.x).min(area.y / size.y).min(1.0)
     }
+
+    /// Whether the display image is the fitted photo, give or take the rounding of its size.
+    /// Then fitting draws it pixel for pixel: scaled by a hair, the GPU would blend
+    /// neighbouring pixels across the whole photo. Not while the area has just changed and the
+    /// image for the new size is still being decoded.
+    fn display_is_fitted(&self) -> bool {
+        let fitted = self.size() * self.fit_scale();
+        (fitted.x - self.display_size[0] as f32).abs() <= 1.5
+            && (fitted.y - self.display_size[1] as f32).abs() <= 1.5
+    }
+}
+
+/// Photo areas below this many pixels (a minimized window) set no decode size: everything
+/// would be decoded again for a few pixels, and once more when the window comes back.
+const MIN_DECODE_SIDE: u32 = 32;
+
+/// The decode size for photo `areas` (in points): the smallest of them in physical pixels –
+/// the narrower half in compare mode – so a fitted photo fits each one; at most `max_side`.
+/// `None` without a usable area.
+pub fn decode_size(areas: &[Rect], pixels_per_point: f32, max_side: u32) -> Option<[u32; 2]> {
+    // The small allowance keeps 1155.9999 px from becoming 1155.
+    let side = |len: f32| ((len * pixels_per_point + 0.01).floor().max(0.0) as u32).min(max_side);
+    let size = areas
+        .iter()
+        .map(|area| [side(area.width()), side(area.height())])
+        .reduce(|a, b| [a[0].min(b[0]), a[1].min(b[1])])?;
+    (size[0] >= MIN_DECODE_SIDE && size[1] >= MIN_DECODE_SIDE).then_some(size)
+}
+
+/// Whether more detail than the display image holds is needed: zoomed in beyond it, as at
+/// 100 % of a photo larger than the area. No tolerance – stretched by 4.4 %, the display image
+/// kept less than half of the finest detail.
+pub fn needs_full(frame: &Frame, zoom: &Zoom) -> bool {
+    let shown = zoom.effective_scale(frame) * frame.image_size[0] as f32;
+    zoom.is_zoomed()
+        && frame.display_size[0] < frame.image_size[0]
+        && shown > frame.display_size[0] as f32 + 0.5
 }
 
 impl Zoom {
@@ -59,10 +99,14 @@ impl Zoom {
     }
 
     /// Where the whole image lies on screen, in points. Snapped to physical pixels so 100 %
-    /// really is 1:1.
+    /// really is 1:1 – and so is a fitted display image (see [`Frame::display_is_fitted`]).
     pub fn image_rect(&self, frame: &Frame) -> Rect {
         let ppp = frame.pixels_per_point;
-        let size = frame.size() * self.effective_scale(frame) / ppp;
+        let size = if self.scale.is_none() && frame.display_is_fitted() {
+            vec2(frame.display_size[0] as f32, frame.display_size[1] as f32) / ppp
+        } else {
+            frame.size() * self.effective_scale(frame) / ppp
+        };
         let area = frame.area;
         let axis = |start: f32, end: f32, len: f32, center: f32| {
             if len <= end - start {
@@ -149,8 +193,7 @@ pub fn draw(
         return false;
     }
     let uv = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
-    let shown_width = zoom.effective_scale(frame) * frame.image_size[0] as f32;
-    let needs_full = shown_width > display.texture.size()[0] as f32 * 1.05;
+    let needs_full = needs_full(frame, zoom);
 
     match full {
         Some(full) if needs_full => {
@@ -230,8 +273,90 @@ mod tests {
         Frame {
             area: Rect::from_min_size(pos2(0.0, 0.0), vec2(1000.0, 500.0)),
             image_size: [4000, 2000],
+            display_size: [1000, 500],
             pixels_per_point: 1.0,
         }
+    }
+
+    /// A 4000 × 2256 photo in the 2560 × 1156 px photo area of a maximized window at 125 %.
+    fn scaled_frame(display_size: [u32; 2]) -> Frame {
+        Frame {
+            area: Rect::from_min_size(pos2(0.0, 0.0), vec2(2048.0, 924.8)),
+            image_size: [4000, 2256],
+            display_size,
+            pixels_per_point: 1.25,
+        }
+    }
+
+    /// The rect in physical pixels.
+    fn pixels(rect: Rect) -> [f32; 4] {
+        let r = rect * 1.25;
+        [r.min.x, r.min.y, r.width(), r.height()]
+    }
+
+    #[test]
+    fn a_fitted_display_image_is_drawn_pixel_for_pixel() {
+        // The loader decodes 2050 × 1156 for this area; fitting would be 2049.6 px wide.
+        let rect = Zoom::default().image_rect(&scaled_frame([2050, 1156]));
+        let [x, y, w, h] = pixels(rect);
+        assert!(
+            (w - 2050.0).abs() < 1e-3 && (h - 1156.0).abs() < 1e-3,
+            "{w} × {h}"
+        );
+        assert!(
+            (x - x.round()).abs() < 1e-3 && (y - y.round()).abs() < 1e-3,
+            "{x}, {y}"
+        );
+        // An image decoded for another area (being decoded again) is scaled to fit meanwhile.
+        let [_, _, w, _] = pixels(Zoom::default().image_rect(&scaled_frame([3830, 2160])));
+        assert!((w - 4000.0 * 1156.0 / 2256.0).abs() < 0.01, "{w}");
+    }
+
+    #[test]
+    fn the_decode_size_is_the_photo_area_in_pixels() {
+        let area = |w: f32, h: f32| Rect::from_min_size(pos2(0.0, 0.0), vec2(w, h));
+        assert_eq!(
+            decode_size(&[area(2048.0, 924.8)], 1.25, 8192),
+            Some([2560, 1156])
+        );
+        // Compare mode: both halves, the smaller wins.
+        assert_eq!(
+            decode_size(&[area(1022.0, 924.8), area(1021.6, 924.8)], 1.25, 8192),
+            Some([1277, 1156])
+        );
+        assert_eq!(
+            decode_size(&[area(9000.0, 100.0)], 1.0, 8192),
+            Some([8192, 100])
+        );
+        assert_eq!(
+            decode_size(&[area(2048.0, 0.0)], 1.25, 8192),
+            None,
+            "minimized"
+        );
+        assert_eq!(decode_size(&[], 1.25, 8192), None);
+    }
+
+    #[test]
+    fn full_resolution_as_soon_as_the_display_image_would_be_stretched() {
+        let mut zoom = Zoom::default();
+        // The 4K start-up decode, 3830 px wide: 100 % used to stretch it by 4.4 %.
+        let frame = scaled_frame([3830, 2160]);
+        assert!(
+            !needs_full(&frame, &zoom),
+            "fitted, the display image is enough"
+        );
+        zoom.toggle(&frame, None);
+        assert_eq!(zoom.scale, Some(1.0));
+        assert!(needs_full(&frame, &zoom));
+        // A photo smaller than the area is its own display image: nothing more to load.
+        let small = Frame {
+            image_size: [800, 600],
+            display_size: [800, 600],
+            ..frame
+        };
+        let mut zoom = Zoom::default();
+        zoom.toggle(&small, None);
+        assert!(!needs_full(&small, &zoom));
     }
 
     #[test]

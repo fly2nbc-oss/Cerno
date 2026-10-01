@@ -202,13 +202,14 @@ impl CernoApp {
 
     pub(super) fn frame_of(&self, ctx: &egui::Context, slot: &Slot) -> Option<viewer::Frame> {
         match self.loader.get(slot.index) {
-            Lookup::Ready(image) => Some(viewer::Frame {
-                area: slot.area,
-                image_size: image.original_size,
-                pixels_per_point: ctx.pixels_per_point(),
-            }),
+            Lookup::Ready(image) => Some(frame_for(slot.area, &image, ctx.pixels_per_point())),
             _ => None,
         }
+    }
+
+    /// The photo areas on screen, for the decode size: one, or the two halves of compare mode.
+    pub(super) fn photo_areas(&self, area: Rect) -> Vec<Rect> {
+        self.slots(area).iter().map(|slot| slot.area).collect()
     }
 
     /// Mouse on a photo: double-click toggles 100 %, wheel zooms, drag pans. Both photos in
@@ -261,11 +262,7 @@ impl CernoApp {
     /// One loaded photo: its pointer input (unless a menu or card is open over it), the
     /// pixels, then the edit overlay or the compare labels.
     fn draw_photo(&mut self, ui: &egui::Ui, slot: &Slot, image: &LoadedImage) {
-        let frame = viewer::Frame {
-            area: slot.area,
-            image_size: image.original_size,
-            pixels_per_point: ui.ctx().pixels_per_point(),
-        };
+        let frame = frame_for(slot.area, image, ui.ctx().pixels_per_point());
         let covered = self.help_open
             || self.palette.is_some()
             || self.action_menu.is_some()
@@ -356,5 +353,16 @@ impl CernoApp {
             scores.and_then(|s| aesthetic::combined(s.aesthetic, s.aesthetic25)),
             scores.and_then(|s| percentiles.subject(&s)),
         );
+    }
+}
+
+/// The geometry of `image` drawn in `area`.
+fn frame_for(area: Rect, image: &LoadedImage, pixels_per_point: f32) -> viewer::Frame {
+    let [w, h] = image.texture.size();
+    viewer::Frame {
+        area,
+        image_size: image.original_size,
+        display_size: [w as u32, h as u32],
+        pixels_per_point,
     }
 }

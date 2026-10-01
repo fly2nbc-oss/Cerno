@@ -4,9 +4,10 @@
 //! nor being decoded, relative to the *current* index at the moment it looks. Jumping around
 //! therefore re-prioritises automatically.
 //!
-//! Display images are decoded at monitor resolution. For zooming, the current image (and the
-//! pinned left image in compare mode) can also be loaded at full resolution, split into tiles
-//! that fit the GPU's texture limit.
+//! Display images are decoded at the size of the photo area, so a fitted photo is drawn pixel
+//! for pixel; when the area changes, cached ones are decoded again. For zooming, the current
+//! image (and the pinned left image in compare mode) can also be loaded at full resolution,
+//! split into tiles that fit the GPU's texture limit.
 //!
 //! While the check overlay is on (`O`), the photos on screen and the current one's neighbours
 //! also get it, computed from the same decode – or from a new one, since a texture can't be
@@ -19,7 +20,7 @@ use std::thread::JoinHandle;
 use std::time::Instant;
 
 use anyhow::{Context as _, Result};
-use eframe::egui::{self, ColorImage, TextureFilter, TextureHandle, TextureOptions};
+use eframe::egui::{self, ColorImage, TextureHandle, TextureOptions};
 
 use crate::filelock::FileLocks;
 use crate::histogram::{self, RgbHistogram};
@@ -34,15 +35,12 @@ const PREFETCH_ORDER: [isize; 7] = [0, 1, -1, 2, 3, -2, -3];
 const KEEP_RADIUS: usize = 4;
 /// Upper bound for full-resolution tiles, below every GPU's limit we care about.
 const MAX_TILE: u32 = 4096;
-/// Mipmaps keep the picture crisp when the window is much smaller than the monitor. The
-/// overlay over it uses the same, so both shrink alike.
-const DISPLAY_TEXTURE: TextureOptions = TextureOptions {
-    mipmap_mode: Some(TextureFilter::Linear),
-    ..TextureOptions::LINEAR
-};
 
 pub struct LoadedImage {
+    /// Fitted into the decode size it was made for, so a fitted photo is drawn pixel for pixel.
     pub texture: TextureHandle,
+    /// The decode size (`Loader::set_target`) this image was made for.
+    pub decoded_for: [u32; 2],
     /// RGB histogram of the display decode.
     pub histogram: RgbHistogram,
     /// Full image size after orientation.
@@ -88,7 +86,8 @@ struct State {
     current: usize,
     /// Kept decoded however far away it is (the left photo in compare mode).
     pinned: Option<usize>,
-    /// Decode size in physical pixels (monitor size, clamped to the max texture side).
+    /// Decode size in physical pixels: the photo area, clamped to the max texture side (a 4K
+    /// guess until the window has one).
     target: [u32; 2],
     cache: HashMap<usize, Slot>,
     in_flight: HashSet<usize>,
@@ -315,24 +314,13 @@ impl Loader {
         self.shared.wake.notify_all();
     }
 
-    /// Applies to new decodes. A smaller target keeps the cache; a larger one (screen bigger
-    /// than the start-up guess) drops images that would now look soft, so they decode again.
+    /// The decode size: the photo area in physical pixels. Cached images that would come out
+    /// at another size are decoded again – the current photo first – and stay on screen until
+    /// the new one is there; scaled by the GPU they look soft.
     pub fn set_target(&self, target: [u32; 2]) {
         let mut state = self.shared.lock();
-        let grew = target[0] > state.target[0] || target[1] > state.target[1];
-        state.target = target;
-        if grew {
-            let soft: Vec<usize> = state
-                .cache
-                .iter()
-                .filter(|(_, slot)| matches!(slot, Slot::Ready(image) if too_small(image, target)))
-                .map(|(&index, _)| index)
-                .collect();
-            for index in soft {
-                state.cache.remove(&index);
-                // Its overlay comes again with the new decode.
-                state.overlays.remove(&index);
-            }
+        if state.target != target {
+            state.target = target;
             drop(state);
             self.shared.wake.notify_all();
         }
@@ -387,7 +375,7 @@ impl Loader {
     }
 
     /// Whether the neighbours are decoded too. Off while the grid shows: only its cursor photo
-    /// is decoded then, not photos at monitor size that nobody sees.
+    /// is decoded then, not photos at full-window size that nobody sees.
     pub fn set_prefetch(&self, on: bool) {
         let mut state = self.shared.lock();
         if state.prefetch != on {
@@ -453,15 +441,8 @@ fn worker(shared: &Shared) {
                     continue;
                 }
                 state.in_flight.remove(&job.index);
-                // Decoded for a smaller screen than we now know we have: decode again.
-                if result
-                    .as_ref()
-                    .is_ok_and(|(image, _)| too_small(image, state.target))
-                {
-                    drop(state);
-                    shared.wake.notify_all();
-                    continue;
-                }
+                // Made for a decode size that changed meanwhile, it still goes into the cache:
+                // better than the image there, if any, and `display_job` decodes it again.
                 let (slot, overlay) = match result {
                     Ok((image, overlay)) => (Slot::Ready(Arc::new(image)), overlay),
                     Err(err) => {
@@ -560,9 +541,14 @@ fn job(state: &State, kind: Kind, index: usize) -> Job {
     }
 }
 
+/// A photo not decoded yet, or decoded for another size (see [`stale`]).
 fn display_job(state: &mut State, index: usize) -> Option<Job> {
+    let target = state.target;
     if index >= state.paths.len()
-        || state.cache.contains_key(&index)
+        || state
+            .cache
+            .get(&index)
+            .is_some_and(|slot| !stale(slot, target))
         || !state.in_flight.insert(index)
     {
         return None;
@@ -637,11 +623,15 @@ fn on_screen_job(state: &mut State, index: usize) -> Option<Job> {
         .or_else(|| full_overlay_job(state, index))
 }
 
-/// Whether `image` has fewer pixels than a decode for `target` would produce.
-fn too_small(image: &LoadedImage, target: [u32; 2]) -> bool {
-    let wanted = decode::fit_within(image.original_size, target);
-    let have = image.texture.size();
-    (have[0] as u32) < wanted[0] || (have[1] as u32) < wanted[1]
+/// A display image made for another decode size that would now come out at another size.
+/// Asking for both keeps a photo from decoding over and over if its size ever disagrees with
+/// [`decode::fit_within`] (a video's placeholder, say). Failures are not retried.
+fn stale(slot: &Slot, target: [u32; 2]) -> bool {
+    let Slot::Ready(image) = slot else {
+        return false;
+    };
+    let [w, h] = decode::fit_within(image.original_size, target);
+    image.decoded_for != target && image.texture.size() != [w as usize, h as usize]
 }
 
 /// The picture of `path`, fitted into `target`, and its metadata: a photo from its bytes
@@ -658,7 +648,7 @@ fn picture(
         let meta = metadata::read_sidecar(path);
         let (decoded, framed) = match crate::video::poster(path) {
             Ok(jpeg) => (
-                decode::decode_for_display(&jpeg, library::Format::Jpeg, 1, target)?,
+                decode::decode_for_screen(&jpeg, library::Format::Jpeg, 1, target)?,
                 true,
             ),
             Err(err) => {
@@ -670,7 +660,7 @@ fn picture(
     }
     let bytes = read(&shared.files, path)?;
     let meta = metadata::read_for(path, &bytes);
-    let decoded = decode::decode_for_display(&bytes, format, meta.orientation, target)?;
+    let decoded = decode::decode_for_screen(&bytes, format, meta.orientation, target)?;
     Ok((meta, decoded, true))
 }
 
@@ -692,14 +682,16 @@ fn load_display(shared: &Shared, job: &Job) -> Result<(LoadedImage, Option<Textu
         &decoded.rgb,
     );
     // `Context` is `Send + Sync`: uploading here keeps the UI thread free.
-    let texture =
-        shared
-            .ctx
-            .load_texture(library::file_name_lossy(&job.path), image, DISPLAY_TEXTURE);
+    let texture = shared.ctx.load_texture(
+        library::file_name_lossy(&job.path),
+        image,
+        TextureOptions::LINEAR,
+    );
     let overlay = display_overlay(shared, job, &decoded);
 
     let image = LoadedImage {
         texture,
+        decoded_for: job.target,
         histogram: histogram::compute(&decoded.rgb),
         original_size: decoded.original_size,
         rating: meta.rating,
@@ -729,7 +721,7 @@ fn display_overlay(
     let threshold = overlay::threshold(job.overlay, &decoded.rgb, w, h);
     let image = overlay::render(&decoded.rgb, w, h, [0, 0, w, h], job.overlay, threshold)?;
     let name = format!("overlay:{}", job.path.display());
-    Some(shared.ctx.load_texture(name, image, DISPLAY_TEXTURE))
+    Some(shared.ctx.load_texture(name, image, TextureOptions::LINEAR))
 }
 
 /// The overlay of a photo already cached: its display image once more, for the pixels.
@@ -877,11 +869,22 @@ mod tests {
 
     /// A decoded display image, as the cache holds it.
     fn ready(ctx: &egui::Context) -> Slot {
-        let pixel = ColorImage::new([1, 1], vec![egui::Color32::BLACK]);
+        decoded(ctx, [1, 1], [1, 1], [100, 100])
+    }
+
+    /// A display image of `size` for a photo of `original` size, made for decode size `target`.
+    fn decoded(
+        ctx: &egui::Context,
+        size: [usize; 2],
+        original: [u32; 2],
+        target: [u32; 2],
+    ) -> Slot {
+        let pixels = ColorImage::new(size, vec![egui::Color32::BLACK; size[0] * size[1]]);
         Slot::Ready(Arc::new(LoadedImage {
-            texture: ctx.load_texture("photo", pixel, TextureOptions::LINEAR),
+            texture: ctx.load_texture("photo", pixels, TextureOptions::LINEAR),
+            decoded_for: target,
             histogram: [[0; 256]; 3],
-            original_size: [1, 1],
+            original_size: original,
             rating: RatingInfo::default(),
             label: LabelInfo::None,
             camera: CameraInfo::default(),
@@ -1062,6 +1065,36 @@ mod tests {
                 (8, false),
                 (7, false),
             ]
+        );
+    }
+
+    /// After the photo area changed, a photo is decoded again – the current one first – unless
+    /// it would come out at the same size. The old one is shown until then.
+    #[test]
+    fn photos_decoded_for_another_size_are_decoded_again() {
+        let ctx = egui::Context::default();
+        let mut s = state(20, 10, None);
+        s.target = [256, 116];
+        // Made for the start-up guess: 288 × 216, now it would be 155 × 116.
+        s.cache
+            .insert(10, decoded(&ctx, [288, 216], [400, 300], [384, 216]));
+        s.cache
+            .insert(11, decoded(&ctx, [155, 116], [400, 300], [256, 116]));
+        // Smaller than either size: it comes out the same.
+        s.cache
+            .insert(9, decoded(&ctx, [80, 60], [80, 60], [384, 216]));
+        // Made for this size, even if its size disagrees: decoding again would never end.
+        s.cache
+            .insert(12, decoded(&ctx, [10, 10], [400, 300], [256, 116]));
+        let display: Vec<usize> = jobs(&mut s)
+            .into_iter()
+            .filter(|&(_, kind, _)| kind == Kind::Display)
+            .map(|(index, _, _)| index)
+            .collect();
+        assert_eq!(display, [10, 13, 8, 7]);
+        assert!(
+            matches!(s.cache.get(&10), Some(Slot::Ready(_))),
+            "the old picture stays until the new one is there"
         );
     }
 

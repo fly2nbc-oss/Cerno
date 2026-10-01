@@ -34,14 +34,50 @@ pub fn decode_for_display(
     orientation: u16,
     max_size: [u32; 2],
 ) -> Result<DecodedImage> {
-    decode(bytes, format, orientation, max_size, true)
+    decode(
+        bytes,
+        format,
+        orientation,
+        max_size,
+        true,
+        FilterType::CatmullRom,
+    )
+}
+
+/// Like [`decode_for_display`], but scaled with Lanczos3: the photo on screen is drawn pixel
+/// for pixel, so this filter is all the sharpness a fitted photo gets (CatmullRom kept about
+/// 0.86 of the finest detail). Everything else keeps CatmullRom: the analysis' 256 px
+/// thumbnail feeds the fingerprint, and another filter would change every fingerprint.
+pub fn decode_for_screen(
+    bytes: &[u8],
+    format: Format,
+    orientation: u16,
+    max_size: [u32; 2],
+) -> Result<DecodedImage> {
+    decode(
+        bytes,
+        format,
+        orientation,
+        max_size,
+        true,
+        FilterType::Lanczos3,
+    )
 }
 
 /// A JPEG at full size and in display orientation, with the pixels left in the file's own
 /// colour space: straighten and crop write them back under the original ICC profile, so a
 /// Display P3 or Adobe RGB photo keeps its colours.
 pub fn decode_for_edit(bytes: &[u8], orientation: u16) -> Result<DecodedImage> {
-    decode(bytes, Format::Jpeg, orientation, [u32::MAX; 2], false)
+    // Full size: nothing is resized, so the filter never applies.
+    let size = [u32::MAX; 2];
+    decode(
+        bytes,
+        Format::Jpeg,
+        orientation,
+        size,
+        false,
+        FilterType::CatmullRom,
+    )
 }
 
 fn decode(
@@ -50,6 +86,7 @@ fn decode(
     orientation: u16,
     max_size: [u32; 2],
     srgb: bool,
+    filter: FilterType,
 ) -> Result<DecodedImage> {
     let (width, height, rgb, orientation) = match format {
         Format::Jpeg => {
@@ -89,7 +126,7 @@ fn decode(
     let rgb = if (resize_w, resize_h) == (width, height) {
         rgb
     } else {
-        resize_rgb(rgb, width, height, resize_w, resize_h)?
+        resize_with(rgb, width, height, resize_w, resize_h, filter)?
     };
     let (width, height, rgb) = apply_orientation(rgb, resize_w, resize_h, orientation);
 
@@ -217,9 +254,20 @@ pub fn catch_panic<T>(job: impl FnOnce() -> Result<T>) -> Result<T> {
 }
 
 pub fn resize_rgb(rgb: Vec<u8>, w: u32, h: u32, dst_w: u32, dst_h: u32) -> Result<Vec<u8>> {
+    resize_with(rgb, w, h, dst_w, dst_h, FilterType::CatmullRom)
+}
+
+fn resize_with(
+    rgb: Vec<u8>,
+    w: u32,
+    h: u32,
+    dst_w: u32,
+    dst_h: u32,
+    filter: FilterType,
+) -> Result<Vec<u8>> {
     let src = Image::from_vec_u8(w, h, rgb, PixelType::U8x3)?;
     let mut dst = Image::new(dst_w, dst_h, PixelType::U8x3);
-    let options = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FilterType::CatmullRom));
+    let options = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(filter));
     Resizer::new().resize(&src, &mut dst, &options)?;
     Ok(dst.into_vec())
 }
