@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+## [1.3.1] – 2026-10-01
+
+Sharper photos: what you see in the window and at 100 % is now exactly the photo, pixel for pixel.
+
 ### Fixed
 
 - **Sharper fitted photos** – a photo that fits the window is decoded for the photo area itself and drawn pixel for pixel, scaled with Lanczos3. Before, it was decoded for the monitor and shrunk a second time by the graphics card, which cost about a quarter of the finest detail. When a panel opens or the window changes size, the photos are decoded again; until then the previous picture stays.
