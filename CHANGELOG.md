@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Fixed
+
+- **Sharper fitted photos** – a photo that fits the window is decoded for the photo area itself and drawn pixel for pixel, scaled with Lanczos3. Before, it was decoded for the monitor and shrunk a second time by the graphics card, which cost about a quarter of the finest detail. When a panel opens or the window changes size, the photos are decoded again; until then the previous picture stays.
+- **100 % really is 100 %** – the photo opened at start and its nearest neighbours were decoded for a 4K screen, and on 4000 px photos `Z` then stretched that picture by 4 % instead of loading the full resolution, which halved the finest detail. Full resolution now loads as soon as a photo is shown larger than its picture, and the neighbours are decoded only once the window's photo area is known.
+
 ## [1.3.0] – 2026-10-01
 
 Simpler to read: one aesthetics value, two numbers under the photo, explanations on hover, an action menu that says how many photos it takes. Videos play in a player again, and a filter shows photos or videos only.
