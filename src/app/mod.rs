@@ -33,9 +33,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread::JoinHandle;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-use eframe::egui::{self, Key, Rect, Vec2, ViewportCommand, vec2};
+use eframe::egui::{self, Key, Rect, ViewportCommand};
 
 use crate::analysis::{Analyzer, ScoreBoard};
 use crate::db::Db;
@@ -59,12 +59,13 @@ use menu::ConfirmAction;
 use notice::Notice;
 
 /// Decode size before the window exists, so the first photo decodes while the GPU starts up.
-/// Covers screens up to 4K; the real monitor size replaces it on the first frame (a larger
-/// screen re-decodes).
+/// Covers screens up to 4K; once the photo area is known, that photo is decoded again for it.
 const START_TARGET: [u32; 2] = [3840, 2160];
 
-/// Decode size if the monitor size is unknown (Wayland never reports it).
-const FALLBACK_TARGET: [u32; 2] = [2560, 1440];
+/// How long the photo area must keep its size before photos are decoded for it: a window
+/// dragged larger, or maximized after the first frame, would otherwise decode them at every
+/// step.
+const TARGET_SETTLE: Duration = Duration::from_millis(200);
 
 /// Set once the hint about the aesthetics model has been shown. Before 0.10 the same key
 /// meant "the download dialog was declined", which also ends the hint.
@@ -120,6 +121,8 @@ pub struct CernoApp {
     /// The open folder includes nested folders.
     subfolders: bool,
     target: Option<[u32; 2]>,
+    /// A new decode size and since when the photo area has had it (see `TARGET_SETTLE`).
+    pending_target: Option<([u32; 2], Instant)>,
     zoom: viewer::Zoom,
     /// The check overlay over the photos (`O`); not saved.
     overlay: crate::overlay::Mode,
@@ -308,6 +311,7 @@ impl CernoApp {
             auto_advance,
             subfolders,
             target: None,
+            pending_target: None,
             zoom: viewer::Zoom::default(),
             overlay: crate::overlay::Mode::Off,
             grid: false,
@@ -354,25 +358,38 @@ impl CernoApp {
         app
     }
 
-    /// Decode size: the monitor in physical pixels (or the window, if larger), clamped to the
-    /// GPU's texture limit. It only grows, so moving to a bigger screen never shrinks the cache.
-    fn update_target(&mut self, ctx: &egui::Context, window: Vec2) {
-        let ppp = ctx.pixels_per_point();
-        let (monitor, max_side) = ctx.input(|i| (i.viewport().monitor_size, i.max_texture_side));
-        let fallback = vec2(FALLBACK_TARGET[0] as f32, FALLBACK_TARGET[1] as f32);
-        let size = monitor.map_or(fallback, |m| m * ppp).max(window * ppp);
-        let max = max_side as f32;
-        let wanted = [
-            size.x.min(max).round() as u32,
-            size.y.min(max).round() as u32,
-        ];
-        let target = match self.target {
-            Some(t) if t[0] >= wanted[0] && t[1] >= wanted[1] => return,
-            Some(t) => [t[0].max(wanted[0]), t[1].max(wanted[1])],
-            None => wanted,
+    /// Decode size: the photo area in physical pixels (`viewer::decode_size`), so a fitted
+    /// photo is drawn pixel for pixel. Taken once the area has kept it for [`TARGET_SETTLE`].
+    /// The first one also starts the prefetch – after it, so the neighbours are decoded for
+    /// the area and not for the start-up guess.
+    fn update_target(&mut self, ctx: &egui::Context, areas: &[Rect]) {
+        let max_side = ctx.input(|i| i.max_texture_side) as u32;
+        let Some(wanted) = viewer::decode_size(areas, ctx.pixels_per_point(), max_side) else {
+            return;
         };
-        self.target = Some(target);
-        self.loader.set_target(target);
+        if self.target == Some(wanted) {
+            self.pending_target = None;
+            return;
+        }
+        let now = Instant::now();
+        let since = match self.pending_target {
+            Some((pending, since)) if pending == wanted => since,
+            _ => {
+                self.pending_target = Some((wanted, now));
+                now
+            }
+        };
+        let waited = now - since;
+        if waited < TARGET_SETTLE {
+            ctx.request_repaint_after(TARGET_SETTLE - waited);
+            return;
+        }
+        self.pending_target = None;
+        let first = self.target.replace(wanted).is_none();
+        self.loader.set_target(wanted);
+        if first {
+            self.loader.start_prefetch();
+        }
     }
 
     /// Results from the background: deletions, copy/move, edits, new analysis marks and a
@@ -401,16 +418,19 @@ impl eframe::App for CernoApp {
             // Fill the work area of the monitor the window is on. Maximized stays on one
             // screen; F11 is the separate fullscreen switch.
             ctx.send_viewport_cmd(ViewportCommand::Maximized(true));
-            self.loader.start_prefetch();
             log::info!(
                 "start-up: first frame after {} ms",
                 self.started.elapsed().as_millis()
             );
         }
-        self.update_target(&ctx, window.size());
         self.poll_background(&ctx);
 
         let layout = self.layout(window);
+        // The grid shows no photo, so it keeps the decode size.
+        if !self.grid {
+            let areas = self.photo_areas(layout.area);
+            self.update_target(&ctx, &areas);
+        }
         // The grid shows no photo: zoom keys go to its cell size, not to a hidden photo.
         let frames: Vec<viewer::Frame> = if self.grid {
             Vec::new()
