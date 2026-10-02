@@ -793,10 +793,15 @@ fn taste_trainer(shared: &Shared) {
                 if state.shutdown {
                     return;
                 }
-                match state.dirty_since {
-                    Some(since) if since.elapsed() >= TASTE_DELAY => break,
-                    Some(since) => {
-                        let wait = TASTE_DELAY - since.elapsed();
+                // `elapsed` read once: read twice, the delay could run out in between and the
+                // subtraction would panic, ending this thread for the session.
+                match state.dirty_since.map(|since| {
+                    TASTE_DELAY
+                        .checked_sub(since.elapsed())
+                        .filter(|wait| !wait.is_zero())
+                }) {
+                    Some(None) => break,
+                    Some(Some(wait)) => {
                         state = shared
                             .taste_wake
                             .wait_timeout(state, wait)
