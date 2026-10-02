@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use eframe::egui::{self, Event, Key, MouseWheelUnit, Pos2, Rect, Sense};
+use eframe::egui::{self, Event, Key, MouseWheelUnit, Pos2, Rect};
 
 use crate::edit::{self, Ratio};
 use crate::i18n;
@@ -35,11 +35,37 @@ enum EditKind {
     },
 }
 
+/// A drag on the crop, from where the button went down.
 enum CropGesture {
-    Move { start: Pos2, crop: edit::Crop },
-    Resize { anchor: (f64, f64) },
-    Draw { anchor: Pos2, before: edit::Crop },
+    Move {
+        start: Pos2,
+        crop: edit::Crop,
+    },
+    /// `grab` is the corner minus the pointer, in image pixels: the corner keeps its distance
+    /// to the pointer instead of jumping to it.
+    Resize {
+        corner: edit::Corner,
+        anchor: (f64, f64),
+        grab: (f64, f64),
+    },
+    Draw {
+        anchor: Pos2,
+        before: edit::Crop,
+    },
 }
+
+impl CropGesture {
+    fn kind(&self) -> edit_ui::Gesture {
+        match self {
+            Self::Move { .. } => edit_ui::Gesture::Move,
+            Self::Resize { corner, .. } => edit_ui::Gesture::Resize(*corner),
+            Self::Draw { .. } => edit_ui::Gesture::Draw,
+        }
+    }
+}
+
+/// A drawn frame shorter than this (in points) was a click: the frame before it comes back.
+const DRAW_MIN: f32 = 6.0;
 
 enum PixelJob {
     Rotate(f64),
@@ -411,32 +437,41 @@ impl CernoApp {
         else {
             return;
         };
-        let id = ui.id().with("crop");
-        let response = ui.interact(frame.area, id, Sense::click_and_drag());
+        let response = edit_ui::pointer_area(ui, frame.area);
         let photo = self.zoom.image_rect(frame);
-        let (image_size, crop) = match &self.edit {
+        let (image_size, crop, active) = match &self.edit {
             Some(EditSession {
-                kind: EditKind::Crop {
-                    image_size, crop, ..
-                },
+                kind:
+                    EditKind::Crop {
+                        image_size,
+                        crop,
+                        gesture,
+                        ..
+                    },
                 ..
-            }) => (*image_size, *crop),
+            }) => (*image_size, *crop, gesture.as_ref().map(CropGesture::kind)),
             _ => return,
         };
+        let movable = crop.can_move(f64::from(image_size[0]), f64::from(image_size[1]));
         let screen = edit_ui::crop_to_screen(photo, image_size, crop);
+        let under = |pos| edit_ui::gesture(edit_ui::hit_test(screen, pos), movable);
         if let Some(pos) = response.hover_pos().filter(|pos| frame.area.contains(*pos)) {
-            ui.ctx()
-                .set_cursor_icon(edit_ui::cursor(edit_ui::hit_test(screen, pos)));
+            let shown = active.unwrap_or_else(|| under(pos));
+            ui.ctx().set_cursor_icon(edit_ui::cursor(shown));
         }
-        if response.drag_started()
-            && let Some(pos) = response.interact_pointer_pos()
-        {
-            let gesture = match edit_ui::hit_test(screen, pos) {
-                edit_ui::Hit::Corner(corner) => CropGesture::Resize {
-                    anchor: corner.anchor(crop),
-                },
-                edit_ui::Hit::Inside => CropGesture::Move { start: pos, crop },
-                edit_ui::Hit::Outside => CropGesture::Draw {
+        if let Some(pos) = edit_ui::drag_start(ui, &response) {
+            let gesture = match under(pos) {
+                edit_ui::Gesture::Resize(corner) => {
+                    let (cx, cy) = corner.point(crop);
+                    let (px, py) = edit_ui::screen_to_image(photo, image_size, pos);
+                    CropGesture::Resize {
+                        corner,
+                        anchor: corner.anchor(crop),
+                        grab: (cx - px, cy - py),
+                    }
+                }
+                edit_ui::Gesture::Move => CropGesture::Move { start: pos, crop },
+                edit_ui::Gesture::Draw => CropGesture::Draw {
                     anchor: pos,
                     before: crop,
                 },
@@ -463,7 +498,7 @@ impl CernoApp {
             if let Some(CropGesture::Draw { before, anchor }) = gesture
                 && !response
                     .interact_pointer_pos()
-                    .is_some_and(|pos| pos.distance(*anchor) >= 6.0)
+                    .is_some_and(|pos| pos.distance(*anchor) >= DRAW_MIN)
             {
                 *crop = *before;
             }
@@ -497,12 +532,19 @@ impl CernoApp {
                 let (dx, dy) = edit_ui::screen_delta(photo, image_size, pos - start);
                 *crop = origin.translate(dx, dy, image.0, image.1);
             }
-            Some(CropGesture::Resize { anchor }) => {
-                let pointer = edit_ui::screen_to_image(photo, image_size, pos);
+            Some(CropGesture::Resize { anchor, grab, .. }) => {
+                let (px, py) = edit_ui::screen_to_image(photo, image_size, pos);
+                let pointer = (px + grab.0, py + grab.1);
                 *crop = edit::resize_from_anchor(anchor, pointer, aspect, image, floor);
             }
+            // Nothing yet while it could still be a click.
+            Some(CropGesture::Draw { anchor, before }) if pos.distance(anchor) < DRAW_MIN => {
+                *crop = before;
+            }
+            // From the margin beside the photo the frame starts at the photo's nearest point.
             Some(CropGesture::Draw { anchor, .. }) => {
-                let anchor = edit_ui::screen_to_image(photo, image_size, anchor);
+                let (ax, ay) = edit_ui::screen_to_image(photo, image_size, anchor);
+                let anchor = (ax.clamp(0.0, image.0), ay.clamp(0.0, image.1));
                 let pointer = edit_ui::screen_to_image(photo, image_size, pos);
                 *crop = edit::resize_from_anchor(anchor, pointer, aspect, image, floor);
             }

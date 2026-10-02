@@ -1,11 +1,13 @@
 //! Straighten grid and the crop frame. State lives in `app.rs`.
 
-use eframe::egui::{Color32, Painter, Pos2, Rect, Stroke, pos2, vec2};
+use eframe::egui::{Color32, Painter, Pos2, Rect, Response, Sense, Stroke, Ui, pos2, vec2};
 
 use crate::edit::{Corner, Crop};
 use crate::theme::{text, tokens};
 
-const HANDLE: f32 = 10.0;
+/// How far from a corner a drag still takes it, in points. A small frame gets less, so its
+/// inside stays reachable for moving it.
+const HANDLE: f32 = 16.0;
 /// Divisions of the shorter side. Fine enough to judge a horizon, not a rule of thirds.
 const GRID: f32 = 24.0;
 
@@ -18,21 +20,60 @@ pub enum Hit {
 }
 
 pub fn hit_test(frame: Rect, pointer: Pos2) -> Hit {
+    let reach = HANDLE.min(frame.width().min(frame.height()) / 3.0);
     let corners = [
         (Corner::Nw, frame.left_top()),
         (Corner::Ne, frame.right_top()),
         (Corner::Sw, frame.left_bottom()),
         (Corner::Se, frame.right_bottom()),
     ];
-    for (corner, pos) in corners {
-        if pointer.distance(pos) <= HANDLE {
-            return Hit::Corner(corner);
-        }
+    let nearest = corners
+        .into_iter()
+        .map(|(corner, pos)| (corner, pointer.distance(pos)))
+        .min_by(|a, b| a.1.total_cmp(&b.1));
+    match nearest {
+        Some((corner, distance)) if distance <= reach => Hit::Corner(corner),
+        _ if frame.contains(pointer) => Hit::Inside,
+        _ => Hit::Outside,
     }
-    if frame.contains(pointer) {
-        Hit::Inside
-    } else {
-        Hit::Outside
+}
+
+/// Takes the pointer over the photo area during a crop. Drag only: the drag then starts on the
+/// press itself, while the pointer is still on the corner. With clicks too, egui waits for 6 pt
+/// of movement first, and a quick pull from a corner was taken for a move – which the first
+/// frame, the whole photo, can't do.
+pub fn pointer_area(ui: &Ui, area: Rect) -> Response {
+    ui.interact(area, ui.id().with("crop"), Sense::drag())
+}
+
+/// Where a drag that starts this frame began: the press, not where the pointer is now.
+pub fn drag_start(ui: &Ui, response: &Response) -> Option<Pos2> {
+    if !response.drag_started() {
+        return None;
+    }
+    ui.ctx()
+        .input(|i| i.pointer.press_origin())
+        .or_else(|| response.interact_pointer_pos())
+}
+
+/// What a drag on the crop does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Gesture {
+    /// The corner follows the pointer, the opposite one stays put.
+    Resize(Corner),
+    /// The frame slides.
+    Move,
+    /// A new frame grows from where the drag began.
+    Draw,
+}
+
+/// Decided where the button went down. Inside a frame that can't slide – the first frame is
+/// the whole photo – a drag draws a new frame, as it does outside.
+pub fn gesture(hit: Hit, movable: bool) -> Gesture {
+    match hit {
+        Hit::Corner(corner) => Gesture::Resize(corner),
+        Hit::Inside if movable => Gesture::Move,
+        Hit::Inside | Hit::Outside => Gesture::Draw,
     }
 }
 
@@ -176,13 +217,104 @@ pub fn banner(painter: &Painter, area: Rect, primary: &str, hint: &str) {
     );
 }
 
-/// Cursor for a crop hit.
-pub fn cursor(hit: Hit) -> eframe::egui::CursorIcon {
+/// Cursor for what a drag would do.
+pub fn cursor(gesture: Gesture) -> eframe::egui::CursorIcon {
     use eframe::egui::CursorIcon;
-    match hit {
-        Hit::Corner(Corner::Nw | Corner::Se) => CursorIcon::ResizeNwSe,
-        Hit::Corner(Corner::Ne | Corner::Sw) => CursorIcon::ResizeNeSw,
-        Hit::Inside => CursorIcon::Grab,
-        Hit::Outside => CursorIcon::Crosshair,
+    match gesture {
+        Gesture::Resize(Corner::Nw | Corner::Se) => CursorIcon::ResizeNwSe,
+        Gesture::Resize(Corner::Ne | Corner::Sw) => CursorIcon::ResizeNeSw,
+        Gesture::Move => CursorIcon::Grab,
+        Gesture::Draw => CursorIcon::Crosshair,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eframe::egui::{Context, Event, Modifiers, PointerButton, RawInput};
+
+    fn frame() -> Rect {
+        Rect::from_min_size(pos2(100.0, 100.0), vec2(600.0, 400.0))
+    }
+
+    #[test]
+    fn corners_win_near_them_the_inside_elsewhere() {
+        let f = frame();
+        assert_eq!(hit_test(f, f.left_top()), Hit::Corner(Corner::Nw));
+        assert_eq!(
+            hit_test(f, f.right_bottom() - vec2(12.0, 9.0)),
+            Hit::Corner(Corner::Se)
+        );
+        assert_eq!(hit_test(f, f.right_top() + vec2(-20.0, 20.0)), Hit::Inside);
+        assert_eq!(hit_test(f, f.center()), Hit::Inside);
+        assert_eq!(
+            hit_test(f, f.left_bottom() + vec2(-30.0, 0.0)),
+            Hit::Outside
+        );
+        // A small frame keeps its inside: corners reach a third of the short side.
+        let small = Rect::from_min_size(pos2(0.0, 0.0), vec2(30.0, 30.0));
+        assert_eq!(hit_test(small, pos2(15.0, 15.0)), Hit::Inside);
+        assert_eq!(hit_test(small, pos2(26.0, 27.0)), Hit::Corner(Corner::Se));
+    }
+
+    #[test]
+    fn a_frame_that_cannot_slide_is_drawn_anew() {
+        let corner = Hit::Corner(Corner::Ne);
+        assert_eq!(gesture(corner, false), Gesture::Resize(Corner::Ne));
+        assert_eq!(gesture(corner, true), Gesture::Resize(Corner::Ne));
+        assert_eq!(gesture(Hit::Inside, true), Gesture::Move);
+        assert_eq!(gesture(Hit::Inside, false), Gesture::Draw);
+        assert_eq!(gesture(Hit::Outside, true), Gesture::Draw);
+        assert_eq!(cursor(Gesture::Draw), eframe::egui::CursorIcon::Crosshair);
+    }
+
+    /// The bug: pressed on a corner and pulled 20 pt inward at once, the drag was decided at
+    /// the pointer's new place – inside, a move – and the whole-photo frame didn't change.
+    #[test]
+    fn a_quick_pull_from_a_corner_takes_the_corner() {
+        let ctx = Context::default();
+        let area = Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
+        let crop = area;
+        let corner = crop.right_bottom() - vec2(2.0, 2.0);
+        let pulled = corner - vec2(20.0, 20.0);
+        let mut time = 0.0;
+        let mut run = |events: Vec<Event>| {
+            time += 0.016;
+            let mut start = None;
+            let mut output = ctx.run_ui(
+                RawInput {
+                    screen_rect: Some(area),
+                    time: Some(time),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    let response = pointer_area(ui, area);
+                    start = drag_start(ui, &response);
+                },
+            );
+            output.textures_delta.clear();
+            start
+        };
+        let button = |pos, pressed| Event::PointerButton {
+            pos,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        };
+        assert_eq!(run(vec![Event::PointerMoved(corner)]), None);
+        let start = run(vec![button(corner, true), Event::PointerMoved(pulled)])
+            .expect("the drag starts on the press");
+        assert_eq!(start, corner);
+        assert_eq!(
+            gesture(hit_test(crop, start), false),
+            Gesture::Resize(Corner::Se)
+        );
+        assert_eq!(gesture(hit_test(crop, pulled), false), Gesture::Draw);
+        assert_eq!(
+            run(vec![Event::PointerMoved(pulled - vec2(5.0, 5.0))]),
+            None
+        );
+        run(vec![button(pulled, false)]);
     }
 }
