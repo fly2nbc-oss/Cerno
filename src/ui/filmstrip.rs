@@ -1,6 +1,7 @@
 //! Thumbnail strip centred on the current photo. The mouse wheel over it steps through the
 //! photos.
 
+use std::ops::Range;
 use std::path::PathBuf;
 
 use eframe::egui::{Event, MouseWheelUnit, Rect, Stroke, Ui, Vec2, pos2, vec2};
@@ -46,12 +47,16 @@ pub fn draw(
         Stroke::new(1.0, tokens::LINE),
     );
 
+    if paths.is_empty() {
+        return StripOutput::default();
+    }
+    let current = current.min(paths.len() - 1);
     let step = CELL + GAP;
     let side = ((rect.width() / 2.0 / step).ceil() as usize) + 1;
-    let first = current.saturating_sub(side);
-    let last = (current + side).min(paths.len().saturating_sub(1));
     let mut clicked = None;
-    let visible: Vec<(usize, CellInfo)> = (first..=last).map(|i| (i, info(i))).collect();
+    let visible: Vec<(usize, CellInfo)> = visible_range(current, paths.len(), side)
+        .map(|i| (i, info(i)))
+        .collect();
     let mut shift = vec![0.0; visible.len()];
     if grouped {
         for i in 1..visible.len() {
@@ -103,6 +108,16 @@ pub fn draw(
         clicked,
         step: wheel_steps(ui, rect),
     }
+}
+
+/// View indices within `side` of `current`. Empty for an empty view, and `current` past the
+/// end counts as the last photo – the strip must never ask for a cell that isn't there.
+fn visible_range(current: usize, len: usize, side: usize) -> Range<usize> {
+    let Some(last) = len.checked_sub(1) else {
+        return 0..0;
+    };
+    let current = current.min(last);
+    current.saturating_sub(side)..current.saturating_add(side).min(last) + 1
 }
 
 /// Whole photos to move for the wheel events of this frame while the pointer is over the
@@ -158,5 +173,16 @@ mod tests {
         assert_eq!(accumulate(&mut carry, 0.6), 0);
         assert_eq!(accumulate(&mut carry, 0.6), 1);
         assert_eq!(accumulate(&mut carry, -3.0), -2);
+    }
+
+    #[test]
+    fn the_strip_only_asks_for_cells_that_exist() {
+        assert_eq!(visible_range(0, 0, 5), 0..0);
+        assert_eq!(visible_range(3, 0, 5), 0..0);
+        assert_eq!(visible_range(0, 1, 5), 0..1);
+        assert_eq!(visible_range(2, 10, 5), 0..8);
+        assert_eq!(visible_range(9, 10, 5), 4..10);
+        assert_eq!(visible_range(20, 10, 5), 4..10);
+        assert_eq!(visible_range(usize::MAX, 10, 5), 4..10);
     }
 }

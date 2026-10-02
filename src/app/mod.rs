@@ -441,6 +441,9 @@ impl eframe::App for CernoApp {
                 .collect()
         };
         self.handle_keys(&ctx, &frames);
+        // Again: a key can empty the view (a mark took the last photo the filter showed), and
+        // the bars of the old layout would then draw cells of photos that are gone.
+        let layout = self.layout(window);
 
         ui.painter().rect_filled(window, 0.0, tokens::CANVAS);
         self.draw_centre(ui, window, layout.area);
