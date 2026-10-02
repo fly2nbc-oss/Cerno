@@ -367,7 +367,7 @@ impl CernoApp {
             self.toggle_similar(&ctx);
         }
         if out.refresh {
-            self.rebuild_view(&ctx, None);
+            self.refresh_order(&ctx);
         }
         if out.download_model {
             self.ask(ConfirmAction::DownloadModel, false);

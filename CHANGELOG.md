@@ -7,19 +7,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+## [1.4.0] – 2026-10-02
+
+The best photos at a click, a tidier filter bar, and two fixes: no more crash when a mark empties the filter, and a crop frame that moves.
+
+### Added
+
+- **Top 10 … Top 250** – the first box of the filter bar (and *Filter ▸ Best photos ▸*) shows only the best photos of what the other filters leave: 10 highlights, 25 for a preview, 50 for a slideshow, 100 for a photo book, 250 for a gallery. A photo counts with the mean of its stars (or the *For you* guess while it has none), its aesthetics and its sharpness; the best of each burst comes first, then the second best, so a burst can't fill the list. Rejected and blurry photos, duplicates and videos never count. The choice stays while you rate and delete – nothing slips into a rejected photo's place – until a filter changes or *Refresh order* is chosen. It is not saved, never changes a photo, and *Delete* in the action menu is greyed out while it is on.
+- **`crash.log`** – a crash is written to `crash.log` in the data folder (thread, place, version; at most 50 KB), since the installed program has no console where the message would show.
+
+### Changed
+
+- **The filter bar reads left to right**: what is shown (photos, videos, Top N), the filters by group, then the sort, the count and *Action*. The filters are compact chips with a line between groups; rejected (✕) and no stars (☆) look like the keys that set them. *Show all* is the × in the count.
+- **Filters of different kinds work together** – *4★* and *Blurry* now show the blurry 4-star photos, *5★* and red the red 5-star ones. Boxes of the same kind still add up (*4★* and *5★*). Before, every ticked box added photos.
+- The README screenshot shows the current build with the filter bar and the details panel.
+
 ### Fixed
 
 - **No more crash when a mark empties the filter** – rating, rejecting, labelling or deleting the last photo a filter showed (for example `0` on the last 2-star photo with *2★* ticked, or `Delete` on the only photo of a folder) ended Cerno. The bars were laid out for the photo that had just left the view. Grid view and stars clicked in the info bar were not affected.
 - **The crop frame can be moved and resized** – the first frame is the whole photo, so it had nowhere to move; a drag inside it now draws a new frame. A quick pull from a corner was taken for a move (the drag was decided only after 6 pt of movement); it is now decided where the button goes down, and the corners take the pointer from 16 pt away.
 - *For you* could stop updating for the rest of the session when the retraining delay ran out at an unlucky moment.
-
-### Added
-
-- **`crash.log`** – a crash is written to `crash.log` in the data folder (thread, place, version; at most 50 KB), since the installed program has no console where the message would show.
-
-### Changed
-
-- The README screenshot shows the current build with the filter bar and the details panel.
 
 ## [1.3.1] – 2026-10-01
 

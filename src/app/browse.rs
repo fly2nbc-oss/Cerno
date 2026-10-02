@@ -1,7 +1,7 @@
 //! Opening a folder, building the view (sort, filter, pending deletions) and moving
 //! through it.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -61,9 +61,11 @@ impl CernoApp {
         self.all = Arc::clone(&library.paths);
         self.dir = Some(library.dir);
         self.pinned = None;
-        // "Similar photos" was about a photo of the previous folder.
+        // "Similar photos" was about a photo of the previous folder, Top N picked from it.
         self.options.similar = false;
         self.similar_to = None;
+        self.options.top = None;
+        self.top_pick.clear();
         self.cancel_edit();
         self.thumbs.clear();
         // Only needed when the view depends on scores; the analysis fills the board anyway,
@@ -183,13 +185,37 @@ impl CernoApp {
     }
 
     /// New sort or filter: saved, and the view is built again. "Similar photos" switched off
-    /// (also by "Show all") forgets the photo it was about.
+    /// (also by "Show all") forgets the photo it was about; Top N picks again from what the
+    /// other filters leave now.
     pub(super) fn options_changed(&mut self, ctx: &egui::Context) {
         if !self.options.similar {
             self.similar_to = None;
         }
         self.save_options();
+        self.refresh_order(ctx);
+    }
+
+    /// "Refresh order": the view built again with the scores known now – and Top N picked
+    /// again, the only time besides a filter change.
+    pub(super) fn refresh_order(&mut self, ctx: &egui::Context) {
+        self.pick_top();
         self.rebuild_view(ctx, None);
+    }
+
+    fn pick_top(&mut self) {
+        let picked = match self.options.top {
+            Some(n) => view::pick_top(
+                &self.all,
+                self.options,
+                |p| self.facts(p),
+                &self.session_ratings,
+                &self.session_labels,
+                |p| self.deletions.is_hidden(p),
+                usize::from(n),
+            ),
+            None => HashSet::new(),
+        };
+        self.top_pick = picked;
     }
 
     /// `M`: only the photos like the current one – in compare mode like the pinned one – or
@@ -301,6 +327,7 @@ impl CernoApp {
             scores: known.scores,
             personal: self.analyzer.personal(path),
             similarity: self.similarity_to_reference(path),
+            top: self.top_pick.contains(path),
         })
     }
 

@@ -151,10 +151,34 @@ impl FilterKind {
     fn from_token(token: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|kind| kind.token() == token)
     }
+
+    /// The filter bar's groups, in its order (the menu follows it). Within a group a photo
+    /// needs any ticked box, across groups every group with a ticked box. `ALL` keeps the
+    /// order of the stored ids.
+    pub const GROUPS: [&'static [FilterKind]; 3] = [
+        &[
+            Self::Rejected,
+            Self::Unrated,
+            Self::Stars(1),
+            Self::Stars(2),
+            Self::Stars(3),
+            Self::Stars(4),
+            Self::Stars(5),
+        ],
+        &[
+            Self::Colour(Label::Red),
+            Self::Colour(Label::Yellow),
+            Self::Colour(Label::Green),
+            Self::Colour(Label::Blue),
+            Self::Colour(Label::Purple),
+        ],
+        &[Self::Blurry, Self::Duplicate],
+    ];
 }
 
-/// Which photos stay visible. Nothing ticked means every photo. Otherwise a photo stays when
-/// it matches any ticked category.
+/// Which photos stay visible. Nothing ticked means every photo. Otherwise a photo stays when,
+/// in every group with a ticked box (rating, colour, blurry / duplicate – `FilterKind::GROUPS`),
+/// it matches one of them: 4★ + blurry are the blurry 4-star photos, 4★ + 5★ both ratings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PhotoFilter {
     /// Index 0 is 1 star.
@@ -215,8 +239,8 @@ impl PhotoFilter {
         *self = Self::default();
     }
 
-    /// A photo matches when its rating or colour is ticked, or when it is blurry or a copy and
-    /// that box is ticked.
+    /// A photo matches every group with a ticked box: its rating is ticked, its colour is
+    /// ticked, and it is blurry or a copy when one of those boxes is ticked.
     pub fn accepts(
         self,
         rating: Rating,
@@ -224,17 +248,20 @@ impl PhotoFilter {
         is_duplicate: bool,
         colour: Option<Label>,
     ) -> bool {
-        if self.is_all() {
-            return true;
-        }
-        let by_rating = match rating {
-            Rating::Stars(n) if (1..=5).contains(&n) => self.stars[n as usize - 1],
-            Rating::Unrated => self.unrated,
-            Rating::Rejected => self.rejected,
-            Rating::Stars(_) => false,
-        };
-        let by_colour = colour.is_some_and(|label| self.colours[colour_index(label)]);
-        by_rating || by_colour || (self.blurry && is_blurry) || (self.duplicate && is_duplicate)
+        let rating_ticked = self.stars.iter().any(|on| *on) || self.unrated || self.rejected;
+        let by_rating = !rating_ticked
+            || match rating {
+                Rating::Stars(n) if (1..=5).contains(&n) => self.stars[n as usize - 1],
+                Rating::Unrated => self.unrated,
+                Rating::Rejected => self.rejected,
+                Rating::Stars(_) => false,
+            };
+        let by_colour =
+            !self.has_colour() || colour.is_some_and(|label| self.colours[colour_index(label)]);
+        let by_quality = !(self.blurry || self.duplicate)
+            || (self.blurry && is_blurry)
+            || (self.duplicate && is_duplicate);
+        by_rating && by_colour && by_quality
     }
 
     /// Stored setting. A leading `*` marks the exact set, so an old `"3"` (at least 3 stars)
@@ -339,6 +366,9 @@ impl Media {
     }
 }
 
+/// The sizes "Top N" offers: highlights, a preview, a slideshow, a photo book, a gallery.
+pub const TOP_LEVELS: [u16; 5] = [10, 25, 50, 100, 250];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ViewOptions {
     pub sort: SortKey,
@@ -348,6 +378,9 @@ pub struct ViewOptions {
     pub similar: bool,
     /// Photos, videos or both; saved like the boxes.
     pub media: Media,
+    /// Only the best N photos of what the other filters leave (`pick_top`, `Facts::top`); it
+    /// takes the place of `media` – the best photos are photos. Never saved.
+    pub top: Option<u16>,
 }
 
 impl Default for ViewOptions {
@@ -357,6 +390,7 @@ impl Default for ViewOptions {
             filter: PhotoFilter::default(),
             similar: false,
             media: Media::All,
+            top: None,
         }
     }
 }
@@ -371,9 +405,9 @@ impl ViewOptions {
         } != Self::default()
     }
 
-    /// Whether anything hides photos: a box, "similar photos" or photos / videos only.
+    /// Whether anything hides photos: a box, "similar photos", photos / videos only or Top N.
     pub fn is_filtered(&self) -> bool {
-        !self.filter.is_all() || self.similar || self.media != Media::All
+        !self.filter.is_all() || self.similar || self.media != Media::All || self.top.is_some()
     }
 
     /// "Show all": every filter off, the sort stays.
@@ -381,6 +415,56 @@ impl ViewOptions {
         self.filter.clear();
         self.similar = false;
         self.media = Media::All;
+        self.top = None;
+    }
+}
+
+/// The filter bar's first box: photos, videos or both – or the best N photos. One choice, so
+/// "videos only" and "the best 50" can't contradict each other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Scope {
+    Media(Media),
+    Top(u16),
+}
+
+impl Scope {
+    pub fn all() -> impl Iterator<Item = Scope> {
+        Media::ALL
+            .into_iter()
+            .map(Self::Media)
+            .chain(TOP_LEVELS.into_iter().map(Self::Top))
+    }
+
+    pub fn of(options: &ViewOptions) -> Self {
+        options.top.map_or(Self::Media(options.media), Self::Top)
+    }
+
+    /// Choosing photos, videos or both ends Top N; choosing Top N keeps the saved media
+    /// choice for later.
+    pub fn apply(self, options: &mut ViewOptions) {
+        match self {
+            Self::Media(media) => {
+                options.media = media;
+                options.top = None;
+            }
+            Self::Top(n) => options.top = Some(n),
+        }
+    }
+
+    pub fn label(self) -> String {
+        match self {
+            Self::Media(media) => media.label().to_owned(),
+            Self::Top(n) => (i18n::t().top_photos)(n),
+        }
+    }
+
+    /// What a level is for ("Slideshow"), shown beside it in the list.
+    pub fn purpose(self) -> Option<&'static str> {
+        let Self::Top(n) = self else {
+            return None;
+        };
+        let index = TOP_LEVELS.iter().position(|level| *level == n)?;
+        i18n::t().top_purposes.get(index).copied()
     }
 }
 
@@ -401,6 +485,8 @@ pub struct Facts {
     /// Similarity to the photo the "similar" filter is about (-1..=1); `None` without an
     /// embedding, or while that filter is off.
     pub similarity: Option<f32>,
+    /// In the Top N picked when that filter was chosen (`pick_top`).
+    pub top: bool,
 }
 
 /// Where a photo sits in its series (at least two photos). `index` is 1-based, sharpest
@@ -580,8 +666,12 @@ pub fn build(
                     .and_then(|f| f.similarity)
                     .is_some_and(|s| s >= SIMILAR_MIN);
             let video = library::format_of(entry.path) == Some(Format::Video);
+            let in_scope = match options.top {
+                Some(_) => entry.facts.is_some_and(|f| f.top),
+                None => options.media.accepts(video),
+            };
             similar
-                && options.media.accepts(video)
+                && in_scope
                 && options
                     .filter
                     .accepts(entry.rating, blurry, is_duplicate, entry.label)
@@ -632,6 +722,110 @@ pub fn build(
         duplicate_of: Arc::new(duplicate_of),
         grouped: options.sort == SortKey::Taken,
     }
+}
+
+/// The best `n` photos of what the other filters leave, for "Top N". A photo's value is the
+/// mean of what is known about it, each 0..=1: its own stars (else the For-you prediction),
+/// the aesthetics (`aesthetic::as_percent`, the info bar's scale) and the subject sharpness
+/// within the folder. Rejected and probably blurry photos, copies, videos and photos without
+/// any value never count. Round one takes the best photo of every series and every photo
+/// outside one, best first; round two the second best of each series, and so on – a burst
+/// can't fill the list with look-alikes. The caller keeps the result: picking again after
+/// every mark would slip the next photo into a rejected one's place unnoticed.
+pub fn pick_top(
+    all: &[PathBuf],
+    options: ViewOptions,
+    facts: impl Fn(&Path) -> Option<Facts>,
+    session_ratings: &HashMap<PathBuf, Rating>,
+    session_labels: &HashMap<PathBuf, Option<Label>>,
+    hidden: impl Fn(&Path) -> bool,
+    n: usize,
+) -> HashSet<PathBuf> {
+    let candidates = build(
+        all,
+        ViewOptions {
+            top: None,
+            media: Media::Photos,
+            ..options
+        },
+        &facts,
+        session_ratings,
+        session_labels,
+        &hidden,
+    );
+    let scores: Vec<Scores> = all
+        .iter()
+        .filter_map(|p| facts(p))
+        .map(|f| f.scores)
+        .collect();
+    let percentiles = Percentiles::from_scores(scores.iter());
+    // Each series is one group, each photo outside a series a group of its own.
+    let mut groups: Vec<Vec<(f32, &PathBuf)>> = Vec::new();
+    let mut of_series: HashMap<u32, usize> = HashMap::new();
+    for (i, path) in candidates.paths.iter().enumerate() {
+        if candidates.duplicate_of[i].is_some() {
+            continue;
+        }
+        let Some(known) = facts(path) else {
+            continue;
+        };
+        let rating = session_ratings.get(path).copied().unwrap_or(known.rating);
+        if rating == Rating::Rejected || percentiles.is_blurry(&known.scores) {
+            continue;
+        }
+        let Some(value) = top_value(rating, &known, &percentiles) else {
+            continue;
+        };
+        let group = match candidates.series[i] {
+            Some(place) => *of_series.entry(place.id).or_insert_with(|| {
+                groups.push(Vec::new());
+                groups.len() - 1
+            }),
+            None => {
+                groups.push(Vec::new());
+                groups.len() - 1
+            }
+        };
+        groups[group].push((value, path));
+    }
+    for group in &mut groups {
+        group.sort_by(|a, b| b.0.total_cmp(&a.0));
+    }
+    let mut picked = HashSet::new();
+    for round in 0.. {
+        let mut best: Vec<(f32, &PathBuf)> = groups
+            .iter()
+            .filter_map(|group| group.get(round).copied())
+            .collect();
+        if best.is_empty() {
+            break;
+        }
+        best.sort_by(|a, b| b.0.total_cmp(&a.0));
+        for (_, path) in best {
+            if picked.len() == n {
+                return picked;
+            }
+            picked.insert(path.clone());
+        }
+    }
+    picked
+}
+
+/// One photo's value for Top N, 0..=1: the mean of what is known – none of it, no value.
+fn top_value(rating: Rating, facts: &Facts, percentiles: &Percentiles) -> Option<f32> {
+    let stars = match rating {
+        Rating::Stars(n) => Some(f32::from(n) / 5.0),
+        Rating::Unrated => facts.personal.map(|p| p / 5.0),
+        Rating::Rejected => None,
+    };
+    let aesthetics = aesthetic::combined(facts.scores.aesthetic, facts.scores.aesthetic25)
+        .map(aesthetic::as_percent);
+    let sharpness = percentiles.subject(&facts.scores).map(|(p, _)| p);
+    let known: Vec<f32> = [stars, aesthetics, sharpness]
+        .into_iter()
+        .flatten()
+        .collect();
+    (!known.is_empty()).then(|| known.iter().sum::<f32>() / known.len() as f32)
 }
 
 /// Photos with the same fingerprint: one is the original (`pick_original`), every other one
@@ -973,8 +1167,10 @@ mod tests {
         assert_eq!(filtered(&[]), "abcde");
     }
 
+    /// Within the rating group any ticked box, across groups all of them: blurry 2-star photos,
+    /// not every 2-star photo plus every blurry one.
     #[test]
-    fn blurry_is_one_more_category() {
+    fn groups_go_together_boxes_in_a_group_either_way() {
         let (all, known) = fixture();
         let lookup = |p: &Path| known.get(p).copied();
         let names_of = |kinds: &[FilterKind]| {
@@ -997,9 +1193,14 @@ mod tests {
                 .paths,
             )
         };
-        // "a" is the least sharp; "e" is not measured, so it is not blurry.
+        // "a" (2 stars) is the least sharp; "e" is not measured, so it is not blurry.
         assert_eq!(names_of(&[FilterKind::Blurry]), "a");
-        assert_eq!(names_of(&[FilterKind::Stars(5), FilterKind::Blurry]), "ac");
+        assert_eq!(names_of(&[FilterKind::Stars(2), FilterKind::Blurry]), "a");
+        assert_eq!(names_of(&[FilterKind::Stars(5), FilterKind::Blurry]), "");
+        assert_eq!(
+            names_of(&[FilterKind::Stars(5), FilterKind::Stars(2)]),
+            "ac"
+        );
     }
 
     #[test]
@@ -1041,6 +1242,175 @@ mod tests {
             names(&build(&all, options, lookup, &HashMap::new(), &labels, |_| false,).paths),
             "a"
         );
+        // Red and 5 stars: "a" is red but has 2 stars, "c" 5 stars but is green.
+        let mut both = options;
+        both.filter.set(FilterKind::Stars(5), true);
+        assert_eq!(
+            names(&build(&all, both, lookup, &HashMap::new(), &labels, |_| false).paths),
+            ""
+        );
+        both.filter.set(FilterKind::Colour(Label::Green), true);
+        assert_eq!(
+            names(&build(&all, both, lookup, &HashMap::new(), &labels, |_| false).paths),
+            "c"
+        );
+    }
+
+    fn top_of(
+        all: &[PathBuf],
+        known: &HashMap<PathBuf, Facts>,
+        session: &HashMap<PathBuf, Rating>,
+        n: usize,
+    ) -> String {
+        let picked = pick_top(
+            all,
+            ViewOptions::default(),
+            |p: &Path| known.get(p).copied(),
+            session,
+            &HashMap::new(),
+            |_| false,
+            n,
+        );
+        let mut names: Vec<String> = picked
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names.concat()
+    }
+
+    /// Blurry and rejected photos and those without any value never count; own stars, the
+    /// aesthetics and the sharpness rank the rest.
+    #[test]
+    fn top_takes_the_best_and_leaves_out_what_never_counts() {
+        let (all, known) = fixture();
+        // a is the blurriest (and clearly soft), e has no values yet.
+        assert_eq!(top_of(&all, &known, &HashMap::new(), 10), "bcd");
+        // b: aesthetics 75 %, sharpest; c: 5 stars, 42 %, 67 %; d: 3 stars, 58 %, 33 %.
+        assert_eq!(top_of(&all, &known, &HashMap::new(), 2), "bc");
+        assert_eq!(top_of(&all, &known, &HashMap::new(), 0), "");
+        let rejected = HashMap::from([(PathBuf::from("b"), Rating::Rejected)]);
+        assert_eq!(top_of(&all, &known, &rejected, 2), "cd");
+    }
+
+    /// A photo's own stars stand in for the For-you prediction.
+    #[test]
+    fn own_stars_replace_the_prediction() {
+        let same = |rating, personal| Facts {
+            rating,
+            personal: Some(personal),
+            scores: Scores {
+                sharpness: Some(500.0),
+                aesthetic: Some(6.0),
+                ..Scores::default()
+            },
+            ..Facts::default()
+        };
+        let all = vec![PathBuf::from("x"), PathBuf::from("y")];
+        let known = HashMap::from([
+            (all[0].clone(), same(Rating::Stars(5), 1.0)),
+            (all[1].clone(), same(Rating::Unrated, 4.0)),
+        ]);
+        assert_eq!(top_of(&all, &known, &HashMap::new(), 1), "x");
+        let unrated = HashMap::from([(all[0].clone(), Rating::Unrated)]);
+        assert_eq!(top_of(&all, &known, &unrated, 1), "y");
+    }
+
+    /// Round one takes the best of each series and every single photo; only then the second
+    /// best of the series – a burst can't fill the list.
+    #[test]
+    fn top_takes_one_photo_per_series_first() {
+        let photo = |taken: i64, aesthetic: f32, sharpness: f32| Facts {
+            taken_ms: Some(taken),
+            scores: Scores {
+                sharpness: Some(sharpness),
+                aesthetic: Some(aesthetic),
+                ..Scores::default()
+            },
+            ..Facts::default()
+        };
+        let rows = [
+            ("s1", photo(0, 8.0, 900.0)),
+            ("s2", photo(1_000, 8.0, 800.0)),
+            ("s3", photo(1_800, 8.0, 700.0)),
+            ("p", photo(60_000, 6.0, 600.0)),
+            ("q", photo(120_000, 5.0, 500.0)),
+        ];
+        let all: Vec<PathBuf> = rows.iter().map(|(name, _)| PathBuf::from(name)).collect();
+        let known: HashMap<PathBuf, Facts> = rows
+            .into_iter()
+            .map(|(name, facts)| (PathBuf::from(name), facts))
+            .collect();
+        assert_eq!(top_of(&all, &known, &HashMap::new(), 1), "s1");
+        assert_eq!(top_of(&all, &known, &HashMap::new(), 2), "ps1");
+        assert_eq!(top_of(&all, &known, &HashMap::new(), 3), "pqs1");
+        assert_eq!(top_of(&all, &known, &HashMap::new(), 4), "pqs1s2");
+    }
+
+    /// Videos and later copies of a photo never count.
+    #[test]
+    fn top_leaves_out_videos_and_copies() {
+        let good = |fingerprint| Facts {
+            fingerprint: Some(fingerprint),
+            scores: Scores {
+                sharpness: Some(900.0),
+                aesthetic: Some(8.0),
+                ..Scores::default()
+            },
+            ..Facts::default()
+        };
+        let all: Vec<PathBuf> = ["v.mp4", "z (1).jpg", "z.jpg", "w.jpg"]
+            .map(PathBuf::from)
+            .to_vec();
+        let known: HashMap<PathBuf, Facts> = HashMap::from([
+            (all[0].clone(), good(1)),
+            (all[1].clone(), good(2)),
+            (all[2].clone(), good(2)),
+            (all[3].clone(), good(3)),
+        ]);
+        assert_eq!(top_of(&all, &known, &HashMap::new(), 10), "w.jpgz.jpg");
+    }
+
+    /// With Top N on, the view shows the picked photos – together with the boxes – and the
+    /// photos / videos choice waits for later.
+    #[test]
+    fn the_view_shows_the_picked_photos_with_the_boxes() {
+        let (all, mut known) = fixture();
+        for name in ["b", "c"] {
+            if let Some(facts) = known.get_mut(Path::new(name)) {
+                facts.top = true;
+            }
+        }
+        let shown = |options: ViewOptions| {
+            names(
+                &build(
+                    &all,
+                    options,
+                    |p: &Path| known.get(p).copied(),
+                    &HashMap::new(),
+                    &HashMap::new(),
+                    |_| false,
+                )
+                .paths,
+            )
+        };
+        let mut options = ViewOptions {
+            top: Some(2),
+            media: Media::Videos,
+            ..ViewOptions::default()
+        };
+        assert_eq!(shown(options), "bc");
+        options.filter.set(FilterKind::Stars(5), true);
+        assert_eq!(shown(options), "c");
+        assert!(options.is_filtered() && options.depends_on_scores());
+        let mut cleared = options;
+        cleared.clear_filters();
+        assert_eq!(cleared.top, None);
+        let mut chosen = ViewOptions::default();
+        Scope::Top(50).apply(&mut chosen);
+        assert_eq!(Scope::of(&chosen), Scope::Top(50));
+        Scope::Media(Media::Photos).apply(&mut chosen);
+        assert_eq!((chosen.top, chosen.media), (None, Media::Photos));
     }
 
     #[test]

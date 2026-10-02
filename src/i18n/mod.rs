@@ -198,6 +198,16 @@ pub struct Texts {
     pub media_photos: &'static str,
     pub media_videos: &'static str,
     pub media_no_videos: &'static str,
+    /// The filter bar's first box and Filter ▸ Best photos ▸: the best N photos.
+    pub top_photos: fn(u16) -> String,
+    /// What each Top level (10, 25, 50, 100, 250) is for, beside it in the list.
+    pub top_purposes: [&'static str; 5],
+    /// Tooltip of the first box: what it chooses, and how Top N picks.
+    pub top_tooltip: &'static str,
+    /// Visible photos ▸ Filter ▸, the group of the Top levels.
+    pub menu_top: &'static str,
+    /// Why the action menu's delete row is greyed out while Top N is on.
+    pub bulk_delete_top: &'static str,
     /// Why "Show all" is greyed out: nothing is filtered.
     pub filter_none_active: &'static str,
     /// The filter bar's last box: only photos like the chosen one.
@@ -565,6 +575,7 @@ mod tests {
                 assert!(count(12).contains("12"), "{name}");
             }
             assert!((t.photos_shown)(12, 340).contains("12"), "{name}");
+            assert!((t.top_photos)(50).contains("50"), "{name}");
             assert!((t.photos_shown)(12, 340).contains("340"), "{name}");
             assert!((t.deleting)(3).contains(".originals"), "{name}");
             let series = (t.series_position)(3, 7);

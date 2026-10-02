@@ -132,7 +132,7 @@ impl CernoApp {
         }
     }
 
-    pub(super) fn retarget_moved(&self, outcome: &TransferOutcome) {
+    pub(super) fn retarget_moved(&mut self, outcome: &TransferOutcome) {
         if outcome.mode != TransferMode::Move {
             return;
         }
@@ -146,6 +146,10 @@ impl CernoApp {
                 .retarget_path(&src.to_string_lossy(), &dest.to_string_lossy())
             {
                 log::warn!("index: {err:#}");
+            }
+            // Moved into a folder that is shown too (subfolders): still among the best.
+            if self.top_pick.remove(src) {
+                self.top_pick.insert(dest.clone());
             }
         }
     }

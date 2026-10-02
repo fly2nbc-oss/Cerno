@@ -12,7 +12,7 @@ use crate::transfer::Mode as TransferMode;
 use crate::ui::details::DetailsMode;
 use crate::ui::icons::Panel;
 use crate::ui::{confirm, filter_bar, help, models, palette, viewer};
-use crate::view::{FilterKind, Media, SortKey, ViewOptions};
+use crate::view::{FilterKind, Media, Scope, SortKey, TOP_LEVELS, ViewOptions};
 
 use super::gate::Change;
 use super::{CLIP_OFFER_SHOWN, CernoApp};
@@ -33,6 +33,8 @@ enum Action {
     Filter(FilterKind),
     FilterClear,
     Media(Media),
+    /// Only the best N photos (`ViewOptions::top`).
+    Top(u16),
     Refresh,
     EnableAesthetics,
     TopBar,
@@ -232,7 +234,7 @@ impl CernoApp {
                         })
                         .collect(),
                 )),
-                Entry::Group(Group::new(t.menu_filter, None, self.filter_rows())),
+                Entry::Group(Group::nested(t.menu_filter, None, self.filter_rows())),
             ];
             if self.options.depends_on_scores() && self.board.version() != self.view_version {
                 visible.push(Entry::Row(Row::new(Action::Refresh, t.refresh_order, None)));
@@ -468,7 +470,7 @@ impl CernoApp {
     }
 
     /// The filter boxes, with "Show all" on top while any is ticked.
-    fn filter_rows(&self) -> Vec<palette::Row<Action>> {
+    fn filter_rows(&self) -> Vec<palette::Entry<Action>> {
         let similar_to = self
             .similar_to
             .as_ref()
@@ -487,6 +489,8 @@ impl CernoApp {
             self.menu_block(Change::Transfer, None)
         };
         let delete = self.menu_block(Change::Delete, None);
+        // Top N shows the best photos: deleting what it shows would delete exactly those.
+        let delete_shown = delete.or(self.options.top.map(|_| t.bulk_delete_top));
         // Harmless first: copy, then move, then delete. Each row says how many photos it
         // takes – the ones the filter shows; "rejected" counts the whole folder, and says so.
         let shown = self.view.len();
@@ -499,7 +503,7 @@ impl CernoApp {
                 .disabled(transfer),
             Row::new(Action::DeleteSelection, (t.bulk_delete)(shown), None)
                 .hint(t.bulk_delete_hint)
-                .disabled(delete),
+                .disabled(delete_shown),
         ];
         let rejected = self.rejected().len();
         if rejected > 0 {
@@ -562,9 +566,10 @@ impl CernoApp {
             Action::Sort(sort) => self.change_options(ctx, |o| o.sort = sort),
             Action::Filter(kind) => self.change_options(ctx, |o| o.filter.toggle(kind)),
             Action::FilterClear => self.change_options(ctx, ViewOptions::clear_filters),
-            Action::Media(media) => self.change_options(ctx, |o| o.media = media),
+            Action::Media(media) => self.change_options(ctx, |o| Scope::Media(media).apply(o)),
+            Action::Top(n) => self.change_options(ctx, |o| Scope::Top(n).apply(o)),
             Action::Similar => self.toggle_similar(ctx),
-            Action::Refresh => self.rebuild_view(ctx, None),
+            Action::Refresh => self.refresh_order(ctx),
             Action::EnableAesthetics => self.ask(ConfirmAction::DownloadModel, false),
             Action::TopBar => self.toggle_panel(Panel::Top),
             Action::Details => self.toggle_panel(Panel::Right),
@@ -630,12 +635,13 @@ impl CernoApp {
     }
 }
 
-/// Visible photos ▸ Filter ▸: "Show all" first – always, greyed out while nothing is filtered,
-/// so ticking the first filter doesn't push every row down under the cursor – then photos,
-/// videos or both, a switch per filter, and "similar photos" last (named after its photo while
-/// on).
-fn filter_rows(options: &ViewOptions, similar_to: Option<&str>) -> Vec<palette::Row<Action>> {
-    use palette::Row;
+/// Visible photos ▸ Filter ▸, in the filter bar's order: "Show all" first – always, greyed out
+/// while nothing is filtered, so ticking the first filter doesn't push every row down under
+/// the cursor – then photos, videos or both and the best N photos (one choice, like the bar's
+/// first box), a switch per filter group by group, and "similar photos" last (named after its
+/// photo while on).
+fn filter_rows(options: &ViewOptions, similar_to: Option<&str>) -> Vec<palette::Entry<Action>> {
+    use palette::{Entry, Group, Row};
     let t = i18n::t();
     let nothing = !options.is_filtered();
     let clear = Row::new(Action::FilterClear, t.filter_clear, None)
@@ -646,26 +652,65 @@ fn filter_rows(options: &ViewOptions, similar_to: Option<&str>) -> Vec<palette::
     };
     let similar =
         Row::new(Action::Similar, similar_label, Some("M".to_owned())).toggle(options.similar);
+    let current = Scope::of(options);
     let media = Media::ALL.into_iter().map(|media| {
-        Row::new(Action::Media(media), media.label(), None).choice(options.media == media)
+        Entry::Row(
+            Row::new(Action::Media(media), media.label(), None)
+                .choice(current == Scope::Media(media)),
+        )
     });
-    std::iter::once(clear)
+    let top = Group::new(
+        t.menu_top,
+        None,
+        TOP_LEVELS
+            .into_iter()
+            .map(|n| {
+                let scope = Scope::Top(n);
+                let label = match scope.purpose() {
+                    Some(purpose) => format!("{} – {purpose}", scope.label()),
+                    None => scope.label(),
+                };
+                Row::new(Action::Top(n), label, None).choice(current == scope)
+            })
+            .collect(),
+    );
+    let boxes = FilterKind::GROUPS.into_iter().flatten().map(|&kind| {
+        let row = Row::new(Action::Filter(kind), kind.label(), None)
+            .toggle(options.filter.contains(kind));
+        Entry::Row(match kind {
+            FilterKind::Colour(label) => row.swatch(crate::theme::label_color(label)),
+            _ => row,
+        })
+    });
+    std::iter::once(Entry::Row(clear))
         .chain(media)
-        .chain(FilterKind::ALL.into_iter().map(|kind| {
-            let row = Row::new(Action::Filter(kind), kind.label(), None)
-                .toggle(options.filter.contains(kind));
-            match kind {
-                FilterKind::Colour(label) => row.swatch(crate::theme::label_color(label)),
-                _ => row,
-            }
-        }))
-        .chain(std::iter::once(similar))
+        .chain(std::iter::once(Entry::Group(top)))
+        .chain(boxes)
+        .chain(std::iter::once(Entry::Row(similar)))
         .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The action of each row, `None` for a submenu.
+    fn actions(entries: &[palette::Entry<Action>]) -> Vec<Option<Action>> {
+        entries
+            .iter()
+            .map(|entry| match entry {
+                palette::Entry::Row(row) => Some(row.action),
+                palette::Entry::Group(_) => None,
+            })
+            .collect()
+    }
+
+    fn row(entry: &palette::Entry<Action>) -> &palette::Row<Action> {
+        match entry {
+            palette::Entry::Row(row) => row,
+            palette::Entry::Group(group) => panic!("{} is a submenu", group.label),
+        }
+    }
 
     /// Ticking the first filter keeps every row where it was; only "Show all" wakes up.
     #[test]
@@ -674,11 +719,9 @@ mod tests {
         let mut some = none;
         some.filter.set(FilterKind::Stars(3), true);
         let (before, after) = (filter_rows(&none, None), filter_rows(&some, None));
-        let actions =
-            |rows: &[palette::Row<Action>]| rows.iter().map(|r| r.action).collect::<Vec<_>>();
         assert_eq!(actions(&before), actions(&after));
-        assert_eq!(before[0].action, Action::FilterClear);
-        assert!(before[0].disabled.is_some() && after[0].disabled.is_none());
+        assert_eq!(row(&before[0]).action, Action::FilterClear);
+        assert!(row(&before[0]).disabled.is_some() && row(&after[0]).disabled.is_none());
     }
 
     /// "Similar photos" is always the last row; while on it names its photo and "Show all" can
@@ -692,13 +735,56 @@ mod tests {
         };
         let on = filter_rows(&on_options, Some("IMG_1.JPG"));
         assert_eq!(off.len(), on.len());
-        let (last_off, last_on) = (off.last().unwrap(), on.last().unwrap());
+        let (last_off, last_on) = (row(off.last().unwrap()), row(on.last().unwrap()));
         assert_eq!(
             (last_off.action, last_on.action),
             (Action::Similar, Action::Similar)
         );
         assert_eq!(last_off.label, i18n::t().menu_similar);
         assert!(last_on.label.contains("IMG_1.JPG"));
-        assert!(on[0].disabled.is_none(), "Show all switches it off");
+        assert!(row(&on[0]).disabled.is_none(), "Show all switches it off");
+    }
+
+    /// Photos, videos or both and the best N are one choice: Top N unticks the media rows,
+    /// and its submenu follows them, before the filters in the bar's order.
+    #[test]
+    fn top_is_one_choice_with_the_media_rows() {
+        let top = ViewOptions {
+            top: Some(50),
+            media: Media::Photos,
+            ..ViewOptions::default()
+        };
+        let entries = filter_rows(&top, None);
+        assert_eq!(
+            actions(&entries[..5]),
+            vec![
+                Some(Action::FilterClear),
+                Some(Action::Media(Media::All)),
+                Some(Action::Media(Media::Photos)),
+                Some(Action::Media(Media::Videos)),
+                None,
+            ]
+        );
+        assert!(
+            entries[1..4]
+                .iter()
+                .all(|entry| row(entry).mark != palette::Mark::Choice(true))
+        );
+        let palette::Entry::Group(group) = &entries[4] else {
+            panic!("Top is a submenu");
+        };
+        let ticked: Vec<Action> = group
+            .entries
+            .iter()
+            .map(row)
+            .filter(|row| row.mark == palette::Mark::Choice(true))
+            .map(|row| row.action)
+            .collect();
+        assert_eq!(ticked, vec![Action::Top(50)]);
+        assert_eq!(
+            row(&entries[5]).action,
+            Action::Filter(FilterKind::Rejected)
+        );
+        assert!(row(&entries[0]).disabled.is_none(), "Show all ends Top N");
     }
 }
