@@ -29,7 +29,7 @@ mod notice;
 mod panels;
 mod photos;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -98,6 +98,13 @@ pub struct CernoApp {
     /// The photo "similar photos" (`M`) is about and its CLIP embedding, while that filter is
     /// on. The embedding stays even if the photo is deleted meanwhile.
     similar_to: Option<(PathBuf, Arc<[f32]>)>,
+    /// The photos Top N picked (`view::pick_top`), kept until a filter changes or "Refresh
+    /// order": picking again after every mark would slip the next photo into a rejected one's
+    /// place unnoticed. Empty while Top N is off.
+    top_pick: HashSet<PathBuf>,
+    /// The options `top_pick` was made for, sort aside (`ViewOptions::top_key`): another sort
+    /// keeps it.
+    top_pick_for: Option<ViewOptions>,
     /// Score board version the view was built from.
     view_version: u64,
     /// When the view was last built (quiet refreshes are spaced out).
@@ -253,6 +260,7 @@ impl CernoApp {
                 .setting("media")
                 .and_then(|m| Media::from_id(&m))
                 .unwrap_or_default(),
+            top: None,
         };
         let auto_advance = db.setting("auto_advance").as_deref() == Some("1");
         let subfolders = db.setting("subfolders").as_deref() == Some("1");
@@ -300,6 +308,8 @@ impl CernoApp {
             pinned: None,
             options,
             similar_to: None,
+            top_pick: HashSet::new(),
+            top_pick_for: None,
             view_version: 0,
             view_built: Instant::now(),
             percentiles: (u64::MAX, Percentiles::default()),
@@ -441,6 +451,9 @@ impl eframe::App for CernoApp {
                 .collect()
         };
         self.handle_keys(&ctx, &frames);
+        // Again: a key can empty the view (a mark took the last photo the filter showed), and
+        // the bars of the old layout would then draw cells of photos that are gone.
+        let layout = self.layout(window);
 
         ui.painter().rect_filled(window, 0.0, tokens::CANVAS);
         self.draw_centre(ui, window, layout.area);

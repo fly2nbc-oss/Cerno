@@ -138,6 +138,12 @@ impl Crop {
     pub fn covers_image(self, image_w: f64, image_h: f64) -> bool {
         self.w >= image_w - 0.5 && self.h >= image_h - 0.5
     }
+
+    /// Room to slide along at least one side. The first frame of a crop is the whole photo:
+    /// it has none, so a drag inside it draws a new frame instead.
+    pub fn can_move(self, image_w: f64, image_h: f64) -> bool {
+        self.w < image_w - 0.5 || self.h < image_h - 0.5
+    }
 }
 
 /// Which corner is being dragged. The opposite corner stays put.
@@ -150,12 +156,23 @@ pub enum Corner {
 }
 
 impl Corner {
+    /// The opposite corner, which stays put while this one is dragged.
     pub fn anchor(self, crop: Crop) -> (f64, f64) {
         match self {
             Self::Nw => (crop.x + crop.w, crop.y + crop.h),
             Self::Ne => (crop.x, crop.y + crop.h),
             Self::Sw => (crop.x + crop.w, crop.y),
             Self::Se => (crop.x, crop.y),
+        }
+    }
+
+    /// Where this corner is.
+    pub fn point(self, crop: Crop) -> (f64, f64) {
+        match self {
+            Self::Nw => (crop.x, crop.y),
+            Self::Ne => (crop.x + crop.w, crop.y),
+            Self::Sw => (crop.x, crop.y + crop.h),
+            Self::Se => (crop.x + crop.w, crop.y + crop.h),
         }
     }
 }
@@ -438,6 +455,27 @@ mod tests {
         assert_eq!(moved.x, 100.0);
         assert_eq!(moved.y, 0.0);
         assert_eq!((moved.w, moved.h), (100.0, 50.0));
+    }
+
+    #[test]
+    fn only_a_frame_smaller_than_the_photo_can_move() {
+        let whole = Crop::max_centered(
+            6000.0,
+            4000.0,
+            ratio_aspect(Ratio::Original, 6000, 4000, true),
+        );
+        assert!(!whole.can_move(6000.0, 4000.0));
+        assert_eq!(whole.translate(500.0, 500.0, 6000.0, 4000.0), whole);
+
+        let square = Crop::max_centered(6000.0, 4000.0, 1.0);
+        assert!(square.can_move(6000.0, 4000.0), "a square slides sideways");
+        let smaller = Crop {
+            x: 0.0,
+            y: 0.0,
+            w: 3000.0,
+            h: 2000.0,
+        };
+        assert!(smaller.can_move(6000.0, 4000.0));
     }
 
     #[test]

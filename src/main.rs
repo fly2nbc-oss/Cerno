@@ -3,6 +3,7 @@
 
 mod analysis;
 mod app;
+mod crashlog;
 mod db;
 mod decode;
 mod deletion;
@@ -40,6 +41,7 @@ fn main() -> eframe::Result {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .format_timestamp_millis()
         .init();
+    crashlog::install();
 
     let start_path = std::env::args_os().nth(1).map(PathBuf::from);
 
