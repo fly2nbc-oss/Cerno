@@ -66,6 +66,7 @@ impl CernoApp {
         self.similar_to = None;
         self.options.top = None;
         self.top_pick.clear();
+        self.top_pick_for = None;
         self.cancel_edit();
         self.thumbs.clear();
         // Only needed when the view depends on scores; the analysis fills the board anyway,
@@ -185,14 +186,17 @@ impl CernoApp {
     }
 
     /// New sort or filter: saved, and the view is built again. "Similar photos" switched off
-    /// (also by "Show all") forgets the photo it was about; Top N picks again from what the
-    /// other filters leave now.
+    /// (also by "Show all") forgets the photo it was about; Top N picks again when a filter
+    /// changed – another sort only shows the same photos in another order.
     pub(super) fn options_changed(&mut self, ctx: &egui::Context) {
         if !self.options.similar {
             self.similar_to = None;
         }
         self.save_options();
-        self.refresh_order(ctx);
+        if self.top_pick_for != self.options.top_key() {
+            self.pick_top();
+        }
+        self.rebuild_view(ctx, None);
     }
 
     /// "Refresh order": the view built again with the scores known now – and Top N picked
@@ -216,6 +220,7 @@ impl CernoApp {
             None => HashSet::new(),
         };
         self.top_pick = picked;
+        self.top_pick_for = self.options.top_key();
     }
 
     /// `M`: only the photos like the current one – in compare mode like the pinned one – or

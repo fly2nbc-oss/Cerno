@@ -636,6 +636,75 @@ mod tests {
         assert!(left_of(&before, "1★") < left_of(&before, "Blurry"));
     }
 
+    /// The first box's list names every choice on one line, the Top levels with what they
+    /// are for – the list may be wider than the box.
+    #[test]
+    fn the_scope_list_shows_every_choice_on_one_line() {
+        let ctx = Context::default();
+        let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(1800.0, 900.0));
+        let bar = Rect::from_min_size(pos2(0.0, 0.0), vec2(1800.0, TOOLBAR_HEIGHT));
+        let done = status(1, 1);
+        let mut options = ViewOptions::default();
+        let mut combo = None;
+        let mut texts: Vec<(String, usize)> = Vec::new();
+        for step in 0..8 {
+            let button = |pos, pressed| egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            };
+            let events = match (step, combo) {
+                (1, Some(at)) => vec![egui::Event::PointerMoved(at)],
+                (2, Some(at)) => vec![button(at, true)],
+                (3, Some(at)) => vec![button(at, false)],
+                _ => vec![],
+            };
+            let mut output = ctx.run_ui(
+                RawInput {
+                    screen_rect: Some(screen),
+                    time: Some(f64::from(step) * 0.1),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    let info = ToolbarInfo {
+                        stale: false,
+                        status: &done,
+                        actions_open: false,
+                        similar_to: None,
+                        shown: 340,
+                        total: 340,
+                        has_videos: true,
+                    };
+                    toolbar(ui, bar, &mut options, &info);
+                },
+            );
+            output.textures_delta.clear();
+            texts.clear();
+            for clipped in &output.shapes {
+                if let Shape::Text(text) = &clipped.shape {
+                    let label = text.galley.text().to_owned();
+                    if combo.is_none() && label == Media::All.label() {
+                        combo = Some(text.visual_bounding_rect().center());
+                    }
+                    texts.push((label, text.galley.rows.len()));
+                }
+            }
+        }
+        for scope in Scope::all() {
+            let wanted = match scope.purpose() {
+                Some(purpose) => format!("{}  ·  {purpose}", scope.label()),
+                None => scope.label(),
+            };
+            let rows = texts
+                .iter()
+                .find(|(text, _)| *text == wanted)
+                .map(|(_, rows)| *rows);
+            assert_eq!(rows, Some(1), "{wanted:?} in {texts:?}");
+        }
+    }
+
     /// The × in the count shows everything again – Top N, similar photos and the boxes.
     #[test]
     fn the_cross_in_the_count_shows_all() {

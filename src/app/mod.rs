@@ -102,6 +102,9 @@ pub struct CernoApp {
     /// order": picking again after every mark would slip the next photo into a rejected one's
     /// place unnoticed. Empty while Top N is off.
     top_pick: HashSet<PathBuf>,
+    /// The options `top_pick` was made for, sort aside (`ViewOptions::top_key`): another sort
+    /// keeps it.
+    top_pick_for: Option<ViewOptions>,
     /// Score board version the view was built from.
     view_version: u64,
     /// When the view was last built (quiet refreshes are spaced out).
@@ -306,6 +309,7 @@ impl CernoApp {
             options,
             similar_to: None,
             top_pick: HashSet::new(),
+            top_pick_for: None,
             view_version: 0,
             view_built: Instant::now(),
             percentiles: (u64::MAX, Percentiles::default()),

@@ -417,6 +417,15 @@ impl ViewOptions {
         self.media = Media::All;
         self.top = None;
     }
+
+    /// What a Top N pick depends on: every option but the sort – another sort shows the same
+    /// photos in another order. `None` while Top N is off.
+    pub fn top_key(&self) -> Option<ViewOptions> {
+        self.top.map(|_| ViewOptions {
+            sort: SortKey::Name,
+            ..*self
+        })
+    }
 }
 
 /// The filter bar's first box: photos, videos or both – or the best N photos. One choice, so
@@ -1406,6 +1415,17 @@ mod tests {
         let mut cleared = options;
         cleared.clear_filters();
         assert_eq!(cleared.top, None);
+        // Another sort keeps the pick, another filter makes a new one.
+        let sorted = ViewOptions {
+            sort: SortKey::Taken,
+            ..options
+        };
+        assert_eq!(sorted.top_key(), options.top_key());
+        assert_ne!(cleared.top_key(), options.top_key());
+        let mut boxes = options;
+        boxes.filter.set(FilterKind::Stars(4), true);
+        assert_ne!(boxes.top_key(), options.top_key());
+        assert_eq!(ViewOptions::default().top_key(), None);
         let mut chosen = ViewOptions::default();
         Scope::Top(50).apply(&mut chosen);
         assert_eq!(Scope::of(&chosen), Scope::Top(50));
