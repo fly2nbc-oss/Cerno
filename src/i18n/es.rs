@@ -342,6 +342,11 @@ pub static TEXTS: Texts = Texts {
     cmd_undo: "Deshacer",
     edit_not_jpeg: "Enderezar, recortar, girar y Ctrl+Z solo funcionan con JPEG.",
     video_play_hint: "Reproducir (Intro)",
+    video_play_pause: "Reproducir / pausa (Espacio)",
+    video_mute: "Sonido sí / no",
+    video_volume: "Volumen (↑ ↓)",
+    video_no_zoom: "Los vídeos no se amplían",
+    video_no_compare: "Los vídeos no se pueden comparar",
     video_no_ffmpeg: "Sin vista previa: Cerno necesita ffmpeg (p. ej. winget install Gyan.FFmpeg)",
     video_play_failed: |err| format!("No se puede reproducir el vídeo: {err}"),
     video_played_instead: |ext, name| {
@@ -449,9 +454,12 @@ pub static TEXTS: Texts = Texts {
             "Barra de filtros, detalles y tira de miniaturas a la vez",
         ),
         (
-            "Intro",
-            "Reproducir un vídeo en el reproductor predeterminado",
+            "Espacio, Intro",
+            "Reproducir / pausar un vídeo (Mayús+Espacio: foto siguiente)",
         ),
+        ("J, L", "Vídeo: 5 s atrás / adelante"),
+        (",, .", "Vídeo: un fotograma atrás / adelante (en pausa)"),
+        ("↑, ↓", "Vídeo: volumen"),
         (
             "B",
             "Descripción: editar el comentario y las palabras clave",

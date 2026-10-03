@@ -365,6 +365,11 @@ pub static TEXTS: Texts = Texts {
     cmd_undo: "Annuler la retouche",
     edit_not_jpeg: "Redressement, recadrage, rotation et Ctrl+Z uniquement pour les JPEG.",
     video_play_hint: "Lire (Entrée)",
+    video_play_pause: "Lecture / pause (Espace)",
+    video_mute: "Son activé / coupé",
+    video_volume: "Volume (↑ ↓)",
+    video_no_zoom: "Les vidéos ne se zooment pas",
+    video_no_compare: "Les vidéos ne se comparent pas",
     video_no_ffmpeg: "Pas d'aperçu : Cerno a besoin de ffmpeg (p. ex. winget install Gyan.FFmpeg)",
     video_play_failed: |err| format!("Impossible de lire la vidéo : {err}"),
     video_played_instead: |ext, name| {
@@ -480,7 +485,13 @@ pub static TEXTS: Texts = Texts {
             "Grille de toutes les photos : ↑ ↓ une ligne, + − taille, Entrée ouvre la photo",
         ),
         ("Maj+Tab", "Barre de filtres, détails et pellicule ensemble"),
-        ("Entrée", "Lire une vidéo dans le lecteur par défaut"),
+        (
+            "Espace, Entrée",
+            "Lire / mettre en pause une vidéo (Maj+Espace : photo suivante)",
+        ),
+        ("J, L", "Vidéo : 5 s en arrière / en avant"),
+        (",, .", "Vidéo : une image en arrière / en avant (en pause)"),
+        ("↑, ↓", "Vidéo : volume"),
         (
             "B",
             "Description : modifier le commentaire et les mots-clés",

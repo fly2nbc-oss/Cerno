@@ -28,6 +28,7 @@ mod menu;
 mod notice;
 mod panels;
 mod photos;
+mod video;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -199,6 +200,13 @@ pub struct CernoApp {
     edit_thread: Option<JoinHandle<()>>,
     /// A quarter turn or a re-encode is still in the writer.
     edit_busy: bool,
+    /// The video playing (or paused) in the single view (`video`).
+    video: Option<video::Session>,
+    /// Stopped players, until their files are closed.
+    video_releases: Vec<crate::playback::Release>,
+    /// Volume 0..=1 and sound off, saved.
+    video_volume: f32,
+    video_muted: bool,
 }
 
 impl CernoApp {
@@ -282,6 +290,7 @@ impl CernoApp {
             .setting("details_tab")
             .and_then(|id| DetailsTab::from_id(&id))
             .unwrap_or(DetailsTab::Values);
+        let (video_volume, video_muted) = video::saved_volume(&db);
 
         let mut app = Self {
             loader: Loader::new(
@@ -365,6 +374,10 @@ impl CernoApp {
             edit: None,
             edit_thread: None,
             edit_busy: false,
+            video: None,
+            video_releases: Vec::new(),
+            video_volume,
+            video_muted,
         };
         if let Some(path) = start_path {
             app.open(&ctx, &path);
@@ -452,16 +465,19 @@ impl eframe::App for CernoApp {
             let areas = self.photo_areas(layout.area);
             self.update_target(&ctx, &areas);
         }
-        // The grid shows no photo: zoom keys go to its cell size, not to a hidden photo.
+        // The grid shows no photo: zoom keys go to its cell size, not to a hidden photo. A
+        // video has no frame here either: it is not zoomed.
         let frames: Vec<viewer::Frame> = if self.grid {
             Vec::new()
         } else {
             self.slots(layout.area)
                 .iter()
+                .filter(|slot| !self.slot_is_video(slot))
                 .filter_map(|slot| self.frame_of(&ctx, slot))
                 .collect()
         };
         self.handle_keys(&ctx, &frames);
+        self.update_video(&ctx);
         // Again: a key can empty the view (a mark took the last photo the filter showed), and
         // the bars of the old layout would then draw cells of photos that are gone.
         let layout = self.layout(window);
@@ -521,6 +537,9 @@ impl eframe::App for CernoApp {
         }
         // A comment still in its field is written with the rest.
         self.commit_comment();
+        // A playing video keeps its file open: closed before anything moves it.
+        self.stop_video();
+        self.wait_for_videos(Duration::from_secs(2));
         self.writer.shutdown();
         for outcome in self.transfers.finish_now() {
             self.retarget_moved(&outcome);

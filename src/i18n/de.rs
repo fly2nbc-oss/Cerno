@@ -348,6 +348,11 @@ pub static TEXTS: Texts = Texts {
     cmd_undo: "Rückgängig",
     edit_not_jpeg: "Ausrichten, Ausschnitt, Drehen und Strg+Z gibt es nur für JPEG.",
     video_play_hint: "Abspielen (Enter)",
+    video_play_pause: "Abspielen / Pause (Leertaste)",
+    video_mute: "Ton an / aus",
+    video_volume: "Lautstärke (↑ ↓)",
+    video_no_zoom: "Videos werden nicht gezoomt",
+    video_no_compare: "Videos lassen sich nicht vergleichen",
     video_no_ffmpeg: "Kein Vorschaubild: dafür braucht Cerno ffmpeg (z. B. winget install Gyan.FFmpeg)",
     video_play_failed: |err| format!("Kann das Video nicht abspielen: {err}"),
     video_played_instead: |ext, name| {
@@ -460,7 +465,13 @@ pub static TEXTS: Texts = Texts {
             "Umschalt+Tab",
             "Filterleiste, Details und Filmstreifen zusammen",
         ),
-        ("Enter", "Video im Standard-Player abspielen"),
+        (
+            "Leertaste, Enter",
+            "Video abspielen / anhalten (Umschalt+Leertaste: nächstes Foto)",
+        ),
+        ("J, L", "Video: 5 s zurück / vor"),
+        (",, .", "Video: ein Bild zurück / vor (angehalten)"),
+        ("↑, ↓", "Video: Lautstärke"),
         ("B", "Beschreibung: Kommentar und Stichwörter bearbeiten"),
     ],
     help_edit: [

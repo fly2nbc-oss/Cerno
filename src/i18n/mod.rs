@@ -393,6 +393,13 @@ pub struct Texts {
     pub edit_not_jpeg: &'static str,
     /// Over a video's frame: how to play it.
     pub video_play_hint: &'static str,
+    /// Tooltips of the video bar.
+    pub video_play_pause: &'static str,
+    pub video_mute: &'static str,
+    pub video_volume: &'static str,
+    /// Zoom keys or compare on a video.
+    pub video_no_zoom: &'static str,
+    pub video_no_compare: &'static str,
     /// Over a video's placeholder when ffmpeg is not installed.
     pub video_no_ffmpeg: &'static str,
     /// The system's player could not be started.
@@ -559,7 +566,7 @@ pub struct Texts {
     pub help_sections: [&'static str; 5],
     pub help_browse: [HelpRow; 5],
     pub help_rate: [HelpRow; 10],
-    pub help_view: [HelpRow; 13],
+    pub help_view: [HelpRow; 16],
     pub help_edit: [HelpRow; 6],
     pub help_more: [HelpRow; 5],
 }

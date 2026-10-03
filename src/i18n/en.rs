@@ -348,6 +348,11 @@ pub static TEXTS: Texts = Texts {
     cmd_undo: "Undo",
     edit_not_jpeg: "Straighten, crop, turns and Ctrl+Z work on JPEG only.",
     video_play_hint: "Play (Enter)",
+    video_play_pause: "Play / pause (Space)",
+    video_mute: "Sound on / off",
+    video_volume: "Volume (↑ ↓)",
+    video_no_zoom: "Videos are not zoomed",
+    video_no_compare: "Videos can't be compared",
     video_no_ffmpeg: "No preview frame: Cerno needs ffmpeg for it (e.g. winget install Gyan.FFmpeg)",
     video_play_failed: |err| format!("Cannot play the video: {err}"),
     video_played_instead: |ext, name| {
@@ -445,7 +450,13 @@ pub static TEXTS: Texts = Texts {
             "Grid of all photos: ↑ ↓ a row, + − size, Enter opens the photo",
         ),
         ("Shift+Tab", "Filter bar, details and filmstrip together"),
-        ("Enter", "Play a video in the default player"),
+        (
+            "Space, Enter",
+            "Play / pause a video (Shift+Space: next photo)",
+        ),
+        ("J, L", "Video: 5 s back / on"),
+        (",, .", "Video: one frame back / on (paused)"),
+        ("↑, ↓", "Video: volume"),
         ("B", "Description: edit the comment and keywords"),
     ],
     help_edit: [

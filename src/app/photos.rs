@@ -97,6 +97,10 @@ impl CernoApp {
         let Some(path) = self.view.get(self.current).cloned() else {
             return;
         };
+        if library::format_of(&path) == Some(library::Format::Video) {
+            self.notice = Some(Notice::hint(i18n::t().video_no_compare));
+            return;
+        }
         if self.view.len() < 2 {
             self.notice = Some(Notice::hint(i18n::t().compare_needs_two));
             return;
@@ -212,6 +216,13 @@ impl CernoApp {
         self.slots(area).iter().map(|slot| slot.area).collect()
     }
 
+    /// The slot shows a video (never zoomed, its own bar instead of the mouse zoom).
+    pub(super) fn slot_is_video(&self, slot: &Slot) -> bool {
+        self.view
+            .get(slot.index)
+            .is_some_and(|p| library::format_of(p) == Some(library::Format::Video))
+    }
+
     /// Whether a video's play button sits at the bottom of the photo area (not in the grid).
     pub(super) fn video_on_screen(&self, area: Rect) -> bool {
         !self.grid
@@ -278,10 +289,11 @@ impl CernoApp {
             || self.action_menu.is_some()
             || self.modal_open();
         let editing = self.edit.is_some();
+        let is_video = self.slot_is_video(slot);
         if !covered {
             if editing && slot.side == Side::Single {
                 self.handle_edit_pointer(ui, &frame);
-            } else if !editing {
+            } else if !editing && !is_video {
                 self.handle_mouse(ui, &frame, slot.side);
             }
         }
@@ -310,18 +322,8 @@ impl CernoApp {
         if slot.side == Side::Single {
             self.draw_edit_overlay(ui, &frame);
         }
-        if self
-            .view
-            .get(slot.index)
-            .is_some_and(|p| library::format_of(p) == Some(library::Format::Video))
-        {
-            let note = self.no_ffmpeg.then_some(i18n::t().video_no_ffmpeg);
-            // A click on the play button plays it, like `Enter`.
-            if overlays::video_badge(ui, slot.area, note, slot.index).clicked()
-                && let Some(path) = self.view.get(slot.index).cloned()
-            {
-                self.play(&path);
-            }
+        if is_video && let Some(path) = self.view.get(slot.index).cloned() {
+            self.draw_video_slot(ui, slot, &path);
         }
         if needs_full && full.is_none() {
             self.loader.request_full(slot.index);
@@ -335,6 +337,28 @@ impl CernoApp {
         }
         if slot.side != Side::Single {
             self.draw_compare_labels(ui, slot, image);
+        }
+    }
+
+    /// A video: its playing frame and bar, else the poster's play button – in the single view.
+    /// (Compare mode shows the poster only; a build without the player keeps the button, which
+    /// hands the video to the system's player.)
+    fn draw_video_slot(&mut self, ui: &egui::Ui, slot: &Slot, path: &Path) {
+        if self.draw_video(ui, slot.area, path) {
+            return;
+        }
+        let single = self.current_video() == Some(path);
+        if crate::playback::AVAILABLE && !single {
+            return;
+        }
+        let note = self.no_ffmpeg.then_some(i18n::t().video_no_ffmpeg);
+        // A click on the play button plays it, like `Enter` or `Space`.
+        if overlays::video_badge(ui, slot.area, note, slot.index).clicked() {
+            if crate::playback::AVAILABLE {
+                self.toggle_video(ui.ctx());
+            } else {
+                self.play(path);
+            }
         }
     }
 

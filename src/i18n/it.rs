@@ -339,6 +339,11 @@ pub static TEXTS: Texts = Texts {
     cmd_undo: "Annulla modifica",
     edit_not_jpeg: "Raddrizza, ritaglio, rotazione e Ctrl+Z solo per JPEG.",
     video_play_hint: "Riproduci (Invio)",
+    video_play_pause: "Riproduci / pausa (Spazio)",
+    video_mute: "Audio sì / no",
+    video_volume: "Volume (↑ ↓)",
+    video_no_zoom: "I video non si ingrandiscono",
+    video_no_compare: "I video non si possono confrontare",
     video_no_ffmpeg: "Nessuna anteprima: a Cerno serve ffmpeg (ad es. winget install Gyan.FFmpeg)",
     video_play_failed: |err| format!("Impossibile riprodurre il video: {err}"),
     video_played_instead: |ext, name| {
@@ -457,7 +462,13 @@ pub static TEXTS: Texts = Texts {
             "Maiusc+Tab",
             "Barra dei filtri, dettagli e striscia di miniature insieme",
         ),
-        ("Invio", "Riproduci un video nel lettore predefinito"),
+        (
+            "Spazio, Invio",
+            "Riproduci / metti in pausa un video (Maiusc+Spazio: foto successiva)",
+        ),
+        ("J, L", "Video: 5 s indietro / avanti"),
+        (",, .", "Video: un fotogramma indietro / avanti (in pausa)"),
+        ("↑, ↓", "Video: volume"),
         ("B", "Descrizione: modifica commento e parole chiave"),
     ],
     help_edit: [

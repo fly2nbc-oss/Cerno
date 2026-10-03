@@ -58,8 +58,12 @@ struct KeyInput {
     compare: bool,
     keep_left: bool,
     keep_right: bool,
-    /// `Enter`: play the current video in the system's player.
+    /// `Enter`: play a video (in the grid: open the photo).
     play: bool,
+    /// Plain `Space` (with repeats; on a video only a fresh press plays or pauses).
+    space: bool,
+    /// The video keys (fresh presses): `Space`/`Enter`, `J`/`L`, `,`/`.`, `↑`/`↓`.
+    video: super::video::VideoKeys,
     /// `B`: the description tab (comment and keywords).
     describe: bool,
     /// `E`: edit the photo in the remembered program (or choose one).
@@ -123,6 +127,19 @@ fn shifted_label(events: &[egui::Event]) -> Option<Label> {
     digit_key(events, &LABEL_KEYS, true)
 }
 
+/// `key` pressed now without modifiers – not a repeat of a held key.
+fn fresh(events: &[egui::Event], key: Key) -> bool {
+    events.iter().any(|event| {
+        matches!(event, egui::Event::Key { key: k, pressed: true, repeat: false, modifiers, .. }
+            if *k == key && modifiers.is_none())
+    })
+}
+
+/// −1, 0 or +1 from a pair of keys.
+fn axis(minus: bool, plus: bool) -> i8 {
+    i8::from(plus) - i8::from(minus)
+}
+
 /// One frame's keys. Digits count by their place on the keyboard (see [`digit_key`]).
 fn read_keys(i: &egui::InputState) -> KeyInput {
     let plain = i.modifiers.is_none();
@@ -130,11 +147,11 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
     let rating = digit_key(&i.events, &STAR_KEYS, false);
     let label = digit_key(&i.events, &LABEL_KEYS, false);
     KeyInput {
-        // Without Ctrl: Ctrl+Left/Right turn the photo instead.
+        // Without Ctrl: Ctrl+Left/Right turn the photo instead. Plain Space is read on its own
+        // (`space`): on a video it plays and pauses; Shift+Space always moves on.
         next: !i.modifiers.command
-            && [Key::ArrowRight, Key::Space]
-                .iter()
-                .any(|k| i.key_pressed(*k)),
+            && (i.key_pressed(Key::ArrowRight)
+                || (i.modifiers.shift_only() && i.key_pressed(Key::Space))),
         prev: !i.modifiers.command
             && [Key::ArrowLeft, Key::Backspace]
                 .iter()
@@ -156,6 +173,16 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         keep_left: plain && i.key_pressed(Key::A),
         keep_right: plain && i.key_pressed(Key::D),
         play: plain && i.key_pressed(Key::Enter),
+        space: plain && i.key_pressed(Key::Space),
+        video: super::video::VideoKeys {
+            toggle: fresh(&i.events, Key::Space) || fresh(&i.events, Key::Enter),
+            jump: axis(fresh(&i.events, Key::J), fresh(&i.events, Key::L)),
+            step: axis(fresh(&i.events, Key::Comma), fresh(&i.events, Key::Period)),
+            volume: axis(
+                plain && i.key_pressed(Key::ArrowDown),
+                plain && i.key_pressed(Key::ArrowUp),
+            ),
+        },
         describe: plain && i.key_pressed(Key::B),
         edit_elsewhere: plain && i.key_pressed(Key::E),
         // Ctrl+O opens a folder.
@@ -297,6 +324,14 @@ impl CernoApp {
         if keys.open {
             self.pick_folder(ctx);
         }
+        // On a video shown alone the video keys act on it; Space plays and pauses there and
+        // moves on everywhere else.
+        let on_video = self.current_video().is_some();
+        if on_video {
+            self.video_keys(ctx, keys.video);
+        } else if keys.space {
+            self.go_to(ctx, self.current.saturating_add(1), 1);
+        }
         if keys.next {
             self.go_to(ctx, self.current.saturating_add(1), 1);
         }
@@ -359,11 +394,12 @@ impl CernoApp {
         if keys.keep_right {
             self.keep_right(ctx);
         }
-        // In the grid Enter opens the photo; a video plays from the single view.
+        // In the grid Enter opens the photo; on a video it plays (see `video_keys`); in
+        // compare mode a video goes to the system's player in builds without the player.
         if keys.play {
             if self.grid {
                 self.set_grid(false);
-            } else {
+            } else if !on_video && !crate::playback::AVAILABLE {
                 self.play_video();
             }
         }
@@ -411,6 +447,10 @@ impl CernoApp {
             if keys.zoom_out {
                 self.zoom.zoom_by(frame, 1.0 / ZOOM_STEP, anchor);
             }
+        }
+        // A video has no zoom frame (see `ui`): the keys say why nothing happens.
+        if on_video && (keys.toggle_zoom || keys.zoom_in || keys.zoom_out) {
+            self.notice = Some(super::notice::Notice::hint(crate::i18n::t().video_no_zoom));
         }
         if keys.toggle_fullscreen {
             ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!keys.is_fullscreen));
@@ -496,6 +536,66 @@ mod tests {
         assert!(keys.next && !keys.rotate_cw);
         let keys = read(vec![key(Key::Z, Key::Z, ctrl)], ctrl);
         assert!(keys.undo && !keys.toggle_zoom);
+    }
+
+    /// Plain Space plays and pauses a video (a held key not again) and moves on elsewhere;
+    /// Shift+Space always moves on. J/L, `,`/`.` and ↑/↓ are the video's.
+    #[test]
+    fn space_and_the_video_keys() {
+        let plain = Modifiers::NONE;
+        let keys = read(vec![key(Key::Space, Key::Space, plain)], plain);
+        assert!(keys.space && keys.video.toggle && !keys.next);
+        let shift = Modifiers::SHIFT;
+        let keys = read(vec![key(Key::Space, Key::Space, shift)], shift);
+        assert!(keys.next && !keys.space && !keys.video.toggle);
+        // Held down: egui marks the second press of a key still down as a repeat.
+        let ctx = egui::Context::default();
+        let frame = |events: Vec<Event>| {
+            let mut keys = None;
+            let mut output = ctx.run_ui(
+                RawInput {
+                    events,
+                    ..Default::default()
+                },
+                |ui| keys = Some(ui.ctx().input(read_keys)),
+            );
+            output.textures_delta.clear();
+            keys.expect("one frame")
+        };
+        assert!(frame(vec![key(Key::Space, Key::Space, plain)]).video.toggle);
+        let held = frame(vec![key(Key::Space, Key::Space, plain)]);
+        assert!(
+            held.space && !held.video.toggle,
+            "a held Space does not toggle"
+        );
+        assert!(
+            read(vec![key(Key::Enter, Key::Enter, plain)], plain)
+                .video
+                .toggle
+        );
+        assert_eq!(read(vec![key(Key::J, Key::J, plain)], plain).video.jump, -1);
+        assert_eq!(read(vec![key(Key::L, Key::L, plain)], plain).video.jump, 1);
+        assert_eq!(
+            read(vec![key(Key::Comma, Key::Comma, plain)], plain)
+                .video
+                .step,
+            -1
+        );
+        assert_eq!(
+            read(vec![key(Key::Period, Key::Period, plain)], plain)
+                .video
+                .step,
+            1
+        );
+        let up = read(vec![key(Key::ArrowUp, Key::ArrowUp, plain)], plain);
+        assert_eq!(up.video.volume, 1);
+        assert!(up.up, "the grid keeps its rows");
+        let ctrl = Modifiers::COMMAND;
+        assert_eq!(
+            read(vec![key(Key::L, Key::L, ctrl)], ctrl).video.jump,
+            0,
+            "Ctrl+L: language"
+        );
     }
 
     #[test]

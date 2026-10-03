@@ -116,6 +116,8 @@ impl CernoApp {
         if self.launching.is_some() || !self.allowed(Change::External, Some(&path)) {
             return;
         }
+        // A video playing here would keep its file open in the other program's way.
+        self.stop_video();
         let (tx, rx) = mpsc::channel();
         let db = Arc::clone(&self.db);
         let files = Arc::clone(&self.files);
