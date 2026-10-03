@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+## [1.5.2] – 2026-10-03
+
+A people filter, tidier video details, a few common keys and a help page that fits on one screen.
+
 ### Added
 
 - **People filter** – two small icons in the filter bar (and *Filter ▸*) keep the photos with or without people. Cerno finds them by their faces, which it already looks for, so nothing is analysed again; people seen from behind or very small don't count.
