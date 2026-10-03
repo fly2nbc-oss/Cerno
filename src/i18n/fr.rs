@@ -20,6 +20,9 @@ pub static TEXTS: Texts = Texts {
     filter_blurry_tooltip: "Parmi les 20 % de photos les plus floues de ce dossier, et nettement floues",
     filter_duplicate: "Doublons",
     filter_duplicate_tooltip: "Chaque photo sauf le premier chemin identique",
+    filter_people: "Avec des personnes",
+    filter_no_people: "Sans personnes",
+    filter_people_tooltip: "Repérées à leur visage : les personnes de dos ou toutes petites dans l'image ne comptent pas.",
     filter_clear: "Tout afficher",
     media_all: "Photos et vidéos",
     media_photos: "Photos seulement",
@@ -33,7 +36,7 @@ pub static TEXTS: Texts = Texts {
         "Livre photo",
         "Galerie",
     ],
-    top_tooltip: "Photos, vidéos ou les deux – ou seulement les meilleures photos, selon vos étoiles (sinon « Pour vous »), l'esthétique et la netteté, la meilleure de chaque série d'abord. Les photos rejetées ou floues et les doublons ne comptent pas. La sélection reste jusqu'à ce qu'un filtre change ou que vous choisissiez « Actualiser l'ordre ». Rien n'est modifié dans les photos.",
+    top_tooltip: "Photos, vidéos ou les deux – ou seulement les meilleures photos, selon vos étoiles (sinon la prédiction), l'esthétique et la netteté, la meilleure de chaque série d'abord. Les photos rejetées ou floues et les doublons ne comptent pas. La sélection reste jusqu'à ce qu'un filtre change ou que vous choisissiez « Actualiser l'ordre ». Rien n'est modifié dans les photos.",
     menu_top: "Meilleures photos",
     bulk_delete_top: "Pas avec Top – ce sont les meilleures photos",
     filter_none_active: "Aucun filtre actif",
@@ -70,7 +73,7 @@ pub static TEXTS: Texts = Texts {
     sort_name: "Nom",
     sort_rating: "Étoiles",
     sort_aesthetics: "Esthétique",
-    sort_personal: "Pour vous",
+    sort_personal: "Prédiction",
     sort_sharpness: "Netteté",
     sort_taken: "Date de prise",
     filter_unrated: "Sans étoiles",
@@ -121,7 +124,7 @@ pub static TEXTS: Texts = Texts {
     star_tooltip: |n| format!("{n} ★ – touche {n}"),
     personal_hint: |stars| {
         format!(
-            "Pour vous : {stars:.1} ★ – les étoiles que Cerno pense que vous donneriez. Pas encore votre note"
+            "Prédiction : {stars:.1} ★ – les étoiles que Cerno pense que vous donneriez. Pas encore votre note"
         )
     },
     zoom: |percent| format!("Zoom {percent:.0} %"),
@@ -159,6 +162,8 @@ pub static TEXTS: Texts = Texts {
     },
     cmd_auto_advance: "Avancer automatiquement",
     cmd_subfolders: "Inclure les sous-dossiers",
+    subfolders_on: "Sous-dossiers inclus",
+    subfolders_off: "Ce dossier seulement, sans sous-dossiers",
     menu_sort: "Trier",
     menu_filter: "Filtre",
     menu_view: "Affichage",
@@ -283,6 +288,7 @@ pub static TEXTS: Texts = Texts {
     row_audio_bitrate: "Débit audio",
     row_bitrate: "Débit total",
     no_audio: "pas de piste audio",
+    variable_frame_rate: "variable",
     channels: |n| match n {
         1 => "Mono".to_owned(),
         2 => "Stéréo".to_owned(),
@@ -302,7 +308,7 @@ pub static TEXTS: Texts = Texts {
     description_waiting: "Lecture …",
     row_laion: "LAION (CLIP)",
     row_v25: "V2.5 (SigLIP)",
-    row_personal: "Pour vous",
+    row_personal: "Prédiction",
     row_frame: "Image entière",
     row_eyes: "Yeux",
     row_highlights: "Hautes lumières brûlées",
@@ -317,7 +323,7 @@ pub static TEXTS: Texts = Texts {
     ],
     explain_laion: "La beauté de la photo aux yeux d'une IA qui a appris de nombreuses notes données par des personnes. Elle aime surtout les personnes, les portraits et les plats.",
     explain_v25: "Une IA plus récente pour la même question, meilleure avec les photos du quotidien. Elle aime surtout les paysages, l'eau et les vues aériennes.",
-    explain_personal: "Les étoiles que vous donneriez selon Cerno. Il apprend de vos propres étoiles et des photos que vous supprimez.",
+    explain_personal: "Les étoiles que vous donneriez selon Cerno. Elle apprend de vos propres étoiles et des photos que vous rejetez ou supprimez.",
     explain_aesthetics: "La valeur sous la photo : la moyenne des deux IA ci-dessous, de 0 % (peu attrayante) à 100 % (très attrayante). La plupart des photos se situent entre 40 et 60 %, à partir de 80 % c'est très bon. L'échelle est fixe – une photo a la même valeur dans chaque dossier.",
     explain_frame: "La netteté des zones les plus nettes, comparée aux autres photos de ce dossier. 80 % signifie plus nette que 80 % d'entre elles.",
     explain_eyes: "La netteté au niveau des yeux, s'il y a un visage. Pour un portrait, c'est elle qui compte, pas l'arrière-plan.",
@@ -332,7 +338,7 @@ pub static TEXTS: Texts = Texts {
         "propre – bruitée",
         "colorée – terne",
     ],
-    explain_models: "Où tourne chaque IA : DirectML = carte graphique, CPU = processeur. ± indique de combien « Pour vous » se trompe en général.",
+    explain_models: "Où tourne chaque IA : DirectML = carte graphique, CPU = processeur. ± indique de combien la prédiction se trompe en général.",
     note_no_embedding: "pas encore de données CLIP",
     note_learning: |n, of| format!("apprentissage – {n} sur {of} photos"),
     note_analysing: "analyse en cours…",
@@ -352,11 +358,16 @@ pub static TEXTS: Texts = Texts {
     model_removing: "suppression…",
     model_failed: "échec",
     model_faces: "Visages",
-    model_personal: "Pour vous",
+    model_personal: "Prédiction",
     taste_trained: |n, error| format!("{n} photos, ±{error:.1} ★"),
     taste_photos: |n| format!("{n} photos"),
     taste_untrained: "pas encore entraîné",
-    btn_reset_taste: "Réinitialiser Pour vous",
+    taste_sources: |stars, rejected, deleted| {
+        format!(
+            "Apprise de {stars} photos avec étoiles, {rejected} rejetées et {deleted} supprimées – les photos rejetées et supprimées comptent pour 0 ★."
+        )
+    },
+    btn_reset_taste: "Réinitialiser la prédiction",
     btn_delete_models: "Supprimer les modèles",
     models_deleted: "Modèles supprimés",
     models_downloaded: "Modèles téléchargés – l'esthétique est en cours de calcul",
@@ -365,7 +376,7 @@ pub static TEXTS: Texts = Texts {
     },
     copy_models_path: "Copier le chemin",
     models_path_copied: "Chemin copié",
-    confirm_reset_taste_title: "Réinitialiser Pour vous ?",
+    confirm_reset_taste_title: "Réinitialiser la prédiction ?",
     confirm_reset_taste_text: "Cerno oubliera ce qu'il a appris de vos étoiles et suppressions. Les étoiles dans les fichiers photo restent inchangées.",
     confirm_delete_models_title: "Supprimer les modèles téléchargés ?",
     confirm_delete_models_text: |size| {
@@ -420,8 +431,11 @@ pub static TEXTS: Texts = Texts {
     welcome_more: "Tous les raccourcis : H",
     help_sections: [
         "Parcourir",
-        "Noter et trier",
+        "Noter",
+        "Trier",
+        "Vidéo",
         "Affichage",
+        "Panneaux",
         "Retouche",
         "Divers",
     ],
@@ -434,6 +448,7 @@ pub static TEXTS: Texts = Texts {
         ("Début, Fin", "Première / dernière photo"),
         ("Molette", "Sur la pellicule : faire défiler les photos"),
         ("Ctrl+O", "Ouvrir un dossier (ou le déposer sur la fenêtre)"),
+        ("Ctrl+U", "Inclure les sous-dossiers – oui / non"),
     ],
     help_rate: [
         (
@@ -450,10 +465,19 @@ pub static TEXTS: Texts = Texts {
             "Rejeter – noté dans le fichier, rien n'est supprimé ; avec Maj, passer à la photo suivante",
         ),
         (
-            "Suppr",
-            "Supprimer : va dans le dossier caché .originals après 5 secondes – rien n'est perdu",
+            "6 – 9",
+            "Couleur : rouge, jaune, vert, bleu – une seconde fois l'enlève",
         ),
-        ("Esc", "Récupérer les photos en attente de suppression"),
+        (
+            "Maj+6 – 9",
+            "Poser cette couleur et passer à la photo suivante",
+        ),
+        (
+            "B",
+            "Description : modifier le commentaire et les mots-clés",
+        ),
+    ],
+    help_cull: [
         (
             "C",
             "Comparer : fixer cette photo à gauche, parcourir à droite",
@@ -463,26 +487,29 @@ pub static TEXTS: Texts = Texts {
             "Comparer : garder la gauche / la droite – l'autre est rejetée, la comparaison se termine",
         ),
         (
-            "6 – 9",
-            "Couleur : rouge, jaune, vert, bleu – une seconde fois l'enlève",
-        ),
-        (
-            "Maj+6 – 9",
-            "Poser cette couleur et passer à la photo suivante",
-        ),
-    ],
-    help_view: [
-        ("Z, Double-clic", "Photo entière ↔ 100 %"),
-        ("+, −, Molette", "Zoom avant / arrière"),
-        ("Glisser", "Déplacer la photo zoomée"),
-        ("F, F11", "Plein écran"),
-        ("T", "Barre de filtres : trier et filtrer"),
-        ("Tab", "Panneau de détails"),
-        ("F6", "Pellicule"),
-        (
             "M",
             "N'afficher que les photos semblables – encore : toutes",
         ),
+        (
+            "Suppr",
+            "Supprimer : va dans le dossier caché .originals après 5 secondes – rien n'est perdu",
+        ),
+        ("Esc", "Récupérer les photos en attente de suppression"),
+    ],
+    help_video: [
+        (
+            "Espace",
+            "Lire / mettre en pause (Maj+Espace : photo suivante)",
+        ),
+        ("Alt+←, Alt+→", "5 s en arrière / en avant"),
+        (",, .", "Une image en arrière / en avant (en pause)"),
+        ("↑, ↓", "Volume"),
+    ],
+    help_view: [
+        ("Z, Double-clic", "Photo entière ↔ 100 %"),
+        ("Ctrl+0, Ctrl+1", "Photo entière / 100 %"),
+        ("+, −, Molette", "Zoom avant / arrière – aussi avec Ctrl"),
+        ("Glisser", "Déplacer la photo zoomée"),
         (
             "O",
             "Superposition : contours nets → lumières et ombres écrêtées → désactivée",
@@ -491,18 +518,16 @@ pub static TEXTS: Texts = Texts {
             "F7",
             "Grille de toutes les photos : ↑ ↓ une ligne, + − taille, Entrée ouvre la photo",
         ),
+        ("F, F11", "Plein écran"),
+    ],
+    help_panels: [
+        (
+            "T",
+            "Barre de filtres : trier et filtrer – par étoiles, couleurs, netteté, personnes",
+        ),
+        ("Tab", "Panneau de détails"),
+        ("F6", "Pellicule"),
         ("Maj+Tab", "Barre de filtres, détails et pellicule ensemble"),
-        (
-            "Espace",
-            "Lire / mettre en pause une vidéo (Maj+Espace : photo suivante)",
-        ),
-        ("Alt+←, Alt+→", "Vidéo : 5 s en arrière / en avant"),
-        (",, .", "Vidéo : une image en arrière / en avant (en pause)"),
-        ("↑, ↓", "Vidéo : volume"),
-        (
-            "B",
-            "Description : modifier le commentaire et les mots-clés",
-        ),
     ],
     help_edit: [
         (

@@ -7,6 +7,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **People filter** – two small icons in the filter bar (and *Filter ▸*) keep the photos with or without people. Cerno finds them by their faces, which it already looks for, so nothing is analysed again; people seen from behind or very small don't count.
+- **`Ctrl+U` turns subfolders on and off** (as *Settings ▸ Include subfolders*); a hint says which.
+- **`Ctrl+0` shows the whole photo, `Ctrl+1` 100 %**, and `Ctrl+Plus` / `Ctrl+Minus` zoom like `+` / `−` (they used to change the size of the whole window's text).
+- **The models card says what the prediction learns from** – how many photos have stars, how many were rejected and how many deleted (those two count as 0 stars), so the number no longer looks like the count of rated photos.
+- `CERNO_DATA_DIR` puts the index, settings and crash log into another folder (the models stay shared) – for tests that must not touch your index.
+
+### Changed
+
+- **The help page is sorted anew** – eight short sections (browse, rate, sort out, video, view, panels, edit, more) in two columns of about the same length, with the new keys.
+- **"For you" is now called "Prediction"** („Vorhersage“, « Prédiction », «Predicción», «Previsione»).
+
+### Fixed
+
+- **A video's details show only what applies to it** – the aesthetics, prediction, sharpness and exposure rows waited forever ("analysing…"), since videos are never analysed. A video recorded at a variable frame rate (as phones do) shows "variable" instead of no frame rate at all.
+
 ## [1.5.1] – 2026-10-03
 
 Videos play without a sound device, and their details show what is inside.

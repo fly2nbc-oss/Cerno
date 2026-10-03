@@ -146,6 +146,26 @@ pub fn reject_mark(painter: &Painter, center: Pos2, size: f32, color: Color32) {
     painter.line_segment([center + vec2(-d, d), center + vec2(d, -d)], stroke);
 }
 
+/// A person – head and shoulders – for the people filter. `crossed`: struck through ("without
+/// people"), the stroke cut free from the figure in that background colour.
+pub fn person(painter: &Painter, center: Pos2, color: Color32, crossed: Option<Color32>) {
+    painter.circle_filled(center + vec2(0.0, -3.6), 2.8, color);
+    let shoulders = center + vec2(0.0, 6.4);
+    let radius = 5.4;
+    let points = (0..=12)
+        .map(|i| {
+            let angle = std::f32::consts::PI * (1.0 + i as f32 / 12.0);
+            shoulders + vec2(angle.cos(), angle.sin()) * radius
+        })
+        .collect();
+    painter.add(Shape::convex_polygon(points, color, Stroke::NONE));
+    if let Some(background) = crossed {
+        let line = [center + vec2(-6.5, -6.5), center + vec2(6.5, 6.5)];
+        painter.line_segment(line, Stroke::new(3.6, background));
+        painter.line_segment(line, Stroke::new(1.5, color));
+    }
+}
+
 /// "Probably blurry": a status-coloured disc with a painted exclamation mark (a 9 px text "!"
 /// was below the design system's 12 px minimum for icons).
 pub fn warning(painter: &Painter, center: Pos2) {

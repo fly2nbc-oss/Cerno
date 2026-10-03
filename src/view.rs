@@ -100,10 +100,14 @@ pub enum FilterKind {
     Duplicate,
     /// A colour label. Nothing ticked means every colour.
     Colour(Label),
+    /// The face detection found a face – people from behind or very small don't count.
+    People,
+    /// The face detection ran and found none.
+    NoPeople,
 }
 
 impl FilterKind {
-    pub const ALL: [FilterKind; 14] = [
+    pub const ALL: [FilterKind; 16] = [
         Self::Stars(1),
         Self::Stars(2),
         Self::Stars(3),
@@ -118,6 +122,8 @@ impl FilterKind {
         Self::Colour(Label::Green),
         Self::Colour(Label::Blue),
         Self::Colour(Label::Purple),
+        Self::People,
+        Self::NoPeople,
     ];
 
     pub fn label(self) -> String {
@@ -129,6 +135,8 @@ impl FilterKind {
             Self::Blurry => t.filter_blurry.to_owned(),
             Self::Duplicate => t.filter_duplicate.to_owned(),
             Self::Colour(label) => i18n::label_name(label).to_owned(),
+            Self::People => t.filter_people.to_owned(),
+            Self::NoPeople => t.filter_no_people.to_owned(),
         }
     }
 
@@ -145,6 +153,8 @@ impl FilterKind {
             Self::Blurry => "blurry",
             Self::Duplicate => "duplicate",
             Self::Colour(label) => label.id(),
+            Self::People => "people",
+            Self::NoPeople => "nopeople",
         }
     }
 
@@ -155,7 +165,7 @@ impl FilterKind {
     /// The filter bar's groups, in its order (the menu follows it). Within a group a photo
     /// needs any ticked box, across groups every group with a ticked box. `ALL` keeps the
     /// order of the stored ids.
-    pub const GROUPS: [&'static [FilterKind]; 3] = [
+    pub const GROUPS: [&'static [FilterKind]; 4] = [
         &[
             Self::Rejected,
             Self::Unrated,
@@ -173,12 +183,14 @@ impl FilterKind {
             Self::Colour(Label::Purple),
         ],
         &[Self::Blurry, Self::Duplicate],
+        &[Self::People, Self::NoPeople],
     ];
 }
 
 /// Which photos stay visible. Nothing ticked means every photo. Otherwise a photo stays when,
-/// in every group with a ticked box (rating, colour, blurry / duplicate – `FilterKind::GROUPS`),
-/// it matches one of them: 4★ + blurry are the blurry 4-star photos, 4★ + 5★ both ratings.
+/// in every group with a ticked box (rating, colour, blurry / duplicate, people –
+/// `FilterKind::GROUPS`), it matches one of them: 4★ + blurry are the blurry 4-star photos,
+/// 4★ + 5★ both ratings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PhotoFilter {
     /// Index 0 is 1 star.
@@ -189,6 +201,8 @@ pub struct PhotoFilter {
     duplicate: bool,
     /// Same order as `Label::ALL`.
     colours: [bool; 5],
+    people: bool,
+    no_people: bool,
 }
 
 impl PhotoFilter {
@@ -199,6 +213,8 @@ impl PhotoFilter {
             && !self.blurry
             && !self.duplicate
             && !self.colours.iter().any(|on| *on)
+            && !self.people
+            && !self.no_people
     }
 
     /// Any colour box is ticked, so changing a label can hide the current photo.
@@ -214,6 +230,8 @@ impl PhotoFilter {
             FilterKind::Blurry => self.blurry,
             FilterKind::Duplicate => self.duplicate,
             FilterKind::Colour(label) => self.colours[colour_index(label)],
+            FilterKind::People => self.people,
+            FilterKind::NoPeople => self.no_people,
             FilterKind::Stars(_) => false,
         }
     }
@@ -226,6 +244,8 @@ impl PhotoFilter {
             FilterKind::Blurry => self.blurry = on,
             FilterKind::Duplicate => self.duplicate = on,
             FilterKind::Colour(label) => self.colours[colour_index(label)] = on,
+            FilterKind::People => self.people = on,
+            FilterKind::NoPeople => self.no_people = on,
             FilterKind::Stars(_) => {}
         }
     }
@@ -240,13 +260,15 @@ impl PhotoFilter {
     }
 
     /// A photo matches every group with a ticked box: its rating is ticked, its colour is
-    /// ticked, and it is blurry or a copy when one of those boxes is ticked.
+    /// ticked, it is blurry or a copy when one of those boxes is ticked, and it has faces or
+    /// none (`faces`: `None` until the face detection ran – then neither box takes it).
     pub fn accepts(
         self,
         rating: Rating,
         is_blurry: bool,
         is_duplicate: bool,
         colour: Option<Label>,
+        faces: Option<u8>,
     ) -> bool {
         let rating_ticked = self.stars.iter().any(|on| *on) || self.unrated || self.rejected;
         let by_rating = !rating_ticked
@@ -261,7 +283,10 @@ impl PhotoFilter {
         let by_quality = !(self.blurry || self.duplicate)
             || (self.blurry && is_blurry)
             || (self.duplicate && is_duplicate);
-        by_rating && by_colour && by_quality
+        let by_people = !(self.people || self.no_people)
+            || (self.people && faces.is_some_and(|n| n > 0))
+            || (self.no_people && faces == Some(0));
+        by_rating && by_colour && by_quality && by_people
     }
 
     /// Stored setting. A leading `*` marks the exact set, so an old `"3"` (at least 3 stars)
@@ -679,11 +704,12 @@ pub fn build(
                 Some(_) => entry.facts.is_some_and(|f| f.top),
                 None => options.media.accepts(video),
             };
+            let faces = entry.facts.and_then(|f| f.scores.faces);
             similar
                 && in_scope
                 && options
                     .filter
-                    .accepts(entry.rating, blurry, is_duplicate, entry.label)
+                    .accepts(entry.rating, blurry, is_duplicate, entry.label, faces)
         })
         .collect();
 
@@ -1210,6 +1236,37 @@ mod tests {
             names_of(&[FilterKind::Stars(5), FilterKind::Stars(2)]),
             "ac"
         );
+    }
+
+    /// People: a face found, or none; a photo the face detection hasn't seen is in neither box.
+    #[test]
+    fn people_boxes_need_the_face_detection() {
+        let filter_of = |kinds: &[FilterKind]| {
+            let mut filter = PhotoFilter::default();
+            for kind in kinds {
+                filter.set(*kind, true);
+            }
+            filter
+        };
+        let accepts = |kinds: &[FilterKind], faces: Option<u8>| {
+            filter_of(kinds).accepts(Rating::Unrated, false, false, None, faces)
+        };
+        assert!(accepts(&[FilterKind::People], Some(2)));
+        assert!(!accepts(&[FilterKind::People], Some(0)));
+        assert!(!accepts(&[FilterKind::People], None));
+        assert!(accepts(&[FilterKind::NoPeople], Some(0)));
+        assert!(!accepts(&[FilterKind::NoPeople], None));
+        assert!(accepts(
+            &[FilterKind::People, FilterKind::NoPeople],
+            Some(0)
+        ));
+        assert!(
+            !accepts(&[FilterKind::People, FilterKind::Stars(5)], Some(1)),
+            "the rating group still counts"
+        );
+        assert!(accepts(&[], None));
+        let stored = PhotoFilter::from_stored(&filter_of(&[FilterKind::NoPeople]).id());
+        assert!(stored.contains(FilterKind::NoPeople) && !stored.contains(FilterKind::People));
     }
 
     #[test]

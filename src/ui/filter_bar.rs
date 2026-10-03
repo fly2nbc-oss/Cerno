@@ -264,6 +264,16 @@ fn filter_box(ui: &mut Ui, kind: FilterKind, on: bool) -> bool {
         FilterKind::Duplicate => chip(ui, on, Face::Text(&kind.label()))
             .on_hover_text(t.filter_duplicate_tooltip)
             .clicked(),
+        // Icons without text: the names are in the tooltip.
+        FilterKind::People | FilterKind::NoPeople => chip(
+            ui,
+            on,
+            Face::Person {
+                crossed: kind == FilterKind::NoPeople,
+            },
+        )
+        .on_hover_text(format!("{}\n{}", kind.label(), t.filter_people_tooltip))
+        .clicked(),
     }
 }
 
@@ -274,6 +284,10 @@ enum Face<'a> {
     Rejected,
     /// An empty star: no stars yet.
     NoStars,
+    /// A person: with people, or struck through: without.
+    Person {
+        crossed: bool,
+    },
 }
 
 /// A filter that is on or off: outlined while off, on the accent's fill while on.
@@ -286,7 +300,7 @@ fn chip(ui: &mut Ui, on: bool, face: Face<'_>) -> Response {
             TextStyle::Button.resolve(ui.style()),
             tokens::TEXT,
         )),
-        Face::Rejected | Face::NoStars => None,
+        Face::Rejected | Face::NoStars | Face::Person { .. } => None,
     };
     let width = galley
         .as_ref()
@@ -312,6 +326,21 @@ fn chip(ui: &mut Ui, on: bool, face: Face<'_>) -> Response {
         (Face::NoStars, _) => {
             let colour = if on { tokens::TEXT } else { tokens::MUTED };
             stars::paint_star(painter, rect.center(), 6.5, false, colour);
+        }
+        (Face::Person { crossed }, _) => {
+            let colour = if on { tokens::TEXT } else { tokens::MUTED };
+            // The stroke is cut free in the chip's own colour.
+            let background = if fill == Color32::TRANSPARENT {
+                tokens::SURFACE
+            } else {
+                fill
+            };
+            icons::person(
+                painter,
+                rect.center(),
+                colour,
+                crossed.then_some(background),
+            );
         }
         (Face::Text(_), None) => {}
     }
@@ -554,6 +583,7 @@ mod tests {
             faces: ModelState::Missing,
             taste: TasteStatus {
                 examples: 0,
+                sources: Default::default(),
                 model: None,
             },
         }

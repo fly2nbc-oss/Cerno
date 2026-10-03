@@ -76,6 +76,25 @@ impl CernoApp {
         self.rebuild_view(ctx, start);
     }
 
+    /// Subfolders on or off (`Ctrl+U`, the settings menu); the current folder opens again.
+    pub(super) fn toggle_subfolders(&mut self, ctx: &egui::Context) {
+        self.subfolders = !self.subfolders;
+        self.db
+            .put_setting("subfolders", if self.subfolders { "1" } else { "0" });
+        if let Some(dir) = self.dir.clone() {
+            self.open(ctx, &dir);
+        }
+        // An error or "no photos here" from opening says more.
+        if self.notice.is_none() {
+            let t = i18n::t();
+            self.notice = Some(Notice::hint(if self.subfolders {
+                t.subfolders_on
+            } else {
+                t.subfolders_off
+            }));
+        }
+    }
+
     /// Each hint once: the models as a whole while CLIP is missing, V2.5 alone once CLIP is
     /// there (users of releases without the V2.5 download).
     fn offer_models(&mut self) {

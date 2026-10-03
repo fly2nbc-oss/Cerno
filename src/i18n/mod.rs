@@ -219,6 +219,10 @@ pub struct Texts {
     /// The later copy, not the first identical photo.
     pub filter_duplicate: &'static str,
     pub filter_duplicate_tooltip: &'static str,
+    /// People filter (a face found / none): the menu row and the icon chip's tooltip.
+    pub filter_people: &'static str,
+    pub filter_no_people: &'static str,
+    pub filter_people_tooltip: &'static str,
     pub filter_clear: &'static str,
     /// The filter bar's photos / videos box and the same rows in Filter ▸.
     pub media_all: &'static str,
@@ -311,7 +315,7 @@ pub struct Texts {
     /// Tooltip of a video's cell in the filmstrip (the play sign).
     pub filmstrip_video: &'static str,
     pub star_tooltip: fn(u8) -> String,
-    /// Tooltip over the light stars: For you's prediction, 0..=5.
+    /// Tooltip over the light stars: the prediction, 0..=5.
     pub personal_hint: fn(f32) -> String,
     pub zoom: fn(f32) -> String,
     pub digital_zoom: fn(f64) -> String,
@@ -351,6 +355,9 @@ pub struct Texts {
     pub cmd_delete_rejected: fn(usize) -> String,
     pub cmd_auto_advance: &'static str,
     pub cmd_subfolders: &'static str,
+    /// Hint after `Ctrl+U` (or the menu) turned subfolders on.
+    pub subfolders_on: &'static str,
+    pub subfolders_off: &'static str,
     pub menu_sort: &'static str,
     pub menu_filter: &'static str,
     pub menu_view: &'static str,
@@ -491,6 +498,8 @@ pub struct Texts {
     pub row_audio_bitrate: &'static str,
     pub row_bitrate: &'static str,
     pub no_audio: &'static str,
+    /// Details › File: the video states no fixed frame rate (phones record so).
+    pub variable_frame_rate: &'static str,
     /// Sound channels: Mono, Stereo, 5.1 …
     pub channels: fn(u32) -> String,
     pub row_location: &'static str,
@@ -549,6 +558,8 @@ pub struct Texts {
     pub taste_trained: fn(usize, f32) -> String,
     pub taste_photos: fn(usize) -> String,
     pub taste_untrained: &'static str,
+    /// Models card: where the prediction's examples come from (stars, rejected, deleted).
+    pub taste_sources: fn(usize, usize, usize) -> String,
     pub btn_reset_taste: &'static str,
     pub btn_delete_models: &'static str,
     /// Hint once the model files are gone.
@@ -573,10 +584,13 @@ pub struct Texts {
     pub welcome_intro: &'static str,
     pub welcome_keys: [HelpRow; 5],
     pub welcome_more: &'static str,
-    pub help_sections: [&'static str; 5],
-    pub help_browse: [HelpRow; 5],
-    pub help_rate: [HelpRow; 10],
-    pub help_view: [HelpRow; 16],
+    pub help_sections: [&'static str; 8],
+    pub help_browse: [HelpRow; 6],
+    pub help_rate: [HelpRow; 7],
+    pub help_cull: [HelpRow; 5],
+    pub help_video: [HelpRow; 4],
+    pub help_view: [HelpRow; 7],
+    pub help_panels: [HelpRow; 4],
     pub help_edit: [HelpRow; 6],
     pub help_more: [HelpRow; 5],
 }
@@ -689,6 +703,11 @@ mod tests {
             let trained = (t.taste_trained)(30, 0.7);
             assert!(trained.contains("30") && trained.contains("0.7"), "{name}");
             assert!((t.taste_photos)(30).contains("30"), "{name}");
+            let sources = (t.taste_sources)(167, 2, 542);
+            assert!(
+                ["167", " 2 ", "542"].iter().all(|n| sources.contains(n)),
+                "{name}"
+            );
             assert!((t.edit_failed)("locked").contains("locked"), "{name}");
             assert!((t.video_play_failed)("no app").contains("no app"), "{name}");
             assert!((t.external_opened)("GIMP").contains("GIMP"), "{name}");
@@ -706,13 +725,17 @@ mod tests {
                 .help_browse
                 .iter()
                 .chain(&t.help_rate)
+                .chain(&t.help_cull)
+                .chain(&t.help_video)
                 .chain(&t.help_view)
+                .chain(&t.help_panels)
                 .chain(&t.help_edit)
                 .chain(&t.help_more)
                 .chain(&t.welcome_keys);
             for (keys, action) in rows {
                 assert!(!keys.trim().is_empty() && !action.trim().is_empty());
             }
+            assert!(t.help_sections.iter().all(|title| !title.is_empty()));
         }
     }
 

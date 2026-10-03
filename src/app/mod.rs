@@ -218,6 +218,7 @@ impl CernoApp {
     /// decode overlap with the GPU and window set-up.
     pub fn new(ctx: &egui::Context, start_path: Option<PathBuf>, started: Instant) -> Self {
         let ctx = ctx.clone();
+        keys::keep_zoom_keys(&ctx);
         i18n::set(i18n::system_default());
         let mut notice = None;
         let db = paths::database_path()

@@ -205,16 +205,20 @@ fn content(ui: &mut Ui, welcome: bool) -> (HelpOutput, f32) {
         return (out, y - top.y);
     }
 
-    // Shortcuts: two columns on wide windows.
-    let sections: [(&str, &[HelpRow]); 5] = [
+    // Shortcuts: two columns on wide windows – left what culling needs (browse, rate, sort
+    // out, video), right the view, the panels, editing and the rest; both about as long.
+    let sections: [(&str, &[HelpRow]); 8] = [
         (t.help_sections[0], &t.help_browse),
         (t.help_sections[1], &t.help_rate),
-        (t.help_sections[2], &t.help_view),
-        (t.help_sections[3], &t.help_edit),
-        (t.help_sections[4], &t.help_more),
+        (t.help_sections[2], &t.help_cull),
+        (t.help_sections[3], &t.help_video),
+        (t.help_sections[4], &t.help_view),
+        (t.help_sections[5], &t.help_panels),
+        (t.help_sections[6], &t.help_edit),
+        (t.help_sections[7], &t.help_more),
     ];
     let columns: Vec<&[(&str, &[HelpRow])]> = if width >= TWO_COLUMNS {
-        vec![&sections[..2], &sections[2..]]
+        vec![&sections[..4], &sections[4..]]
     } else {
         vec![&sections[..]]
     };

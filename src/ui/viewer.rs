@@ -134,6 +134,20 @@ impl Zoom {
         }
     }
 
+    /// The whole photo (`Ctrl+0`).
+    pub fn fit(&mut self) {
+        self.scale = None;
+    }
+
+    /// 100 % around `anchor` (`Ctrl+1`); a photo smaller than the area stays fitted.
+    pub fn actual_size(&mut self, frame: &Frame, anchor: Pos2) {
+        if frame.fit_scale() >= 0.999 {
+            self.scale = None;
+        } else {
+            self.set_scale(frame, 1.0, anchor);
+        }
+    }
+
     /// Zooms by `factor` around `anchor`; zooming out below "fit" returns to fitting.
     pub fn zoom_by(&mut self, frame: &Frame, factor: f32, anchor: Pos2) {
         let scale = self.effective_scale(frame) * factor;
