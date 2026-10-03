@@ -3,6 +3,7 @@ use super::{DateStyle, Texts};
 pub static TEXTS: Texts = Texts {
     date_style: DateStyle::DayMonthYear('/'),
     compass: ["N", "S", "E", "O"],
+    size_units: ["KB", "MB", "GB"],
     key_ctrl: "Ctrl",
     key_shift: "Mayús",
     key_delete: "Supr",
@@ -51,7 +52,15 @@ pub static TEXTS: Texts = Texts {
     refresh_order_tooltip: "Hay puntuaciones nuevas desde que ordenaste y filtraste",
     analyzing_progress: |done, total| format!("Analizando {done} / {total}"),
     enable_aesthetics: "Activar estética…",
-    enable_aesthetics_tooltip: "Descarga una sola vez el modelo de imagen CLIP (1.2 GB)",
+    enable_aesthetics_tooltip: |size| {
+        format!("Descarga una sola vez los modelos de imagen para la estética ({size})")
+    },
+    add_v25: "Cargar V2.5…",
+    add_v25_tooltip: |size| {
+        format!(
+            "Descarga una sola vez el segundo modelo de estética (SigLIP + V2.5, {size}): la estética pasa a ser la media de ambos modelos"
+        )
+    },
     downloading_model: |percent| format!("Descargando modelo {percent:.0} %"),
     aesthetics_loading: "Estética: cargando modelo…",
     aesthetics_failed: "Estética: error",
@@ -199,18 +208,39 @@ pub static TEXTS: Texts = Texts {
         }
         text
     },
+    transfer_progress: |moved, at, total, sizes, file| {
+        let verb = if moved { "Moviendo" } else { "Copiando" };
+        let mut text = format!("{verb} {at} / {total} fotos – {sizes}");
+        if !file.is_empty() {
+            text.push_str(&format!(" – {file}"));
+        }
+        text
+    },
     download_title: "Activar la puntuación estética",
-    download_text: |gb| {
-        format!(
-            "Cerno necesita el modelo de imagen CLIP ViT-L/14 para puntuar la estética.\n\n\
-             ¿Descargarlo ahora de Hugging Face (Xenova/clip-vit-large-patch14, {gb:.1} GB)? \
-             Se guarda en la carpeta de datos de Cerno y solo se descarga una vez."
-        )
+    download_text: |clip, v25, size| {
+        let mut text = String::from("A la puntuación estética le falta:\n");
+        if clip {
+            text.push_str("\n• CLIP ViT-L/14 – de Hugging Face (Xenova/clip-vit-large-patch14)");
+        }
+        if v25 {
+            text.push_str("\n• SigLIP + Aesthetic Predictor V2.5 – de la release de GitHub models-1 de Cerno (la parte V2.5 es AGPL-3.0)");
+        }
+        text.push_str(&format!(
+            "\n\n¿Descargar ahora ({size})? Los archivos van a la carpeta de datos de Cerno y solo se descargan una vez; una descarga interrumpida continúa la próxima vez."
+        ));
+        text
     },
     btn_download: "Descargar",
     btn_cancel: "Cancelar",
     btn_close: "Cerrar (Esc)",
-    aesthetics_offer: "La puntuación estética necesita un modelo (1.2 GB): Menú → Modelos y datos.",
+    aesthetics_offer: |size| {
+        format!(
+            "La puntuación estética necesita modelos de imagen ({size}): Menú → Modelos y datos."
+        )
+    },
+    v25_offer: |size| {
+        format!("Estética más fiable con el segundo modelo V2.5 ({size}): Menú → Modelos y datos.")
+    },
 
     section_aesthetics: "Estética",
     section_sharpness: "Nitidez (en la carpeta)",
@@ -290,12 +320,20 @@ pub static TEXTS: Texts = Texts {
     btn_reset_taste: "Restablecer Para ti",
     btn_delete_models: "Eliminar modelos",
     models_deleted: "Modelos eliminados",
+    models_downloaded: "Modelos descargados: ahora se calcula la estética",
+    download_failed: |err| {
+        format!("La descarga falló: {err}. Un nuevo intento continúa donde se detuvo")
+    },
     copy_models_path: "Copiar ruta",
     models_path_copied: "Ruta copiada",
     confirm_reset_taste_title: "¿Restablecer Para ti?",
     confirm_reset_taste_text: "Cerno olvidará lo aprendido de tus estrellas y eliminaciones. Las estrellas en los archivos de foto no cambian.",
     confirm_delete_models_title: "¿Eliminar los modelos descargados?",
-    confirm_delete_models_text: "Quita los archivos de los modelos CLIP y SigLIP del disco (unos 3 GB). Los valores guardados permanecen en la base de datos; la estética se puede volver a descargar.",
+    confirm_delete_models_text: |size| {
+        format!(
+            "Quita del disco los archivos de modelos descargados ({size}). Los valores guardados permanecen en la base de datos; los modelos se pueden volver a descargar."
+        )
+    },
 
     cmd_straighten: "Enderezar",
     cmd_rotate_ccw: "Girar 90° a la izquierda",
@@ -304,18 +342,13 @@ pub static TEXTS: Texts = Texts {
     cmd_undo: "Deshacer",
     edit_not_jpeg: "Enderezar, recortar, girar y Ctrl+Z solo funcionan con JPEG.",
     video_play_hint: "Reproducir (Intro)",
+    video_play_pause: "Reproducir / pausa (Espacio)",
+    video_mute: "Sonido sí / no",
+    video_volume: "Volumen (↑ ↓)",
+    video_no_zoom: "Los vídeos no se amplían",
+    video_no_compare: "Los vídeos no se pueden comparar",
     video_no_ffmpeg: "Sin vista previa: Cerno necesita ffmpeg (p. ej. winget install Gyan.FFmpeg)",
     video_play_failed: |err| format!("No se puede reproducir el vídeo: {err}"),
-    video_played_instead: |ext, name| {
-        format!(
-            "Windows abre los .{ext} con Cerno – por eso el vídeo se reproduce en {name}. Cambia el reproductor predeterminado en Configuración de Windows › Aplicaciones predeterminadas."
-        )
-    },
-    video_choose_player: |ext| {
-        format!(
-            "Windows abre los .{ext} con Cerno – elige un reproductor. Cambia el reproductor predeterminado en Configuración de Windows › Aplicaciones predeterminadas."
-        )
-    },
     edit_writing: "Escribiendo la foto…",
     edit_cancelled: "Se muestra otra foto: edición cancelada",
     busy_editing: "La edición sigue abierta: Intro aplica, Esc cancela",
@@ -411,9 +444,12 @@ pub static TEXTS: Texts = Texts {
             "Barra de filtros, detalles y tira de miniaturas a la vez",
         ),
         (
-            "Intro",
-            "Reproducir un vídeo en el reproductor predeterminado",
+            "Espacio, Intro",
+            "Reproducir / pausar un vídeo (Mayús+Espacio: foto siguiente)",
         ),
+        ("J, L", "Vídeo: 5 s atrás / adelante"),
+        (",, .", "Vídeo: un fotograma atrás / adelante (en pausa)"),
+        ("↑, ↓", "Vídeo: volumen"),
         (
             "B",
             "Descripción: editar el comentario y las palabras clave",

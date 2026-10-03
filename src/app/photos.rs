@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 use eframe::egui::{self, CursorIcon, PointerButton, Rect, Sense, pos2, vec2};
 
 use crate::analysis::aesthetic;
-use crate::external;
 use crate::i18n;
 use crate::library;
 use crate::loader::{LoadedImage, Lookup};
@@ -37,56 +36,6 @@ enum Side {
 }
 
 impl CernoApp {
-    /// `Enter` on a video: it plays in the system's player. Nothing for a photo.
-    pub(super) fn play_video(&mut self) {
-        if let Some(path) = self.view.get(self.current).cloned() {
-            self.play(&path);
-        }
-    }
-
-    /// Plays a video in the system's player – never in Cerno itself. When the system would
-    /// hand it to Cerno ("Open with" once chose Cerno for the type), the first other program
-    /// the system offers plays it, else its chooser opens; a hint says why.
-    fn play(&mut self, path: &Path) {
-        if library::format_of(path) != Some(library::Format::Video) {
-            return;
-        }
-        let t = i18n::t();
-        let result = if external::opens_with_cerno(path) {
-            self.play_elsewhere(path).map(Some)
-        } else {
-            crate::video::play(path).map(|()| None)
-        };
-        match result {
-            Ok(Some(hint)) => self.notice = Some(Notice::hint(hint)),
-            Ok(None) => {}
-            Err(err) => {
-                self.notice = Some(Notice::error((t.video_play_failed)(&format!("{err:#}"))));
-            }
-        }
-    }
-
-    /// The system's other programs for the type (asked once per type, like Edit elsewhere),
-    /// or its chooser. Returns the hint to show.
-    fn play_elsewhere(&mut self, path: &Path) -> anyhow::Result<String> {
-        let t = i18n::t();
-        let kind = super::external::extension(path);
-        let editors = self
-            .editors
-            .entry(kind.clone())
-            .or_insert_with(|| external::editors_for(path));
-        match external::other_than_cerno(editors).cloned() {
-            Some(player) => {
-                external::open(&player, path)?;
-                Ok((t.video_played_instead)(&kind, &player.name))
-            }
-            None => {
-                external::choose(path)?;
-                Ok((t.video_choose_player)(&kind))
-            }
-        }
-    }
-
     /// `C`: pin the current photo on the left and show the next one on the right – or leave
     /// compare mode.
     pub(super) fn toggle_compare(&mut self, ctx: &egui::Context) {
@@ -97,6 +46,10 @@ impl CernoApp {
         let Some(path) = self.view.get(self.current).cloned() else {
             return;
         };
+        if library::format_of(&path) == Some(library::Format::Video) {
+            self.notice = Some(Notice::hint(i18n::t().video_no_compare));
+            return;
+        }
         if self.view.len() < 2 {
             self.notice = Some(Notice::hint(i18n::t().compare_needs_two));
             return;
@@ -212,6 +165,23 @@ impl CernoApp {
         self.slots(area).iter().map(|slot| slot.area).collect()
     }
 
+    /// The slot shows a video (never zoomed, its own bar instead of the mouse zoom).
+    pub(super) fn slot_is_video(&self, slot: &Slot) -> bool {
+        self.view
+            .get(slot.index)
+            .is_some_and(|p| library::format_of(p) == Some(library::Format::Video))
+    }
+
+    /// Whether a video's play button sits at the bottom of the photo area (not in the grid).
+    pub(super) fn video_on_screen(&self, area: Rect) -> bool {
+        !self.grid
+            && self.slots(area).iter().any(|slot| {
+                self.view
+                    .get(slot.index)
+                    .is_some_and(|p| library::format_of(p) == Some(library::Format::Video))
+            })
+    }
+
     /// Mouse on a photo: double-click toggles 100 %, wheel zooms, drag pans. Both photos in
     /// compare mode share one zoom, so they stay aligned.
     fn handle_mouse(&mut self, ui: &egui::Ui, frame: &viewer::Frame, side: Side) {
@@ -268,10 +238,11 @@ impl CernoApp {
             || self.action_menu.is_some()
             || self.modal_open();
         let editing = self.edit.is_some();
+        let is_video = self.slot_is_video(slot);
         if !covered {
             if editing && slot.side == Side::Single {
                 self.handle_edit_pointer(ui, &frame);
-            } else if !editing {
+            } else if !editing && !is_video {
                 self.handle_mouse(ui, &frame, slot.side);
             }
         }
@@ -300,18 +271,8 @@ impl CernoApp {
         if slot.side == Side::Single {
             self.draw_edit_overlay(ui, &frame);
         }
-        if self
-            .view
-            .get(slot.index)
-            .is_some_and(|p| library::format_of(p) == Some(library::Format::Video))
-        {
-            let note = self.no_ffmpeg.then_some(i18n::t().video_no_ffmpeg);
-            // A click on the play button plays it, like `Enter`.
-            if overlays::video_badge(ui, slot.area, note, slot.index).clicked()
-                && let Some(path) = self.view.get(slot.index).cloned()
-            {
-                self.play(&path);
-            }
+        if is_video && let Some(path) = self.view.get(slot.index).cloned() {
+            self.draw_video_slot(ui, slot, &path);
         }
         if needs_full && full.is_none() {
             self.loader.request_full(slot.index);
@@ -325,6 +286,19 @@ impl CernoApp {
         }
         if slot.side != Side::Single {
             self.draw_compare_labels(ui, slot, image);
+        }
+    }
+
+    /// A video: its playing frame and bar, else the poster's play button – in the single view
+    /// (compare mode shows the poster only).
+    fn draw_video_slot(&mut self, ui: &egui::Ui, slot: &Slot, path: &Path) {
+        if self.draw_video(ui, slot.area, path) || self.current_video() != Some(path) {
+            return;
+        }
+        let note = self.no_ffmpeg.then_some(i18n::t().video_no_ffmpeg);
+        // A click on the play button plays it, like `Enter` or `Space`.
+        if overlays::video_badge(ui, slot.area, note, slot.index).clicked() {
+            self.toggle_video(ui.ctx());
         }
     }
 

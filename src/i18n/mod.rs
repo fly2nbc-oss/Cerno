@@ -151,6 +151,31 @@ fn format_coordinates(t: &Texts, lat: f64, lon: f64) -> String {
     )
 }
 
+/// `850 MB` / `4.1 GB` with this language's unit (French `Go`); 1 GB = 10⁹ bytes.
+pub fn size(bytes: u64) -> String {
+    format_sizes(t(), None, bytes)
+}
+
+/// `1.2 / 8.4 GB`: both in the unit of the total.
+pub fn sizes(done: u64, total: u64) -> String {
+    format_sizes(t(), Some(done), total)
+}
+
+fn format_sizes(t: &Texts, done: Option<u64>, total: u64) -> String {
+    let [kb, mb, gb] = t.size_units;
+    let (scale, unit, decimals) = match total {
+        0..1_000_000 => (1e3, kb, 0),
+        1_000_000..10_000_000 => (1e6, mb, 1),
+        10_000_000..1_000_000_000 => (1e6, mb, 0),
+        _ => (1e9, gb, 1),
+    };
+    let show = |bytes: u64| format!("{:.*}", decimals, bytes as f64 / scale);
+    match done {
+        Some(done) => format!("{} / {} {unit}", show(done), show(total)),
+        None => format!("{} {unit}", show(total)),
+    }
+}
+
 /// `Strg+K` / `Ctrl+K` with this language's key name.
 pub fn with_ctrl(key: &str) -> String {
     format!("{}+{key}", t().key_ctrl)
@@ -178,6 +203,8 @@ pub struct Texts {
     pub date_style: DateStyle,
     /// North, south, east, west.
     pub compass: [&'static str; 4],
+    /// Kilobyte, megabyte, gigabyte (French `Ko`, `Mo`, `Go`).
+    pub size_units: [&'static str; 3],
     /// Modifier key names as printed on this language's keyboards (`Strg`, `Umschalt`).
     pub key_ctrl: &'static str,
     pub key_shift: &'static str,
@@ -229,7 +256,10 @@ pub struct Texts {
     pub refresh_order_tooltip: &'static str,
     pub analyzing_progress: fn(usize, usize) -> String,
     pub enable_aesthetics: &'static str,
-    pub enable_aesthetics_tooltip: &'static str,
+    pub enable_aesthetics_tooltip: fn(&str) -> String,
+    /// Instead of `enable_aesthetics` when only V2.5 is missing.
+    pub add_v25: &'static str,
+    pub add_v25_tooltip: fn(&str) -> String,
     pub downloading_model: fn(f64) -> String,
     pub aesthetics_loading: &'static str,
     pub aesthetics_failed: &'static str,
@@ -363,14 +393,17 @@ pub struct Texts {
     pub edit_not_jpeg: &'static str,
     /// Over a video's frame: how to play it.
     pub video_play_hint: &'static str,
+    /// Tooltips of the video bar.
+    pub video_play_pause: &'static str,
+    pub video_mute: &'static str,
+    pub video_volume: &'static str,
+    /// Zoom keys or compare on a video.
+    pub video_no_zoom: &'static str,
+    pub video_no_compare: &'static str,
     /// Over a video's placeholder when ffmpeg is not installed.
     pub video_no_ffmpeg: &'static str,
     /// The system's player could not be started.
     pub video_play_failed: fn(&str) -> String,
-    /// Windows would open the video with Cerno itself (extension, the program that plays it).
-    pub video_played_instead: fn(&str, &str) -> String,
-    /// The same with no other program: the system's chooser is open.
-    pub video_choose_player: fn(&str) -> String,
     pub edit_writing: &'static str,
     /// The edited photo is no longer the current one (a copy finished, a filter changed).
     pub edit_cancelled: &'static str,
@@ -420,14 +453,20 @@ pub struct Texts {
     /// `moved`: the verb; then how many succeeded, how many were skipped, and the first
     /// failure (`name` and `error` empty when every file worked).
     pub transfer_done: fn(bool, usize, usize, &str, &str) -> String,
+    /// While a copy or move runs: `moved`: the verb; the photo in progress (from 1) of how many;
+    /// the sizes so far (`i18n::sizes`); a large file in progress as `name (4.1 GB)`, else empty.
+    pub transfer_progress: fn(bool, usize, usize, &str, &str) -> String,
     pub download_title: &'static str,
-    /// Download size in GB.
-    pub download_text: fn(f64) -> String,
+    /// Which models are missing (CLIP, V2.5), and their size together.
+    pub download_text: fn(bool, bool, &str) -> String,
     pub btn_download: &'static str,
     pub btn_cancel: &'static str,
     pub btn_close: &'static str,
-    /// One-time hint after the first folder opens while the CLIP model is missing.
-    pub aesthetics_offer: &'static str,
+    /// One-time hint after the first folder opens while the CLIP model is missing; the size
+    /// of the missing models.
+    pub aesthetics_offer: fn(&str) -> String,
+    /// One-time hint when CLIP is there but V2.5 is missing; its size.
+    pub v25_offer: fn(&str) -> String,
 
     // Details panel.
     pub section_aesthetics: &'static str,
@@ -500,6 +539,8 @@ pub struct Texts {
     pub btn_delete_models: &'static str,
     /// Hint once the model files are gone.
     pub models_deleted: &'static str,
+    pub models_downloaded: &'static str,
+    pub download_failed: fn(&str) -> String,
     /// Tooltip on the button that copies the models folder path.
     pub copy_models_path: &'static str,
     /// Shown briefly after that button copies the path.
@@ -507,7 +548,7 @@ pub struct Texts {
     pub confirm_reset_taste_title: &'static str,
     pub confirm_reset_taste_text: &'static str,
     pub confirm_delete_models_title: &'static str,
-    pub confirm_delete_models_text: &'static str,
+    pub confirm_delete_models_text: fn(&str) -> String,
 
     // Help page and start screen.
     pub help_title: &'static str,
@@ -521,7 +562,7 @@ pub struct Texts {
     pub help_sections: [&'static str; 5],
     pub help_browse: [HelpRow; 5],
     pub help_rate: [HelpRow; 10],
-    pub help_view: [HelpRow; 13],
+    pub help_view: [HelpRow; 16],
     pub help_edit: [HelpRow; 6],
     pub help_more: [HelpRow; 5],
 }
@@ -565,6 +606,18 @@ mod tests {
             );
             let copied = (t.transfer_done)(false, 1, 0, "", "");
             assert!(copied.contains('1') && copied.contains('0'), "{name}");
+            let moving = (t.transfer_progress)(true, 12, 340, "1.2 / 8.4 GB", "V.MP4 (4.1 GB)");
+            assert!(
+                moving.contains("12")
+                    && moving.contains("340")
+                    && moving.contains("1.2 / 8.4 GB")
+                    && moving.contains("V.MP4 (4.1 GB)"),
+                "{name}"
+            );
+            assert!(
+                (t.transfer_progress)(false, 1, 2, "3 / 5 KB", "").contains("3 / 5 KB"),
+                "{name}"
+            );
             assert!((t.star_tooltip)(4).contains('4'), "{name}");
             assert!((t.personal_hint)(2.4).contains("2.4"), "{name}");
             assert!((t.zoom)(250.0).contains("250"), "{name}");
@@ -598,7 +651,23 @@ mod tests {
             assert!(open.contains("D:/x") && open.contains("gone"), "{name}");
             assert!((t.no_photos_in)("D:/x").contains("D:/x"), "{name}");
             assert!((t.rating_not_saved)("locked").contains("locked"), "{name}");
-            assert!((t.download_text)(1.2).contains("1.2"), "{name}");
+            let both = (t.download_text)(true, true, "2.9 GB");
+            assert!(
+                both.contains("2.9 GB") && both.contains("CLIP") && both.contains("V2.5"),
+                "{name}"
+            );
+            let v25 = (t.download_text)(false, true, "1.7 GB");
+            assert!(v25.contains("1.7 GB") && !v25.contains("CLIP"), "{name}");
+            for with_size in [
+                t.enable_aesthetics_tooltip,
+                t.add_v25_tooltip,
+                t.aesthetics_offer,
+                t.v25_offer,
+                t.confirm_delete_models_text,
+            ] {
+                assert!(with_size("1.7 GB").contains("1.7 GB"), "{name}");
+            }
+            assert!((t.download_failed)("timeout").contains("timeout"), "{name}");
             let learning = (t.note_learning)(3, 15);
             assert!(learning.contains('3') && learning.contains("15"), "{name}");
             assert!((t.note_faces_too_small)(2).contains('2'), "{name}");
@@ -608,12 +677,6 @@ mod tests {
             assert!((t.taste_photos)(30).contains("30"), "{name}");
             assert!((t.edit_failed)("locked").contains("locked"), "{name}");
             assert!((t.video_play_failed)("no app").contains("no app"), "{name}");
-            let instead = (t.video_played_instead)("mp4", "Films & TV");
-            assert!(
-                instead.contains(".mp4") && instead.contains("Films & TV"),
-                "{name}"
-            );
-            assert!((t.video_choose_player)("mkv").contains(".mkv"), "{name}");
             assert!((t.external_opened)("GIMP").contains("GIMP"), "{name}");
             assert!((t.external_reloaded)("a.jpg").contains("a.jpg"), "{name}");
             assert!((t.external_failed)("gone").contains("gone"), "{name}");
@@ -646,6 +709,21 @@ mod tests {
             "50\u{a0}% – valeur\u{a0}: oui\u{a0}?"
         );
         assert_eq!(keep_together("1–10; x"), "1–10; x");
+    }
+
+    #[test]
+    fn sizes_take_the_unit_of_the_total() {
+        let (en, fr) = (Lang::En.texts(), Lang::Fr.texts());
+        assert_eq!(format_sizes(en, None, 4_100_000_000), "4.1 GB");
+        assert_eq!(format_sizes(fr, None, 4_100_000_000), "4.1 Go");
+        assert_eq!(format_sizes(en, None, 850_000_000), "850 MB");
+        assert_eq!(format_sizes(en, None, 3_400_000), "3.4 MB");
+        assert_eq!(format_sizes(en, None, 12_000), "12 KB");
+        assert_eq!(
+            format_sizes(en, Some(1_200_000_000), 8_400_000_000),
+            "1.2 / 8.4 GB"
+        );
+        assert_eq!(format_sizes(en, Some(0), 0), "0 / 0 KB");
     }
 
     #[test]

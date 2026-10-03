@@ -3,6 +3,7 @@ use super::{DateStyle, Texts};
 pub static TEXTS: Texts = Texts {
     date_style: DateStyle::DayMonthYear('/'),
     compass: ["N", "S", "E", "O"],
+    size_units: ["Ko", "Mo", "Go"],
     key_ctrl: "Ctrl",
     key_shift: "Maj",
     key_delete: "Suppr",
@@ -53,7 +54,15 @@ pub static TEXTS: Texts = Texts {
     refresh_order_tooltip: "De nouveaux scores ont été calculés depuis le tri et le filtrage",
     analyzing_progress: |done, total| format!("Analyse {done} / {total}"),
     enable_aesthetics: "Activer l'esthétique…",
-    enable_aesthetics_tooltip: "Télécharge une seule fois le modèle d'image CLIP (1.2 Go)",
+    enable_aesthetics_tooltip: |size| {
+        format!("Télécharge une seule fois les modèles d'image pour l'esthétique ({size})")
+    },
+    add_v25: "Charger V2.5…",
+    add_v25_tooltip: |size| {
+        format!(
+            "Télécharge une seule fois le second modèle d'esthétique (SigLIP + V2.5, {size}) – l'esthétique devient la moyenne des deux modèles"
+        )
+    },
     downloading_model: |percent| format!("Téléchargement du modèle {percent:.0} %"),
     aesthetics_loading: "Esthétique : chargement du modèle…",
     aesthetics_failed: "Esthétique : échec",
@@ -218,19 +227,43 @@ pub static TEXTS: Texts = Texts {
         }
         text
     },
+    transfer_progress: |moved, at, total, sizes, file| {
+        let verb = if moved { "Déplacement de" } else { "Copie de" };
+        let mut text = format!("{verb} {at} / {total} photos – {sizes}");
+        if !file.is_empty() {
+            text.push_str(&format!(" – {file}"));
+        }
+        text
+    },
     download_title: "Activer l'évaluation esthétique",
-    download_text: |gb| {
-        format!(
-            "Pour évaluer l'esthétique, Cerno a besoin du modèle d'image CLIP ViT-L/14.\n\n\
-             Voulez-vous le télécharger maintenant depuis Hugging Face \
-             (Xenova/clip-vit-large-patch14, {gb:.1} Go) ? \
-             Il est enregistré dans le dossier de données de Cerno et téléchargé une seule fois."
-        )
+    download_text: |clip, v25, size| {
+        let mut text = String::from("Il manque pour l'évaluation esthétique :\n");
+        if clip {
+            text.push_str(
+                "\n• CLIP ViT-L/14 – depuis Hugging Face (Xenova/clip-vit-large-patch14)",
+            );
+        }
+        if v25 {
+            text.push_str("\n• SigLIP + Aesthetic Predictor V2.5 – depuis la release GitHub models-1 de Cerno (la partie V2.5 est sous AGPL-3.0)");
+        }
+        text.push_str(&format!(
+            "\n\nTélécharger maintenant ({size}) ? Les fichiers vont dans le dossier de données de Cerno et ne sont téléchargés qu'une fois ; un téléchargement interrompu reprend la fois suivante."
+        ));
+        text
     },
     btn_download: "Télécharger",
     btn_cancel: "Annuler",
     btn_close: "Fermer (Échap)",
-    aesthetics_offer: "L'évaluation esthétique a besoin d'un modèle (1.2 Go) : Menu → Modèles et données.",
+    aesthetics_offer: |size| {
+        format!(
+            "L'évaluation esthétique a besoin de modèles d'image ({size}) : Menu → Modèles et données."
+        )
+    },
+    v25_offer: |size| {
+        format!(
+            "Une esthétique plus fiable avec le second modèle V2.5 ({size}) : Menu → Modèles et données."
+        )
+    },
 
     section_aesthetics: "Esthétique",
     section_sharpness: "Netteté (dans le dossier)",
@@ -310,12 +343,20 @@ pub static TEXTS: Texts = Texts {
     btn_reset_taste: "Réinitialiser Pour vous",
     btn_delete_models: "Supprimer les modèles",
     models_deleted: "Modèles supprimés",
+    models_downloaded: "Modèles téléchargés – l'esthétique est en cours de calcul",
+    download_failed: |err| {
+        format!("Échec du téléchargement : {err} – un nouvel essai reprend là où il s'est arrêté")
+    },
     copy_models_path: "Copier le chemin",
     models_path_copied: "Chemin copié",
     confirm_reset_taste_title: "Réinitialiser Pour vous ?",
     confirm_reset_taste_text: "Cerno oubliera ce qu'il a appris de vos étoiles et suppressions. Les étoiles dans les fichiers photo restent inchangées.",
     confirm_delete_models_title: "Supprimer les modèles téléchargés ?",
-    confirm_delete_models_text: "Supprime les fichiers des modèles CLIP et SigLIP du disque (environ 3 Go). Les scores enregistrés restent dans la base ; l'esthétique pourra être téléchargée à nouveau.",
+    confirm_delete_models_text: |size| {
+        format!(
+            "Supprime les fichiers de modèles téléchargés du disque ({size}). Les scores enregistrés restent dans la base ; les modèles pourront être téléchargés à nouveau."
+        )
+    },
 
     cmd_straighten: "Redresser",
     cmd_rotate_ccw: "Pivoter de 90° vers la gauche",
@@ -324,18 +365,13 @@ pub static TEXTS: Texts = Texts {
     cmd_undo: "Annuler la retouche",
     edit_not_jpeg: "Redressement, recadrage, rotation et Ctrl+Z uniquement pour les JPEG.",
     video_play_hint: "Lire (Entrée)",
+    video_play_pause: "Lecture / pause (Espace)",
+    video_mute: "Son activé / coupé",
+    video_volume: "Volume (↑ ↓)",
+    video_no_zoom: "Les vidéos ne se zooment pas",
+    video_no_compare: "Les vidéos ne se comparent pas",
     video_no_ffmpeg: "Pas d'aperçu : Cerno a besoin de ffmpeg (p. ex. winget install Gyan.FFmpeg)",
     video_play_failed: |err| format!("Impossible de lire la vidéo : {err}"),
-    video_played_instead: |ext, name| {
-        format!(
-            "Windows ouvre les .{ext} avec Cerno – la vidéo passe donc dans {name}. Changez le lecteur par défaut dans Paramètres Windows › Applications par défaut."
-        )
-    },
-    video_choose_player: |ext| {
-        format!(
-            "Windows ouvre les .{ext} avec Cerno – choisissez un lecteur. Changez le lecteur par défaut dans Paramètres Windows › Applications par défaut."
-        )
-    },
     edit_writing: "Écriture de la photo…",
     edit_cancelled: "Une autre photo est affichée – retouche annulée",
     busy_editing: "La retouche est encore ouverte – Entrée applique, Échap annule",
@@ -439,7 +475,13 @@ pub static TEXTS: Texts = Texts {
             "Grille de toutes les photos : ↑ ↓ une ligne, + − taille, Entrée ouvre la photo",
         ),
         ("Maj+Tab", "Barre de filtres, détails et pellicule ensemble"),
-        ("Entrée", "Lire une vidéo dans le lecteur par défaut"),
+        (
+            "Espace, Entrée",
+            "Lire / mettre en pause une vidéo (Maj+Espace : photo suivante)",
+        ),
+        ("J, L", "Vidéo : 5 s en arrière / en avant"),
+        (",, .", "Vidéo : une image en arrière / en avant (en pause)"),
+        ("↑, ↓", "Vidéo : volume"),
         (
             "B",
             "Description : modifier le commentaire et les mots-clés",

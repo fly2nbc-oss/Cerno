@@ -61,12 +61,16 @@ impl CernoApp {
             return;
         }
         let sources = self.view.paths.iter().cloned().collect();
+        // A playing video keeps its file open; the job waits until it is closed.
+        self.stop_video();
         self.transfers.push(mode, sources, dest);
         self.poll_transfer(ctx);
     }
 
     pub(super) fn poll_transfer(&mut self, ctx: &egui::Context) {
+        let videos_open = !self.videos_released();
         let writes_pending = self.writer.status().pending > 0
+            || videos_open
             || self
                 .edit_thread
                 .as_ref()
@@ -78,7 +82,8 @@ impl CernoApp {
         if let Some(outcome) = self.transfers.poll() {
             self.finish_transfer(ctx, outcome);
         }
-        if waiting {
+        // While it waits for rating writes, and while it runs: the progress moves on its own.
+        if waiting || self.transfers.is_busy() {
             ctx.request_repaint_after(Duration::from_millis(200));
         }
     }
@@ -218,8 +223,14 @@ impl CernoApp {
     /// Starts due deletions and applies finished ones.
     pub(super) fn process_deletions(&mut self, ctx: &egui::Context) {
         let repaint = ctx.clone();
-        self.deletions
-            .tick(Instant::now(), move || repaint.request_repaint());
+        // A stopped video's file must be closed before it is set aside (Windows refuses to
+        // move an open file); the countdown is long enough that this hardly ever waits.
+        if self.videos_released() {
+            self.deletions
+                .tick(Instant::now(), move || repaint.request_repaint());
+        } else {
+            ctx.request_repaint_after(Duration::from_millis(50));
+        }
         if let Some(done) = self.deletions.poll() {
             if !done.deleted.is_empty() {
                 let gone: HashSet<&PathBuf> = done.deleted.iter().collect();

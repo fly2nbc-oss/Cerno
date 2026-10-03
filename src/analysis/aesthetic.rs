@@ -2,8 +2,9 @@
 //!
 //! * **LAION**: CLIP ViT-L/14 → LAION "improved aesthetic predictor". The CLIP model is
 //!   downloaded on request; the LAION head (Apache-2.0) is embedded.
-//! * **V2.5**: SigLIP so400m → Aesthetic Predictor V2.5. Both files live in the models
-//!   directory; the head is AGPL-3.0 and therefore never embedded (see THIRD_PARTY.md).
+//! * **V2.5**: SigLIP so400m → Aesthetic Predictor V2.5. Both files are downloaded on request
+//!   into the models directory; the head is AGPL-3.0 and therefore never embedded (see
+//!   THIRD_PARTY.md).
 //!
 //! Both heads are linear-only MLPs, collapsed into one layer by `tools/make_aesthetic_head.py`,
 //! applied to the L2-normalised embedding. The vision models run in ONNX Runtime: DirectML on
@@ -38,19 +39,14 @@ pub fn combined(laion: Option<f32>, v25: Option<f32>) -> Option<f32> {
     }
 }
 
-/// CLIP vision model, file name in the models directory.
+/// CLIP vision model, file name in the models directory (where it comes from:
+/// `manifest::Pack::Clip`).
 pub const MODEL_FILE: &str = "clip-vit-large-patch14-vision.onnx";
-/// Pinned to a commit, not `main`: a change in that repository must not reach Cerno, and
-/// the scores stay comparable with the ones already stored.
-pub const MODEL_URL: &str = "https://huggingface.co/Xenova/clip-vit-large-patch14/resolve/\
-     c307790166907339eed5a9a53a249af534102536/onnx/vision_model.onnx";
-pub const MODEL_BYTES: u64 = 1_216_438_437;
-/// Checked after the download (the LFS object id Hugging Face lists for the file).
-pub const MODEL_SHA256: &str = "ff49f8aa57c7abfd26e382eb083e4dbf988505223a9bd3767dbfd4e729206709";
 /// Stored with every LAION score; change it when the model, head or preprocessing change.
 pub const MODEL_ID: &str = "clip-vit-l14+laion-sac-logos-ava1-linear/1";
 
-/// SigLIP image tower (`tools/extract_siglip_vision.py`) and the collapsed V2.5 head.
+/// SigLIP image tower (`tools/extract_siglip_vision.py`) and the collapsed V2.5 head
+/// (downloaded from `manifest::Pack::V25`).
 pub const SIGLIP_FILE: &str = "siglip-so400m-patch14-384-vision.onnx";
 pub const V25_HEAD_FILE: &str = "aesthetic-predictor-v2.5-head.bin";
 /// Stored with every V2.5 score.
@@ -208,10 +204,6 @@ pub struct V25Model {
 }
 
 impl V25Model {
-    pub fn installed(models_dir: &Path) -> bool {
-        models_dir.join(SIGLIP_FILE).is_file() && models_dir.join(V25_HEAD_FILE).is_file()
-    }
-
     pub fn load(models_dir: &Path) -> Result<Self> {
         let head = f32_le(
             &std::fs::read(models_dir.join(V25_HEAD_FILE)).context("cannot read the V2.5 head")?,

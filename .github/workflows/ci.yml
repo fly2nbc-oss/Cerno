@@ -20,7 +20,7 @@ env:
 
 jobs:
   linux:
-    name: Lint & test (Linux, HEIC)
+    name: Lint & test (Linux, HEIC, video)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -31,10 +31,13 @@ jobs:
       - name: System packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y libheif-dev libxkbcommon-dev libwayland-dev libimage-exiftool-perl
+          sudo apt-get install -y libheif-dev libxkbcommon-dev libwayland-dev libimage-exiftool-perl \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
       - run: cargo fmt --all -- --check
-      - run: cargo clippy --all-targets --features heic -- -D warnings
-      - run: cargo test --features heic
+      - run: cargo clippy --all-targets --features heic,video -- -D warnings
+      # The player tests play tests/fixtures/tiny.mp4 on the CPU, without sound.
+      - run: cargo test --features heic,video
 
   windows:
     name: Test & build (Windows)
@@ -47,7 +50,19 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
-      # Outside pull requests the packaging job builds the release (with HEIC).
+      - name: GStreamer
+        run: ./packaging/windows/install-gstreamer.ps1
+      # A runner has no GPU: the player falls back from D3D12 to the CPU here.
+      - name: Lint & test (video)
+        run: |
+          $env:PKG_CONFIG = "$env:GSTREAMER_ROOT\bin\pkg-config.exe"
+          $env:PKG_CONFIG_PATH = "$env:GSTREAMER_ROOT\lib\pkgconfig"
+          $env:PATH = "$env:GSTREAMER_ROOT\bin;$env:PATH"
+          cargo clippy --all-targets --features video -- -D warnings
+          if ($LASTEXITCODE) { exit 1 }
+          cargo test --features video
+          if ($LASTEXITCODE) { exit 1 }
+      # Outside pull requests the packaging job builds the release (with HEIC and video).
       - if: github.event_name == 'pull_request'
         run: cargo build --release
 
@@ -94,8 +109,16 @@ jobs:
           target\vcpkg\vcpkg.exe install "libheif[core]:x64-windows"
       - name: cargo-packager
         run: cargo install cargo-packager --version 0.11.8 --locked
-      - name: Build (release, HEIC)
-        run: cargo build --release --locked --features heic
+      # GStreamer to build against and to ship; never on PATH here, so the package's own
+      # self-test (build.ps1) and the installed exe find only what they bring along.
+      - name: GStreamer
+        run: ./packaging/windows/install-gstreamer.ps1
+      - name: Build (release, HEIC, video)
+        run: |
+          $env:PKG_CONFIG = "$env:GSTREAMER_ROOT\bin\pkg-config.exe"
+          $env:PKG_CONFIG_PATH = "$env:GSTREAMER_ROOT\lib\pkgconfig"
+          cargo build --release --locked --features heic,video
+          if ($LASTEXITCODE) { exit 1 }
       - name: Package
         run: ./packaging/windows/build.ps1
       - name: Install, start and uninstall
@@ -103,6 +126,7 @@ jobs:
           ./packaging/windows/test-installer.ps1
           -Setup (Get-Item dist/windows/cerno_*_x64-setup.exe).FullName
           -Photo (Resolve-Path tests/fixtures/tiny.jpg).Path
+          -Video (Resolve-Path tests/fixtures/tiny.mp4).Path
       - uses: actions/upload-artifact@v7
         with:
           name: windows-installer
@@ -134,18 +158,20 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libheif-dev libheif-plugin-libde265 libxkbcommon-dev libwayland-dev \
-            patchelf desktop-file-utils libheif-examples libheif-plugin-x265
+            patchelf desktop-file-utils libheif-examples libheif-plugin-x265 \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
       - name: cargo-deb
         run: cargo install cargo-deb --version 3.8.0 --locked
-      - name: Build (release, HEIC)
-        run: cargo build --release --locked --features heic
+      - name: Build (release, HEIC, video)
+        run: cargo build --release --locked --features heic,video
       - run: desktop-file-validate packaging/linux/cerno.desktop
       - name: Package
         run: packaging/linux/build.sh
-      - name: HEIC photo for the install tests
+      - name: HEIC photo and video for the install tests
         run: |
           mkdir -p target/smoke
           heif-enc --quality 80 -o target/smoke/smoke.heic tests/fixtures/tiny.jpg
+          cp tests/fixtures/tiny.mp4 target/smoke/
       - uses: actions/upload-artifact@v7
         with:
           name: linux-appimage
@@ -161,15 +187,19 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: smoke-photo
-          path: target/smoke/smoke.heic
+          path: |
+            target/smoke/smoke.heic
+            target/smoke/tiny.mp4
           if-no-files-found: error
           retention-days: 3
 
   # Each package on a clean system, opening a HEIC photo under Xvfb (Cerno logs
   # when it has drawn it – the HEVC plugin is loaded with dlopen, so ldd alone
-  # can't tell). The AppImage gets only what every desktop has, and no libheif:
-  # it must bring its own. The .deb goes onto the bare image, so its Depends and
-  # Recommends alone must bring everything Cerno loads; only Xvfb is added.
+  # can't tell) and playing a video without a window (`--check-video`). The
+  # AppImage gets only what every desktop has – GStreamer with its plugins among
+  # it – and no libheif: it must bring its own. The .deb goes onto the bare image,
+  # so its Depends and Recommends alone must bring everything Cerno loads; only
+  # Xvfb is added.
   test-linux-packages:
     name: Install test (${{ matrix.package }}, ${{ matrix.image }})
     needs: package-linux
@@ -196,7 +226,8 @@ jobs:
         run: |
           apt-get install -y --no-install-recommends xvfb xauth mesa-vulkan-drivers libgl1-mesa-dri \
             libegl1 libvulkan1 libxkbcommon0 libxkbcommon-x11-0 libx11-6 libx11-xcb1 libxcursor1 \
-            libxi6 libxcb1 libwayland-client0
+            libxi6 libxcb1 libwayland-client0 \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
           if dpkg-query -W -f='${Status}\n' 'libheif*' 2>/dev/null | grep -q '^install ok'; then
             echo "libheif is installed - the test would not show that the AppImage brings its own"
             exit 1
@@ -204,6 +235,7 @@ jobs:
           chmod +x pkg/*.AppImage
           APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a timeout 30 pkg/cerno_*_x86_64.AppImage pkg/smoke.heic \
             >cerno.log 2>&1 || true
+          APPIMAGE_EXTRACT_AND_RUN=1 timeout 60 pkg/cerno_*_x86_64.AppImage --check-video pkg/tiny.mp4
       - name: deb
         if: matrix.package == 'deb'
         run: |
@@ -214,6 +246,7 @@ jobs:
           xvfb-run -a timeout 30 cerno pkg/smoke.heic >cerno.log 2>&1 || true
           # Recommended fonts: egui's bundled one lacks the arrows.
           if grep -q "no system UI font found" cerno.log; then cat cerno.log; exit 1; fi
+          timeout 60 cerno --check-video pkg/tiny.mp4
       - name: Cerno drew the photo
         run: |
           cat cerno.log
@@ -263,7 +296,7 @@ jobs:
           | \`cerno_${VERSION}_x86_64.AppImage\` | Linux portable – glibc 2.39 or newer (Ubuntu 24.04, Debian 13, Fedora 40 and later) |
           | \`cerno_${VERSION}_amd64.deb\` | Ubuntu 24.04+, Debian 13+ |
 
-          Writing ratings, colour labels, comments and keywords needs [ExifTool](https://exiftool.org/) (Windows: \`winget install OliverBetz.ExifTool\`; the .deb recommends it). Video frames need [ffmpeg](https://ffmpeg.org/) (Windows: \`winget install Gyan.FFmpeg\`); without it videos show a placeholder and still play with \`Enter\`.
+          Writing ratings, colour labels, comments and keywords needs [ExifTool](https://exiftool.org/) (Windows: \`winget install OliverBetz.ExifTool\`; the .deb recommends it). Videos play inside Cerno: the Windows packages bring GStreamer along, on Linux it comes from the system (the .deb depends on it). Their still frame and filmstrip thumbnail need [ffmpeg](https://ffmpeg.org/) (Windows: \`winget install Gyan.FFmpeg\`); without it videos show a placeholder and still play.
           EOF
       - uses: softprops/action-gh-release@v3
         with:

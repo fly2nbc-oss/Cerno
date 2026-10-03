@@ -7,7 +7,8 @@ use eframe::egui::{
     Sense, Ui, vec2,
 };
 
-use crate::analysis::{ModelState, Status};
+use crate::analysis::Status;
+use crate::analysis::manifest::Pack;
 use crate::i18n;
 use crate::theme::{text, tokens};
 use crate::ui::details::model_note;
@@ -19,6 +20,18 @@ pub struct ModelsOutput {
     pub download: bool,
     pub reset_taste: bool,
     pub delete_models: bool,
+}
+
+/// The download button's label and tooltip for what is missing: aesthetics as a whole, or
+/// V2.5 alone once CLIP is there – the same action either way.
+pub fn download_label(missing: &[Pack]) -> (&'static str, String) {
+    let t = i18n::t();
+    let size = i18n::size(missing.iter().map(|pack| pack.bytes()).sum());
+    if missing.contains(&Pack::Clip) {
+        (t.enable_aesthetics, (t.enable_aesthetics_tooltip)(&size))
+    } else {
+        (t.add_v25, (t.add_v25_tooltip)(&size))
+    }
 }
 
 pub fn overlay(ctx: &Context, window: Rect, status: &Status) -> ModelsOutput {
@@ -69,19 +82,15 @@ fn content(ui: &mut Ui, status: &Status) -> ModelsOutput {
     models_folder(ui);
     ui.add_space(18.0);
 
-    // Nothing to press while the files are being removed.
-    let removing = [&status.aesthetics, &status.v25].contains(&&ModelState::Removing);
+    let missing = status.missing();
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
-        if status.aesthetics == ModelState::Missing {
-            let enable = Button::new(RichText::new(t.enable_aesthetics).color(Color32::WHITE))
+        if !missing.is_empty() {
+            let (label, tooltip) = download_label(&missing);
+            let enable = Button::new(RichText::new(label).color(Color32::WHITE))
                 .fill(tokens::ACCENT)
                 .min_size(vec2(0.0, 32.0));
-            if ui
-                .add(enable)
-                .on_hover_text(t.enable_aesthetics_tooltip)
-                .clicked()
-            {
+            if ui.add(enable).on_hover_text(tooltip).clicked() {
                 out.download = true;
             }
         }
@@ -92,8 +101,9 @@ fn content(ui: &mut Ui, status: &Status) -> ModelsOutput {
             out.reset_taste = true;
         }
         if ui
+            // Nothing to delete while files are being downloaded or removed.
             .add_enabled(
-                !removing,
+                !status.busy(),
                 Button::new(t.btn_delete_models).min_size(vec2(0.0, 32.0)),
             )
             .clicked()
@@ -176,15 +186,15 @@ fn models_folder(ui: &mut Ui) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analysis::TasteStatus;
+    use crate::analysis::{ModelState, TasteStatus};
     use eframe::egui::{Event, RawInput, pos2};
 
-    fn status(aesthetics: ModelState) -> Status {
+    fn status(aesthetics: ModelState, v25: ModelState) -> Status {
         Status {
             done: 0,
             total: 0,
             aesthetics,
-            v25: ModelState::Missing,
+            v25,
             faces: ModelState::Missing,
             taste: TasteStatus {
                 examples: 0,
@@ -229,13 +239,53 @@ mod tests {
     }
 
     #[test]
-    fn offers_the_download_only_while_the_model_is_missing() {
+    fn offers_the_download_only_while_a_model_is_missing() {
         let t = crate::i18n::Lang::En.texts();
-        let (_, missing) = run(&status(ModelState::Missing), Vec::new());
+        let (_, missing) = run(
+            &status(ModelState::Missing, ModelState::Missing),
+            Vec::new(),
+        );
         assert!(missing.iter().any(|text| text == t.enable_aesthetics));
-        let (_, ready) = run(&status(ModelState::Available), Vec::new());
-        assert!(!ready.iter().any(|text| text == t.enable_aesthetics));
+        // CLIP is there, V2.5 is not: the same button, for V2.5.
+        let (_, v25) = run(
+            &status(ModelState::Available, ModelState::Missing),
+            Vec::new(),
+        );
+        assert!(!v25.iter().any(|text| text == t.enable_aesthetics));
+        assert!(v25.iter().any(|text| text == t.add_v25));
+        let (_, ready) = run(
+            &status(ModelState::Available, ModelState::Available),
+            Vec::new(),
+        );
+        assert!(
+            !ready
+                .iter()
+                .any(|text| text == t.enable_aesthetics || text == t.add_v25)
+        );
         assert!(ready.iter().any(|text| text == t.btn_delete_models));
+        // While one downloads, the other waits: no button.
+        let downloading = ModelState::Downloading {
+            received: 5,
+            total: 10,
+        };
+        let (_, busy) = run(&status(downloading, ModelState::Missing), Vec::new());
+        assert!(
+            !busy
+                .iter()
+                .any(|text| text == t.enable_aesthetics || text == t.add_v25)
+        );
+    }
+
+    #[test]
+    fn the_label_names_what_is_missing() {
+        let t = crate::i18n::Lang::En.texts();
+        // Tests never switch the language: `download_label` reads English.
+        let (label, tooltip) = download_label(&[Pack::Clip, Pack::V25]);
+        assert_eq!(label, t.enable_aesthetics);
+        assert!(tooltip.contains("2.9 GB"), "{tooltip}");
+        let (label, tooltip) = download_label(&[Pack::V25]);
+        assert_eq!(label, t.add_v25);
+        assert!(tooltip.contains("1.7 GB"), "{tooltip}");
     }
 
     #[test]
@@ -247,7 +297,10 @@ mod tests {
             repeat: false,
             modifiers: Modifiers::NONE,
         };
-        let (out, _) = run(&status(ModelState::Missing), vec![escape]);
+        let (out, _) = run(
+            &status(ModelState::Missing, ModelState::Missing),
+            vec![escape],
+        );
         assert!(out.close);
         assert!(!out.download && !out.reset_taste && !out.delete_models);
     }

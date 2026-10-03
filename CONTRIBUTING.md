@@ -22,9 +22,9 @@ cargo run --release -- path/to/photos
 ```bash
 cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
-cargo clippy --all-targets --features heic -- -D warnings
+cargo clippy --all-targets --features heic,video -- -D warnings
 cargo test
-cargo test --features heic
+cargo test --features heic,video
 ```
 
 The ExifTool round-trip test (`rating::tests::writes_stars_and_keeps_file_dates`) skips silently when ExifTool is missing — make sure it actually ran before trusting rating-write changes. Fixture: `tests/fixtures/tiny.jpg`.
@@ -47,9 +47,25 @@ cargo build --release --features heic
 
 `cargo clean -p libheif-sys` is only needed once, if the tree was built against the static triplet before.
 
+## Video playback
+
+`--features video` plays videos through GStreamer.
+
+**Linux:** `sudo apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav`.
+
+**Windows:** `pwsh packaging/windows/install-gstreamer.ps1` installs the pinned official MSVC build for your user (no admin rights). Then, in the shell you build from:
+
+```powershell
+$gst = "$env:LOCALAPPDATA\Programs\gstreamer\1.0\msvc_x86_64"
+$env:PKG_CONFIG = "$gst\bin\pkg-config.exe"; $env:PKG_CONFIG_PATH = "$gst\lib\pkgconfig"
+$env:PATH = "$gst\bin;$env:PATH"   # for cargo run and cargo test
+```
+
+`cerno --check-video tests/fixtures/tiny.mp4` plays a second of a clip without a window and says what decoded it.
+
 ## Packages
 
-The scripts CI runs, after `cargo build --release --features heic`:
+The scripts CI runs, after `cargo build --release --features heic,video`:
 
 ```bash
 pwsh packaging/windows/build.ps1   # dist/windows: portable folder + zip, NSIS installer (needs cargo-packager)
@@ -60,8 +76,8 @@ packaging/linux/build.sh           # dist/linux: .deb (needs cargo-deb) and AppI
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on pushes and pull requests to **`main`** and on `v*` tags:
 
-- **Lint & test (Linux, HEIC)** — `cargo fmt --check`, `cargo clippy` with `--features heic`, `cargo test --features heic` on Ubuntu 24.04 (libheif + ExifTool installed)
-- **Test & build (Windows)** — `cargo clippy` without HEIC, `cargo test`, `cargo build --release`
+- **Lint & test (Linux, HEIC, video)** — `cargo fmt --check`, `cargo clippy` and `cargo test` with `--features heic,video` on Ubuntu 24.04 (libheif, GStreamer and ExifTool installed)
+- **Test & build (Windows)** — `cargo clippy` and `cargo test` without features and with `video` (GStreamer installed; no GPU, so the player's CPU path), `cargo build --release`
 - **Packages** (pushes to `main`, tags and manual runs, not pull requests) — the Windows installer and portable zip, the AppImage and the `.deb`, kept as run artifacts; a `v*` tag (equal to the `Cargo.toml` version) drafts a GitHub release with them.
 
 ## Pull requests
@@ -69,7 +85,7 @@ packaging/linux/build.sh           # dist/linux: .deb (needs cargo-deb) and AppI
 - Keep changes focused on one concern where possible.
 - Describe **what** changed and **why** in the PR description.
 - For UI changes, attach screenshots when practical.
-- `cargo fmt --check`, clippy (`-D warnings`, with and without `--features heic` where you can), and tests should pass.
+- `cargo fmt --check`, clippy (`-D warnings`, with and without `--features heic,video` where you can), and tests should pass.
 
 ## Code of conduct
 

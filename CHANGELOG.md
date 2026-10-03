@@ -7,6 +7,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **Videos play inside Cerno, with sound** – `Space` or `Enter` plays and pauses the video on screen (`Shift+Space` moves on), `J` / `L` jump 5 seconds back or on, `,` / `.` step one frame, `↑` / `↓` set the volume. A bar under the video shows the time, seeks with a click or a drag and has a speaker and a volume slider; it fades while the video plays. Phone videos stand the right way up, and 4K HEVC from a phone plays smoothly – on Windows the graphics card converts the frames. Another photo, the grid, compare mode, *Edit elsewhere*, copying, moving and deleting stop the video first. The Windows downloads bring their own GStreamer (about 45 MB); on Linux the `.deb` installs it and the AppImage uses the system's. Videos are no longer handed to the system's player.
+- **V2.5 by download** – *Menu → Models & data* now downloads every missing aesthetics model with one button: CLIP (1.2 GB, from Hugging Face) and SigLIP + V2.5 (1.7 GB, from this project's release `models-1`). If only V2.5 is missing, the button says *Load V2.5…*. Before, V2.5 had to be put into the models folder by hand, and *Delete models* removed it for good. Each file is checked by size and SHA-256 before it is used. An interrupted download keeps what arrived and continues next time. A folder opened while V2.5 is missing shows a one-time hint, and a finished or failed download says so.
+- **Progress while copying or moving** – copying or moving what the filter shows puts a bar at the bottom of the photo area: which photo of how many, how much of the size is done, and the name of a large file (a video) while it takes its time. It sits above the deletion countdown and a video's play button.
+
+### Changed
+
+- *Delete models* is greyed out while a model downloads, and it also removes unfinished downloads.
+
+### Fixed
+
+- **Model downloads behind HTTPS scanning** – an antivirus that inspects HTTPS (seen with Kaspersky) or a company proxy made the CLIP download fail with "invalid peer certificate". Cerno now checks certificates against the system's store, like a browser; the SHA-256 check still decides whether a file is used.
+
 ## [1.4.0] – 2026-10-02
 
 The best photos at a click, a tidier filter bar, and two fixes: no more crash when a mark empties the filter, and a crop frame that moves.

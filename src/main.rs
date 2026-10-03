@@ -20,6 +20,7 @@ mod metadata;
 mod originals;
 mod overlay;
 mod paths;
+mod playback;
 mod rating;
 mod raw;
 mod sidecar;
@@ -38,10 +39,30 @@ use eframe::{egui, wgpu};
 
 fn main() -> eframe::Result {
     let started = Instant::now();
+    // Before any thread: the shipped GStreamer's plugin folder and registry (environment).
+    playback::configure_environment();
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .format_timestamp_millis()
         .init();
     crashlog::install();
+
+    // `cerno --check-video <file>`: the package tests' check that the shipped GStreamer plays.
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--check-video")) {
+        let file = std::env::args_os()
+            .nth(2)
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        match playback::self_test(&file) {
+            Ok(report) => {
+                println!("{report}");
+                std::process::exit(0);
+            }
+            Err(err) => {
+                eprintln!("video check failed: {err}");
+                std::process::exit(1);
+            }
+        }
+    }
 
     let start_path = std::env::args_os().nth(1).map(PathBuf::from);
 
