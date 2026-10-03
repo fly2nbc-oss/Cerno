@@ -1,24 +1,25 @@
-//! A video playing in the photo area (`playback`). `Space` or `Enter` starts it and pauses it,
-//! `J`/`L` jump 5 s, `,`/`.` step a frame, `↑`/`↓` set the volume; the bar under it does the
+//! A video playing in the photo area (`playback`). `Space` starts it and pauses it, `Alt+←`/
+//! `Alt+→` jump 5 s, `,`/`.` step a frame, `↑`/`↓` set the volume; the bar under it does the
 //! same with the mouse. It plays only in the single view: another photo, the grid or compare
 //! mode stop it, and so does anything that moves or deletes the file – Windows refuses to
 //! rename a file that is open, so a file operation waits until the player has let it go.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Color32, Id, Rect, pos2};
 
 use crate::i18n;
 use crate::library;
-use crate::playback::{self, Audio, Player};
+use crate::playback::{self, Audio, MediaInfo, Player};
 use crate::ui::video_controls::{self, Controls};
 use crate::ui::viewer;
 
 use super::CernoApp;
 use super::notice::Notice;
 
-/// How far `J`/`L` jump.
+/// How far `Alt+←`/`Alt+→` jump.
 const JUMP: Duration = Duration::from_secs(5);
 /// How much `↑`/`↓` change the volume.
 const VOLUME_STEP: f32 = 0.1;
@@ -40,12 +41,19 @@ pub(super) struct Session {
     scrubbed: Option<Instant>,
 }
 
+/// What `playback::probe` found for one video, read in the background for the details panel.
+pub(super) struct Probe {
+    path: PathBuf,
+    result: Option<Option<MediaInfo>>,
+    rx: Option<mpsc::Receiver<Option<MediaInfo>>>,
+}
+
 /// What the video keys of one frame ask for (read with the others in `keys`).
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(super) struct VideoKeys {
-    /// `Space` or `Enter`, pressed now (not a repeat).
+    /// `Space`, pressed now (not a repeat).
     pub toggle: bool,
-    /// `J` −1, `L` +1.
+    /// `Alt+←` −1, `Alt+→` +1.
     pub jump: i8,
     /// `,` −1, `.` +1.
     pub step: i8,
@@ -65,7 +73,7 @@ impl CernoApp {
             .filter(|p| library::format_of(p) == Some(library::Format::Video))
     }
 
-    /// `Space`/`Enter` or the play button on the current video: start it, or play / pause. A
+    /// `Space` or the play button on the current video: start it, or play / pause. A
     /// build without the feature `video` says it plays no videos.
     pub(super) fn toggle_video(&mut self, ctx: &egui::Context) {
         let Some(path) = self.current_video().map(Path::to_path_buf) else {
@@ -96,6 +104,42 @@ impl CernoApp {
             }
             Err(err) => self.notice = Some(Notice::error((i18n::t().video_play_failed)(&err))),
         }
+    }
+
+    /// The streams of the video `path` for the details panel: read in the background the
+    /// first time (a few hundred milliseconds), then kept until another video is asked for.
+    /// `None` while it is read, or when it can't be.
+    pub(super) fn media_info(&mut self, ctx: &egui::Context, path: &Path) -> Option<MediaInfo> {
+        if self
+            .media_probe
+            .as_ref()
+            .is_none_or(|probe| probe.path != path)
+        {
+            let (tx, rx) = mpsc::channel();
+            let (file, ctx) = (path.to_path_buf(), ctx.clone());
+            let spawned = std::thread::Builder::new()
+                .name("cerno-video-probe".into())
+                .spawn(move || {
+                    let info = playback::probe(&file)
+                        .inspect_err(|err| log::warn!("video {}: {err}", file.display()))
+                        .ok();
+                    let _ = tx.send(info);
+                    ctx.request_repaint();
+                });
+            self.media_probe = Some(Probe {
+                path: path.to_path_buf(),
+                result: spawned.is_err().then_some(None),
+                rx: spawned.is_ok().then_some(rx),
+            });
+        }
+        let probe = self.media_probe.as_mut()?;
+        if let Some(rx) = &probe.rx
+            && let Ok(info) = rx.try_recv()
+        {
+            probe.result = Some(info);
+            probe.rx = None;
+        }
+        probe.result.clone().flatten()
     }
 
     /// Stops the video (in the background); its file counts as open until it is closed.
@@ -145,6 +189,11 @@ impl CernoApp {
             self.stop_video();
             self.notice = Some(Notice::error((i18n::t().video_play_failed)(&err)));
             return;
+        }
+        // No sound device: it plays without sound – said once per run, not for every video.
+        if status.silent && !self.video_silent_told {
+            self.video_silent_told = true;
+            self.notice = Some(Notice::hint(i18n::t().video_no_sound));
         }
         // The time and the timeline move between frames that arrive on their own.
         if status.playing || status.starting {

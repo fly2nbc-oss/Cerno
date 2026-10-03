@@ -18,7 +18,7 @@ heic = ["dep:libheif-rs"]
 webgpu = ["ort/webgpu"]
 # Video playback with sound inside Cerno through GStreamer (Windows: the official MSVC build,
 # shipped beside the exe; Linux: the distribution's packages).
-video = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video"]
+video = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-pbutils", "dep:gstreamer-video"]
 
 [dependencies]
 anyhow = "1.0.104"
@@ -28,7 +28,8 @@ env_logger = "0.11.11"
 fast_image_resize = "6.1.0"
 gstreamer = { version = "0.25.4", optional = true }
 gstreamer-app = { version = "0.25.2", optional = true }
-gstreamer-video = { version = "0.25.4", optional = true }
+gstreamer-pbutils = { version = "0.25.4", optional = true }
+gstreamer-video = { version = "0.25.4", optional = true, features = ["v1_18"] }
 image = { version = "0.25", default-features = false, features = ["png", "tiff", "webp", "bmp", "gif"] }
 jpeg-encoder = "0.7.1"
 kamadak-exif = "0.6.1"

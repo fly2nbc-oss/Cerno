@@ -207,6 +207,10 @@ pub struct CernoApp {
     /// Volume 0..=1 and sound off, saved.
     video_volume: f32,
     video_muted: bool,
+    /// "Plays without sound" (no sound device) was shown in this run.
+    video_silent_told: bool,
+    /// The streams of the video the details panel shows, read in the background.
+    media_probe: Option<video::Probe>,
 }
 
 impl CernoApp {
@@ -378,6 +382,8 @@ impl CernoApp {
             video_releases: Vec::new(),
             video_volume,
             video_muted,
+            video_silent_told: false,
+            media_probe: None,
         };
         if let Some(path) = start_path {
             app.open(&ctx, &path);

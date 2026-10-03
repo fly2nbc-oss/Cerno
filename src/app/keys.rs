@@ -58,11 +58,11 @@ struct KeyInput {
     compare: bool,
     keep_left: bool,
     keep_right: bool,
-    /// `Enter`: play a video (in the grid: open the photo).
+    /// `Enter`: in the grid, open the photo.
     play: bool,
     /// Plain `Space` (with repeats; on a video only a fresh press plays or pauses).
     space: bool,
-    /// The video keys (fresh presses): `Space`/`Enter`, `J`/`L`, `,`/`.`, `↑`/`↓`.
+    /// The video keys (fresh presses): `Space`, `Alt+←`/`Alt+→`, `,`/`.`, `↑`/`↓`.
     video: super::video::VideoKeys,
     /// `B`: the description tab (comment and keywords).
     describe: bool,
@@ -129,9 +129,14 @@ fn shifted_label(events: &[egui::Event]) -> Option<Label> {
 
 /// `key` pressed now without modifiers – not a repeat of a held key.
 fn fresh(events: &[egui::Event], key: Key) -> bool {
+    fresh_with(events, key, egui::Modifiers::NONE)
+}
+
+/// `key` pressed now with exactly `modifiers` – not a repeat of a held key.
+fn fresh_with(events: &[egui::Event], key: Key, with: egui::Modifiers) -> bool {
     events.iter().any(|event| {
         matches!(event, egui::Event::Key { key: k, pressed: true, repeat: false, modifiers, .. }
-            if *k == key && modifiers.is_none())
+            if *k == key && *modifiers == with)
     })
 }
 
@@ -149,10 +154,13 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
     KeyInput {
         // Without Ctrl: Ctrl+Left/Right turn the photo instead. Plain Space is read on its own
         // (`space`): on a video it plays and pauses; Shift+Space always moves on.
+        // Alt+Left/Right jump in a video.
         next: !i.modifiers.command
+            && !i.modifiers.alt
             && (i.key_pressed(Key::ArrowRight)
                 || (i.modifiers.shift_only() && i.key_pressed(Key::Space))),
         prev: !i.modifiers.command
+            && !i.modifiers.alt
             && [Key::ArrowLeft, Key::Backspace]
                 .iter()
                 .any(|k| i.key_pressed(*k)),
@@ -175,8 +183,11 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         play: plain && i.key_pressed(Key::Enter),
         space: plain && i.key_pressed(Key::Space),
         video: super::video::VideoKeys {
-            toggle: fresh(&i.events, Key::Space) || fresh(&i.events, Key::Enter),
-            jump: axis(fresh(&i.events, Key::J), fresh(&i.events, Key::L)),
+            toggle: fresh(&i.events, Key::Space),
+            jump: axis(
+                fresh_with(&i.events, Key::ArrowLeft, egui::Modifiers::ALT),
+                fresh_with(&i.events, Key::ArrowRight, egui::Modifiers::ALT),
+            ),
             step: axis(fresh(&i.events, Key::Comma), fresh(&i.events, Key::Period)),
             volume: axis(
                 plain && i.key_pressed(Key::ArrowDown),
@@ -394,7 +405,7 @@ impl CernoApp {
         if keys.keep_right {
             self.keep_right(ctx);
         }
-        // In the grid Enter opens the photo; on a video it plays (see `video_keys`).
+        // In the grid Enter opens the photo (a video plays with Space only).
         if keys.play && self.grid {
             self.set_grid(false);
         }
@@ -534,7 +545,7 @@ mod tests {
     }
 
     /// Plain Space plays and pauses a video (a held key not again) and moves on elsewhere;
-    /// Shift+Space always moves on. J/L, `,`/`.` and ↑/↓ are the video's.
+    /// Shift+Space always moves on. Alt+←/→, `,`/`.` and ↑/↓ are the video's; Enter is not.
     #[test]
     fn space_and_the_video_keys() {
         let plain = Modifiers::NONE;
@@ -564,12 +575,20 @@ mod tests {
             "a held Space does not toggle"
         );
         assert!(
-            read(vec![key(Key::Enter, Key::Enter, plain)], plain)
+            !read(vec![key(Key::Enter, Key::Enter, plain)], plain)
                 .video
-                .toggle
+                .toggle,
+            "Enter does not play"
         );
-        assert_eq!(read(vec![key(Key::J, Key::J, plain)], plain).video.jump, -1);
-        assert_eq!(read(vec![key(Key::L, Key::L, plain)], plain).video.jump, 1);
+        let alt = Modifiers::ALT;
+        let back = read(vec![key(Key::ArrowLeft, Key::ArrowLeft, alt)], alt);
+        assert!(
+            back.video.jump == -1 && !back.prev,
+            "Alt+← jumps, it does not step"
+        );
+        let on = read(vec![key(Key::ArrowRight, Key::ArrowRight, alt)], alt);
+        assert!(on.video.jump == 1 && !on.next);
+        assert_eq!(read(vec![key(Key::L, Key::L, plain)], plain).video.jump, 0);
         assert_eq!(
             read(vec![key(Key::Comma, Key::Comma, plain)], plain)
                 .video

@@ -301,6 +301,9 @@ impl CernoApp {
             return;
         }
         let status = self.analyzer.status();
+        let media = (library::format_of(&path) == Some(library::Format::Video))
+            .then(|| self.media_info(&ctx, &path))
+            .flatten();
         let overlay = details::draw(
             ui,
             body,
@@ -314,6 +317,7 @@ impl CernoApp {
                 status: &status,
                 file: image.as_deref().map(|i| (i.original_size, i.load_ms)),
                 position: image.as_deref().and_then(|i| i.camera.gps),
+                media: media.as_ref(),
                 overlay: self.overlay,
             },
             &mut self.attributes_open,
