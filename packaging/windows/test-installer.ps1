@@ -15,7 +15,9 @@ and uninstalls that copy.
 param(
     [Parameter(Mandatory)][string]$Setup,
     # A photo to open; the test passes when Cerno logs that it drew it.
-    [Parameter(Mandatory)][string]$Photo
+    [Parameter(Mandatory)][string]$Photo,
+    # A video the installed exe must play with its own GStreamer (`--check-video`).
+    [string]$Video
 )
 
 $ErrorActionPreference = "Stop"
@@ -59,6 +61,15 @@ if (-not $exited) { Stop-Process -Id $cerno.Id -Force; $cerno.WaitForExit() }
 Get-Content $log -ErrorAction SilentlyContinue | Select-Object -Last 40
 if (-not $drawn) {
     throw "Cerno did not draw the photo (exited: $exited, code: $(if ($exited) { $cerno.ExitCode }))"
+}
+
+# The installed exe plays a video with the GStreamer it brought along.
+if ($Video) {
+    $out = "$env:RUNNER_TEMP\cerno-video.txt"
+    $check = Start-Process "$dir\cerno.exe" -ArgumentList "--check-video", "`"$Video`"" -Wait -PassThru `
+        -RedirectStandardOutput $out -RedirectStandardError "$out.err"
+    Get-Content $out, "$out.err" -ErrorAction SilentlyContinue
+    if ($check.ExitCode) { throw "the installed Cerno cannot play a video ($($check.ExitCode))" }
 }
 
 # `_?=` runs the uninstaller in place and waits for it (otherwise it copies itself to

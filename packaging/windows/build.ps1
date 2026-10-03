@@ -4,17 +4,22 @@
 Packs a Windows release build into dist\windows.
 
 .DESCRIPTION
-Run after `cargo build --release --features heic`. Produces
+Run after `cargo build --release --features heic,video`. Produces
 
   Cerno\                           the portable folder: exe, DLLs, licenses
   cerno_<version>_x64-portable.zip that folder as a zip
   cerno_<version>_x64-setup.exe    NSIS installer of the same folder (cargo-packager)
 
-The VC++ runtime DLLs that cerno.exe, heif.dll and libde265.dll import are copied
-from Visual Studio's redist folder (app-local deployment), so neither the zip nor
-the installer needs the VC++ Redistributable on the target machine. Every import
-of every DLL in the folder is then checked: it must be in the folder or part of
-Windows.
+GStreamer (video playback) comes from the installation install-gstreamer.ps1 makes: the
+plugins named below go into Cerno\gstreamer-1.0, every DLL they and cerno.exe import from
+GStreamer's bin folder next to cerno.exe (Windows finds a plugin's DLLs in the exe's
+folder), their licence texts into licenses\gstreamer. The package then plays a test clip
+with only its own files (`cerno --check-video`).
+
+The VC++ runtime DLLs that cerno.exe and the libraries import are copied from Visual
+Studio's redist folder (app-local deployment), so neither the zip nor the installer needs
+the VC++ Redistributable on the target machine. Every import of every DLL in the folder
+(and in gstreamer-1.0) is then checked: it must be in the folder or part of Windows.
 #>
 param(
     # The cargo output directory with cerno.exe, the DLLs and licenses\.
@@ -22,7 +27,10 @@ param(
     # Microsoft.VC14x.CRT folder; found through vswhere when not given.
     [string]$CrtDir,
     # Only the folder and the zip, no installer.
-    [switch]$NoInstaller
+    [switch]$NoInstaller,
+    # GStreamer's MSVC folder (install-gstreamer.ps1).
+    [string]$GStreamer = $(if ($env:GSTREAMER_ROOT) { $env:GSTREAMER_ROOT } else {
+        "$env:LOCALAPPDATA\Programs\gstreamer\1.0\msvc_x86_64" })
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,7 +47,7 @@ New-Item -ItemType Directory -Force $stage | Out-Null
 foreach ($name in "cerno.exe", "DirectML.dll", "heif.dll", "libde265.dll") {
     $src = Join-Path $Target $name
     if (-not (Test-Path $src)) {
-        throw "$src is missing - run: cargo build --release --features heic"
+        throw "$src is missing - run: cargo build --release --features heic,video"
     }
     # File.Copy follows symlinks: ort's copy-dylibs may link DirectML.dll into its cache.
     [System.IO.File]::Copy((Resolve-Path $src).Path, (Join-Path (Resolve-Path $stage).Path $name))
@@ -72,7 +80,47 @@ function Get-Imports([string]$File) {
     $lines | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^[\w.-]+\.dll$' }
 }
 
-function Get-Binaries { Get-ChildItem $stage -File | Where-Object Extension -in ".exe", ".dll" }
+function Get-Binaries { Get-ChildItem $stage -File -Recurse | Where-Object Extension -in ".exe", ".dll" }
+
+# --- GStreamer (video playback) ------------------------------------------------------
+# The plugins playback needs, each licence-checked (LGPL; dav1d MIT/BSD): the pipeline,
+# containers (MP4/MOV, MKV/WebM, AVI, MTS/M2TS, WMV), parsers, decoders (FFmpeg's, D3D12's,
+# VP8/VP9, AV1), conversion on GPU and CPU, sound out. Not mpegpsdemux (.mpg): it declares
+# no licence.
+$plugins = @(
+    "coreelements", "playback", "typefindfunctions", "app", "autodetect",
+    "isomp4", "matroska", "avi", "mpegtsdemux", "asf",
+    "videoparsersbad", "audioparsers", "libav", "d3d12", "vpx", "dav1d",
+    "videoconvertscale", "videofilter", "deinterlace",
+    "audioconvert", "audioresample", "volume", "wasapi2"
+)
+if (-not (Test-Path "$GStreamer\bin\gstreamer-1.0-0.dll")) {
+    throw "no GStreamer in $GStreamer - run packaging\windows\install-gstreamer.ps1"
+}
+New-Item -ItemType Directory -Force "$stage\gstreamer-1.0" | Out-Null
+foreach ($plugin in $plugins) {
+    Copy-Item "$GStreamer\lib\gstreamer-1.0\gst$plugin.dll" "$stage\gstreamer-1.0\"
+}
+# What cerno.exe and the plugins import from GStreamer's bin folder, until nothing new is.
+do {
+    $added = $false
+    foreach ($binary in Get-Binaries) {
+        foreach ($dll in Get-Imports $binary.FullName) {
+            if (Test-Path "$stage\$dll") { continue }
+            if (Test-Path "$GStreamer\bin\$dll") {
+                Copy-Item "$GStreamer\bin\$dll" $stage
+                $added = $true
+            }
+        }
+    }
+} while ($added)
+# Their licence texts, per project, as GStreamer's installer has them.
+$licenses = "$stage\licenses\gstreamer"
+New-Item -ItemType Directory -Force $licenses | Out-Null
+foreach ($project in "gstreamer-1.0", "gst-plugins-base-1.0", "gst-plugins-bad-1.0", "gst-plugins-rs",
+    "ffmpeg", "glib", "libffi", "pcre2", "proxy-libintl", "orc", "zlib", "bzip2", "libvpx", "dav1d") {
+    Copy-Item -Recurse "$GStreamer\share\licenses\$project" "$licenses\$project"
+}
 
 # --- App-local VC++ runtime ----------------------------------------------------
 # Copy what is imported until nothing new is (msvcp140 itself imports vcruntime140).
@@ -106,6 +154,27 @@ if ($missing) {
 }
 Get-ChildItem $stage -Recurse -File | ForEach-Object {
     "{0,10:N0}  {1}" -f $_.Length, $_.FullName.Substring((Resolve-Path $stage).Path.Length + 1)
+}
+"{0:N1} MB in the folder, GStreamer {1:N1} MB" -f `
+    ((Get-ChildItem $stage -Recurse -File | Measure-Object Length -Sum).Sum / 1MB),
+    ((Get-ChildItem $stage -Recurse -File | Where-Object {
+        $_.DirectoryName -like "*gstreamer-1.0" -or (Test-Path "$GStreamer\bin\$($_.Name)") } |
+        Measure-Object Length -Sum).Sum / 1MB)
+
+# --- The package plays a video with its own files ------------------------------------
+# No GStreamer of the system on PATH, so a missing DLL or plugin shows here. The exe is a
+# GUI program: its output comes through a redirect.
+$path = $env:PATH
+try {
+    $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -and $_ -notmatch 'gstreamer' }) -join ';'
+    $out = New-TemporaryFile
+    $check = Start-Process -FilePath "$stage\cerno.exe" -Wait -PassThru -NoNewWindow `
+        -ArgumentList "--check-video", "`"$((Resolve-Path tests\fixtures\tiny.mp4).Path)`"" `
+        -RedirectStandardOutput $out -RedirectStandardError "$out.err"
+    Get-Content $out, "$out.err"
+    if ($check.ExitCode) { throw "the package cannot play a video (cerno --check-video: $($check.ExitCode))" }
+} finally {
+    $env:PATH = $path
 }
 
 # --- Zip and installer ----------------------------------------------------------

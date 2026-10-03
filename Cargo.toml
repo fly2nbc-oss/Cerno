@@ -85,7 +85,7 @@ category = "Photography"
 formats = ["nsis"]
 binaries-dir = "dist/windows/Cerno"
 out-dir = "dist/windows"
-resources = ["dist/windows/Cerno/*.dll", "dist/windows/Cerno/licenses"]
+resources = ["dist/windows/Cerno/*.dll", "dist/windows/Cerno/licenses", "dist/windows/Cerno/gstreamer-1.0"]
 
 # Per-user install into %LOCALAPPDATA%\Cerno, no admin rights. Cerno's own data is
 # %LOCALAPPDATA%\Cerno\data: the uninstaller deletes only the files it installed and
@@ -97,10 +97,12 @@ languages = ["English", "German", "French", "Spanish", "Italian"]
 custom-language-file = { German = "packaging/windows/German.nsh", Italian = "packaging/windows/Italian.nsh" }
 appdata-paths = ['$LOCALAPPDATA\$PRODUCTNAME\data']
 
-# Linux .deb via cargo-deb (`--no-build` packs the HEIC release binary CI built).
-# `$auto` adds the linked libraries (glibc, libstdc++, libheif1) with their versions.
-# The rest is loaded at run time with dlopen: HEVC decoding is a libheif plugin
-# (Ubuntu 24.04 only suggests it), windowing and graphics come from winit and wgpu.
+# Linux .deb via cargo-deb (`--no-build` packs the HEIC + video release binary CI built).
+# `$auto` adds the linked libraries (glibc, libstdc++, libheif1, GStreamer's core and base
+# libraries) with their versions. The rest is loaded at run time with dlopen: HEVC decoding
+# is a libheif plugin (Ubuntu 24.04 only suggests it), windowing and graphics come from
+# winit and wgpu, and video playback needs GStreamer's plugins – containers and audio in
+# base/good, the H.264/H.265 parsers in bad, FFmpeg's decoders in libav.
 [package.metadata.deb]
 maintainer = "fly2nbc-oss <fly2nbc@gmail.com>"
 copyright = "fly2nbc-oss and contributors"
@@ -113,7 +115,7 @@ section = "graphics"
 priority = "optional"
 # The package version is the crate version, like the file name.
 revision = ""
-depends = "$auto, libheif-plugin-libde265, libxkbcommon0, libxkbcommon-x11-0, libwayland-client0, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxcb1, libvulkan1 | libegl1"
+depends = "$auto, libheif-plugin-libde265, libxkbcommon0, libxkbcommon-x11-0, libwayland-client0, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxcb1, libvulkan1 | libegl1, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad, gstreamer1.0-libav"
 # ExifTool writes the ratings; ffmpeg gives videos their frame; the UI font is read from the
 # system (egui's own lacks ← →).
 recommends = "libimage-exiftool-perl, ffmpeg, mesa-vulkan-drivers, xdg-desktop-portal, fonts-dejavu-core | fonts-noto-core"

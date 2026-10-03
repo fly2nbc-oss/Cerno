@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Packs a Linux release build into dist/linux:
 #
-#   cerno_<version>_amd64.deb        cargo-deb; depends on the system's libheif
-#   cerno_<version>_x86_64.AppImage  portable; bundles libheif and its libde265 plugin
+#   cerno_<version>_amd64.deb        cargo-deb; depends on the system's libheif and GStreamer
+#   cerno_<version>_x86_64.AppImage  portable; bundles libheif and its libde265 plugin, uses
+#                                    the system's GStreamer for videos
 #
-# Run after `cargo build --release --features heic`, on Ubuntu 24.04: it is the
+# Run after `cargo build --release --features heic,video`, on Ubuntu 24.04: it is the
 # oldest base with libheif >= 1.17, and the AppImage runs on distributions with
 # its glibc (2.39) or newer.
 # Needs: cargo-deb, patchelf, libheif-plugin-libde265, curl.
@@ -13,11 +14,15 @@ cd "$(dirname "$0")/../.."
 
 bin=target/release/cerno
 if [[ ! -x $bin ]]; then
-    echo "$bin is missing - run: cargo build --release --features heic" >&2
+    echo "$bin is missing - run: cargo build --release --features heic,video" >&2
     exit 1
 fi
 if ! ldd "$bin" | grep -q 'libheif\.so'; then
     echo "$bin was built without --features heic" >&2
+    exit 1
+fi
+if ! ldd "$bin" | grep -q 'libgstreamer-1\.0\.so'; then
+    echo "$bin was built without --features video" >&2
     exit 1
 fi
 
@@ -69,11 +74,24 @@ export APPIMAGE_EXTRACT_AND_RUN=1
 # Ubuntu's libraries are stripped already, and linuxdeploy's own strip is older
 # than the toolchain (it fails on newer ELF sections).
 export NO_STRIP=1
+# GStreamer and GLib come from the host, the whole family: a bundled libgstreamer next
+# to the host's plugins (built against another GStreamer and GLib) would fail to load
+# them. Ubuntu's libavcodec is built with GPL parts, so it must not travel with Cerno
+# either.
 "$tools/linuxdeploy" --appdir "$appdir" \
     --executable "$appdir/usr/bin/cerno" \
     --desktop-file packaging/linux/cerno.desktop \
     --icon-file assets/icon.png --icon-filename cerno \
-    --custom-apprun packaging/linux/AppRun
+    --custom-apprun packaging/linux/AppRun \
+    --exclude-library 'libgst*' \
+    --exclude-library 'libglib-2.0.so*' --exclude-library 'libgobject-2.0.so*' \
+    --exclude-library 'libgmodule-2.0.so*' --exclude-library 'libgio-2.0.so*' \
+    --exclude-library 'liborc-0.4.so*'
+if find "$appdir/usr/lib" -name '*.so*' -printf '%f\n' |
+    grep -E '^lib(gst|glib-2|gobject-2|gmodule-2|gio-2|orc-0|av(codec|format|util))'; then
+    echo "the AppImage bundles GStreamer, GLib or FFmpeg - they must come from the host" >&2
+    exit 1
+fi
 # linuxdeploy gives every library `$ORIGIN`, but the plugin sits two levels below
 # usr/lib, where libheif and libde265 are.
 patchelf --set-rpath '$ORIGIN/../..' "$plugins/libheif-libde265.so"
