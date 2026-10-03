@@ -16,6 +16,9 @@ heic = ["dep:libheif-rs"]
 # Experimental GPU inference on Linux through ONNX Runtime's WebGPU (Vulkan) provider – the
 # only vendor-neutral path, so the one that covers AMD cards. Windows always uses DirectML.
 webgpu = ["ort/webgpu"]
+# Video playback with sound inside Cerno through GStreamer (Windows: the official MSVC build,
+# shipped beside the exe; Linux: the distribution's packages).
+video = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video"]
 
 [dependencies]
 anyhow = "1.0.104"
@@ -23,6 +26,9 @@ directories = "6.0.0"
 eframe = "0.36.2"
 env_logger = "0.11.11"
 fast_image_resize = "6.1.0"
+gstreamer = { version = "0.25.4", optional = true }
+gstreamer-app = { version = "0.25.2", optional = true }
+gstreamer-video = { version = "0.25.4", optional = true }
 image = { version = "0.25", default-features = false, features = ["png", "tiff", "webp", "bmp", "gif"] }
 jpeg-encoder = "0.7.1"
 kamadak-exif = "0.6.1"
@@ -126,3 +132,8 @@ opt-level = 3
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+# Proof of concept for playing videos inside Cerno (not shipped).
+[[example]]
+name = "video_poc"
+required-features = ["video"]
