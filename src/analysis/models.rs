@@ -767,6 +767,7 @@ mod tests {
             faces: ModelState::Available,
             taste: TasteStatus {
                 examples: 0,
+                sources: Default::default(),
                 model: None,
             },
         }

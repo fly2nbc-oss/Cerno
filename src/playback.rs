@@ -70,6 +70,8 @@ pub struct VideoStream {
     pub codec: String,
     pub width: u32,
     pub height: u32,
+    /// `None` when the stream states no fixed rate: GStreamer's `0/1`, a variable frame rate,
+    /// as phones record.
     pub fps: Option<f64>,
     /// "HLG" or "PQ" for HDR video.
     pub hdr: Option<&'static str>,

@@ -132,6 +132,8 @@ pub struct Details<'a> {
     pub position: Option<(f64, f64)>,
     /// A video's streams (`playback::probe`): shown instead of the size and load time.
     pub media: Option<&'a MediaInfo>,
+    /// The file is a video: it gets no analysis, so only the File section shows.
+    pub video: bool,
     /// What the check overlay shows; its eye is lit in that section.
     pub overlay: overlay::Mode,
 }
@@ -200,6 +202,18 @@ pub fn draw(
 }
 
 fn content(ui: &mut Ui, d: &Details<'_>, attributes_open: &mut bool) -> Option<overlay::Mode> {
+    // A video is never analysed: its score rows would wait for values that never come.
+    let overlay = if d.video {
+        None
+    } else {
+        analysis(ui, d, attributes_open)
+    };
+    file(ui, d);
+    overlay
+}
+
+/// Aesthetics, For you, sharpness and exposure. Returns the overlay an eye asks for.
+fn analysis(ui: &mut Ui, d: &Details<'_>, attributes_open: &mut bool) -> Option<overlay::Mode> {
     let t = i18n::t();
     let scores = d.scores.unwrap_or_default();
     let status = d.status;
@@ -311,7 +325,12 @@ fn content(ui: &mut Ui, d: &Details<'_>, attributes_open: &mut bool) -> Option<o
         clipped(scores.shadows, exposure::SHADOWS_WARN),
         t.explain_shadows,
     );
+    overlay
+}
 
+/// Size and load time, or a video's streams; the GPS position with its map links.
+fn file(ui: &mut Ui, d: &Details<'_>) {
+    let t = i18n::t();
     if d.file.is_some() || d.media.is_some() {
         section(ui, t.section_file);
         match (d.media, d.file) {
@@ -331,11 +350,11 @@ fn content(ui: &mut Ui, d: &Details<'_>, attributes_open: &mut bool) -> Option<o
             map_links(ui, (lat, lon));
         }
     }
-    overlay
 }
 
 /// A video's file rows: container, duration, the video stream (codec and HDR, size, frame
-/// rate, bitrate – "≈" when estimated from the total), the sound and the total bitrate.
+/// rate – "variable" when it states none –, bitrate – "≈" when estimated from the total), the
+/// sound and the total bitrate.
 fn media_rows(media: &MediaInfo) -> Vec<(&'static str, String)> {
     let t = i18n::t();
     let mut rows = Vec::new();
@@ -352,9 +371,12 @@ fn media_rows(media: &MediaInfo) -> Vec<(&'static str, String)> {
         };
         rows.push((t.row_video, codec));
         rows.push((t.row_size, format!("{} × {}", video.width, video.height)));
-        if let Some(fps) = video.fps {
-            rows.push((t.row_frame_rate, frame_rate(fps)));
-        }
+        rows.push((
+            t.row_frame_rate,
+            video
+                .fps
+                .map_or_else(|| t.variable_frame_rate.to_owned(), frame_rate),
+        ));
         if let Some(rate) = video.bitrate {
             let approx = if video.bitrate_estimated { "≈ " } else { "" };
             rows.push((t.row_video_bitrate, format!("{approx}{}", bitrate(rate))));
@@ -699,6 +721,7 @@ mod tests {
             faces: ModelState::Missing,
             taste: TasteStatus {
                 examples: 0,
+                sources: Default::default(),
                 model: None,
             },
         }
@@ -731,6 +754,7 @@ mod tests {
             file: None,
             position: None,
             media: None,
+            video: false,
             overlay: overlay::Mode::Off,
         }
     }
@@ -878,6 +902,7 @@ mod tests {
             file: Some(([6000, 4000], 120)),
             position: Some(position),
             media: None,
+            video: false,
             overlay: overlay::Mode::Off,
         };
         let panel = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 1200.0));
@@ -960,6 +985,7 @@ mod tests {
                 file: None,
                 position: None,
                 media: None,
+                video: false,
                 overlay: mode,
             };
             let mut chosen = None;
@@ -1062,5 +1088,60 @@ mod tests {
         );
         assert_eq!(frame_rate(30.0), "30 fps");
         assert_eq!(bitrate(950_000), "950 kbit/s");
+        // Phones record at a variable rate: GStreamer states none.
+        let phone = MediaInfo {
+            video: Some(VideoStream::default()),
+            ..MediaInfo::default()
+        };
+        assert!(
+            media_rows(&phone)
+                .iter()
+                .any(|(label, value)| *label == "Frame rate" && value == "variable")
+        );
+    }
+
+    /// A video is never analysed: no score section waits for values, only File shows.
+    #[test]
+    fn a_video_shows_only_its_file() {
+        let ctx = Context::default();
+        let status = status();
+        let media = MediaInfo {
+            container: Some("MP4".into()),
+            ..MediaInfo::default()
+        };
+        let details = Details {
+            scores: None,
+            personal: None,
+            frame_percentile: None,
+            eyes_percentile: None,
+            attributes: None,
+            histogram: None,
+            status: &status,
+            file: Some(([1920, 1080], 40)),
+            position: None,
+            media: Some(&media),
+            video: true,
+            overlay: overlay::Mode::Off,
+        };
+        let panel = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 1200.0));
+        let mut output = ctx.run_ui(
+            RawInput {
+                screen_rect: Some(panel),
+                ..Default::default()
+            },
+            |ui| {
+                draw(ui, panel, &details, &mut false);
+            },
+        );
+        output.textures_delta.clear();
+        let shown: Vec<String> = texts(&output).into_iter().map(|(text, _)| text).collect();
+        for gone in ["AESTHETICS", "FOR YOU", "SHARPNESS", "EXPOSURE", "For you"] {
+            assert!(
+                !shown.iter().any(|text| text.starts_with(gone)),
+                "{gone} is not drawn: {shown:?}"
+            );
+        }
+        assert!(shown.iter().any(|text| text == "FILE"), "{shown:?}");
+        assert!(shown.iter().any(|text| text == "MP4"), "{shown:?}");
     }
 }

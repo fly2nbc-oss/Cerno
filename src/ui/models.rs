@@ -69,6 +69,23 @@ fn content(ui: &mut Ui, status: &Status) -> ModelsOutput {
     ] {
         row(ui, label, &value);
     }
+    // The count above is more than the photos with stars: rejected and deleted ones count too.
+    let sources = status.taste.sources;
+    if status.taste.examples > 0 {
+        ui.add_space(4.0);
+        ui.add(
+            Label::new(
+                RichText::new(i18n::keep_together(&(t.taste_sources)(
+                    sources.stars,
+                    sources.rejected,
+                    sources.deleted,
+                )))
+                .font(FontId::proportional(text::BODY))
+                .color(tokens::MUTED),
+            )
+            .wrap(),
+        );
+    }
     ui.add_space(8.0);
     ui.add(
         Label::new(
@@ -198,6 +215,7 @@ mod tests {
             faces: ModelState::Missing,
             taste: TasteStatus {
                 examples: 0,
+                sources: Default::default(),
                 model: None,
             },
         }
@@ -273,6 +291,32 @@ mod tests {
             !busy
                 .iter()
                 .any(|text| text == t.enable_aesthetics || text == t.add_v25)
+        );
+    }
+
+    /// The prediction's count is more than the photos with stars: the card says what it is.
+    #[test]
+    fn the_card_says_what_the_prediction_learns_from() {
+        let t = crate::i18n::Lang::En.texts();
+        let mut learning = status(ModelState::Available, ModelState::Available);
+        let (_, untrained) = run(&learning, Vec::new());
+        let breakdown = (t.taste_sources)(167, 2, 542);
+        assert!(!untrained.iter().any(|text| text.contains("Learned from")));
+        learning.taste = TasteStatus {
+            examples: 711,
+            sources: crate::db::TasteSources {
+                stars: 167,
+                rejected: 2,
+                deleted: 542,
+            },
+            model: Some((711, 0.8)),
+        };
+        let (_, trained) = run(&learning, Vec::new());
+        assert!(
+            trained
+                .iter()
+                .any(|text| *text == crate::i18n::keep_together(&breakdown)),
+            "{trained:?}"
         );
     }
 

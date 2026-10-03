@@ -19,7 +19,7 @@ Cerno (Latin *cerno* – "I sift, see clearly") helps you go through a folder of
 - **Instant switching** – the photos around the current one are loaded in advance.
 - **Rate from the keyboard** – stars, reject, colour labels, comment and keywords.
 - **Two helpers under every photo** – *Aesthetics* and *Sharpness*, both in percent (see [the values](#the-values)). Empty stars fill lightly with Cerno's guess of your rating.
-- **Sort and filter** – by capture time, rating, aesthetics, sharpness; photos or videos only; blurry shots, duplicates, similar photos. Filters of different kinds work together: *4★* and *Blurry* are the blurry 4-star photos.
+- **Sort and filter** – by capture time, rating, aesthetics, sharpness; photos or videos only; blurry shots, duplicates, similar photos, photos with or without people. Filters of different kinds work together: *4★* and *Blurry* are the blurry 4-star photos.
 - **Top 10 … Top 250** – the best photos of what the filters leave, for a slideshow or a photo book: by your stars (else Cerno's guess), aesthetics and sharpness, the best of each burst first. Rejected and blurry shots and duplicates never count, and nothing in the photos changes.
 - **Compare** two photos side by side, or see the whole folder as a grid.
 - **Straighten, crop and rotate** JPEGs – the original is kept and `Ctrl+Z` brings it back.
@@ -54,9 +54,10 @@ The Windows files are not signed yet: SmartScreen asks once (*More info* → *Ru
 | `X` | Reject (again: undo) |
 | `6`–`9` | Colour label red, yellow, green, blue |
 | `Delete` | Delete – `Esc` within 5 s brings it back |
-| `Z`, double click | 100 % zoom |
+| `Z`, double click | 100 % zoom (`Ctrl+1` 100 %, `Ctrl+0` the whole photo) |
 | `C` | Compare: this photo stays on the left, browse on the right |
 | `T` / `Tab` / `F6` / `F7` | Filter bar / details / filmstrip / grid |
+| `Ctrl+U` | Include subfolders (on / off) |
 | `Ctrl+K` | Menu with every function |
 | `Ctrl+M` | Copy, move or delete all photos the filter shows |
 | `H` | Help with all keys |
@@ -65,7 +66,7 @@ The Windows files are not signed yet: SmartScreen asks once (*More info* → *Ru
 
 - **Aesthetics** – how appealing two AIs find the photo (LAION and V2.5, averaged). 0 % is unappealing, 100 % very appealing; most photos land at 40–60 %. A fixed scale: a photo has the same value in every folder. Needs two image models (CLIP 1.2 GB and V2.5 1.7 GB). Cerno offers to download them once (*Menu → Models & data*), and an interrupted download continues where it stopped.
 - **Sharpness** – how sharp the photo is compared with the other photos in the folder, measured at the eyes when there is a face. "Probably blurry" marks the blurriest ones.
-- **For you** – the stars Cerno thinks you would give, learnt from your own ratings once you have rated 15 photos. It shows as lightly filled stars and never sets a rating.
+- **Prediction** – the stars Cerno thinks you would give, learnt from your own ratings (and from the photos you reject or delete, as 0 stars) once there are 15 of them. It shows as lightly filled stars and never sets a rating.
 
 The details panel (`Tab`) shows more – both AIs separately, exposure, histogram, camera data – and explains each value when you rest the pointer on it.
 

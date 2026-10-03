@@ -148,6 +148,20 @@ pub struct FileRecord {
     pub image: ImageRecord,
 }
 
+/// One example of the taste model: the CLIP embedding and its label, 0–5 stars.
+pub type TasteExample = (Vec<f32>, f32);
+
+/// Where the taste model's examples come from (the models card names them).
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct TasteSources {
+    /// Photos with 1–5 stars.
+    pub stars: usize,
+    /// Rejected photos: 0 stars.
+    pub rejected: usize,
+    /// Photos deleted in Cerno: 0 stars.
+    pub deleted: usize,
+}
+
 fn opt_f32(row: &Row<'_>, index: usize) -> rusqlite::Result<Option<f32>> {
     Ok(row.get::<_, Option<f64>>(index)?.map(|v| v as f32))
 }
@@ -419,31 +433,42 @@ impl Db {
         Ok(())
     }
 
-    /// Training data for the taste model: (CLIP embedding, label 0–5). Rejected photos count
-    /// as 0 like deleted ones; explicit ratings win over deletion feedback for the same pixels.
-    pub fn taste_examples(&self) -> Result<Vec<(Vec<f32>, f32)>> {
+    /// Training data for the taste model: (CLIP embedding, label 0–5), and where the examples
+    /// come from. Rejected photos count as 0 like deleted ones; explicit ratings win over
+    /// deletion feedback for the same pixels.
+    pub fn taste_examples(&self) -> Result<(Vec<TasteExample>, TasteSources)> {
         let conn = self.conn();
+        // The third column: 1 = stars, 2 = rejected, 3 = deleted.
         let mut stmt = conn.prepare_cached(
-            "SELECT i.embedding, CAST(MAX(MAX(f.rating, 0)) AS REAL)
+            "SELECT i.embedding, CAST(MAX(MAX(f.rating, 0)) AS REAL),
+                    CASE WHEN MAX(f.rating) >= 1 THEN 1 ELSE 2 END
              FROM files f JOIN images i ON i.fingerprint = f.fingerprint
              WHERE (f.rating BETWEEN 1 AND 5 OR f.rating = -1) AND i.embedding IS NOT NULL
                AND f.fingerprint NOT IN (SELECT fingerprint FROM taste_skip)
              GROUP BY f.fingerprint
              UNION ALL
-             SELECT i.embedding, fb.label
+             SELECT i.embedding, fb.label, 3
              FROM feedback fb JOIN images i ON i.fingerprint = fb.fingerprint
              WHERE i.embedding IS NOT NULL
                AND fb.fingerprint NOT IN
                    (SELECT fingerprint FROM files WHERE rating BETWEEN 1 AND 5 OR rating = -1)
                AND fb.fingerprint NOT IN (SELECT fingerprint FROM taste_skip)",
         )?;
-        let rows = stmt.query_map([], |row| {
-            Ok((
+        let mut sources = TasteSources::default();
+        let mut examples = Vec::new();
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            match row.get::<_, i64>(2)? {
+                1 => sources.stars += 1,
+                2 => sources.rejected += 1,
+                _ => sources.deleted += 1,
+            }
+            examples.push((
                 blob_to_f32(&row.get::<_, Vec<u8>>(0)?),
                 row.get::<_, f64>(1)? as f32,
-            ))
-        })?;
-        Ok(rows.collect::<rusqlite::Result<_>>()?)
+            ));
+        }
+        Ok((examples, sources))
     }
 
     pub fn put_sharpness(&self, fingerprint: u64, value: f32, version: i64) -> Result<()> {
@@ -778,14 +803,21 @@ mod tests {
         db.record_deletion("binned.jpg").unwrap();
         assert!(db.lookup("binned.jpg", STAMP).unwrap().is_none());
 
-        let mut examples: Vec<(f32, f32)> = db
-            .taste_examples()
-            .unwrap()
+        let (examples, sources) = db.taste_examples().unwrap();
+        let mut examples: Vec<(f32, f32)> = examples
             .into_iter()
             .map(|(embedding, label)| (embedding[0], label))
             .collect();
         examples.sort_by(|a, b| a.0.total_cmp(&b.0));
         assert_eq!(examples, [(1.0, 5.0), (2.0, 0.0), (3.0, 0.0)]);
+        assert_eq!(
+            sources,
+            TasteSources {
+                stars: 1,
+                rejected: 1,
+                deleted: 1
+            }
+        );
     }
 
     #[test]
@@ -794,13 +826,13 @@ mod tests {
         db.put_aesthetic(1, 5.0, "m", &[1.0; 768]).unwrap();
         db.put_file("a.jpg", STAMP, 1, Rating::Stars(4), None)
             .unwrap();
-        assert_eq!(db.taste_examples().unwrap().len(), 1);
+        assert_eq!(db.taste_examples().unwrap().0.len(), 1);
         db.reset_taste_learning().unwrap();
-        assert!(db.taste_examples().unwrap().is_empty());
+        assert!(db.taste_examples().unwrap().0.is_empty());
         db.allow_taste_for(1).unwrap();
         db.put_file("a.jpg", STAMP, 1, Rating::Stars(3), None)
             .unwrap();
-        assert_eq!(db.taste_examples().unwrap().len(), 1);
+        assert_eq!(db.taste_examples().unwrap().0.len(), 1);
     }
 
     #[test]

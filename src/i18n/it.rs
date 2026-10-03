@@ -20,6 +20,9 @@ pub static TEXTS: Texts = Texts {
     filter_blurry_tooltip: "Tra il 20 % più sfocato di questa cartella e chiaramente morbide",
     filter_duplicate: "Duplicati",
     filter_duplicate_tooltip: "Ogni foto tranne il primo percorso identico",
+    filter_people: "Con persone",
+    filter_no_people: "Senza persone",
+    filter_people_tooltip: "Riconosciute dal volto: le persone di spalle o molto piccole nell'immagine non contano.",
     filter_clear: "Mostra tutte",
     media_all: "Foto e video",
     media_photos: "Solo foto",
@@ -33,7 +36,7 @@ pub static TEXTS: Texts = Texts {
         "Fotolibro",
         "Galleria",
     ],
-    top_tooltip: "Foto, video o entrambi – oppure solo le foto migliori, secondo le tue stelle (altrimenti «Per te»), l'estetica e la nitidezza, prima la migliore di ogni serie. Le foto scartate o sfocate e i duplicati non contano. La scelta resta finché cambia un filtro o scegli «Aggiorna ordine». Nelle foto non cambia nulla.",
+    top_tooltip: "Foto, video o entrambi – oppure solo le foto migliori, secondo le tue stelle (altrimenti la previsione), l'estetica e la nitidezza, prima la migliore di ogni serie. Le foto scartate o sfocate e i duplicati non contano. La scelta resta finché cambia un filtro o scegli «Aggiorna ordine». Nelle foto non cambia nulla.",
     menu_top: "Foto migliori",
     bulk_delete_top: "Non con Top – sono le foto migliori",
     filter_none_active: "Nessun filtro attivo",
@@ -68,7 +71,7 @@ pub static TEXTS: Texts = Texts {
     sort_name: "Nome",
     sort_rating: "Stelle",
     sort_aesthetics: "Estetica",
-    sort_personal: "Per te",
+    sort_personal: "Previsione",
     sort_sharpness: "Nitidezza",
     sort_taken: "Ora di scatto",
     filter_unrated: "Senza stelle",
@@ -104,7 +107,7 @@ pub static TEXTS: Texts = Texts {
     star_tooltip: |n| format!("{n} ★ – tasto {n}"),
     personal_hint: |stars| {
         format!(
-            "Per te: {stars:.1} ★ – le stelle che Cerno pensa daresti. Non è ancora il tuo voto"
+            "Previsione: {stars:.1} ★ – le stelle che Cerno pensa daresti. Non è ancora il tuo voto"
         )
     },
     zoom: |percent| format!("Zoom {percent:.0} %"),
@@ -137,6 +140,8 @@ pub static TEXTS: Texts = Texts {
     cmd_delete_rejected: |n| format!("Elimina le rifiutate ({n} foto)"),
     cmd_auto_advance: "Avanza automaticamente",
     cmd_subfolders: "Includi sottocartelle",
+    subfolders_on: "Sottocartelle incluse",
+    subfolders_off: "Solo questa cartella, senza sottocartelle",
     menu_sort: "Ordina",
     menu_filter: "Filtro",
     menu_view: "Vista",
@@ -257,6 +262,7 @@ pub static TEXTS: Texts = Texts {
     row_audio_bitrate: "Bitrate audio",
     row_bitrate: "Bitrate totale",
     no_audio: "nessuna traccia audio",
+    variable_frame_rate: "variabile",
     channels: |n| match n {
         1 => "Mono".to_owned(),
         2 => "Stereo".to_owned(),
@@ -276,7 +282,7 @@ pub static TEXTS: Texts = Texts {
     description_waiting: "Lettura …",
     row_laion: "LAION (CLIP)",
     row_v25: "V2.5 (SigLIP)",
-    row_personal: "Per te",
+    row_personal: "Previsione",
     row_frame: "Immagine intera",
     row_eyes: "Occhi",
     row_highlights: "Luci bruciate",
@@ -306,7 +312,7 @@ pub static TEXTS: Texts = Texts {
         "pulita – con rumore",
         "colorata – spenta",
     ],
-    explain_models: "Dove viene eseguita ogni IA: DirectML = scheda grafica, CPU = processore. ± indica di quanto «Per te» di solito sbaglia.",
+    explain_models: "Dove viene eseguita ogni IA: DirectML = scheda grafica, CPU = processore. ± indica di quanto la previsione di solito sbaglia.",
     note_no_embedding: "ancora nessun dato CLIP",
     note_learning: |n, of| format!("in apprendimento – {n} di {of} foto"),
     note_analysing: "analisi in corso…",
@@ -326,11 +332,16 @@ pub static TEXTS: Texts = Texts {
     model_removing: "rimozione…",
     model_failed: "errore",
     model_faces: "Volti",
-    model_personal: "Per te",
+    model_personal: "Previsione",
     taste_trained: |n, error| format!("{n} foto, ±{error:.1} ★"),
     taste_photos: |n| format!("{n} foto"),
     taste_untrained: "non ancora addestrato",
-    btn_reset_taste: "Reimposta Per te",
+    taste_sources: |stars, rejected, deleted| {
+        format!(
+            "Appresa da {stars} foto con stelle, {rejected} rifiutate e {deleted} eliminate – le foto rifiutate ed eliminate contano come 0 ★."
+        )
+    },
+    btn_reset_taste: "Reimposta la previsione",
     btn_delete_models: "Elimina modelli",
     models_deleted: "Modelli eliminati",
     models_downloaded: "Modelli scaricati: ora viene calcolata l'estetica",
@@ -339,7 +350,7 @@ pub static TEXTS: Texts = Texts {
     },
     copy_models_path: "Copia percorso",
     models_path_copied: "Percorso copiato",
-    confirm_reset_taste_title: "Reimpostare Per te?",
+    confirm_reset_taste_title: "Reimpostare la previsione?",
     confirm_reset_taste_text: "Cerno dimenticherà ciò che ha imparato dalle tue stelle e dalle eliminazioni. Le stelle nei file foto restano invariate.",
     confirm_delete_models_title: "Eliminare i modelli scaricati?",
     confirm_delete_models_text: |size| {
@@ -394,8 +405,11 @@ pub static TEXTS: Texts = Texts {
     welcome_more: "Tutte le scorciatoie: H",
     help_sections: [
         "Sfogliare",
-        "Valutare e selezionare",
+        "Valutare",
+        "Selezionare",
+        "Video",
         "Visualizzare",
+        "Pannelli",
         "Modificare",
         "Altro",
     ],
@@ -411,6 +425,7 @@ pub static TEXTS: Texts = Texts {
             "Sopra la striscia di miniature: scorri le foto",
         ),
         ("Ctrl+O", "Apri una cartella (o trascinala sulla finestra)"),
+        ("Ctrl+U", "Includi sottocartelle – sì / no"),
     ],
     help_rate: [
         (
@@ -427,10 +442,16 @@ pub static TEXTS: Texts = Texts {
             "Rifiuta – annotato nel file, non viene eliminato nulla; con Maiusc passa alla foto successiva",
         ),
         (
-            "Canc",
-            "Elimina: va nella cartella nascosta .originals dopo 5 secondi – non si perde nulla",
+            "6 – 9",
+            "Colore: rosso, giallo, verde, blu – di nuovo lo toglie",
         ),
-        ("Esc", "Recupera le foto in attesa di essere eliminate"),
+        (
+            "Maiusc+6 – 9",
+            "Imposta il colore e vai alla foto successiva",
+        ),
+        ("B", "Descrizione: modifica commento e parole chiave"),
+    ],
+    help_cull: [
         (
             "C",
             "Confronta: fissa questa foto a sinistra, sfoglia a destra",
@@ -439,24 +460,27 @@ pub static TEXTS: Texts = Texts {
             "A, D",
             "Confronta: tieni la sinistra / la destra – l'altra viene rifiutata e il confronto termina",
         ),
+        ("M", "Mostra solo foto simili – di nuovo: tutte"),
         (
-            "6 – 9",
-            "Colore: rosso, giallo, verde, blu – di nuovo lo toglie",
+            "Canc",
+            "Elimina: va nella cartella nascosta .originals dopo 5 secondi – non si perde nulla",
         ),
+        ("Esc", "Recupera le foto in attesa di essere eliminate"),
+    ],
+    help_video: [
         (
-            "Maiusc+6 – 9",
-            "Imposta il colore e vai alla foto successiva",
+            "Spazio",
+            "Riproduci / metti in pausa (Maiusc+Spazio: foto successiva)",
         ),
+        ("Alt+←, Alt+→", "5 s indietro / avanti"),
+        (",, .", "Un fotogramma indietro / avanti (in pausa)"),
+        ("↑, ↓", "Volume"),
     ],
     help_view: [
         ("Z, Doppio clic", "Foto intera ↔ 100 %"),
-        ("+, −, Rotellina", "Ingrandisci / riduci"),
+        ("Ctrl+0, Ctrl+1", "Foto intera / 100 %"),
+        ("+, −, Rotellina", "Ingrandisci / riduci – anche con Ctrl"),
         ("Trascina", "Sposta la foto ingrandita"),
-        ("F, F11", "Schermo intero"),
-        ("T", "Barra dei filtri: ordina e filtra"),
-        ("Tab", "Pannello dettagli"),
-        ("F6", "Striscia di miniature"),
-        ("M", "Mostra solo foto simili – di nuovo: tutte"),
         (
             "O",
             "Sovrapposizione: bordi nitidi → luci e ombre tagliate → disattivata",
@@ -465,18 +489,19 @@ pub static TEXTS: Texts = Texts {
             "F7",
             "Griglia di tutte le foto: ↑ ↓ una riga, + − dimensione, Invio apre la foto",
         ),
+        ("F, F11", "Schermo intero"),
+    ],
+    help_panels: [
+        (
+            "T",
+            "Barra dei filtri: ordina e filtra – per stelle, colori, nitidezza, persone",
+        ),
+        ("Tab", "Pannello dettagli"),
+        ("F6", "Striscia di miniature"),
         (
             "Maiusc+Tab",
             "Barra dei filtri, dettagli e striscia di miniature insieme",
         ),
-        (
-            "Spazio",
-            "Riproduci / metti in pausa un video (Maiusc+Spazio: foto successiva)",
-        ),
-        ("Alt+←, Alt+→", "Video: 5 s indietro / avanti"),
-        (",, .", "Video: un fotogramma indietro / avanti (in pausa)"),
-        ("↑, ↓", "Video: volume"),
-        ("B", "Descrizione: modifica commento e parole chiave"),
     ],
     help_edit: [
         (

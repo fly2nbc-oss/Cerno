@@ -104,6 +104,8 @@ impl ScoreBoard {
 pub struct TasteStatus {
     /// Rated or deleted photos with an embedding.
     pub examples: usize,
+    /// How many of them have stars, are rejected or were deleted.
+    pub sources: crate::db::TasteSources,
     pub model: Option<(usize, f32)>,
 }
 
@@ -274,6 +276,7 @@ impl Analyzer {
                 shutdown: false,
                 status: TasteStatus {
                     examples: 0,
+                    sources: Default::default(),
                     model: None,
                 },
             }),
@@ -819,8 +822,8 @@ fn taste_trainer(shared: &Shared) {
         }
 
         let started = Instant::now();
-        let examples = match shared.db.taste_examples() {
-            Ok(examples) => examples,
+        let (examples, sources) = match shared.db.taste_examples() {
+            Ok(found) => found,
             Err(err) => {
                 log::warn!("taste examples: {err:#}");
                 continue;
@@ -838,6 +841,7 @@ fn taste_trainer(shared: &Shared) {
         }
         lock(&shared.taste_state).status = TasteStatus {
             examples: examples.len(),
+            sources,
             model: model.as_ref().map(|m| (m.examples, m.error)),
         };
         *shared.taste.write().unwrap_or_else(|p| p.into_inner()) = model;

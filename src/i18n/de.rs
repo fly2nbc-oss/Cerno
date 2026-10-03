@@ -20,6 +20,9 @@ pub static TEXTS: Texts = Texts {
     filter_blurry_tooltip: "Unter den unschärfsten 20 % dieses Ordners und deutlich weich",
     filter_duplicate: "Dubletten",
     filter_duplicate_tooltip: "Jedes Foto außer dem ersten gleichen Pfad",
+    filter_people: "Mit Personen",
+    filter_no_people: "Ohne Personen",
+    filter_people_tooltip: "Erkannt an Gesichtern: Personen von hinten oder sehr klein im Bild zählen nicht.",
     filter_clear: "Alle anzeigen",
     media_all: "Fotos und Videos",
     media_photos: "Nur Fotos",
@@ -27,7 +30,7 @@ pub static TEXTS: Texts = Texts {
     media_no_videos: "Dieser Ordner enthält keine Videos",
     top_photos: |n| format!("Top {n} Fotos"),
     top_purposes: ["Highlights", "Vorschau", "Diashow", "Fotobuch", "Galerie"],
-    top_tooltip: "Fotos, Videos oder beides – oder nur die besten Fotos, nach deinen Sternen (sonst „Für dich“), Ästhetik und Schärfe, aus jeder Serie zuerst das beste. Abgelehnte und unscharfe Fotos und Dubletten zählen nicht. Die Auswahl bleibt, bis sich ein Filter ändert oder du „Reihenfolge aktualisieren“ wählst. An den Fotos wird nichts geändert.",
+    top_tooltip: "Fotos, Videos oder beides – oder nur die besten Fotos, nach deinen Sternen (sonst die Vorhersage), Ästhetik und Schärfe, aus jeder Serie zuerst das beste. Abgelehnte und unscharfe Fotos und Dubletten zählen nicht. Die Auswahl bleibt, bis sich ein Filter ändert oder du „Reihenfolge aktualisieren“ wählst. An den Fotos wird nichts geändert.",
     menu_top: "Beste Fotos",
     bulk_delete_top: "Nicht bei „Top“ – das wären die besten Fotos",
     filter_none_active: "Kein Filter aktiv",
@@ -62,7 +65,7 @@ pub static TEXTS: Texts = Texts {
     sort_name: "Name",
     sort_rating: "Sterne",
     sort_aesthetics: "Ästhetik",
-    sort_personal: "Für dich",
+    sort_personal: "Vorhersage",
     sort_sharpness: "Schärfe",
     sort_taken: "Aufnahmezeit",
     filter_unrated: "Ohne Sterne",
@@ -108,7 +111,7 @@ pub static TEXTS: Texts = Texts {
     star_tooltip: |n| format!("{n} ★ – Taste {n}"),
     personal_hint: |stars| {
         format!(
-            "Für dich: {stars:.1} ★ – so viele Sterne würdest du laut Cerno geben. Noch nicht deine Bewertung"
+            "Vorhersage: {stars:.1} ★ – so viele Sterne würdest du laut Cerno geben. Noch nicht deine Bewertung"
         )
     },
     zoom: |percent| format!("Zoom {percent:.0} %"),
@@ -146,6 +149,8 @@ pub static TEXTS: Texts = Texts {
     },
     cmd_auto_advance: "Automatisch weiter",
     cmd_subfolders: "Unterordner einlesen",
+    subfolders_on: "Unterordner werden mit eingelesen",
+    subfolders_off: "Nur dieser Ordner, ohne Unterordner",
     menu_sort: "Sortieren",
     menu_filter: "Filter",
     menu_view: "Ansicht",
@@ -264,6 +269,7 @@ pub static TEXTS: Texts = Texts {
     row_audio_bitrate: "Ton-Bitrate",
     row_bitrate: "Gesamt-Bitrate",
     no_audio: "keine Tonspur",
+    variable_frame_rate: "variabel",
     channels: |n| match n {
         1 => "Mono".to_owned(),
         2 => "Stereo".to_owned(),
@@ -283,7 +289,7 @@ pub static TEXTS: Texts = Texts {
     description_waiting: "Wird gelesen …",
     row_laion: "LAION (CLIP)",
     row_v25: "V2.5 (SigLIP)",
-    row_personal: "Für dich",
+    row_personal: "Vorhersage",
     row_frame: "Ganzes Bild",
     row_eyes: "Augen",
     row_highlights: "Ausgebrannte Lichter",
@@ -298,7 +304,7 @@ pub static TEXTS: Texts = Texts {
     ],
     explain_laion: "Wie schön eine KI das Foto findet – sie hat dafür viele Bewertungen von Menschen gelernt. Sie mag vor allem Menschen, Porträts und Essen.",
     explain_v25: "Eine neuere KI für dieselbe Frage, besser bei Alltagsfotos. Sie mag vor allem Landschaft, Wasser und Luftaufnahmen.",
-    explain_personal: "So viele Sterne würdest du laut Cerno vergeben. Es lernt aus deinen Sternen und den Fotos, die du löschst.",
+    explain_personal: "So viele Sterne würdest du laut Cerno vergeben. Sie lernt aus deinen Sternen und den Fotos, die du ablehnst oder löschst.",
     explain_aesthetics: "Der Wert unter dem Foto: das Mittel aus den beiden KIs darunter, von 0 % (wenig ansprechend) bis 100 % (sehr ansprechend). Die meisten Fotos liegen bei 40–60 %, ab 80 % ist sehr gut. Die Skala ist fest – ein Foto hat in jedem Ordner denselben Wert.",
     explain_frame: "Wie scharf die schärfsten Stellen sind – im Vergleich zu den anderen Fotos im Ordner. 80 % heißt: schärfer als 80 % davon.",
     explain_eyes: "Schärfe direkt an den Augen, wenn ein Gesicht da ist. Bei Porträts zählt das, nicht der Hintergrund.",
@@ -313,7 +319,7 @@ pub static TEXTS: Texts = Texts {
         "sauber – verrauscht",
         "farbenfroh – blass",
     ],
-    explain_models: "Wo die KIs laufen: DirectML = Grafikkarte, CPU = Prozessor. ± zeigt, wie weit „Für dich“ typischerweise danebenliegt.",
+    explain_models: "Wo die KIs laufen: DirectML = Grafikkarte, CPU = Prozessor. ± zeigt, wie weit die Vorhersage typischerweise danebenliegt.",
     note_no_embedding: "noch keine CLIP-Daten",
     note_learning: |n, of| format!("lernt – {n} von {of} Fotos"),
     note_analysing: "wird analysiert…",
@@ -333,11 +339,16 @@ pub static TEXTS: Texts = Texts {
     model_removing: "wird entfernt…",
     model_failed: "Fehler",
     model_faces: "Gesichter",
-    model_personal: "Für dich",
+    model_personal: "Vorhersage",
     taste_trained: |n, error| format!("{n} Fotos, ±{error:.1} ★"),
     taste_photos: |n| format!("{n} Fotos"),
     taste_untrained: "noch nicht trainiert",
-    btn_reset_taste: "Für dich zurücksetzen",
+    taste_sources: |stars, rejected, deleted| {
+        format!(
+            "Gelernt aus {stars} Fotos mit Sternen, {rejected} abgelehnten und {deleted} gelöschten – Abgelehnte und Gelöschte zählen als 0 ★."
+        )
+    },
+    btn_reset_taste: "Vorhersage zurücksetzen",
     btn_delete_models: "Modelle löschen",
     models_deleted: "Modelle gelöscht",
     models_downloaded: "Modelle geladen – die Ästhetik wird jetzt nachgerechnet",
@@ -348,7 +359,7 @@ pub static TEXTS: Texts = Texts {
     },
     copy_models_path: "Pfad kopieren",
     models_path_copied: "Pfad kopiert",
-    confirm_reset_taste_title: "Für dich zurücksetzen?",
+    confirm_reset_taste_title: "Vorhersage zurücksetzen?",
     confirm_reset_taste_text: "Cerno vergisst, was es aus deinen Sternen und Löschungen gelernt hat. Sterne in den Fotodateien bleiben unverändert.",
     confirm_delete_models_title: "Heruntergeladene Modelle löschen?",
     confirm_delete_models_text: |size| {
@@ -403,8 +414,11 @@ pub static TEXTS: Texts = Texts {
     welcome_more: "Alle Tastenkürzel: H",
     help_sections: [
         "Blättern",
-        "Bewerten und aussortieren",
+        "Bewerten",
+        "Aussortieren",
+        "Video",
         "Ansicht",
+        "Leisten",
         "Bearbeiten",
         "Weiteres",
     ],
@@ -417,6 +431,7 @@ pub static TEXTS: Texts = Texts {
         ("Pos1, Ende", "Erstes / letztes Foto"),
         ("Mausrad", "Über dem Filmstreifen: durch die Fotos blättern"),
         ("Strg+O", "Ordner öffnen (oder aufs Fenster ziehen)"),
+        ("Strg+U", "Unterordner einlesen – an / aus"),
     ],
     help_rate: [
         (
@@ -433,10 +448,13 @@ pub static TEXTS: Texts = Texts {
             "Ablehnen – steht in der Datei, nichts wird gelöscht; mit Umschalt weiter zum nächsten Foto",
         ),
         (
-            "Entf",
-            "Löschen: nach 5 Sekunden in den versteckten Ordner .originals – nichts geht verloren",
+            "6 – 9",
+            "Farbmarke: Rot, Gelb, Grün, Blau – noch einmal entfernt sie",
         ),
-        ("Esc", "Fotos zurückholen, die aufs Löschen warten"),
+        ("Umschalt+6 – 9", "Diese Farbe setzen und zum nächsten Foto"),
+        ("B", "Beschreibung: Kommentar und Stichwörter bearbeiten"),
+    ],
+    help_cull: [
         (
             "C",
             "Vergleichen: dieses Foto links festhalten, rechts blättern",
@@ -445,21 +463,27 @@ pub static TEXTS: Texts = Texts {
             "A, D",
             "Vergleichen: links / rechts behalten – das andere wird abgelehnt, der Vergleich endet",
         ),
+        ("M", "Nur ähnliche Fotos zeigen – noch einmal: wieder alle"),
         (
-            "6 – 9",
-            "Farbmarke: Rot, Gelb, Grün, Blau – noch einmal entfernt sie",
+            "Entf",
+            "Löschen: nach 5 Sekunden in den versteckten Ordner .originals – nichts geht verloren",
         ),
-        ("Umschalt+6 – 9", "Diese Farbe setzen und zum nächsten Foto"),
+        ("Esc", "Fotos zurückholen, die aufs Löschen warten"),
+    ],
+    help_video: [
+        (
+            "Leertaste",
+            "Abspielen / anhalten (Umschalt+Leertaste: nächstes Foto)",
+        ),
+        ("Alt+←, Alt+→", "5 s zurück / vor"),
+        (",, .", "Ein Bild zurück / vor (angehalten)"),
+        ("↑, ↓", "Lautstärke"),
     ],
     help_view: [
         ("Z, Doppelklick", "Ganzes Foto ↔ 100 %"),
-        ("+, −, Mausrad", "Hinein- / herauszoomen"),
+        ("Strg+0, Strg+1", "Ganzes Foto / 100 %"),
+        ("+, −, Mausrad", "Hinein- / herauszoomen – auch mit Strg"),
         ("Ziehen", "Gezoomtes Foto verschieben"),
-        ("F, F11", "Vollbild"),
-        ("T", "Filterleiste: sortieren und filtern"),
-        ("Tab", "Detailansicht"),
-        ("F6", "Filmstreifen"),
-        ("M", "Nur ähnliche Fotos zeigen – noch einmal: wieder alle"),
         (
             "O",
             "Overlay: scharfe Kanten → Über- und Unterbelichtung → aus",
@@ -468,18 +492,19 @@ pub static TEXTS: Texts = Texts {
             "F7",
             "Raster aller Fotos: ↑ ↓ eine Zeile, + − Größe, Enter öffnet das Foto",
         ),
+        ("F, F11", "Vollbild"),
+    ],
+    help_panels: [
+        (
+            "T",
+            "Filterleiste: sortieren und filtern – nach Sternen, Farben, Schärfe, Personen",
+        ),
+        ("Tab", "Detailansicht"),
+        ("F6", "Filmstreifen"),
         (
             "Umschalt+Tab",
             "Filterleiste, Details und Filmstreifen zusammen",
         ),
-        (
-            "Leertaste",
-            "Video abspielen / anhalten (Umschalt+Leertaste: nächstes Foto)",
-        ),
-        ("Alt+←, Alt+→", "Video: 5 s zurück / vor"),
-        (",, .", "Video: ein Bild zurück / vor (angehalten)"),
-        ("↑, ↓", "Video: Lautstärke"),
-        ("B", "Beschreibung: Kommentar und Stichwörter bearbeiten"),
     ],
     help_edit: [
         (

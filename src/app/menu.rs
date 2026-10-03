@@ -302,7 +302,12 @@ impl CernoApp {
                 Row::new(Action::AutoAdvance, t.cmd_auto_advance, None).toggle(self.auto_advance),
             ),
             Entry::Row(
-                Row::new(Action::Subfolders, t.cmd_subfolders, None).toggle(self.subfolders),
+                Row::new(
+                    Action::Subfolders,
+                    t.cmd_subfolders,
+                    Some(i18n::with_ctrl("U")),
+                )
+                .toggle(self.subfolders),
             ),
             Entry::Group(Group::new(
                 t.menu_language,
@@ -631,14 +636,7 @@ impl CernoApp {
                 self.db
                     .put_setting("auto_advance", if self.auto_advance { "1" } else { "0" });
             }
-            Action::Subfolders => {
-                self.subfolders = !self.subfolders;
-                self.db
-                    .put_setting("subfolders", if self.subfolders { "1" } else { "0" });
-                if let Some(dir) = self.dir.clone() {
-                    self.open(ctx, &dir);
-                }
-            }
+            Action::Subfolders => self.toggle_subfolders(ctx),
             Action::Language(lang) => self.set_language(ctx, lang),
             Action::Models => self.models_open = true,
             Action::Copy => self.begin_transfer(ctx, TransferMode::Copy),

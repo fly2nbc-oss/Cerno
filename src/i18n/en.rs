@@ -20,6 +20,9 @@ pub static TEXTS: Texts = Texts {
     filter_blurry_tooltip: "Among the blurriest 20 % of this folder and clearly soft",
     filter_duplicate: "Duplicates",
     filter_duplicate_tooltip: "Every photo except the first identical path",
+    filter_people: "With people",
+    filter_no_people: "Without people",
+    filter_people_tooltip: "Found by their faces: people seen from behind or very small in the picture don't count.",
     filter_clear: "Show all",
     media_all: "Photos and videos",
     media_photos: "Photos only",
@@ -33,7 +36,7 @@ pub static TEXTS: Texts = Texts {
         "Photo book",
         "Gallery",
     ],
-    top_tooltip: "Photos, videos or both – or only the best photos, by your stars (else For you), aesthetics and sharpness, the best of each series first. Rejected and blurry photos and duplicates don't count. The choice stays until a filter changes or you choose Refresh order. Nothing in the photos changes.",
+    top_tooltip: "Photos, videos or both – or only the best photos, by your stars (else the prediction), aesthetics and sharpness, the best of each series first. Rejected and blurry photos and duplicates don't count. The choice stays until a filter changes or you choose Refresh order. Nothing in the photos changes.",
     menu_top: "Best photos",
     bulk_delete_top: "Not with Top – these are the best photos",
     filter_none_active: "No filter is on",
@@ -68,7 +71,7 @@ pub static TEXTS: Texts = Texts {
     sort_name: "Name",
     sort_rating: "Rating",
     sort_aesthetics: "Aesthetics",
-    sort_personal: "For you",
+    sort_personal: "Prediction",
     sort_sharpness: "Sharpness",
     sort_taken: "Capture time",
     filter_unrated: "Unrated",
@@ -114,7 +117,7 @@ pub static TEXTS: Texts = Texts {
     star_tooltip: |n| format!("{n} ★ – key {n}"),
     personal_hint: |stars| {
         format!(
-            "For you: {stars:.1} ★ – the stars Cerno thinks you would give. Not your rating yet"
+            "Prediction: {stars:.1} ★ – the stars Cerno thinks you would give. Not your rating yet"
         )
     },
     zoom: |percent| format!("Zoom {percent:.0} %"),
@@ -152,6 +155,8 @@ pub static TEXTS: Texts = Texts {
     },
     cmd_auto_advance: "Auto advance",
     cmd_subfolders: "Include subfolders",
+    subfolders_on: "Subfolders included",
+    subfolders_off: "This folder only, without subfolders",
     menu_sort: "Sort",
     menu_filter: "Filter",
     menu_view: "View",
@@ -266,6 +271,7 @@ pub static TEXTS: Texts = Texts {
     row_audio_bitrate: "Audio bitrate",
     row_bitrate: "Total bitrate",
     no_audio: "no audio track",
+    variable_frame_rate: "variable",
     channels: |n| match n {
         1 => "Mono".to_owned(),
         2 => "Stereo".to_owned(),
@@ -285,7 +291,7 @@ pub static TEXTS: Texts = Texts {
     description_waiting: "Reading …",
     row_laion: "LAION (CLIP)",
     row_v25: "V2.5 (SigLIP)",
-    row_personal: "For you",
+    row_personal: "Prediction",
     row_frame: "Whole frame",
     row_eyes: "Eyes",
     row_highlights: "Blown highlights",
@@ -300,7 +306,7 @@ pub static TEXTS: Texts = Texts {
     ],
     explain_laion: "How beautiful the photo looks to an AI trained on many human ratings. It likes people, portraits and food most.",
     explain_v25: "A newer AI for the same question, better with everyday photos. It likes landscapes, water and aerial shots most.",
-    explain_personal: "The stars Cerno thinks you would give. It learns from your own stars and the photos you delete.",
+    explain_personal: "The stars Cerno thinks you would give. It learns from your own stars and the photos you reject or delete.",
     explain_aesthetics: "The value under the photo: the mean of the two AIs below, from 0 % (unappealing) to 100 % (very appealing). Most photos land at 40–60 %, from 80 % on it is very good. The scale is fixed – a photo reads the same in every folder.",
     explain_frame: "How sharp the sharpest parts are, compared with the other photos in this folder. 80 % means sharper than 80 % of them.",
     explain_eyes: "Sharpness right at the eyes, if there is a face. For portraits this counts, not the background.",
@@ -315,7 +321,7 @@ pub static TEXTS: Texts = Texts {
         "clean – noisy",
         "colourful – dull",
     ],
-    explain_models: "Where each AI runs: DirectML = graphics card, CPU = processor. ± is how far off For you typically is.",
+    explain_models: "Where each AI runs: DirectML = graphics card, CPU = processor. ± is how far off the prediction typically is.",
     note_no_embedding: "no CLIP embedding yet",
     note_learning: |n, of| format!("learning – {n} of {of} photos"),
     note_analysing: "analysing…",
@@ -335,11 +341,16 @@ pub static TEXTS: Texts = Texts {
     model_removing: "removing…",
     model_failed: "failed",
     model_faces: "Faces",
-    model_personal: "For you",
+    model_personal: "Prediction",
     taste_trained: |n, error| format!("{n} photos, ±{error:.1} ★"),
     taste_photos: |n| format!("{n} photos"),
     taste_untrained: "not trained yet",
-    btn_reset_taste: "Reset For you",
+    taste_sources: |stars, rejected, deleted| {
+        format!(
+            "Learned from {stars} photos with stars, {rejected} rejected and {deleted} deleted ones – rejected and deleted photos count as 0 ★."
+        )
+    },
+    btn_reset_taste: "Reset prediction",
     btn_delete_models: "Delete models",
     models_deleted: "Models deleted",
     models_downloaded: "Models downloaded – aesthetics are being added now",
@@ -348,7 +359,7 @@ pub static TEXTS: Texts = Texts {
     },
     copy_models_path: "Copy path",
     models_path_copied: "Path copied",
-    confirm_reset_taste_title: "Reset For you?",
+    confirm_reset_taste_title: "Reset the prediction?",
     confirm_reset_taste_text: "Cerno will forget what it learned from your stars and deletions. Star ratings in the photo files stay unchanged.",
     confirm_delete_models_title: "Delete downloaded models?",
     confirm_delete_models_text: |size| {
@@ -401,7 +412,9 @@ pub static TEXTS: Texts = Texts {
         ("Ctrl+K", "Menu with every function"),
     ],
     welcome_more: "All shortcuts: H",
-    help_sections: ["Browse", "Rate and sort out", "View", "Edit", "More"],
+    help_sections: [
+        "Browse", "Rate", "Sort out", "Video", "View", "Panels", "Edit", "More",
+    ],
     help_browse: [
         ("→, Space, PgDn", "Next photo (hold to run through)"),
         ("←, Backspace, PgUp", "Previous photo"),
@@ -411,6 +424,7 @@ pub static TEXTS: Texts = Texts {
             "Over the filmstrip: scroll through the photos",
         ),
         ("Ctrl+O", "Open a folder (or drop it onto the window)"),
+        ("Ctrl+U", "Include subfolders – on / off"),
     ],
     help_rate: [
         ("1 – 5", "Give stars – written into the photo file"),
@@ -421,10 +435,13 @@ pub static TEXTS: Texts = Texts {
             "Reject – marked in the file, nothing is deleted; with Shift go on to the next photo",
         ),
         (
-            "Del",
-            "Delete: moves into the hidden .originals folder after 5 seconds – nothing is lost",
+            "6 – 9",
+            "Colour label: red, yellow, green, blue – press again to remove",
         ),
-        ("Esc", "Bring back photos that are waiting to be deleted"),
+        ("Shift+6 – 9", "Set that colour and go to the next photo"),
+        ("B", "Description: edit the comment and keywords"),
+    ],
+    help_cull: [
         (
             "C",
             "Compare: pin this photo on the left, browse on the right",
@@ -433,21 +450,24 @@ pub static TEXTS: Texts = Texts {
             "A, D",
             "Compare: keep left / keep right – the other one is rejected, compare mode ends",
         ),
+        ("M", "Show only similar photos – again: all of them"),
         (
-            "6 – 9",
-            "Colour label: red, yellow, green, blue – press again to remove",
+            "Del",
+            "Delete: moves into the hidden .originals folder after 5 seconds – nothing is lost",
         ),
-        ("Shift+6 – 9", "Set that colour and go to the next photo"),
+        ("Esc", "Bring back photos that are waiting to be deleted"),
+    ],
+    help_video: [
+        ("Space", "Play / pause (Shift+Space: next photo)"),
+        ("Alt+←, Alt+→", "5 s back / on"),
+        (",, .", "One frame back / on (paused)"),
+        ("↑, ↓", "Volume"),
     ],
     help_view: [
         ("Z, Double-click", "Whole photo ↔ 100 %"),
-        ("+, −, Mouse wheel", "Zoom in / out"),
+        ("Ctrl+0, Ctrl+1", "Whole photo / 100 %"),
+        ("+, −, Mouse wheel", "Zoom in / out – with Ctrl too"),
         ("Drag", "Move the zoomed photo"),
-        ("F, F11", "Full screen"),
-        ("T", "Filter bar: sort and filter"),
-        ("Tab", "Details panel"),
-        ("F6", "Filmstrip"),
-        ("M", "Show only similar photos – again: all of them"),
         (
             "O",
             "Overlay: sharp edges → clipped highlights and shadows → off",
@@ -456,12 +476,16 @@ pub static TEXTS: Texts = Texts {
             "F7",
             "Grid of all photos: ↑ ↓ a row, + − size, Enter opens the photo",
         ),
+        ("F, F11", "Full screen"),
+    ],
+    help_panels: [
+        (
+            "T",
+            "Filter bar: sort and filter – by stars, colours, sharpness, people",
+        ),
+        ("Tab", "Details panel"),
+        ("F6", "Filmstrip"),
         ("Shift+Tab", "Filter bar, details and filmstrip together"),
-        ("Space", "Play / pause a video (Shift+Space: next photo)"),
-        ("Alt+←, Alt+→", "Video: 5 s back / on"),
-        (",, .", "Video: one frame back / on (paused)"),
-        ("↑, ↓", "Video: volume"),
-        ("B", "Description: edit the comment and keywords"),
     ],
     help_edit: [
         (

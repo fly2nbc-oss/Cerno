@@ -84,9 +84,16 @@ struct KeyInput {
     /// `Ctrl+M`: the action menu in the filter bar.
     actions: bool,
     toggle_zoom: bool,
+    /// `+`/`−`, with or without Ctrl.
     zoom_in: bool,
     zoom_out: bool,
+    /// `Ctrl+0`: the whole photo.
+    zoom_fit: bool,
+    /// `Ctrl+1`: 100 %.
+    zoom_actual: bool,
     open: bool,
+    /// `Ctrl+U`: subfolders on or off.
+    subfolders: bool,
     is_fullscreen: bool,
     straighten: bool,
     crop: bool,
@@ -125,6 +132,20 @@ fn shifted_digit(events: &[egui::Event]) -> Option<Rating> {
 
 fn shifted_label(events: &[egui::Event]) -> Option<Label> {
     digit_key(events, &LABEL_KEYS, true)
+}
+
+/// `Ctrl` and a digit, by the digit's place on the keyboard (see [`digit_key`]).
+fn ctrl_digit(events: &[egui::Event], digit: Key) -> bool {
+    events.iter().any(|event| {
+        matches!(event, egui::Event::Key { key, physical_key, pressed: true, repeat: false, modifiers }
+            if modifiers.command_only() && physical_key.unwrap_or(*key) == digit)
+    })
+}
+
+/// `Ctrl+Plus`, `Ctrl+Minus` and `Ctrl+0` zoom the photo: egui would otherwise take them
+/// (and the key events) for the size of the whole interface.
+pub(super) fn keep_zoom_keys(ctx: &egui::Context) {
+    ctx.options_mut(|options| options.zoom_with_keyboard = false);
 }
 
 /// `key` pressed now without modifiers – not a repeat of a held key.
@@ -214,12 +235,15 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         actions: i.modifiers.command && !i.modifiers.shift && i.key_pressed(Key::M),
         toggle_zoom: plain && i.key_pressed(Key::Z),
         // German layouts type "=" for Shift+0, which is "rate 0 and next" here.
-        zoom_in: !i.modifiers.command
+        zoom_in: !i.modifiers.alt
             && rate_and_next.is_none()
             && (i.key_pressed(Key::Plus) || i.key_pressed(Key::Equals)),
         // AZERTY types "-" on the 6 key, which is the red label here.
-        zoom_out: !i.modifiers.command && label.is_none() && i.key_pressed(Key::Minus),
+        zoom_out: !i.modifiers.alt && label.is_none() && i.key_pressed(Key::Minus),
+        zoom_fit: ctrl_digit(&i.events, Key::Num0),
+        zoom_actual: ctrl_digit(&i.events, Key::Num1),
         open: i.modifiers.command && i.key_pressed(Key::O),
+        subfolders: i.modifiers.command_only() && i.key_pressed(Key::U),
         is_fullscreen: i.viewport().fullscreen.unwrap_or(false),
         straighten: plain && i.key_pressed(Key::S),
         crop: plain && i.key_pressed(Key::R),
@@ -310,7 +334,12 @@ impl CernoApp {
         // Editing, comparing, zooming and the overlay need the single photo: the grid steps
         // aside first.
         if self.grid
-            && (keys.straighten || keys.crop || keys.compare || keys.toggle_zoom || keys.overlay)
+            && (keys.straighten
+                || keys.crop
+                || keys.compare
+                || keys.toggle_zoom
+                || keys.zoom_actual
+                || keys.overlay)
         {
             self.set_grid(false);
         }
@@ -334,6 +363,9 @@ impl CernoApp {
         }
         if keys.open {
             self.pick_folder(ctx);
+        }
+        if keys.subfolders {
+            self.toggle_subfolders(ctx);
         }
         // On a video shown alone the video keys act on it; Space plays and pauses there and
         // moves on everywhere else.
@@ -453,9 +485,21 @@ impl CernoApp {
             if keys.zoom_out {
                 self.zoom.zoom_by(frame, 1.0 / ZOOM_STEP, anchor);
             }
+            if keys.zoom_fit {
+                self.zoom.fit();
+            }
+            if keys.zoom_actual {
+                self.zoom.actual_size(frame, anchor);
+            }
         }
         // A video has no zoom frame (see `ui`): the keys say why nothing happens.
-        if on_video && (keys.toggle_zoom || keys.zoom_in || keys.zoom_out) {
+        if on_video
+            && (keys.toggle_zoom
+                || keys.zoom_in
+                || keys.zoom_out
+                || keys.zoom_fit
+                || keys.zoom_actual)
+        {
             self.notice = Some(super::notice::Notice::hint(crate::i18n::t().video_no_zoom));
         }
         if keys.toggle_fullscreen {
@@ -498,6 +542,7 @@ mod tests {
     /// The keys of one headless frame, read the way `handle_keys` reads them.
     fn read(events: Vec<Event>, modifiers: Modifiers) -> KeyInput {
         let ctx = egui::Context::default();
+        keep_zoom_keys(&ctx);
         let mut keys = None;
         let mut all = vec![Event::ModifiersChanged(modifiers)];
         all.extend(events);
@@ -628,6 +673,25 @@ mod tests {
         let ctrl = Modifiers::COMMAND;
         let keys = read(vec![key(Key::O, Key::O, ctrl)], ctrl);
         assert!(keys.open && !keys.overlay);
+    }
+
+    /// `Ctrl+U` switches the subfolders; `Ctrl+0` fits, `Ctrl+1` is 100 % and `Ctrl+Plus` /
+    /// `Ctrl+Minus` zoom – none of them rates, and egui's interface zoom doesn't take them.
+    #[test]
+    fn ctrl_keys_for_subfolders_and_zoom() {
+        let (plain, ctrl) = (Modifiers::NONE, Modifiers::COMMAND);
+        assert!(read(vec![key(Key::U, Key::U, ctrl)], ctrl).subfolders);
+        assert!(!read(vec![key(Key::U, Key::U, plain)], plain).subfolders);
+        let fit = read(vec![key(Key::Num0, Key::Num0, ctrl)], ctrl);
+        assert!(fit.zoom_fit && !fit.zoom_actual);
+        assert_eq!(fit.rating, None);
+        // On AZERTY the 1 key types "&": its place counts.
+        let actual = read(vec![key(Key::Num1, Key::Quote, ctrl)], ctrl);
+        assert!(actual.zoom_actual && !actual.zoom_fit);
+        assert_eq!(actual.rating, None);
+        assert!(read(vec![key(Key::Plus, Key::Plus, ctrl)], ctrl).zoom_in);
+        assert!(read(vec![key(Key::Minus, Key::Minus, ctrl)], ctrl).zoom_out);
+        assert!(!read(vec![key(Key::Num1, Key::Num1, plain)], plain).zoom_actual);
     }
 
     #[test]
