@@ -763,19 +763,17 @@ mod engine {
             }
         }
         // The sound output may fail after the first picture: playing is reached only once
-        // every sink has its device. Only an error message counts – a pause or a seek right
-        // after the first frame interrupts the state change too, without one (CI 2026-10-03:
-        // the test's pause and seek stopped the video with "failed to change its state").
+        // every sink has its device. It counts only when the sound output itself failed – a
+        // pause or a seek right after the first frame interrupts the pipeline's state change
+        // too (CI 2026-10-03: the test's pause and seek stopped the video with "failed to
+        // change its state"). Nothing else is taken from the bus here: `status` reads it, and
+        // a filtered pop would drop the end of a short clip.
         if !inner.stop.load(Ordering::Acquire)
             && let (Err(_), _, _) = playbin.state(gst::ClockTime::from_seconds(5))
-            && let Some(message) = bus.timed_pop_filtered(
-                gst::ClockTime::from_mseconds(500),
-                &[gst::MessageType::Error],
-            )
-            && let gst::MessageView::Error(err) = message.view()
+            && let (Err(err), _, _) = audio_sink.state(gst::ClockTime::ZERO)
         {
             give_back(inner, &playbin);
-            return Err(failure(err, &audio_sink));
+            return Err(Failure::Audio(anyhow!("the sound output: {err}")));
         }
         log::info!(
             "video: {} first frame after {} ms ({})",
