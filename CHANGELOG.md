@@ -23,6 +23,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 ### Fixed
 
 - **A video's details show only what applies to it** – the aesthetics, prediction, sharpness and exposure rows waited forever ("analysing…"), since videos are never analysed. A video recorded at a variable frame rate (as phones do) shows "variable" instead of no frame rate at all.
+- **A video paused or moved right after it started no longer stops** with "Cannot play the video" (since 1.5.1, rare).
 
 ## [1.5.1] – 2026-10-03
 

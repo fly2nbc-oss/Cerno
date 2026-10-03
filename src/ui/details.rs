@@ -1135,7 +1135,13 @@ mod tests {
         );
         output.textures_delta.clear();
         let shown: Vec<String> = texts(&output).into_iter().map(|(text, _)| text).collect();
-        for gone in ["AESTHETICS", "FOR YOU", "SHARPNESS", "EXPOSURE", "For you"] {
+        for gone in [
+            "AESTHETICS",
+            "PREDICTION",
+            "SHARPNESS",
+            "EXPOSURE",
+            "Prediction",
+        ] {
             assert!(
                 !shown.iter().any(|text| text.starts_with(gone)),
                 "{gone} is not drawn: {shown:?}"

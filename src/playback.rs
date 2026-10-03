@@ -763,11 +763,19 @@ mod engine {
             }
         }
         // The sound output may fail after the first picture: playing is reached only once
-        // every sink has its device.
+        // every sink has its device. Only an error message counts – a pause or a seek right
+        // after the first frame interrupts the state change too, without one (CI 2026-10-03:
+        // the test's pause and seek stopped the video with "failed to change its state").
         if !inner.stop.load(Ordering::Acquire)
-            && let (Err(err), _, _) = playbin.state(gst::ClockTime::from_seconds(5))
+            && let (Err(_), _, _) = playbin.state(gst::ClockTime::from_seconds(5))
+            && let Some(message) = bus.timed_pop_filtered(
+                gst::ClockTime::from_mseconds(500),
+                &[gst::MessageType::Error],
+            )
+            && let gst::MessageView::Error(err) = message.view()
         {
-            return Err(fail(err.into()));
+            give_back(inner, &playbin);
+            return Err(failure(err, &audio_sink));
         }
         log::info!(
             "video: {} first frame after {} ms ({})",
