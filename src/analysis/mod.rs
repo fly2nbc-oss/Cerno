@@ -12,6 +12,7 @@ pub mod aesthetic;
 pub mod attributes;
 pub mod exposure;
 pub mod faces;
+pub mod manifest;
 mod models;
 pub mod sharpness;
 pub mod taste;
@@ -35,7 +36,7 @@ use faces::FaceDetector;
 use taste::TasteModel;
 
 pub use models::ModelState;
-use models::{Slot, clip_path, run_model};
+use models::{Slot, clip_path, installed, run_model};
 
 /// Long side of the image the analysis works on.
 const ANALYSIS_SIZE: u32 = 2048;
@@ -157,6 +158,8 @@ struct Shared {
     taste_wake: Condvar,
     /// The result of "Delete models", until the UI picks it up.
     removal: Mutex<Option<Result<(), String>>>,
+    /// The result of the last model download, until the UI picks it up.
+    download: Mutex<Option<Result<(), String>>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -237,14 +240,9 @@ impl Analyzer {
         thumbs: Arc<thumbs::Thumbs>,
         files: Arc<FileLocks>,
     ) -> Self {
-        let present = |ok: bool| {
-            if ok {
-                ModelState::Available
-            } else {
-                ModelState::Missing
-            }
-        };
         let models = paths::models_dir().ok();
+        let present =
+            |pack| ModelState::present(models.as_deref().is_some_and(|dir| installed(dir, pack)));
         let shared = Arc::new(Shared {
             state: Mutex::new(State {
                 generation: 0,
@@ -263,9 +261,9 @@ impl Analyzer {
             files,
             last_navigation: Mutex::new(Instant::now()),
             clip: Mutex::new(Slot::NotLoaded),
-            clip_state: Mutex::new(present(clip_path().is_some_and(|p| p.is_file()))),
+            clip_state: Mutex::new(present(manifest::Pack::Clip)),
             v25: Mutex::new(Slot::NotLoaded),
-            v25_state: Mutex::new(present(models.as_deref().is_some_and(V25Model::installed))),
+            v25_state: Mutex::new(present(manifest::Pack::V25)),
             faces: Mutex::new(Slot::NotLoaded),
             faces_state: Mutex::new(ModelState::Available),
             embeddings: RwLock::default(),
@@ -281,6 +279,7 @@ impl Analyzer {
             }),
             taste_wake: Condvar::new(),
             removal: Mutex::new(None),
+            download: Mutex::new(None),
         });
         let mut workers: Vec<JoinHandle<()>> = (0..WORKERS)
             .map(|i| {

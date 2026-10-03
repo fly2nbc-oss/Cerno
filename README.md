@@ -61,7 +61,7 @@ The Windows files are not signed yet: SmartScreen asks once (*More info* → *Ru
 
 ## The values
 
-- **Aesthetics** – how appealing two AIs find the photo (LAION and V2.5, averaged). 0 % is unappealing, 100 % very appealing; most photos land at 40–60 %. A fixed scale: a photo has the same value in every folder. Needs the aesthetics model (about 1.2 GB), which Cerno offers to download once.
+- **Aesthetics** – how appealing two AIs find the photo (LAION and V2.5, averaged). 0 % is unappealing, 100 % very appealing; most photos land at 40–60 %. A fixed scale: a photo has the same value in every folder. Needs two image models (CLIP 1.2 GB and V2.5 1.7 GB). Cerno offers to download them once (*Menu → Models & data*), and an interrupted download continues where it stopped.
 - **Sharpness** – how sharp the photo is compared with the other photos in the folder, measured at the eyes when there is a face. "Probably blurry" marks the blurriest ones.
 - **For you** – the stars Cerno thinks you would give, learnt from your own ratings once you have rated 15 photos. It shows as lightly filled stars and never sets a rating.
 

@@ -31,10 +31,10 @@ On Linux, `--features heic` links the system libheif. The `.deb` depends on the 
 | Component | Use | License |
 |---|---|---|
 | CLIP ViT-L/14 vision model, ONNX export by [Xenova](https://huggingface.co/Xenova/clip-vit-large-patch14) of [OpenAI CLIP](https://github.com/openai/CLIP) | Image embeddings for the LAION score, the attributes and the personal taste model; downloaded once on request (1.2 GB) | MIT |
-| [SigLIP so400m-patch14-384](https://huggingface.co/google/siglip-so400m-patch14-384) vision tower, extracted by `tools/extract_siglip_vision.py` from the [onnx-community](https://huggingface.co/onnx-community/siglip-so400m-patch14-384) export | Image embeddings for the V2.5 score (1.7 GB) | Apache-2.0 |
-| [Aesthetic Predictor V2.5](https://github.com/discus0434/aesthetic-predictor-v2-5) head, collapsed by `tools/make_aesthetic_head.py` (`aesthetic-predictor-v2.5-head.bin`) | V2.5 aesthetics score | **AGPL-3.0**, © discus0434 |
+| [SigLIP so400m-patch14-384](https://huggingface.co/google/siglip-so400m-patch14-384) vision tower, extracted by `tools/extract_siglip_vision.py` from the [onnx-community](https://huggingface.co/onnx-community/siglip-so400m-patch14-384) export | Image embeddings for the V2.5 score; downloaded once on request (1.7 GB) | Apache-2.0 |
+| [Aesthetic Predictor V2.5](https://github.com/discus0434/aesthetic-predictor-v2-5) head, collapsed by `tools/make_aesthetic_head.py` (`aesthetic-predictor-v2.5-head.bin`) | V2.5 aesthetics score; downloaded together with SigLIP (4.6 KB) | **AGPL-3.0**, © discus0434 |
 
-The V2.5 head is deliberately kept out of the repository and the binary; Cerno reads it as a data file at runtime. Whoever hosts the converted file must distribute it under the AGPL-3.0 with a notice and a link to the original source.
+The V2.5 head is deliberately kept out of the repository and the binary; Cerno reads it as a data file at runtime. CLIP comes from Hugging Face at a pinned commit. SigLIP and the V2.5 head come from the release [`models-1`](https://github.com/fly2nbc-oss/Cerno/releases/tag/models-1) of this repository, which carries the AGPL-3.0 and Apache-2.0 texts and a `NOTICE.md` with the sources, commits and conversion scripts. Cerno uses a downloaded file only when its size and SHA-256 match the values in `src/analysis/manifest.rs`.
 
 ## Used from the system
 

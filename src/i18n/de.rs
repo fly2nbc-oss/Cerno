@@ -46,7 +46,15 @@ pub static TEXTS: Texts = Texts {
     refresh_order_tooltip: "Seit dem Sortieren und Filtern sind neue Bewertungen dazugekommen",
     analyzing_progress: |done, total| format!("Analyse {done} / {total}"),
     enable_aesthetics: "Ästhetik aktivieren…",
-    enable_aesthetics_tooltip: "Lädt einmalig das CLIP-Bildmodell herunter (1.2 GB)",
+    enable_aesthetics_tooltip: |size| {
+        format!("Lädt einmalig die Bildmodelle für die Ästhetik herunter ({size})")
+    },
+    add_v25: "V2.5 laden…",
+    add_v25_tooltip: |size| {
+        format!(
+            "Lädt einmalig das zweite Ästhetik-Modell herunter (SigLIP + V2.5, {size}) – die Ästhetik ist dann der Mittelwert beider Modelle"
+        )
+    },
     downloading_model: |percent| format!("Modell wird geladen: {percent:.0} %"),
     aesthetics_loading: "Ästhetik: Modell wird geladen…",
     aesthetics_failed: "Ästhetik: Fehler",
@@ -213,17 +221,30 @@ pub static TEXTS: Texts = Texts {
         text
     },
     download_title: "Ästhetik-Bewertung aktivieren",
-    download_text: |gb| {
-        format!(
-            "Für die Ästhetik-Bewertung braucht Cerno das Bildmodell CLIP ViT-L/14.\n\n\
-             Jetzt von Hugging Face herunterladen (Xenova/clip-vit-large-patch14, {gb:.1} GB)? \
-             Es wird in Cernos Datenordner gespeichert und nur einmal geladen."
-        )
+    download_text: |clip, v25, size| {
+        let mut text = String::from("Für die Ästhetik-Bewertung fehlt:\n");
+        if clip {
+            text.push_str("\n• CLIP ViT-L/14 – von Hugging Face (Xenova/clip-vit-large-patch14)");
+        }
+        if v25 {
+            text.push_str("\n• SigLIP + Aesthetic Predictor V2.5 – aus Cernos GitHub-Release models-1 (der V2.5-Teil steht unter AGPL-3.0)");
+        }
+        text.push_str(&format!(
+            "\n\nJetzt herunterladen ({size})? Die Dateien kommen in Cernos Datenordner und werden nur einmal geladen; ein unterbrochener Download macht beim nächsten Mal weiter."
+        ));
+        text
     },
     btn_download: "Herunterladen",
     btn_cancel: "Abbrechen",
     btn_close: "Schließen (Esc)",
-    aesthetics_offer: "Die Ästhetik-Bewertung braucht ein Modell (1.2 GB): Menü → Modelle & Daten.",
+    aesthetics_offer: |size| {
+        format!("Die Ästhetik-Bewertung braucht Bildmodelle ({size}): Menü → Modelle & Daten.")
+    },
+    v25_offer: |size| {
+        format!(
+            "Verlässlichere Ästhetik mit dem zweiten Modell V2.5 ({size}): Menü → Modelle & Daten."
+        )
+    },
 
     section_aesthetics: "Ästhetik",
     section_sharpness: "Schärfe (im Ordner)",
@@ -303,12 +324,22 @@ pub static TEXTS: Texts = Texts {
     btn_reset_taste: "Für dich zurücksetzen",
     btn_delete_models: "Modelle löschen",
     models_deleted: "Modelle gelöscht",
+    models_downloaded: "Modelle geladen – die Ästhetik wird jetzt nachgerechnet",
+    download_failed: |err| {
+        format!(
+            "Download fehlgeschlagen: {err} – ein neuer Versuch macht dort weiter, wo er aufgehört hat"
+        )
+    },
     copy_models_path: "Pfad kopieren",
     models_path_copied: "Pfad kopiert",
     confirm_reset_taste_title: "Für dich zurücksetzen?",
     confirm_reset_taste_text: "Cerno vergisst, was es aus deinen Sternen und Löschungen gelernt hat. Sterne in den Fotodateien bleiben unverändert.",
     confirm_delete_models_title: "Heruntergeladene Modelle löschen?",
-    confirm_delete_models_text: "Entfernt die CLIP- und SigLIP-Modelldateien von der Festplatte (etwa 3 GB). Gespeicherte Werte bleiben in der Datenbank; Ästhetik kann später wieder geladen werden.",
+    confirm_delete_models_text: |size| {
+        format!(
+            "Entfernt die heruntergeladenen Modelldateien von der Festplatte ({size}). Gespeicherte Werte bleiben in der Datenbank; die Modelle lassen sich später wieder laden."
+        )
+    },
 
     cmd_straighten: "Ausrichten",
     cmd_rotate_ccw: "90° gegen den Uhrzeigersinn",

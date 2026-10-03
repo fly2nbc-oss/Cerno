@@ -8,12 +8,13 @@ use std::time::{Duration, Instant};
 
 use eframe::egui::{self, ViewportCommand};
 
+use crate::analysis::manifest::Pack;
 use crate::i18n;
 use crate::library::{self, Library};
 use crate::view::{self, Facts, Percentiles, View, ViewOptions};
 
 use super::notice::Notice;
-use super::{CLIP_OFFER_SHOWN, CernoApp};
+use super::{CLIP_OFFER_SHOWN, CernoApp, V25_OFFER_SHOWN};
 
 pub(super) fn index_of(paths: &[PathBuf]) -> HashMap<PathBuf, usize> {
     paths
@@ -42,13 +43,9 @@ impl CernoApp {
                 Notice::hint((i18n::t().no_photos_in)(&library.dir.display().to_string()))
             });
             // No dialog at start: once the first folder with photos is open, a quiet hint says
-            // where the aesthetics model is downloaded.
-            if !library.paths.is_empty()
-                && self.analyzer.clip_model_missing()
-                && self.db.setting(CLIP_OFFER_SHOWN).as_deref() != Some("1")
-            {
-                self.notice = Some(Notice::hint(i18n::t().aesthetics_offer));
-                self.db.put_setting(CLIP_OFFER_SHOWN, "1");
+            // where the models are downloaded – all of them while CLIP is missing, else V2.5.
+            if !library.paths.is_empty() {
+                self.offer_models();
             }
         }
         self.all_index = index_of(&library.paths);
@@ -77,6 +74,23 @@ impl CernoApp {
         self.analyzer.set_library(Arc::clone(&self.all), index);
         self.view = View::default();
         self.rebuild_view(ctx, start);
+    }
+
+    /// Each hint once: the models as a whole while CLIP is missing, V2.5 alone once CLIP is
+    /// there (users of releases without the V2.5 download).
+    fn offer_models(&mut self) {
+        let t = i18n::t();
+        let missing = self.analyzer.status().missing();
+        let size = i18n::size(missing.iter().map(|pack| pack.bytes()).sum());
+        let shown = |key| self.db.setting(key).as_deref() == Some("1");
+        if missing.contains(&Pack::Clip) && !shown(CLIP_OFFER_SHOWN) {
+            self.notice = Some(Notice::hint((t.aesthetics_offer)(&size)));
+            self.db.put_setting(CLIP_OFFER_SHOWN, "1");
+            self.db.put_setting(V25_OFFER_SHOWN, "1");
+        } else if missing == [Pack::V25] && !shown(V25_OFFER_SHOWN) {
+            self.notice = Some(Notice::hint((t.v25_offer)(&size)));
+            self.db.put_setting(V25_OFFER_SHOWN, "1");
+        }
     }
 
     /// Re-applies sorting, filtering and pending deletions, staying on `keep` (or the current

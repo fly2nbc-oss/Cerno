@@ -52,7 +52,15 @@ pub static TEXTS: Texts = Texts {
     refresh_order_tooltip: "New scores arrived since sorting and filtering",
     analyzing_progress: |done, total| format!("Analyzing {done} / {total}"),
     enable_aesthetics: "Enable aesthetics…",
-    enable_aesthetics_tooltip: "Downloads the CLIP image model (1.2 GB) once",
+    enable_aesthetics_tooltip: |size| {
+        format!("Downloads the image models for aesthetics once ({size})")
+    },
+    add_v25: "Load V2.5…",
+    add_v25_tooltip: |size| {
+        format!(
+            "Downloads the second aesthetics model once (SigLIP + V2.5, {size}) – aesthetics is then the mean of both models"
+        )
+    },
     downloading_model: |percent| format!("Downloading model {percent:.0} %"),
     aesthetics_loading: "Aesthetics: loading model…",
     aesthetics_failed: "Aesthetics: failed",
@@ -215,17 +223,30 @@ pub static TEXTS: Texts = Texts {
         text
     },
     download_title: "Enable aesthetics scoring",
-    download_text: |gb| {
-        format!(
-            "Cerno needs the CLIP ViT-L/14 image model to score aesthetics.\n\n\
-             Download it now from Hugging Face (Xenova/clip-vit-large-patch14, {gb:.1} GB)? \
-             It is stored in Cerno's data folder and only downloaded once."
-        )
+    download_text: |clip, v25, size| {
+        let mut text = String::from("Aesthetics scoring is missing:\n");
+        if clip {
+            text.push_str("\n• CLIP ViT-L/14 – from Hugging Face (Xenova/clip-vit-large-patch14)");
+        }
+        if v25 {
+            text.push_str("\n• SigLIP + Aesthetic Predictor V2.5 – from Cerno's GitHub release models-1 (the V2.5 part is AGPL-3.0)");
+        }
+        text.push_str(&format!(
+            "\n\nDownload now ({size})? The files go into Cerno's data folder and are downloaded only once; an interrupted download continues next time."
+        ));
+        text
     },
     btn_download: "Download",
     btn_cancel: "Cancel",
     btn_close: "Close (Esc)",
-    aesthetics_offer: "Aesthetics scoring needs a model (1.2 GB): Menu → Models & data.",
+    aesthetics_offer: |size| {
+        format!("Aesthetics scoring needs image models ({size}): Menu → Models & data.")
+    },
+    v25_offer: |size| {
+        format!(
+            "More reliable aesthetics with the second model V2.5 ({size}): Menu → Models & data."
+        )
+    },
 
     section_aesthetics: "Aesthetics",
     section_sharpness: "Sharpness (within folder)",
@@ -305,12 +326,20 @@ pub static TEXTS: Texts = Texts {
     btn_reset_taste: "Reset For you",
     btn_delete_models: "Delete models",
     models_deleted: "Models deleted",
+    models_downloaded: "Models downloaded – aesthetics are being added now",
+    download_failed: |err| {
+        format!("Download failed: {err} – trying again continues where it stopped")
+    },
     copy_models_path: "Copy path",
     models_path_copied: "Path copied",
     confirm_reset_taste_title: "Reset For you?",
     confirm_reset_taste_text: "Cerno will forget what it learned from your stars and deletions. Star ratings in the photo files stay unchanged.",
     confirm_delete_models_title: "Delete downloaded models?",
-    confirm_delete_models_text: "Removes the CLIP and SigLIP model files from disk (about 3 GB). Saved scores stay in the database; aesthetics can be downloaded again later.",
+    confirm_delete_models_text: |size| {
+        format!(
+            "Removes the downloaded model files from disk ({size}). Saved scores stay in the database; the models can be downloaded again later."
+        )
+    },
 
     cmd_straighten: "Straighten",
     cmd_rotate_ccw: "Rotate 90° counter-clockwise",

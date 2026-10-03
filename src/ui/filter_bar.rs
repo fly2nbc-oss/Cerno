@@ -152,7 +152,7 @@ pub fn toolbar(
                         if done < total {
                             progress(ui, done, total);
                         }
-                        aesthetics_status(ui, &info.status.aesthetics, &mut out);
+                        aesthetics_status(ui, info.status, &mut out);
                     },
                 );
         },
@@ -509,31 +509,33 @@ fn overflow_hint(painter: &Painter, inner: Rect, content_width: f32, offset: f32
     }
 }
 
-fn aesthetics_status(ui: &mut Ui, state: &ModelState, out: &mut ToolbarOutput) {
+/// A download running, else a button for what is missing (CLIP and V2.5 together, or V2.5
+/// alone), else how the CLIP model loads.
+fn aesthetics_status(ui: &mut Ui, status: &Status, out: &mut ToolbarOutput) {
     let t = i18n::t();
     let muted = |text: String| RichText::new(text).color(tokens::MUTED);
-    match state {
-        ModelState::Missing => {
-            if ui
-                .button(t.enable_aesthetics)
-                .on_hover_text(t.enable_aesthetics_tooltip)
-                .clicked()
-            {
-                out.download_model = true;
-            }
+    if let Some((received, total)) = status.downloading() {
+        let percent = received as f64 / total.max(1) as f64 * 100.0;
+        ui.label(muted((t.downloading_model)(percent)));
+        return;
+    }
+    let missing = status.missing();
+    if !missing.is_empty() {
+        let (label, tooltip) = crate::ui::models::download_label(&missing);
+        if ui.button(label).on_hover_text(tooltip).clicked() {
+            out.download_model = true;
         }
-        ModelState::Downloading { received, total } => {
-            let percent = *received as f64 / (*total).max(1) as f64 * 100.0;
-            ui.label(muted((t.downloading_model)(percent)));
-        }
+        return;
+    }
+    match &status.aesthetics {
         ModelState::Loading => {
             ui.label(muted(t.aesthetics_loading.into()));
         }
-        ModelState::Available | ModelState::Ready { .. } | ModelState::Removing => {}
         ModelState::Failed(message) => {
             ui.label(RichText::new(t.aesthetics_failed).color(tokens::STATUS_ERROR))
                 .on_hover_text(message);
         }
+        _ => {}
     }
 }
 

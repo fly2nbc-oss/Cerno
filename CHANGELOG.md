@@ -9,7 +9,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ### Added
 
+- **V2.5 by download** – *Menu → Models & data* now downloads every missing aesthetics model with one button: CLIP (1.2 GB, from Hugging Face) and SigLIP + V2.5 (1.7 GB, from this project's release `models-1`). If only V2.5 is missing, the button says *Load V2.5…*. Before, V2.5 had to be put into the models folder by hand, and *Delete models* removed it for good. Each file is checked by size and SHA-256 before it is used. An interrupted download keeps what arrived and continues next time. A folder opened while V2.5 is missing shows a one-time hint, and a finished or failed download says so.
 - **Progress while copying or moving** – copying or moving what the filter shows puts a bar at the bottom of the photo area: which photo of how many, how much of the size is done, and the name of a large file (a video) while it takes its time. It sits above the deletion countdown and a video's play button.
+
+### Changed
+
+- *Delete models* is greyed out while a model downloads, and it also removes unfinished downloads.
 
 ## [1.4.0] – 2026-10-02
 

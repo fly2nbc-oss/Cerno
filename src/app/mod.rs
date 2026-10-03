@@ -71,6 +71,10 @@ const TARGET_SETTLE: Duration = Duration::from_millis(200);
 /// meant "the download dialog was declined", which also ends the hint.
 const CLIP_OFFER_SHOWN: &str = "clip_download_declined";
 
+/// Set once the hint about V2.5 has been shown (or a download was asked for) – CLIP users of
+/// releases before the V2.5 download get it once.
+const V25_OFFER_SHOWN: &str = "v25_offer_shown";
+
 pub struct CernoApp {
     db: Arc<Db>,
     /// Who reads or writes which photo (writer, loader, copy/move, edit render).
@@ -414,6 +418,13 @@ impl CernoApp {
             self.notice = Some(match removal {
                 Ok(()) => Notice::hint(i18n::t().models_deleted),
                 Err(err) => Notice::error(err),
+            });
+        }
+        if let Some(download) = self.analyzer.take_download() {
+            let t = i18n::t();
+            self.notice = Some(match download {
+                Ok(()) => Notice::hint(t.models_downloaded),
+                Err(err) => Notice::error((t.download_failed)(&err)),
             });
         }
     }

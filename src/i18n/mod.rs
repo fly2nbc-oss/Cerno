@@ -256,7 +256,10 @@ pub struct Texts {
     pub refresh_order_tooltip: &'static str,
     pub analyzing_progress: fn(usize, usize) -> String,
     pub enable_aesthetics: &'static str,
-    pub enable_aesthetics_tooltip: &'static str,
+    pub enable_aesthetics_tooltip: fn(&str) -> String,
+    /// Instead of `enable_aesthetics` when only V2.5 is missing.
+    pub add_v25: &'static str,
+    pub add_v25_tooltip: fn(&str) -> String,
     pub downloading_model: fn(f64) -> String,
     pub aesthetics_loading: &'static str,
     pub aesthetics_failed: &'static str,
@@ -451,13 +454,16 @@ pub struct Texts {
     /// the sizes so far (`i18n::sizes`); a large file in progress as `name (4.1 GB)`, else empty.
     pub transfer_progress: fn(bool, usize, usize, &str, &str) -> String,
     pub download_title: &'static str,
-    /// Download size in GB.
-    pub download_text: fn(f64) -> String,
+    /// Which models are missing (CLIP, V2.5), and their size together.
+    pub download_text: fn(bool, bool, &str) -> String,
     pub btn_download: &'static str,
     pub btn_cancel: &'static str,
     pub btn_close: &'static str,
-    /// One-time hint after the first folder opens while the CLIP model is missing.
-    pub aesthetics_offer: &'static str,
+    /// One-time hint after the first folder opens while the CLIP model is missing; the size
+    /// of the missing models.
+    pub aesthetics_offer: fn(&str) -> String,
+    /// One-time hint when CLIP is there but V2.5 is missing; its size.
+    pub v25_offer: fn(&str) -> String,
 
     // Details panel.
     pub section_aesthetics: &'static str,
@@ -530,6 +536,8 @@ pub struct Texts {
     pub btn_delete_models: &'static str,
     /// Hint once the model files are gone.
     pub models_deleted: &'static str,
+    pub models_downloaded: &'static str,
+    pub download_failed: fn(&str) -> String,
     /// Tooltip on the button that copies the models folder path.
     pub copy_models_path: &'static str,
     /// Shown briefly after that button copies the path.
@@ -537,7 +545,7 @@ pub struct Texts {
     pub confirm_reset_taste_title: &'static str,
     pub confirm_reset_taste_text: &'static str,
     pub confirm_delete_models_title: &'static str,
-    pub confirm_delete_models_text: &'static str,
+    pub confirm_delete_models_text: fn(&str) -> String,
 
     // Help page and start screen.
     pub help_title: &'static str,
@@ -640,7 +648,23 @@ mod tests {
             assert!(open.contains("D:/x") && open.contains("gone"), "{name}");
             assert!((t.no_photos_in)("D:/x").contains("D:/x"), "{name}");
             assert!((t.rating_not_saved)("locked").contains("locked"), "{name}");
-            assert!((t.download_text)(1.2).contains("1.2"), "{name}");
+            let both = (t.download_text)(true, true, "2.9 GB");
+            assert!(
+                both.contains("2.9 GB") && both.contains("CLIP") && both.contains("V2.5"),
+                "{name}"
+            );
+            let v25 = (t.download_text)(false, true, "1.7 GB");
+            assert!(v25.contains("1.7 GB") && !v25.contains("CLIP"), "{name}");
+            for with_size in [
+                t.enable_aesthetics_tooltip,
+                t.add_v25_tooltip,
+                t.aesthetics_offer,
+                t.v25_offer,
+                t.confirm_delete_models_text,
+            ] {
+                assert!(with_size("1.7 GB").contains("1.7 GB"), "{name}");
+            }
+            assert!((t.download_failed)("timeout").contains("timeout"), "{name}");
             let learning = (t.note_learning)(3, 15);
             assert!(learning.contains('3') && learning.contains("15"), "{name}");
             assert!((t.note_faces_too_small)(2).contains('2'), "{name}");

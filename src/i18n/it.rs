@@ -52,7 +52,15 @@ pub static TEXTS: Texts = Texts {
     refresh_order_tooltip: "Dopo l'ordinamento e il filtro sono arrivati nuovi punteggi",
     analyzing_progress: |done, total| format!("Analisi {done} / {total}"),
     enable_aesthetics: "Attiva estetica…",
-    enable_aesthetics_tooltip: "Scarica una sola volta il modello di immagini CLIP (1.2 GB)",
+    enable_aesthetics_tooltip: |size| {
+        format!("Scarica una sola volta i modelli di immagini per l'estetica ({size})")
+    },
+    add_v25: "Carica V2.5…",
+    add_v25_tooltip: |size| {
+        format!(
+            "Scarica una sola volta il secondo modello di estetica (SigLIP + V2.5, {size}): l'estetica diventa la media dei due modelli"
+        )
+    },
     downloading_model: |percent| format!("Download del modello {percent:.0} %"),
     aesthetics_loading: "Estetica: caricamento modello…",
     aesthetics_failed: "Estetica: errore",
@@ -204,17 +212,32 @@ pub static TEXTS: Texts = Texts {
         text
     },
     download_title: "Attiva la valutazione estetica",
-    download_text: |gb| {
-        format!(
-            "Per valutare l'estetica, Cerno ha bisogno del modello di immagini CLIP ViT-L/14.\n\n\
-             Vuoi scaricarlo ora da Hugging Face (Xenova/clip-vit-large-patch14, {gb:.1} GB)? \
-             Viene salvato nella cartella dati di Cerno e scaricato una sola volta."
-        )
+    download_text: |clip, v25, size| {
+        let mut text = String::from("Per la valutazione estetica manca:\n");
+        if clip {
+            text.push_str("\n• CLIP ViT-L/14 – da Hugging Face (Xenova/clip-vit-large-patch14)");
+        }
+        if v25 {
+            text.push_str("\n• SigLIP + Aesthetic Predictor V2.5 – dalla release GitHub models-1 di Cerno (la parte V2.5 è AGPL-3.0)");
+        }
+        text.push_str(&format!(
+            "\n\nScaricare ora ({size})? I file vanno nella cartella dati di Cerno e vengono scaricati una sola volta; un download interrotto riprende la volta successiva."
+        ));
+        text
     },
     btn_download: "Scarica",
     btn_cancel: "Annulla",
     btn_close: "Chiudi (Esc)",
-    aesthetics_offer: "La valutazione estetica richiede un modello (1.2 GB): Menu → Modelli e dati.",
+    aesthetics_offer: |size| {
+        format!(
+            "La valutazione estetica richiede modelli di immagini ({size}): Menu → Modelli e dati."
+        )
+    },
+    v25_offer: |size| {
+        format!(
+            "Estetica più affidabile con il secondo modello V2.5 ({size}): Menu → Modelli e dati."
+        )
+    },
 
     section_aesthetics: "Estetica",
     section_sharpness: "Nitidezza (nella cartella)",
@@ -294,12 +317,20 @@ pub static TEXTS: Texts = Texts {
     btn_reset_taste: "Reimposta Per te",
     btn_delete_models: "Elimina modelli",
     models_deleted: "Modelli eliminati",
+    models_downloaded: "Modelli scaricati: ora viene calcolata l'estetica",
+    download_failed: |err| {
+        format!("Download non riuscito: {err}. Un nuovo tentativo riprende da dove si era fermato")
+    },
     copy_models_path: "Copia percorso",
     models_path_copied: "Percorso copiato",
     confirm_reset_taste_title: "Reimpostare Per te?",
     confirm_reset_taste_text: "Cerno dimenticherà ciò che ha imparato dalle tue stelle e dalle eliminazioni. Le stelle nei file foto restano invariate.",
     confirm_delete_models_title: "Eliminare i modelli scaricati?",
-    confirm_delete_models_text: "Rimuove i file dei modelli CLIP e SigLIP dal disco (circa 3 GB). I punteggi salvati restano nel database; l'estetica può essere scaricata di nuovo.",
+    confirm_delete_models_text: |size| {
+        format!(
+            "Rimuove dal disco i file dei modelli scaricati ({size}). I punteggi salvati restano nel database; i modelli possono essere scaricati di nuovo."
+        )
+    },
 
     cmd_straighten: "Raddrizza",
     cmd_rotate_ccw: "Ruota di 90° a sinistra",

@@ -5,6 +5,8 @@ use std::path::PathBuf;
 
 use eframe::egui::{self, Rect, ViewportCommand, pos2, vec2};
 
+use crate::analysis::Status;
+use crate::analysis::manifest::Pack;
 use crate::i18n::{self, Lang};
 use crate::loader::Lookup;
 use crate::metadata::{Label, Rating};
@@ -15,7 +17,7 @@ use crate::ui::{confirm, filter_bar, help, models, palette, viewer};
 use crate::view::{FilterKind, Media, Scope, SortKey, TOP_LEVELS, ViewOptions};
 
 use super::gate::Change;
-use super::{CLIP_OFFER_SHOWN, CernoApp};
+use super::{CLIP_OFFER_SHOWN, CernoApp, V25_OFFER_SHOWN};
 
 /// What a confirmation card asks about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,15 +86,23 @@ impl CernoApp {
         self.confirm = Some((action, from_models));
     }
 
-    fn confirm_card(action: ConfirmAction) -> confirm::Confirm<'static> {
+    fn confirm_card(action: ConfirmAction, status: &Status) -> confirm::Confirm<'static> {
         let t = i18n::t();
         match action {
-            ConfirmAction::DownloadModel => confirm::Confirm {
-                title: t.download_title,
-                text: (t.download_text)(crate::analysis::aesthetic::MODEL_BYTES as f64 / 1e9),
-                confirm: t.btn_download,
-                danger: false,
-            },
+            ConfirmAction::DownloadModel => {
+                let missing = status.missing();
+                let size = i18n::size(missing.iter().map(|pack| pack.bytes()).sum());
+                confirm::Confirm {
+                    title: t.download_title,
+                    text: (t.download_text)(
+                        missing.contains(&Pack::Clip),
+                        missing.contains(&Pack::V25),
+                        &size,
+                    ),
+                    confirm: t.btn_download,
+                    danger: false,
+                }
+            }
             ConfirmAction::ResetTaste => confirm::Confirm {
                 title: t.confirm_reset_taste_title,
                 text: t.confirm_reset_taste_text.to_owned(),
@@ -101,7 +111,7 @@ impl CernoApp {
             },
             ConfirmAction::DeleteModels => confirm::Confirm {
                 title: t.confirm_delete_models_title,
-                text: t.confirm_delete_models_text.to_owned(),
+                text: (t.confirm_delete_models_text)(&i18n::size(status.installed_bytes())),
                 confirm: t.btn_delete_models,
                 danger: true,
             },
@@ -111,8 +121,10 @@ impl CernoApp {
     fn carry_out(&mut self, action: ConfirmAction) {
         match action {
             ConfirmAction::DownloadModel => {
+                // Asked for: no hint about the models any more.
                 self.db.put_setting(CLIP_OFFER_SHOWN, "1");
-                self.analyzer.download_model();
+                self.db.put_setting(V25_OFFER_SHOWN, "1");
+                self.analyzer.download_missing();
             }
             ConfirmAction::ResetTaste => self.analyzer.reset_taste_learning(),
             ConfirmAction::DeleteModels => self.analyzer.delete_installed_models(),
@@ -198,7 +210,11 @@ impl CernoApp {
             }
         }
         if let Some((action, back_to_models)) = self.confirm
-            && let Some(yes) = confirm::show(ctx, window, &Self::confirm_card(action))
+            && let Some(yes) = confirm::show(
+                ctx,
+                window,
+                &Self::confirm_card(action, &self.analyzer.status()),
+            )
         {
             self.confirm = None;
             self.models_open = back_to_models;
@@ -295,12 +311,10 @@ impl CernoApp {
             )),
             Entry::Row(Row::new(Action::Models, t.menu_models, None)),
         ];
-        if self.analyzer.status().aesthetics == crate::analysis::ModelState::Missing {
-            settings.push(Entry::Row(Row::new(
-                Action::EnableAesthetics,
-                t.enable_aesthetics,
-                None,
-            )));
+        let missing = self.analyzer.status().missing();
+        if !missing.is_empty() {
+            let (label, _) = models::download_label(&missing);
+            settings.push(Entry::Row(Row::new(Action::EnableAesthetics, label, None)));
         }
         entries.push(Entry::Group(Group::nested(t.menu_settings, None, settings)));
         entries.push(Entry::Row(Row::new(Action::Help, t.help_title, key("H"))));
