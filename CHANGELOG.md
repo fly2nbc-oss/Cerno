@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+## [1.5.0] – 2026-10-03
+
+Videos play inside Cerno with sound, the second aesthetics model downloads with one click, and copying shows how far it is.
+
 ### Added
 
 - **Videos play inside Cerno, with sound** – `Space` or `Enter` plays and pauses the video on screen (`Shift+Space` moves on), `J` / `L` jump 5 seconds back or on, `,` / `.` step one frame, `↑` / `↓` set the volume. A bar under the video shows the time, seeks with a click or a drag and has a speaker and a volume slider; it fades while the video plays. Phone videos stand the right way up, and 4K HEVC from a phone plays smoothly – on Windows the graphics card converts the frames. Another photo, the grid, compare mode, *Edit elsewhere*, copying, moving and deleting stop the video first. The Windows downloads bring their own GStreamer (about 45 MB); on Linux the `.deb` installs it and the AppImage uses the system's. Videos are no longer handed to the system's player.
@@ -15,6 +19,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ### Changed
 
+- `Space` on a video plays and pauses it; `Shift+Space` or `→` move on, as `Space` does on photos.
+- Videos are no longer zoomed or compared – the zoom showed a still frame that ffmpeg had to make a second time.
 - *Delete models* is greyed out while a model downloads, and it also removes unfinished downloads.
 
 ### Fixed
