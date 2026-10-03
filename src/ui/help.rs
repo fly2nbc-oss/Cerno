@@ -11,12 +11,13 @@ use crate::i18n::{self, HelpRow};
 use crate::theme::{self, text, tokens};
 use crate::ui::icons;
 
-const MAX_WIDTH: f32 = 940.0;
+const MAX_WIDTH: f32 = 1340.0;
 /// The start screen is a small card: one sentence, the button and five keys.
 const WELCOME_WIDTH: f32 = 560.0;
 const PAD: f32 = 28.0;
-/// Two columns of shortcuts from this content width on.
+/// Two columns of shortcuts from this content width on, three from the next.
 const TWO_COLUMNS: f32 = 700.0;
+const THREE_COLUMNS: f32 = 1100.0;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct HelpOutput {
@@ -205,8 +206,9 @@ fn content(ui: &mut Ui, welcome: bool) -> (HelpOutput, f32) {
         return (out, y - top.y);
     }
 
-    // Shortcuts: two columns on wide windows – left what culling needs (browse, rate, sort
-    // out, video), right the view, the panels, editing and the rest; both about as long.
+    // Shortcuts in reading order, split into columns of about the same length: three on wide
+    // windows (so the page needs no scrolling), else two – left what culling needs (browse,
+    // rate, sort out, video), right the view, the panels, editing and the rest.
     let sections: [(&str, &[HelpRow]); 8] = [
         (t.help_sections[0], &t.help_browse),
         (t.help_sections[1], &t.help_rate),
@@ -217,7 +219,9 @@ fn content(ui: &mut Ui, welcome: bool) -> (HelpOutput, f32) {
         (t.help_sections[6], &t.help_edit),
         (t.help_sections[7], &t.help_more),
     ];
-    let columns: Vec<&[(&str, &[HelpRow])]> = if width >= TWO_COLUMNS {
+    let columns: Vec<&[(&str, &[HelpRow])]> = if width >= THREE_COLUMNS {
+        vec![&sections[..2], &sections[2..5], &sections[5..]]
+    } else if width >= TWO_COLUMNS {
         vec![&sections[..4], &sections[4..]]
     } else {
         vec![&sections[..]]
@@ -262,7 +266,7 @@ fn section(painter: &Painter, x: f32, y: f32, width: f32, title: &str, rows: &[H
         );
         y += 22.0;
     }
-    let keys_width = (width * 0.42).min(210.0);
+    let keys_width = (width * 0.38).min(190.0);
     for (keys, action) in rows {
         let caps_height = keycaps(painter, pos2(x, y), keys_width, keys);
         let description = painter.layout(

@@ -294,6 +294,32 @@ mod tests {
         );
     }
 
+    /// The prediction's count is more than the photos with stars: the card says what it is.
+    #[test]
+    fn the_card_says_what_the_prediction_learns_from() {
+        let t = crate::i18n::Lang::En.texts();
+        let mut learning = status(ModelState::Available, ModelState::Available);
+        let (_, untrained) = run(&learning, Vec::new());
+        let breakdown = (t.taste_sources)(167, 2, 542);
+        assert!(!untrained.iter().any(|text| text.contains("Learned from")));
+        learning.taste = TasteStatus {
+            examples: 711,
+            sources: crate::db::TasteSources {
+                stars: 167,
+                rejected: 2,
+                deleted: 542,
+            },
+            model: Some((711, 0.8)),
+        };
+        let (_, trained) = run(&learning, Vec::new());
+        assert!(
+            trained
+                .iter()
+                .any(|text| *text == crate::i18n::keep_together(&breakdown)),
+            "{trained:?}"
+        );
+    }
+
     #[test]
     fn the_label_names_what_is_missing() {
         let t = crate::i18n::Lang::En.texts();

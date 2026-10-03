@@ -105,7 +105,7 @@ ui/video_controls.rs the bar under a playing video: play / pause, the time, the 
 ui/overlays.rs       over the photo area: compare labels, deletion countdown and copy progress (stacked above a video's play button, `bottom_slot`), notices, drop hint, language flash
 ui/details.rs        side panel with the current photo's values (and its size / load time / GPS position with Google Maps and OpenStreetMap links); each row's explanation is its tooltip, only the CLIP attributes fold open (`attributes_open`); scrolls; the tab strip (Werte | Beschreibung)
 ui/description.rs    the description tab: comment (taken when its field is left) and keyword chips (`Enter` adds, × removes); drafts across frames
-ui/help.rs           help page (`H`/`F1`/`?`, modal foreground area) and the small start screen (five keys, H for the rest); eight sections in two columns of about equal length – left browse, rate, sort out, video; right view, panels, edit, more
+ui/help.rs           help page (`H`/`F1`/`?`, modal foreground area) and the small start screen (five keys, H for the rest); eight sections in reading order, split into columns of about equal length – three on wide windows so nothing scrolls (browse, rate │ sort out, video, view │ panels, edit, more), else two (browse … video │ view … more)
 ui/palette.rs        the menus: burger (`Ctrl+K`) and action menu (`Ctrl+M`) – nested groups (`State::open` is the path of open submenus, one cursor per level), switches/choices, keyboard on the deepest level
 ui/modal.rs          card over the dimmed window (height remembered from the last frame)
 ui/confirm.rs        confirmation card (Enter / Esc) instead of system message boxes

@@ -17,7 +17,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ### Changed
 
-- **The help page is sorted anew** – eight short sections (browse, rate, sort out, video, view, panels, edit, more) in two columns of about the same length, with the new keys.
+- **The help page is sorted anew** – eight short sections (browse, rate, sort out, video, view, panels, edit, more) in columns of about the same length – three on a wide window, so nothing scrolls – with the new keys.
 - **"For you" is now called "Prediction"** („Vorhersage“, « Prédiction », «Predicción», «Previsione»).
 
 ### Fixed
