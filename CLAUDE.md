@@ -99,7 +99,7 @@ ui/grid.rs           the grid (`F7`): every photo as a cell, only visible rows d
 ui/cells.rs          one thumbnail cell (filmstrip and grid): picture, frame, stars, colour stripe, blurry and duplicate marks, a play button over videos, one tooltip
 ui/filter_bar.rs     filter bar: the scope box (photos / videos / Top N), filter chips by group, colour squares, similar; status, sort, the count with its × and Action
 ui/info_bar.rs       two-row info bar (stars with For you's light hint, the aesthetics and sharpness meters, zoom, help and menu)
-ui/overlays.rs       over the photo area: compare labels, deletion countdown, notices, drop hint, language flash
+ui/overlays.rs       over the photo area: compare labels, deletion countdown and copy progress (stacked above a video's play button, `bottom_slot`), notices, drop hint, language flash
 ui/details.rs        side panel with the current photo's values (and its size / load time / GPS position with Google Maps and OpenStreetMap links); each row's explanation is its tooltip, only the CLIP attributes fold open (`attributes_open`); scrolls; the tab strip (Werte | Beschreibung)
 ui/description.rs    the description tab: comment (taken when its field is left) and keyword chips (`Enter` adds, × removes); drafts across frames
 ui/help.rs           help page (`H`/`F1`/`?`, modal foreground area) and the small start screen (five keys, H for the rest)
@@ -131,7 +131,7 @@ histogram.rs         RGB histogram of the display image
 overlay.rs           the check overlay (`O`): sharp edges or clipped pixels as a transparent RGBA image, by region (tiles, strips)
 edit.rs              straighten / crop geometry and the pixel work that writes a new JPEG
 originals.rs         `.originals` beside the photos: the first original before an edit (Ctrl+Z), deleted photos set aside there, originals following a move, the one-time move out of data/backups
-transfer.rs          copy / move of the photos the filter shows (background thread)
+transfer.rs          copy / move of the photos the filter shows (background thread); `Progress` counts files and bytes per finished file (skipped and failed ones too) – `fs::copy` stays, so a large video moves the bar only when it is done, its name shows meanwhile
 deletion.rs          delayed deletion queue (countdown, undo, worker that sets photos aside into `.originals`)
 db.rs                SQLite index: files (path+stamp → fingerprint, rating, label), images (scores, thumbnail, embedding, taken_ms, camera, metadata_version), feedback (deletions), backups (kept originals), settings; additive migration
 tools/*.py           one-off model preparation (collapse heads, extract the SigLIP tower, CLIP prompt vectors); `i18n_edit.py` for texts; `make_icon.py` for the app icon; `benchmark_excire.py` compares LAION / V2.5 with Excire Foto's aesthetics (reads both databases read-only, only while Excire is closed; its output names photos and stays outside the repository)

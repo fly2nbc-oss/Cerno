@@ -78,7 +78,8 @@ impl CernoApp {
         if let Some(outcome) = self.transfers.poll() {
             self.finish_transfer(ctx, outcome);
         }
-        if waiting {
+        // While it waits for rating writes, and while it runs: the progress moves on its own.
+        if waiting || self.transfers.is_busy() {
             ctx.request_repaint_after(Duration::from_millis(200));
         }
     }

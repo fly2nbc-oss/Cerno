@@ -3,6 +3,7 @@ use super::{DateStyle, Texts};
 pub static TEXTS: Texts = Texts {
     date_style: DateStyle::DayMonthYear('.'),
     compass: ["N", "S", "O", "W"],
+    size_units: ["KB", "MB", "GB"],
     key_ctrl: "Strg",
     key_shift: "Umschalt",
     key_delete: "Entf",
@@ -200,6 +201,14 @@ pub static TEXTS: Texts = Texts {
         let mut text = format!("{done} {verb}, {skipped} übersprungen");
         if !name.is_empty() {
             text.push_str(&format!(" – {name}: {err}"));
+        }
+        text
+    },
+    transfer_progress: |moved, at, total, sizes, file| {
+        let verb = if moved { "Verschiebe" } else { "Kopiere" };
+        let mut text = format!("{verb} {at} / {total} Fotos – {sizes}");
+        if !file.is_empty() {
+            text.push_str(&format!(" – {file}"));
         }
         text
     },

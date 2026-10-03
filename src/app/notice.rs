@@ -1,10 +1,13 @@
-//! Messages over the photo: hints, errors, "working" notes and the deletion countdown.
+//! Messages over the photo: hints, errors, "working" notes, the deletion countdown and the
+//! copy progress.
 
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Rect};
 
 use crate::i18n;
+use crate::library;
+use crate::transfer::{Mode as TransferMode, Snapshot};
 use crate::ui::overlays;
 
 use super::CernoApp;
@@ -12,6 +15,34 @@ use super::CernoApp;
 /// How long a hint stays at least (longer ones a little longer), and how long it fades.
 const NOTICE_TIME: Duration = Duration::from_secs(5);
 const NOTICE_FADE: Duration = Duration::from_millis(400);
+
+/// A file this large gets its name in the copy progress: it takes a while on its own, and
+/// the bar only moves once it is done.
+const BIG_FILE: u64 = 100_000_000;
+
+/// `Copying 12 / 340 photos – 1.2 / 8.4 GB`, plus the name of a large file in progress.
+fn transfer_text(mode: TransferMode, progress: &Snapshot) -> String {
+    let at = (progress.files_done + 1).min(progress.files_total);
+    // Until the worker starts (it waits for rating writes) the sizes are not known.
+    let sizes = if progress.bytes_total == 0 && progress.files_done == 0 {
+        "…".to_owned()
+    } else {
+        i18n::sizes(progress.bytes_done, progress.bytes_total)
+    };
+    let file = match &progress.current {
+        Some((path, size)) if *size >= BIG_FILE => {
+            format!("{} ({})", library::file_name_lossy(path), i18n::size(*size))
+        }
+        _ => String::new(),
+    };
+    (i18n::t().transfer_progress)(
+        mode == TransferMode::Move,
+        at,
+        progress.files_total,
+        &sizes,
+        &file,
+    )
+}
 
 /// A message over the photo. Hints fade on their own; errors stay until Esc or a click;
 /// "working" messages stay until the work is done.
@@ -60,11 +91,22 @@ impl Notice {
 }
 
 impl CernoApp {
-    /// The deletion countdown, then the notice – unless a failed rating write is reported,
-    /// which wins as long as the writer reports it.
+    /// The deletion countdown and the copy progress – stacked above a video's play button –
+    /// then the notice, unless a failed rating write is reported, which wins as long as the
+    /// writer reports it.
     pub(super) fn draw_messages(&mut self, ui: &egui::Ui, area: Rect) {
+        let mut slot = usize::from(self.video_on_screen(area));
         if let Some((count, left)) = self.deletions.countdown(Instant::now()) {
-            overlays::delete_countdown(ui, area, count, left);
+            overlays::delete_countdown(ui, overlays::bottom_slot(area, slot), count, left);
+            slot += 1;
+        }
+        if let Some((mode, progress)) = self.transfers.progress() {
+            overlays::transfer_progress(
+                ui,
+                overlays::bottom_slot(area, slot),
+                transfer_text(mode, &progress),
+                progress.fraction(),
+            );
         }
         let writer_error = self
             .writer
@@ -115,5 +157,40 @@ mod tests {
         assert_eq!(error.opacity(now + NOTICE_TIME * 3), Some(1.0));
         let working = Notice::working("Writing the photo…");
         assert_eq!(working.opacity(now + NOTICE_TIME * 3), Some(1.0));
+    }
+
+    /// Tests never switch the language, so the texts are English.
+    #[test]
+    fn the_copy_progress_names_the_photo_and_a_large_file() {
+        let waiting = Snapshot {
+            files_total: 340,
+            ..Snapshot::default()
+        };
+        assert_eq!(
+            transfer_text(TransferMode::Copy, &waiting),
+            "Copying 1 / 340 photos – …"
+        );
+        let running = Snapshot {
+            files_total: 340,
+            files_done: 11,
+            bytes_total: 8_400_000_000,
+            bytes_done: 1_200_000_000,
+            current: Some(("D:/100CANON/MVI_0001.MP4".into(), 4_100_000_000)),
+        };
+        assert_eq!(
+            transfer_text(TransferMode::Move, &running),
+            "Moving 12 / 340 photos – 1.2 / 8.4 GB – MVI_0001.MP4 (4.1 GB)"
+        );
+        let small = Snapshot {
+            current: Some(("D:/IMG_1.JPG".into(), 5_000_000)),
+            ..running
+        };
+        assert!(!transfer_text(TransferMode::Copy, &small).contains("IMG_1"));
+        let done = Snapshot {
+            files_done: 340,
+            current: None,
+            ..small
+        };
+        assert!(transfer_text(TransferMode::Copy, &done).starts_with("Copying 340 / 340"));
     }
 }

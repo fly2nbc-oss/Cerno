@@ -1,9 +1,9 @@
-//! Drawn over the photo area: compare labels, the deletion countdown, notices, the drop
-//! hint, placeholder text and the language flag.
+//! Drawn over the photo area: compare labels, the deletion countdown, the copy progress,
+//! notices, the drop hint, placeholder text and the language flag.
 
 use eframe::egui::{
-    Align2, Color32, CursorIcon, FontId, Id, Painter, Rect, Response, Sense, Stroke, StrokeKind,
-    Ui, pos2, vec2,
+    Align2, Color32, CursorIcon, FontId, Id, Painter, Pos2, Rect, Response, Sense, Stroke,
+    StrokeKind, Ui, pos2, vec2,
 };
 
 use crate::analysis::aesthetic;
@@ -22,7 +22,7 @@ pub fn video_badge(ui: &Ui, area: Rect, note: Option<&str>, slot: usize) -> Resp
         tokens::TEXT,
     );
     let size = vec2(galley.size().x + 46.0, 34.0);
-    let pill = Rect::from_center_size(pos2(area.center().x, area.bottom() - 44.0), size);
+    let pill = Rect::from_center_size(bottom_slot(area, 0), size);
     // Clickable: the play button plays the video.
     let response = ui
         .interact(pill, Id::new(("video-play", slot)), Sense::click())
@@ -166,24 +166,32 @@ pub fn compare_scores(
     );
 }
 
-/// Countdown for pending deletions, bottom centre of the photo area. The bar runs out, Esc
-/// brings everything back.
-pub fn delete_countdown(ui: &Ui, area: Rect, count: usize, left: f32) {
-    let painter = ui.painter();
+/// Where the `slot`-th pill from the bottom of the photo area is centred. A video's play
+/// button takes the lowest place; the deletion countdown and the copy progress stack above
+/// whatever is shown below them.
+pub fn bottom_slot(area: Rect, slot: usize) -> Pos2 {
+    pos2(area.center().x, area.bottom() - 44.0 - 70.0 * slot as f32)
+}
+
+/// Countdown for pending deletions. The bar runs out, Esc brings everything back.
+pub fn delete_countdown(ui: &Ui, centre: Pos2, count: usize, left: f32) {
     let text = (i18n::t().deleting)(count);
+    bar_pill(ui, centre, text, left, tokens::STATUS_WARN);
+}
+
+/// How far a copy or move is: what it does as text, the share done as a bar in the accent
+/// (the accent marks progress).
+pub fn transfer_progress(ui: &Ui, centre: Pos2, text: String, done: f32) {
+    bar_pill(ui, centre, text, done, tokens::ACCENT);
+}
+
+fn bar_pill(ui: &Ui, centre: Pos2, text: String, share: f32, colour: Color32) {
+    let painter = ui.painter();
     let galley = painter.layout_no_wrap(text, FontId::proportional(text::BODY), tokens::TEXT);
     let width = (galley.size().x + 32.0).max(300.0);
-    let pill = Rect::from_center_size(
-        pos2(area.center().x, area.bottom() - 44.0),
-        vec2(width, 48.0),
-    );
+    let pill = Rect::from_center_size(centre, vec2(width, 48.0));
     painter.rect_filled(pill, 8.0, tokens::SURFACE);
-    painter.rect_stroke(
-        pill,
-        8.0,
-        Stroke::new(1.0, tokens::STATUS_WARN),
-        StrokeKind::Inside,
-    );
+    painter.rect_stroke(pill, 8.0, Stroke::new(1.0, colour), StrokeKind::Inside);
     painter.galley(
         pos2(pill.center().x - galley.size().x / 2.0, pill.top() + 9.0),
         galley,
@@ -195,9 +203,12 @@ pub fn delete_countdown(ui: &Ui, area: Rect, count: usize, left: f32) {
     );
     painter.rect_filled(track, 3.0, tokens::LINE);
     painter.rect_filled(
-        Rect::from_min_size(track.min, vec2(track.width() * left, track.height())),
+        Rect::from_min_size(
+            track.min,
+            vec2(track.width() * share.clamp(0.0, 1.0), track.height()),
+        ),
         3.0,
-        tokens::STATUS_WARN,
+        colour,
     );
 }
 
@@ -301,4 +312,58 @@ pub fn language_flash(painter: &Painter, area: Rect, lang: Lang, opacity: f32) {
         name,
         tokens::TEXT,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eframe::egui::{Context, RawInput, Shape};
+
+    /// The copy progress stacks above the slot below it, says what it does and fills its bar
+    /// in the accent as far as it is.
+    #[test]
+    fn the_copy_progress_sits_above_and_fills_its_share() {
+        let ctx = Context::default();
+        let area = Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
+        let mut output = ctx.run_ui(
+            RawInput {
+                screen_rect: Some(area),
+                ..Default::default()
+            },
+            |ui| {
+                transfer_progress(ui, bottom_slot(area, 1), "Copying 3 / 4".to_owned(), 0.5);
+            },
+        );
+        output.textures_delta.clear();
+        let shapes: Vec<Shape> = output.shapes.into_iter().map(|c| c.shape).collect();
+        let text = shapes
+            .iter()
+            .find_map(|shape| match shape {
+                Shape::Text(text) if text.galley.text() == "Copying 3 / 4" => {
+                    Some(text.visual_bounding_rect())
+                }
+                _ => None,
+            })
+            .expect("the text");
+        assert!(
+            text.bottom() < bottom_slot(area, 0).y - 17.0,
+            "above the play button"
+        );
+        let bars: Vec<Rect> = shapes
+            .iter()
+            .filter_map(|shape| match shape {
+                Shape::Rect(rect) if rect.fill == tokens::ACCENT => Some(rect.rect),
+                _ => None,
+            })
+            .collect();
+        let track = shapes
+            .iter()
+            .find_map(|shape| match shape {
+                Shape::Rect(rect) if rect.fill == tokens::LINE => Some(rect.rect),
+                _ => None,
+            })
+            .expect("the track");
+        assert_eq!(bars.len(), 1);
+        assert!((bars[0].width() - track.width() / 2.0).abs() < 0.5);
+    }
 }

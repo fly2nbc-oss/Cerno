@@ -151,6 +151,31 @@ fn format_coordinates(t: &Texts, lat: f64, lon: f64) -> String {
     )
 }
 
+/// `850 MB` / `4.1 GB` with this language's unit (French `Go`); 1 GB = 10⁹ bytes.
+pub fn size(bytes: u64) -> String {
+    format_sizes(t(), None, bytes)
+}
+
+/// `1.2 / 8.4 GB`: both in the unit of the total.
+pub fn sizes(done: u64, total: u64) -> String {
+    format_sizes(t(), Some(done), total)
+}
+
+fn format_sizes(t: &Texts, done: Option<u64>, total: u64) -> String {
+    let [kb, mb, gb] = t.size_units;
+    let (scale, unit, decimals) = match total {
+        0..1_000_000 => (1e3, kb, 0),
+        1_000_000..10_000_000 => (1e6, mb, 1),
+        10_000_000..1_000_000_000 => (1e6, mb, 0),
+        _ => (1e9, gb, 1),
+    };
+    let show = |bytes: u64| format!("{:.*}", decimals, bytes as f64 / scale);
+    match done {
+        Some(done) => format!("{} / {} {unit}", show(done), show(total)),
+        None => format!("{} {unit}", show(total)),
+    }
+}
+
 /// `Strg+K` / `Ctrl+K` with this language's key name.
 pub fn with_ctrl(key: &str) -> String {
     format!("{}+{key}", t().key_ctrl)
@@ -178,6 +203,8 @@ pub struct Texts {
     pub date_style: DateStyle,
     /// North, south, east, west.
     pub compass: [&'static str; 4],
+    /// Kilobyte, megabyte, gigabyte (French `Ko`, `Mo`, `Go`).
+    pub size_units: [&'static str; 3],
     /// Modifier key names as printed on this language's keyboards (`Strg`, `Umschalt`).
     pub key_ctrl: &'static str,
     pub key_shift: &'static str,
@@ -420,6 +447,9 @@ pub struct Texts {
     /// `moved`: the verb; then how many succeeded, how many were skipped, and the first
     /// failure (`name` and `error` empty when every file worked).
     pub transfer_done: fn(bool, usize, usize, &str, &str) -> String,
+    /// While a copy or move runs: `moved`: the verb; the photo in progress (from 1) of how many;
+    /// the sizes so far (`i18n::sizes`); a large file in progress as `name (4.1 GB)`, else empty.
+    pub transfer_progress: fn(bool, usize, usize, &str, &str) -> String,
     pub download_title: &'static str,
     /// Download size in GB.
     pub download_text: fn(f64) -> String,
@@ -565,6 +595,18 @@ mod tests {
             );
             let copied = (t.transfer_done)(false, 1, 0, "", "");
             assert!(copied.contains('1') && copied.contains('0'), "{name}");
+            let moving = (t.transfer_progress)(true, 12, 340, "1.2 / 8.4 GB", "V.MP4 (4.1 GB)");
+            assert!(
+                moving.contains("12")
+                    && moving.contains("340")
+                    && moving.contains("1.2 / 8.4 GB")
+                    && moving.contains("V.MP4 (4.1 GB)"),
+                "{name}"
+            );
+            assert!(
+                (t.transfer_progress)(false, 1, 2, "3 / 5 KB", "").contains("3 / 5 KB"),
+                "{name}"
+            );
             assert!((t.star_tooltip)(4).contains('4'), "{name}");
             assert!((t.personal_hint)(2.4).contains("2.4"), "{name}");
             assert!((t.zoom)(250.0).contains("250"), "{name}");
@@ -646,6 +688,21 @@ mod tests {
             "50\u{a0}% – valeur\u{a0}: oui\u{a0}?"
         );
         assert_eq!(keep_together("1–10; x"), "1–10; x");
+    }
+
+    #[test]
+    fn sizes_take_the_unit_of_the_total() {
+        let (en, fr) = (Lang::En.texts(), Lang::Fr.texts());
+        assert_eq!(format_sizes(en, None, 4_100_000_000), "4.1 GB");
+        assert_eq!(format_sizes(fr, None, 4_100_000_000), "4.1 Go");
+        assert_eq!(format_sizes(en, None, 850_000_000), "850 MB");
+        assert_eq!(format_sizes(en, None, 3_400_000), "3.4 MB");
+        assert_eq!(format_sizes(en, None, 12_000), "12 KB");
+        assert_eq!(
+            format_sizes(en, Some(1_200_000_000), 8_400_000_000),
+            "1.2 / 8.4 GB"
+        );
+        assert_eq!(format_sizes(en, Some(0), 0), "0 / 0 KB");
     }
 
     #[test]

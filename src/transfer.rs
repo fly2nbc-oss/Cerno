@@ -3,13 +3,14 @@
 //! The work runs on a background thread. A move prefers `rename` and falls back to copy plus
 //! delete when the destination is on another volume. An existing file of the same name is
 //! left alone. Each file is held in [`FileLocks`] while it is copied or moved, so a rating
-//! written meanwhile never meets a half-copied file.
+//! written meanwhile never meets a half-copied file. [`Progress`] tells the UI how far it is.
 
 use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, mpsc};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread::JoinHandle;
 
 use crate::filelock::FileLocks;
@@ -29,6 +30,80 @@ pub struct Outcome {
     pub failed: Vec<(PathBuf, String)>,
 }
 
+/// How far a copy or move is. The worker counts, the UI reads a [`Snapshot`]. Files count
+/// when they are done – also skipped and failed ones, so the bar reaches the end.
+#[derive(Default)]
+pub struct Progress {
+    files_total: AtomicUsize,
+    files_done: AtomicUsize,
+    bytes_total: AtomicU64,
+    bytes_done: AtomicU64,
+    /// The file being copied or moved right now, and its size.
+    current: Mutex<Option<(PathBuf, u64)>>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Snapshot {
+    pub files_total: usize,
+    pub files_done: usize,
+    pub bytes_total: u64,
+    pub bytes_done: u64,
+    pub current: Option<(PathBuf, u64)>,
+}
+
+impl Snapshot {
+    /// 0..=1: by bytes once their total is known, else by files.
+    pub fn fraction(&self) -> f32 {
+        let (done, total) = if self.bytes_total > 0 {
+            (self.bytes_done as f64, self.bytes_total as f64)
+        } else {
+            (self.files_done as f64, self.files_total as f64)
+        };
+        if total > 0.0 {
+            (done / total).clamp(0.0, 1.0) as f32
+        } else {
+            0.0
+        }
+    }
+}
+
+impl Progress {
+    fn new(files_total: usize) -> Self {
+        let progress = Self::default();
+        progress.files_total.store(files_total, Ordering::Relaxed);
+        progress
+    }
+
+    pub fn snapshot(&self) -> Snapshot {
+        Snapshot {
+            files_total: self.files_total.load(Ordering::Relaxed),
+            files_done: self.files_done.load(Ordering::Relaxed),
+            bytes_total: self.bytes_total.load(Ordering::Relaxed),
+            bytes_done: self.bytes_done.load(Ordering::Relaxed),
+            current: self
+                .current
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone(),
+        }
+    }
+
+    fn start(&self, files: usize, bytes: u64) {
+        self.files_total.store(files, Ordering::Relaxed);
+        self.bytes_total.store(bytes, Ordering::Relaxed);
+    }
+
+    fn begin(&self, path: &Path, size: u64) {
+        *self.current.lock().unwrap_or_else(|e| e.into_inner()) = Some((path.to_owned(), size));
+    }
+
+    fn finish(&self, size: u64) {
+        self.bytes_done.fetch_add(size, Ordering::Relaxed);
+        self.files_done.fetch_add(1, Ordering::Relaxed);
+        *self.current.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
+}
+
 struct Job {
     mode: Mode,
     sources: Vec<PathBuf>,
@@ -41,6 +116,8 @@ pub struct Queue {
     inflight: bool,
     /// The photos of the job that is waiting or running, until its outcome is collected.
     involved: Option<(Mode, HashSet<PathBuf>)>,
+    /// How far the job that is waiting or running is.
+    progress: Arc<Progress>,
     tx: mpsc::Sender<Outcome>,
     rx: mpsc::Receiver<Outcome>,
     workers: Vec<JoinHandle<()>>,
@@ -54,6 +131,7 @@ impl Queue {
             pending: None,
             inflight: false,
             involved: None,
+            progress: Arc::default(),
             tx,
             rx,
             workers: Vec::new(),
@@ -75,11 +153,17 @@ impl Queue {
         self.involved.as_ref().map(|(mode, _)| *mode)
     }
 
+    /// The job that is waiting or running and how far it is.
+    pub fn progress(&self) -> Option<(Mode, Snapshot)> {
+        self.mode().map(|mode| (mode, self.progress.snapshot()))
+    }
+
     /// Remembers the job until [`Self::kick`] sees that rating writes have finished.
     pub fn push(&mut self, mode: Mode, sources: Vec<PathBuf>, dest: PathBuf) -> bool {
         if self.is_busy() {
             return false;
         }
+        self.progress = Arc::new(Progress::new(sources.len()));
         self.involved = Some((mode, sources.iter().cloned().collect()));
         self.pending = Some(Job {
             mode,
@@ -100,11 +184,12 @@ impl Queue {
         };
         self.inflight = true;
         let (tx, files) = (self.tx.clone(), Arc::clone(&self.files));
+        let progress = Arc::clone(&self.progress);
         self.workers.push(
             std::thread::Builder::new()
                 .name("cerno-transfer".into())
                 .spawn(move || {
-                    let _ = tx.send(run(job.mode, &job.sources, &job.dest, &files));
+                    let _ = tx.send(run(job.mode, &job.sources, &job.dest, &files, &progress));
                     on_done();
                 })
                 .expect("failed to spawn transfer worker"),
@@ -129,7 +214,13 @@ impl Queue {
     pub fn finish_now(&mut self) -> Vec<Outcome> {
         let mut outcomes = Vec::new();
         if let Some(job) = self.pending.take() {
-            outcomes.push(run(job.mode, &job.sources, &job.dest, &self.files));
+            outcomes.push(run(
+                job.mode,
+                &job.sources,
+                &job.dest,
+                &self.files,
+                &self.progress,
+            ));
         }
         for worker in self.workers.drain(..) {
             let _ = worker.join();
@@ -143,45 +234,62 @@ impl Queue {
     }
 }
 
-pub fn run(mode: Mode, sources: &[PathBuf], dest_dir: &Path, files: &FileLocks) -> Outcome {
+pub fn run(
+    mode: Mode,
+    sources: &[PathBuf],
+    dest_dir: &Path,
+    files: &FileLocks,
+    progress: &Progress,
+) -> Outcome {
     let mut outcome = Outcome {
         mode,
         done: Vec::new(),
         skipped: Vec::new(),
         failed: Vec::new(),
     };
-    for src in sources {
-        let Some(name) = src.file_name() else {
-            outcome
-                .failed
-                .push((src.clone(), "missing file name".to_owned()));
-            continue;
-        };
-        let dest = dest_dir.join(name);
-        if dest.exists() {
-            outcome.skipped.push(src.clone());
-            continue;
-        }
-        // A move makes the file disappear, which counts as a write for everyone else.
-        let held = match mode {
-            Mode::Copy => files.hold(src),
-            Mode::Move => files.hold_write(src),
-        };
-        let result = apply(mode, src, &dest);
-        drop(held);
-        match result {
-            Ok(()) => {
-                log::info!("{} {} → {}", verb(mode), src.display(), dest.display());
-                carry_sidecar(mode, src, &dest);
-                outcome.done.push((src.clone(), dest));
-            }
-            Err(err) => {
-                log::warn!("could not {} {}: {err}", verb(mode), src.display());
-                outcome.failed.push((src.clone(), err));
-            }
-        }
+    let sizes: Vec<u64> = sources
+        .iter()
+        .map(|src| fs::metadata(src).map_or(0, |meta| meta.len()))
+        .collect();
+    progress.start(sources.len(), sizes.iter().sum());
+    for (src, &size) in sources.iter().zip(&sizes) {
+        progress.begin(src, size);
+        transfer_one(mode, src, dest_dir, files, &mut outcome);
+        progress.finish(size);
     }
     outcome
+}
+
+fn transfer_one(mode: Mode, src: &Path, dest_dir: &Path, files: &FileLocks, outcome: &mut Outcome) {
+    let Some(name) = src.file_name() else {
+        outcome
+            .failed
+            .push((src.to_owned(), "missing file name".to_owned()));
+        return;
+    };
+    let dest = dest_dir.join(name);
+    if dest.exists() {
+        outcome.skipped.push(src.to_owned());
+        return;
+    }
+    // A move makes the file disappear, which counts as a write for everyone else.
+    let held = match mode {
+        Mode::Copy => files.hold(src),
+        Mode::Move => files.hold_write(src),
+    };
+    let result = apply(mode, src, &dest);
+    drop(held);
+    match result {
+        Ok(()) => {
+            log::info!("{} {} → {}", verb(mode), src.display(), dest.display());
+            carry_sidecar(mode, src, &dest);
+            outcome.done.push((src.to_owned(), dest));
+        }
+        Err(err) => {
+            log::warn!("could not {} {}: {err}", verb(mode), src.display());
+            outcome.failed.push((src.to_owned(), err));
+        }
+    }
 }
 
 /// A RAW's or video's marks live in its XMP sidecar: it goes (or is copied) along. One already
@@ -281,6 +389,7 @@ mod tests {
             std::slice::from_ref(&src),
             &dest_dir,
             &FileLocks::default(),
+            &Progress::default(),
         );
         assert_eq!(outcome.done.len(), 1);
         assert!(outcome.skipped.is_empty() && outcome.failed.is_empty());
@@ -304,6 +413,7 @@ mod tests {
             std::slice::from_ref(&src),
             &dest_dir,
             &FileLocks::default(),
+            &Progress::default(),
         );
         assert_eq!(outcome.done.len(), 1);
         assert!(!src.exists());
@@ -324,7 +434,13 @@ mod tests {
         let jpeg = write_old(&src_dir, "IMG_8.JPG", b"jpeg");
         write_old(&src_dir, "IMG_8.xmp", b"someone else's");
 
-        let outcome = run(Mode::Move, &[raw, jpeg], &dest_dir, &FileLocks::default());
+        let outcome = run(
+            Mode::Move,
+            &[raw, jpeg],
+            &dest_dir,
+            &FileLocks::default(),
+            &Progress::default(),
+        );
         assert_eq!(outcome.done.len(), 2);
         assert_eq!(
             fs::read(dest_dir.join("IMG_7.xmp")).unwrap(),
@@ -346,6 +462,11 @@ mod tests {
         let mut queue = Queue::new(Arc::new(FileLocks::default()));
         assert!(queue.push(Mode::Move, vec![src.clone()], dest_dir.clone()));
         assert_eq!(queue.involves(&src), Some(Mode::Move));
+        let (mode, waiting) = queue.progress().unwrap();
+        assert_eq!(
+            (mode, waiting.files_total, waiting.files_done),
+            (Mode::Move, 1, 0)
+        );
         assert_eq!(queue.involves(&src_dir.join("other.jpg")), None);
         // Still waiting for rating writes: nothing runs, the photo stays involved.
         assert!(queue.kick(true, || {}));
@@ -359,10 +480,52 @@ mod tests {
         };
         assert_eq!(outcome.done.len(), 1);
         assert_eq!(queue.involves(&src), None);
+        assert_eq!(queue.progress(), None);
         assert!(!queue.is_busy());
 
         fs::remove_dir_all(&src_dir).unwrap();
         fs::remove_dir_all(&dest_dir).unwrap();
+    }
+
+    /// Every file counts once it is done – a skipped one too – so the bar reaches the end.
+    #[test]
+    fn progress_counts_files_and_bytes() {
+        let src_dir = temp_dir("progress-src");
+        let dest_dir = temp_dir("progress-dest");
+        let a = write_old(&src_dir, "a.jpg", b"12345");
+        let b = write_old(&src_dir, "b.jpg", b"123");
+        fs::write(dest_dir.join("b.jpg"), b"taken").unwrap();
+        let progress = Progress::new(2);
+        assert_eq!(progress.snapshot().files_total, 2);
+        assert_eq!(progress.snapshot().fraction(), 0.0);
+
+        let outcome = run(
+            Mode::Copy,
+            &[a, b],
+            &dest_dir,
+            &FileLocks::default(),
+            &progress,
+        );
+        assert_eq!((outcome.done.len(), outcome.skipped.len()), (1, 1));
+        let done = progress.snapshot();
+        assert_eq!((done.files_done, done.files_total), (2, 2));
+        assert_eq!((done.bytes_done, done.bytes_total), (8, 8));
+        assert_eq!(done.current, None);
+        assert_eq!(done.fraction(), 1.0);
+
+        fs::remove_dir_all(&src_dir).unwrap();
+        fs::remove_dir_all(&dest_dir).unwrap();
+    }
+
+    #[test]
+    fn the_fraction_falls_back_to_files_without_bytes() {
+        let snapshot = Snapshot {
+            files_total: 4,
+            files_done: 1,
+            ..Snapshot::default()
+        };
+        assert_eq!(snapshot.fraction(), 0.25);
+        assert_eq!(Snapshot::default().fraction(), 0.0);
     }
 
     #[test]
@@ -378,6 +541,7 @@ mod tests {
             std::slice::from_ref(&src),
             &dest_dir,
             &FileLocks::default(),
+            &Progress::default(),
         );
         assert!(outcome.done.is_empty());
         assert_eq!(outcome.skipped, vec![src]);

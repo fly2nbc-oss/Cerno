@@ -212,6 +212,16 @@ impl CernoApp {
         self.slots(area).iter().map(|slot| slot.area).collect()
     }
 
+    /// Whether a video's play button sits at the bottom of the photo area (not in the grid).
+    pub(super) fn video_on_screen(&self, area: Rect) -> bool {
+        !self.grid
+            && self.slots(area).iter().any(|slot| {
+                self.view
+                    .get(slot.index)
+                    .is_some_and(|p| library::format_of(p) == Some(library::Format::Video))
+            })
+    }
+
     /// Mouse on a photo: double-click toggles 100 %, wheel zooms, drag pans. Both photos in
     /// compare mode share one zoom, so they stay aligned.
     fn handle_mouse(&mut self, ui: &egui::Ui, frame: &viewer::Frame, side: Side) {

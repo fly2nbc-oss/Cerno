@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **Progress while copying or moving** – copying or moving what the filter shows puts a bar at the bottom of the photo area: which photo of how many, how much of the size is done, and the name of a large file (a video) while it takes its time. It sits above the deletion countdown and a video's play button.
+
 ## [1.4.0] – 2026-10-02
 
 The best photos at a click, a tidier filter bar, and two fixes: no more crash when a mark empties the filter, and a crop frame that moves.
