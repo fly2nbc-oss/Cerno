@@ -12,38 +12,34 @@ use crate::metadata::Rating;
 use crate::theme::{text, tokens};
 use crate::ui::{icons, stars};
 
-/// Over a video's frame, near the bottom: a button with a painted play sign and "Play
-/// (Enter)"; above it, when there is no frame, why (`note`).
+/// Over a video's frame, near the bottom: a round button with a large painted play sign (its
+/// tooltip says `Space`); above it, when there is no frame, why (`note`).
 pub fn video_badge(ui: &Ui, area: Rect, note: Option<&str>, slot: usize) -> Response {
     let painter = ui.painter().with_clip_rect(area);
-    let galley = painter.layout_no_wrap(
-        i18n::t().video_play_hint.to_owned(),
-        FontId::proportional(text::BODY),
-        tokens::TEXT,
-    );
-    let size = vec2(galley.size().x + 46.0, 34.0);
-    let pill = Rect::from_center_size(bottom_slot(area, 0), size);
+    let radius = 28.0;
+    let centre = bottom_slot(area, 0);
+    let button = Rect::from_center_size(centre, vec2(2.0 * radius, 2.0 * radius));
     // Clickable: the play button plays the video.
     let response = ui
-        .interact(pill, Id::new(("video-play", slot)), Sense::click())
-        .on_hover_cursor(CursorIcon::PointingHand);
-    let shade = if response.hovered() { 220 } else { 170 };
-    painter.rect_filled(pill, 17.0, Color32::from_black_alpha(shade));
-    let c = pos2(pill.left() + 20.0, pill.center().y);
+        .interact(button, Id::new(("video-play", slot)), Sense::click())
+        .on_hover_cursor(CursorIcon::PointingHand)
+        .on_hover_text(i18n::t().video_play_hint);
+    let shade = if response.hovered() { 220 } else { 160 };
+    painter.circle_filled(centre, radius, Color32::from_black_alpha(shade));
+    // The triangle's centre of mass sits on the circle's centre: it looks centred.
+    let c = centre + vec2(3.0, 0.0);
     painter.add(eframe::egui::Shape::convex_polygon(
         vec![
-            c + vec2(-4.0, -7.0),
-            c + vec2(8.0, 0.0),
-            c + vec2(-4.0, 7.0),
+            c + vec2(-9.0, -13.0),
+            c + vec2(13.0, 0.0),
+            c + vec2(-9.0, 13.0),
         ],
         tokens::TEXT,
         Stroke::NONE,
     ));
-    let text_pos = pos2(pill.left() + 34.0, pill.center().y - galley.size().y / 2.0);
-    painter.galley(text_pos, galley, tokens::TEXT);
     if let Some(note) = note {
         painter.text(
-            pos2(area.center().x, pill.top() - 10.0),
+            pos2(area.center().x, button.top() - 10.0),
             Align2::CENTER_BOTTOM,
             note,
             FontId::proportional(text::SMALL),

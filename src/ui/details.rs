@@ -12,8 +12,9 @@ use crate::histogram::RgbHistogram;
 use crate::i18n;
 use crate::metadata;
 use crate::overlay;
+use crate::playback::MediaInfo;
 use crate::theme::{text, tokens};
-use crate::ui::icons;
+use crate::ui::{icons, video_controls};
 use crate::view::is_blurry;
 
 pub const WIDTH: f32 = 320.0;
@@ -129,6 +130,8 @@ pub struct Details<'a> {
     pub file: Option<([u32; 2], u128)>,
     /// GPS position (latitude, longitude) from the EXIF data.
     pub position: Option<(f64, f64)>,
+    /// A video's streams (`playback::probe`): shown instead of the size and load time.
+    pub media: Option<&'a MediaInfo>,
     /// What the check overlay shows; its eye is lit in that section.
     pub overlay: overlay::Mode,
 }
@@ -309,16 +312,92 @@ fn content(ui: &mut Ui, d: &Details<'_>, attributes_open: &mut bool) -> Option<o
         t.explain_shadows,
     );
 
-    if let Some(([w, h], load_ms)) = d.file {
+    if d.file.is_some() || d.media.is_some() {
         section(ui, t.section_file);
-        plain_row(ui, t.row_size, format!("{w} × {h}"));
-        plain_row(ui, t.row_load_time, format!("{load_ms} ms"));
+        match (d.media, d.file) {
+            (Some(media), _) => {
+                for (label, value) in media_rows(media) {
+                    plain_row(ui, label, value);
+                }
+            }
+            (None, Some(([w, h], load_ms))) => {
+                plain_row(ui, t.row_size, format!("{w} × {h}"));
+                plain_row(ui, t.row_load_time, format!("{load_ms} ms"));
+            }
+            (None, None) => {}
+        }
         if let Some((lat, lon)) = d.position {
             plain_row(ui, t.row_location, i18n::coordinates(lat, lon));
             map_links(ui, (lat, lon));
         }
     }
     overlay
+}
+
+/// A video's file rows: container, duration, the video stream (codec and HDR, size, frame
+/// rate, bitrate – "≈" when estimated from the total), the sound and the total bitrate.
+fn media_rows(media: &MediaInfo) -> Vec<(&'static str, String)> {
+    let t = i18n::t();
+    let mut rows = Vec::new();
+    if let Some(container) = &media.container {
+        rows.push((t.row_container, container.clone()));
+    }
+    if let Some(duration) = media.duration {
+        rows.push((t.row_duration, video_controls::clock(duration)));
+    }
+    if let Some(video) = &media.video {
+        let codec = match video.hdr {
+            Some(hdr) => format!("{} · HDR ({hdr})", video.codec),
+            None => video.codec.clone(),
+        };
+        rows.push((t.row_video, codec));
+        rows.push((t.row_size, format!("{} × {}", video.width, video.height)));
+        if let Some(fps) = video.fps {
+            rows.push((t.row_frame_rate, frame_rate(fps)));
+        }
+        if let Some(rate) = video.bitrate {
+            let approx = if video.bitrate_estimated { "≈ " } else { "" };
+            rows.push((t.row_video_bitrate, format!("{approx}{}", bitrate(rate))));
+        }
+    }
+    match &media.audio {
+        Some(audio) => {
+            let mut parts = vec![audio.codec.clone(), (t.channels)(audio.channels)];
+            if audio.sample_rate > 0 {
+                parts.push(format!("{} kHz", f64::from(audio.sample_rate) / 1000.0));
+            }
+            if let Some(language) = &audio.language {
+                parts.push(language.clone());
+            }
+            rows.push((t.row_audio, parts.join(" · ")));
+            if let Some(rate) = audio.bitrate {
+                rows.push((t.row_audio_bitrate, bitrate(rate)));
+            }
+        }
+        None => rows.push((t.row_audio, t.no_audio.to_owned())),
+    }
+    if let Some(rate) = media.bitrate {
+        rows.push((t.row_bitrate, bitrate(rate)));
+    }
+    rows
+}
+
+/// `5.8 Mbit/s`, `128 kbit/s` (decimal point in every language, like the other values).
+fn bitrate(bits_per_second: u64) -> String {
+    if bits_per_second >= 1_000_000 {
+        format!("{:.1} Mbit/s", bits_per_second as f64 / 1e6)
+    } else {
+        format!("{:.0} kbit/s", bits_per_second as f64 / 1e3)
+    }
+}
+
+/// `30 fps`, `29.97 fps`.
+fn frame_rate(fps: f64) -> String {
+    if (fps - fps.round()).abs() < 0.005 {
+        format!("{fps:.0} fps")
+    } else {
+        format!("{fps:.2} fps")
+    }
 }
 
 fn histogram(ui: &mut Ui, hist: &RgbHistogram) {
@@ -651,6 +730,7 @@ mod tests {
             status,
             file: None,
             position: None,
+            media: None,
             overlay: overlay::Mode::Off,
         }
     }
@@ -797,6 +877,7 @@ mod tests {
             status: &status,
             file: Some(([6000, 4000], 120)),
             position: Some(position),
+            media: None,
             overlay: overlay::Mode::Off,
         };
         let panel = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 1200.0));
@@ -878,6 +959,7 @@ mod tests {
                 status: &status,
                 file: None,
                 position: None,
+                media: None,
                 overlay: mode,
             };
             let mut chosen = None;
@@ -922,5 +1004,63 @@ mod tests {
             Some(overlay::Mode::Sharpness),
             "from the other overlay straight to this one"
         );
+    }
+
+    #[test]
+    fn a_video_lists_its_streams() {
+        use crate::playback::{AudioStream, VideoStream};
+        let media = MediaInfo {
+            container: Some("ISO MP4/M4A".into()),
+            duration: Some(std::time::Duration::from_secs(75)),
+            bitrate: Some(12_400_000),
+            video: Some(VideoStream {
+                codec: "H.265 (Main 10 Profile)".into(),
+                width: 3840,
+                height: 2160,
+                fps: Some(29.97),
+                hdr: Some("HLG"),
+                bitrate: Some(12_200_000),
+                bitrate_estimated: true,
+            }),
+            audio: Some(AudioStream {
+                codec: "MPEG-4 AAC".into(),
+                channels: 2,
+                sample_rate: 48_000,
+                bitrate: Some(192_000),
+                language: None,
+            }),
+        };
+        // Tests never switch the language: English.
+        let rows: Vec<String> = media_rows(&media)
+            .into_iter()
+            .map(|(label, value)| format!("{label}: {value}"))
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                "Container: ISO MP4/M4A",
+                "Duration: 1:15",
+                "Video: H.265 (Main 10 Profile) · HDR (HLG)",
+                "Size: 3840 × 2160",
+                "Frame rate: 29.97 fps",
+                "Video bitrate: ≈ 12.2 Mbit/s",
+                "Audio: MPEG-4 AAC · Stereo · 48 kHz",
+                "Audio bitrate: 192 kbit/s",
+                "Total bitrate: 12.4 Mbit/s",
+            ]
+        );
+        let silent = MediaInfo {
+            audio: None,
+            ..MediaInfo::default()
+        };
+        assert_eq!(
+            media_rows(&silent)
+                .into_iter()
+                .map(|(_, value)| value)
+                .collect::<Vec<_>>(),
+            ["no audio track"]
+        );
+        assert_eq!(frame_rate(30.0), "30 fps");
+        assert_eq!(bitrate(950_000), "950 kbit/s");
     }
 }

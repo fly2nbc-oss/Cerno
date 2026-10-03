@@ -24,7 +24,7 @@ Cerno (Latin *cerno* – "I sift, see clearly") helps you go through a folder of
 - **Compare** two photos side by side, or see the whole folder as a grid.
 - **Straighten, crop and rotate** JPEGs – the original is kept and `Ctrl+Z` brings it back.
 - **Nothing is lost** – deleting moves a photo into a hidden `.originals` folder beside it, after a 5-second countdown you can undo with `Esc`.
-- **Videos play right here** – with sound: `Space` plays and pauses, `J`/`L` jump 5 seconds, the bar under the video seeks and sets the volume.
+- **Videos play right here** – with sound: `Space` plays and pauses, `Alt+←`/`Alt+→` jump 5 seconds, the bar under the video seeks and sets the volume.
 - **Formats** – JPEG, HEIC, PNG, TIFF, WebP, BMP, GIF, RAW (its embedded preview) and videos (MP4, MOV, MKV, WebM, AVI, MTS …).
 - **Five languages** – German, English, French, Spanish, Italian.
 
@@ -49,7 +49,7 @@ The Windows files are not signed yet: SmartScreen asks once (*More info* → *Ru
 | Key | Does |
 |---|---|
 | `→` / `←`, `Space` | Next / previous photo |
-| `Space` or `Enter` on a video | Play / pause (`Shift+Space`: next) |
+| `Space` on a video | Play / pause (`Shift+Space`: next, `Alt+←`/`Alt+→`: 5 seconds back / on) |
 | `1`–`5`, `0` | Stars / no stars (`Shift` + digit: rate and go on) |
 | `X` | Reject (again: undo) |
 | `6`–`9` | Colour label red, yellow, green, blue |

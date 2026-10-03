@@ -7,6 +7,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **Details › File of a video** – container, duration, the video's codec (and HDR, if it is), size, frame rate and bitrate, the sound's codec, channels, sample rate and bitrate, and the total bitrate. Most MP4 files state no video bitrate; Cerno then takes the total minus the sound and marks it with ≈.
+
+### Changed
+
+- **Jump 5 seconds with `Alt+←` / `Alt+→`** (was `J` / `L`); plain `←` / `→` still go to the previous and next photo.
+- **Only `Space` plays a video** – `Enter` no longer does.
+- **The play button is a round button with a larger play sign**, without text (its tooltip names the key).
+
+### Fixed
+
+- **Videos play without a sound device** – on a remote desktop or with nothing to play sound on, a video did not start at all ("Cannot play the video"). It now plays without sound, and a hint says so once.
+
 ## [1.5.0] – 2026-10-03
 
 Videos play inside Cerno with sound, the second aesthetics model downloads with one click, and copying shows how far it is.

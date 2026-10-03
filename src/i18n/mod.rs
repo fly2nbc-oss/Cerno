@@ -391,7 +391,7 @@ pub struct Texts {
     pub cmd_crop: &'static str,
     pub cmd_undo: &'static str,
     pub edit_not_jpeg: &'static str,
-    /// Over a video's frame: how to play it.
+    /// Tooltip of the play button over a video's frame.
     pub video_play_hint: &'static str,
     /// Tooltips of the video bar.
     pub video_play_pause: &'static str,
@@ -400,6 +400,8 @@ pub struct Texts {
     /// Zoom keys or compare on a video.
     pub video_no_zoom: &'static str,
     pub video_no_compare: &'static str,
+    /// Once per run: no sound device, the video plays without sound.
+    pub video_no_sound: &'static str,
     /// Over a video's placeholder when ffmpeg is not installed.
     pub video_no_ffmpeg: &'static str,
     /// The system's player could not be started.
@@ -479,6 +481,18 @@ pub struct Texts {
     pub section_file: &'static str,
     pub row_size: &'static str,
     pub row_load_time: &'static str,
+    /// The file section of a video (`playback::probe`).
+    pub row_container: &'static str,
+    pub row_duration: &'static str,
+    pub row_video: &'static str,
+    pub row_frame_rate: &'static str,
+    pub row_video_bitrate: &'static str,
+    pub row_audio: &'static str,
+    pub row_audio_bitrate: &'static str,
+    pub row_bitrate: &'static str,
+    pub no_audio: &'static str,
+    /// Sound channels: Mono, Stereo, 5.1 …
+    pub channels: fn(u32) -> String,
     pub row_location: &'static str,
     /// Details panel tabs: the analysis values …
     pub tab_values: &'static str,
