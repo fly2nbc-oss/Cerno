@@ -372,16 +372,6 @@ pub static TEXTS: Texts = Texts {
     video_no_compare: "Les vidéos ne se comparent pas",
     video_no_ffmpeg: "Pas d'aperçu : Cerno a besoin de ffmpeg (p. ex. winget install Gyan.FFmpeg)",
     video_play_failed: |err| format!("Impossible de lire la vidéo : {err}"),
-    video_played_instead: |ext, name| {
-        format!(
-            "Windows ouvre les .{ext} avec Cerno – la vidéo passe donc dans {name}. Changez le lecteur par défaut dans Paramètres Windows › Applications par défaut."
-        )
-    },
-    video_choose_player: |ext| {
-        format!(
-            "Windows ouvre les .{ext} avec Cerno – choisissez un lecteur. Changez le lecteur par défaut dans Paramètres Windows › Applications par défaut."
-        )
-    },
     edit_writing: "Écriture de la photo…",
     edit_cancelled: "Une autre photo est affichée – retouche annulée",
     busy_editing: "La retouche est encore ouverte – Entrée applique, Échap annule",

@@ -346,16 +346,6 @@ pub static TEXTS: Texts = Texts {
     video_no_compare: "I video non si possono confrontare",
     video_no_ffmpeg: "Nessuna anteprima: a Cerno serve ffmpeg (ad es. winget install Gyan.FFmpeg)",
     video_play_failed: |err| format!("Impossibile riprodurre il video: {err}"),
-    video_played_instead: |ext, name| {
-        format!(
-            "Windows apre i file .{ext} con Cerno – il video parte quindi in {name}. Cambia il lettore predefinito in Impostazioni di Windows › App predefinite."
-        )
-    },
-    video_choose_player: |ext| {
-        format!(
-            "Windows apre i file .{ext} con Cerno – scegli un lettore. Cambia il lettore predefinito in Impostazioni di Windows › App predefinite."
-        )
-    },
     edit_writing: "Scrittura della foto…",
     edit_cancelled: "È visualizzata un'altra foto – modifica annullata",
     busy_editing: "La modifica è ancora aperta – Invio applica, Esc annulla",

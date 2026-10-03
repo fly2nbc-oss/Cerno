@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 use eframe::egui::{self, CursorIcon, PointerButton, Rect, Sense, pos2, vec2};
 
 use crate::analysis::aesthetic;
-use crate::external;
 use crate::i18n;
 use crate::library;
 use crate::loader::{LoadedImage, Lookup};
@@ -37,56 +36,6 @@ enum Side {
 }
 
 impl CernoApp {
-    /// `Enter` on a video: it plays in the system's player. Nothing for a photo.
-    pub(super) fn play_video(&mut self) {
-        if let Some(path) = self.view.get(self.current).cloned() {
-            self.play(&path);
-        }
-    }
-
-    /// Plays a video in the system's player – never in Cerno itself. When the system would
-    /// hand it to Cerno ("Open with" once chose Cerno for the type), the first other program
-    /// the system offers plays it, else its chooser opens; a hint says why.
-    fn play(&mut self, path: &Path) {
-        if library::format_of(path) != Some(library::Format::Video) {
-            return;
-        }
-        let t = i18n::t();
-        let result = if external::opens_with_cerno(path) {
-            self.play_elsewhere(path).map(Some)
-        } else {
-            crate::video::play(path).map(|()| None)
-        };
-        match result {
-            Ok(Some(hint)) => self.notice = Some(Notice::hint(hint)),
-            Ok(None) => {}
-            Err(err) => {
-                self.notice = Some(Notice::error((t.video_play_failed)(&format!("{err:#}"))));
-            }
-        }
-    }
-
-    /// The system's other programs for the type (asked once per type, like Edit elsewhere),
-    /// or its chooser. Returns the hint to show.
-    fn play_elsewhere(&mut self, path: &Path) -> anyhow::Result<String> {
-        let t = i18n::t();
-        let kind = super::external::extension(path);
-        let editors = self
-            .editors
-            .entry(kind.clone())
-            .or_insert_with(|| external::editors_for(path));
-        match external::other_than_cerno(editors).cloned() {
-            Some(player) => {
-                external::open(&player, path)?;
-                Ok((t.video_played_instead)(&kind, &player.name))
-            }
-            None => {
-                external::choose(path)?;
-                Ok((t.video_choose_player)(&kind))
-            }
-        }
-    }
-
     /// `C`: pin the current photo on the left and show the next one on the right – or leave
     /// compare mode.
     pub(super) fn toggle_compare(&mut self, ctx: &egui::Context) {
@@ -340,25 +289,16 @@ impl CernoApp {
         }
     }
 
-    /// A video: its playing frame and bar, else the poster's play button – in the single view.
-    /// (Compare mode shows the poster only; a build without the player keeps the button, which
-    /// hands the video to the system's player.)
+    /// A video: its playing frame and bar, else the poster's play button – in the single view
+    /// (compare mode shows the poster only).
     fn draw_video_slot(&mut self, ui: &egui::Ui, slot: &Slot, path: &Path) {
-        if self.draw_video(ui, slot.area, path) {
-            return;
-        }
-        let single = self.current_video() == Some(path);
-        if crate::playback::AVAILABLE && !single {
+        if self.draw_video(ui, slot.area, path) || self.current_video() != Some(path) {
             return;
         }
         let note = self.no_ffmpeg.then_some(i18n::t().video_no_ffmpeg);
         // A click on the play button plays it, like `Enter` or `Space`.
         if overlays::video_badge(ui, slot.area, note, slot.index).clicked() {
-            if crate::playback::AVAILABLE {
-                self.toggle_video(ui.ctx());
-            } else {
-                self.play(path);
-            }
+            self.toggle_video(ui.ctx());
         }
     }
 

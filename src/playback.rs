@@ -20,9 +20,6 @@ use std::time::Duration;
 
 use eframe::egui;
 
-/// Whether this build plays videos itself.
-pub const AVAILABLE: bool = cfg!(feature = "video");
-
 /// Where the sound goes: the system's output, or nowhere (tests, the self-test).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(not(feature = "video"), allow(dead_code))]

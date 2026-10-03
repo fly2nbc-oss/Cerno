@@ -394,14 +394,9 @@ impl CernoApp {
         if keys.keep_right {
             self.keep_right(ctx);
         }
-        // In the grid Enter opens the photo; on a video it plays (see `video_keys`); in
-        // compare mode a video goes to the system's player in builds without the player.
-        if keys.play {
-            if self.grid {
-                self.set_grid(false);
-            } else if !on_video && !crate::playback::AVAILABLE {
-                self.play_video();
-            }
+        // In the grid Enter opens the photo; on a video it plays (see `video_keys`).
+        if keys.play && self.grid {
+            self.set_grid(false);
         }
         if keys.describe {
             self.open_description(ctx);

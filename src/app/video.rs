@@ -65,16 +65,12 @@ impl CernoApp {
             .filter(|p| library::format_of(p) == Some(library::Format::Video))
     }
 
-    /// `Space`/`Enter` or the play button on the current video: start it, or play / pause.
-    /// A build without the player hands it to the system's player (`play_video`).
+    /// `Space`/`Enter` or the play button on the current video: start it, or play / pause. A
+    /// build without the feature `video` says it plays no videos.
     pub(super) fn toggle_video(&mut self, ctx: &egui::Context) {
         let Some(path) = self.current_video().map(Path::to_path_buf) else {
             return;
         };
-        if !playback::AVAILABLE {
-            self.play_video();
-            return;
-        }
         if let Some(session) = &self.video
             && session.player.path() == path
         {

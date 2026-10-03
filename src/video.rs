@@ -1,5 +1,5 @@
-//! Videos: one frame stands in for the picture – taken by ffmpeg, a separate program like
-//! ExifTool (not shipped; found on `PATH`) – and `Enter` plays the file in the system's player.
+//! Videos: one frame stands in for the picture and the thumbnail – taken by ffmpeg, a
+//! separate program like ExifTool (not shipped; found on `PATH`). Playing is `playback`'s.
 //! Cerno never reads a video into memory: ffmpeg gets the path.
 
 use std::io::Read;
@@ -126,27 +126,6 @@ fn frame_at(exe: &Path, path: &Path, seconds: &str, side: Option<u32>) -> Result
         bail!("ffmpeg: {message}");
     }
     Ok(jpeg)
-}
-
-/// The system's player: the file's registered program on Windows, `xdg-open` elsewhere.
-pub fn play(path: &Path) -> Result<()> {
-    let mut command = if cfg!(windows) {
-        // Explorer opens a file with the program registered for it.
-        let mut command = Command::new("explorer.exe");
-        command.arg(path);
-        command
-    } else {
-        let mut command = Command::new("xdg-open");
-        command.arg(path);
-        command
-    };
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map(drop)
-        .context("cannot start the player")
 }
 
 /// What a video shows without ffmpeg: a dark 16:9 frame with a play sign.

@@ -404,10 +404,6 @@ pub struct Texts {
     pub video_no_ffmpeg: &'static str,
     /// The system's player could not be started.
     pub video_play_failed: fn(&str) -> String,
-    /// Windows would open the video with Cerno itself (extension, the program that plays it).
-    pub video_played_instead: fn(&str, &str) -> String,
-    /// The same with no other program: the system's chooser is open.
-    pub video_choose_player: fn(&str) -> String,
     pub edit_writing: &'static str,
     /// The edited photo is no longer the current one (a copy finished, a filter changed).
     pub edit_cancelled: &'static str,
@@ -681,12 +677,6 @@ mod tests {
             assert!((t.taste_photos)(30).contains("30"), "{name}");
             assert!((t.edit_failed)("locked").contains("locked"), "{name}");
             assert!((t.video_play_failed)("no app").contains("no app"), "{name}");
-            let instead = (t.video_played_instead)("mp4", "Films & TV");
-            assert!(
-                instead.contains(".mp4") && instead.contains("Films & TV"),
-                "{name}"
-            );
-            assert!((t.video_choose_player)("mkv").contains(".mkv"), "{name}");
             assert!((t.external_opened)("GIMP").contains("GIMP"), "{name}");
             assert!((t.external_reloaded)("a.jpg").contains("a.jpg"), "{name}");
             assert!((t.external_failed)("gone").contains("gone"), "{name}");

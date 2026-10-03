@@ -24,7 +24,8 @@ Cerno (Latin *cerno* – "I sift, see clearly") helps you go through a folder of
 - **Compare** two photos side by side, or see the whole folder as a grid.
 - **Straighten, crop and rotate** JPEGs – the original is kept and `Ctrl+Z` brings it back.
 - **Nothing is lost** – deleting moves a photo into a hidden `.originals` folder beside it, after a 5-second countdown you can undo with `Esc`.
-- **Formats** – JPEG, HEIC, PNG, TIFF, WebP, BMP, GIF, RAW (its embedded preview) and videos (one frame; plays in your video player).
+- **Videos play right here** – with sound: `Space` plays and pauses, `J`/`L` jump 5 seconds, the bar under the video seeks and sets the volume.
+- **Formats** – JPEG, HEIC, PNG, TIFF, WebP, BMP, GIF, RAW (its embedded preview) and videos (MP4, MOV, MKV, WebM, AVI, MTS …).
 - **Five languages** – German, English, French, Spanish, Italian.
 
 ## Install
@@ -41,13 +42,14 @@ Download from [Releases](https://github.com/fly2nbc-oss/Cerno/releases):
 The Windows files are not signed yet: SmartScreen asks once (*More info* → *Run anyway*).
 
 **Needed for writing stars and labels:** [ExifTool](https://exiftool.org/) (Windows: `winget install OliverBetz.ExifTool`, Linux: `apt install libimage-exiftool-perl`). Viewing works without it.
-**Optional:** [ffmpeg](https://ffmpeg.org/) shows a frame of each video (Windows: `winget install Gyan.FFmpeg`, Linux: `apt install ffmpeg`).
+**Videos** play with GStreamer: the Windows downloads bring it along; on Linux the `.deb` installs it, and the AppImage uses the one every desktop has. **Optional:** [ffmpeg](https://ffmpeg.org/) shows a still frame and a filmstrip picture of each video (Windows: `winget install Gyan.FFmpeg`, Linux: `apt install ffmpeg`).
 
 ## The most important keys
 
 | Key | Does |
 |---|---|
 | `→` / `←`, `Space` | Next / previous photo |
+| `Space` or `Enter` on a video | Play / pause (`Shift+Space`: next) |
 | `1`–`5`, `0` | Stars / no stars (`Shift` + digit: rate and go on) |
 | `X` | Reject (again: undo) |
 | `6`–`9` | Colour label red, yellow, green, blue |
