@@ -16,6 +16,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 - *Delete models* is greyed out while a model downloads, and it also removes unfinished downloads.
 
+### Fixed
+
+- **Model downloads behind HTTPS scanning** – an antivirus that inspects HTTPS (seen with Kaspersky) or a company proxy made the CLIP download fail with "invalid peer certificate". Cerno now checks certificates against the system's store, like a browser; the SHA-256 check still decides whether a file is used.
+
 ## [1.4.0] – 2026-10-02
 
 The best photos at a click, a tidier filter bar, and two fixes: no more crash when a mark empties the filter, and a crop frame that moves.

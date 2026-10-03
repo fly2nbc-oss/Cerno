@@ -314,10 +314,19 @@ impl<W: Write> Write for Hashing<W> {
 /// Asks for `url` from byte `from` on (the whole file for 0). Redirects keep the `Range`
 /// header (ureq drops only credentials and cookies), so GitHub's hop to its storage host
 /// still asks for the rest.
+///
+/// Certificates are checked against the system's store, like a browser does: an antivirus
+/// that scans HTTPS (Kaspersky did for huggingface.co) or a company proxy presents its own
+/// root, which Mozilla's built-in list does not know. The SHA-256 check guards the bytes.
 fn request(url: &str, from: u64) -> Result<ureq::http::Response<ureq::Body>> {
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_connect(Some(Duration::from_secs(30)))
         .timeout_recv_response(Some(Duration::from_secs(60)))
+        .tls_config(
+            ureq::tls::TlsConfig::builder()
+                .root_certs(ureq::tls::RootCerts::PlatformVerifier)
+                .build(),
+        )
         .build()
         .into();
     let mut request = agent.get(url);

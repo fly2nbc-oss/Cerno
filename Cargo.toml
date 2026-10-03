@@ -38,7 +38,9 @@ rusqlite = { version = "0.40.2", features = ["bundled"] }
 sha2 = "0.11.0"
 # UI language default: the system locale (Windows, Linux, macOS).
 sys-locale = "0.3"
-ureq = "3.4.2"
+# The system's certificate store (`platform-verifier`, still rustls): an antivirus or company
+# proxy that inspects HTTPS puts its root there, and the model download has to get through.
+ureq = { version = "3.4.2", features = ["platform-verifier"] }
 zune-core = "0.5.3"
 zune-jpeg = "0.5.15"
 
