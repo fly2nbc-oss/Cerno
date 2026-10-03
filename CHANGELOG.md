@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+## [1.5.1] – 2026-10-03
+
+Videos play without a sound device, and their details show what is inside.
+
 ### Added
 
 - **Details › File of a video** – container, duration, the video's codec (and HDR, if it is), size, frame rate and bitrate, the sound's codec, channels, sample rate and bitrate, and the total bitrate. Most MP4 files state no video bitrate; Cerno then takes the total minus the sound and marks it with ≈.
