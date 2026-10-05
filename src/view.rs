@@ -1102,9 +1102,38 @@ pub fn skip_pinned(
     valid(index.checked_add_signed(direction)).or(valid(index.checked_add_signed(-direction)))
 }
 
+/// How many photos the four-up view shows.
+pub const QUAD: usize = 4;
+
+/// The first of the four photos on screen in the four-up view (`Shift+C`): the window keeps its
+/// place while `current` is in it and moves by a row (two photos) when `current` leaves it, so
+/// the photos don't jump at every step; at the end it shows the last four.
+pub fn quad_start(start: usize, current: usize, len: usize) -> usize {
+    let mut start = start;
+    while current < start {
+        start = start.saturating_sub(2);
+    }
+    while current >= start + QUAD {
+        start += 2;
+    }
+    start.min(len.saturating_sub(QUAD))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The four-up window stays while the frame moves inside it, then moves a row.
+    #[test]
+    fn the_four_up_window_moves_a_row_at_a_time() {
+        assert_eq!(quad_start(0, 3, 10), 0, "inside: stays");
+        assert_eq!(quad_start(0, 4, 10), 2, "one past: a row on");
+        assert_eq!(quad_start(4, 3, 10), 2, "one before: a row back");
+        assert_eq!(quad_start(0, 9, 10), 6, "a jump to the end: the last four");
+        assert_eq!(quad_start(6, 0, 10), 0);
+        assert_eq!(quad_start(5, 5, 7), 3, "the last four, not fewer");
+        assert_eq!(quad_start(0, 1, 3), 0, "fewer than four");
+    }
 
     #[test]
     fn navigation_steps_over_the_pinned_photo() {

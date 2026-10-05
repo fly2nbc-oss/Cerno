@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **Four photos at once** – `Shift+C` shows four photos of the view side by side, from the current one. A frame marks the current photo: stars, labels, `X` and `Delete` act on it, `←`/`→` move the frame a photo, `↑`/`↓` a row, a click puts it on a photo. Zooming and `Ctrl+1` show all four at the same place. `Shift+C` again or `Esc` shows the single photo; comparing two with `C`, `A` and `D` stays as it is.
+
 ## [1.7.0] – 2026-10-05
 
 Faces at a glance, the photos a client chose, and cameras whose clocks differ.

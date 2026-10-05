@@ -189,6 +189,7 @@ pub static TEXTS: Texts = Texts {
     cmd_all_panels: "Barre de filtres, détails et pellicule",
     cmd_fullscreen: "Plein écran",
     cmd_compare: "Comparer",
+    cmd_quad: "Vue à quatre",
     cmd_similar: "N'afficher que les photos semblables",
     cmd_zoom: "Photo entière ↔ 100 %",
     menu_overlay: "Superposition",
@@ -628,6 +629,10 @@ pub static TEXTS: Texts = Texts {
         (
             "A, D",
             "Comparer : garder la gauche / la droite – l'autre est rejetée, la comparaison se termine",
+        ),
+        (
+            "Maj+C",
+            "Vue à quatre : quatre photos à la fois, le cadre est la photo actuelle – ↑ ↓ une rangée",
         ),
         (
             "M",

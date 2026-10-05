@@ -62,6 +62,7 @@ impl CernoApp {
         // Found in the background; the 🗑 box shows them once they are known.
         self.scan_deleted();
         self.pinned = None;
+        self.quad = None;
         // "Similar photos" was about a photo of the previous folder, Top N picked from it, the
         // deleted photos lay beside it.
         self.options.similar = false;
@@ -155,8 +156,15 @@ impl CernoApp {
         self.view = view;
         self.view_version = self.board.version();
         self.view_built = Instant::now();
-        self.loader
-            .set_library(Arc::clone(&self.view.paths), self.current, pinned);
+        if let Some(start) = self.quad {
+            self.quad = (self.view.len() >= 2)
+                .then(|| view::quad_start(start, self.current, self.view.len()));
+        }
+        self.loader.set_library(
+            Arc::clone(&self.view.paths),
+            self.current,
+            self.others_on_screen(),
+        );
         self.sync_analyzer();
         self.update_title(ctx);
         // A copy or move finished, a filter changed …: the geometry belongs to the other photo.
@@ -336,6 +344,7 @@ impl CernoApp {
         if index != self.current {
             self.current = index;
             self.loader.set_current(index);
+            self.sync_quad();
             self.sync_analyzer();
             self.update_title(ctx);
         }

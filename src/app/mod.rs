@@ -114,6 +114,8 @@ pub struct CernoApp {
     current: usize,
     /// Compare mode: the photo pinned on the left. The current photo is shown on the right.
     pinned: Option<PathBuf>,
+    /// The four-up view (`Shift+C`): the view index of the first of its four photos.
+    quad: Option<usize>,
     options: ViewOptions,
     /// The photo "similar photos" (`M`) is about and its CLIP embedding, while that filter is
     /// on. The embedding stays even if the photo is deleted meanwhile.
@@ -349,6 +351,7 @@ impl CernoApp {
             view: View::default(),
             current: 0,
             pinned: None,
+            quad: None,
             options,
             similar_to: None,
             top_pick: HashSet::new(),

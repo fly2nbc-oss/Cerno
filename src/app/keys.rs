@@ -40,7 +40,7 @@ struct KeyInput {
     /// Page Down / Page Up: one photo on, in the grid one screen.
     page_down: bool,
     page_up: bool,
-    /// `↓`/`↑`: a row in the grid.
+    /// `↓`/`↑`: a row in the grid and the four-up view.
     down: bool,
     up: bool,
     first: bool,
@@ -56,6 +56,8 @@ struct KeyInput {
     label_and_next: Option<Label>,
     delete: bool,
     compare: bool,
+    /// `Shift+C`: the four-up view.
+    quad: bool,
     keep_left: bool,
     keep_right: bool,
     /// `Enter`: in the grid, open the photo.
@@ -202,6 +204,7 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         label_and_next: shifted_label(&i.events),
         delete: plain && i.key_pressed(Key::Delete),
         compare: plain && i.key_pressed(Key::C),
+        quad: i.modifiers.shift_only() && i.key_pressed(Key::C),
         keep_left: plain && i.key_pressed(Key::A),
         keep_right: plain && i.key_pressed(Key::D),
         play: plain && i.key_pressed(Key::Enter),
@@ -361,6 +364,10 @@ impl CernoApp {
         if keys.toggle_grid {
             self.set_grid(!self.grid);
         }
+        // Straighten and crop need the photo alone: the four-up view ends first.
+        if self.quad.is_some() && (keys.straighten || keys.crop) {
+            self.toggle_quad();
+        }
         if keys.straighten {
             self.begin_straighten();
         }
@@ -413,6 +420,17 @@ impl CernoApp {
             );
             self.go_to(ctx, target, if keys.down { 1 } else { -1 });
         }
+        // The four-up view's rows hold two photos.
+        if self.quad.is_some() && !self.grid && (keys.down || keys.up) {
+            if keys.down {
+                let below = self.current + 2;
+                if below < self.view.len() {
+                    self.go_to(ctx, below, 1);
+                }
+            } else if let Some(above) = self.current.checked_sub(2) {
+                self.go_to(ctx, above, -1);
+            }
+        }
         if keys.first {
             self.go_to(ctx, 0, 1);
         }
@@ -439,6 +457,9 @@ impl CernoApp {
         }
         if keys.compare {
             self.toggle_compare(ctx);
+        }
+        if keys.quad {
+            self.toggle_quad();
         }
         if keys.keep_left {
             self.keep_left(ctx);
@@ -532,6 +553,8 @@ impl CernoApp {
             } else if self.zoom.is_zoomed() && !self.grid {
                 // The grid hides the photo: its zoom is left for when it shows again.
                 self.zoom.scale = None;
+            } else if self.quad.is_some() {
+                self.toggle_quad();
             } else if self.pinned.is_some() {
                 self.toggle_compare(ctx);
             } else if self.grid {
@@ -798,5 +821,16 @@ mod tests {
             modifiers: plain,
         };
         assert_eq!(stars(repeat), None);
+    }
+
+    /// `C` compares two photos, `Shift+C` shows four.
+    #[test]
+    fn shift_c_is_the_four_up_view() {
+        let plain = Modifiers::NONE;
+        let shift = Modifiers::SHIFT;
+        let four = read(vec![key(Key::C, Key::C, shift)], shift);
+        assert!(four.quad && !four.compare);
+        let two = read(vec![key(Key::C, Key::C, plain)], plain);
+        assert!(two.compare && !two.quad);
     }
 }

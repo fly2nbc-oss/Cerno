@@ -159,6 +159,7 @@ pub static TEXTS: Texts = Texts {
     cmd_all_panels: "Barra dei filtri, dettagli e striscia di miniature",
     cmd_fullscreen: "Schermo intero",
     cmd_compare: "Confronta",
+    cmd_quad: "Vista a quattro",
     cmd_similar: "Mostra solo foto simili",
     cmd_zoom: "Foto intera ↔ 100 %",
     menu_overlay: "Sovrapposizione",
@@ -589,6 +590,10 @@ pub static TEXTS: Texts = Texts {
         (
             "A, D",
             "Confronta: tieni la sinistra / la destra – l'altra viene rifiutata e il confronto termina",
+        ),
+        (
+            "Maiusc+C",
+            "Vista a quattro: quattro foto insieme, la cornice è quella attuale – ↑ ↓ una riga",
         ),
         ("M", "Mostra solo foto simili – di nuovo: tutte"),
         (

@@ -173,6 +173,7 @@ pub static TEXTS: Texts = Texts {
     cmd_all_panels: "Filter bar, details and filmstrip",
     cmd_fullscreen: "Full screen",
     cmd_compare: "Compare",
+    cmd_quad: "Four-up view",
     cmd_similar: "Show only similar photos",
     cmd_zoom: "Whole photo ↔ 100 %",
     menu_overlay: "Overlay",
@@ -577,6 +578,10 @@ pub static TEXTS: Texts = Texts {
         (
             "A, D",
             "Compare: keep left / keep right – the other one is rejected, compare mode ends",
+        ),
+        (
+            "Shift+C",
+            "Four-up view: four photos at once, the frame is the current one – ↑ ↓ a row",
         ),
         ("M", "Show only similar photos – again: all of them"),
         (

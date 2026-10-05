@@ -6,7 +6,8 @@
 //!
 //! Display images are decoded at the size of the photo area, so a fitted photo is drawn pixel
 //! for pixel; when the area changes, cached ones are decoded again. For zooming, the current
-//! image (and the pinned left image in compare mode) can also be loaded at full resolution,
+//! image (and the other photos on screen in compare mode and the four-up view) can also be
+//! loaded at full resolution,
 //! split into tiles that fit the GPU's texture limit.
 //!
 //! While the check overlay is on (`O`), the photos on screen and the current one's neighbours
@@ -95,14 +96,15 @@ struct State {
     generation: u64,
     paths: Arc<Vec<PathBuf>>,
     current: usize,
-    /// Kept decoded however far away it is (the left photo in compare mode).
-    pinned: Option<usize>,
+    /// The other photos on screen, kept decoded however far away they are: the left photo in
+    /// compare mode, the other three of the four-up view.
+    shown: Vec<usize>,
     /// Decode size in physical pixels: the photo area, clamped to the max texture side (a 4K
     /// guess until the window has one).
     target: [u32; 2],
     cache: HashMap<usize, Slot>,
     in_flight: HashSet<usize>,
-    /// Full resolution wanted for these indices (current and pinned, while zoomed in).
+    /// Full resolution wanted for these indices (the photos on screen, while zoomed in).
     want_full: HashSet<usize>,
     full: HashMap<usize, Option<Arc<FullImage>>>,
     full_in_flight: HashSet<usize>,
@@ -124,19 +126,19 @@ struct State {
 
 impl State {
     fn keeps(&self, index: usize) -> bool {
-        index.abs_diff(self.current) <= KEEP_RADIUS || self.pinned == Some(index)
+        index.abs_diff(self.current) <= KEEP_RADIUS || self.shown.contains(&index)
     }
 
     /// Only the photos on screen get full resolution.
     fn on_screen(&self, index: usize) -> bool {
-        index == self.current || self.pinned == Some(index)
+        index == self.current || self.shown.contains(&index)
     }
 
     /// The overlay is made for the photos on screen and the current one's neighbours, so
     /// stepping on shows it at once; further ones would only cost memory.
     fn wants_overlay(&self, index: usize) -> bool {
         self.overlay != Mode::Off
-            && (index.abs_diff(self.current) <= 1 || self.pinned == Some(index))
+            && (index.abs_diff(self.current) <= 1 || self.shown.contains(&index))
     }
 
     /// See [`Loader::set_overlay`]. Whether anything changed.
@@ -154,25 +156,26 @@ impl State {
     }
 
     fn prune(&mut self) {
-        let (current, pinned) = (self.current, self.pinned);
-        let on_screen = |i: usize| i == current || pinned == Some(i);
+        let (current, shown) = (self.current, std::mem::take(&mut self.shown));
+        let on_screen = |i: usize| i == current || shown.contains(&i);
         let overlay_on = self.overlay != Mode::Off;
         self.cache
-            .retain(|&i, _| i.abs_diff(current) <= KEEP_RADIUS || pinned == Some(i));
+            .retain(|&i, _| i.abs_diff(current) <= KEEP_RADIUS || shown.contains(&i));
         self.full.retain(|&i, _| on_screen(i));
         self.want_full.retain(|&i| on_screen(i));
         self.overlays
-            .retain(|&i, _| overlay_on && (i.abs_diff(current) <= 1 || pinned == Some(i)));
+            .retain(|&i, _| overlay_on && (i.abs_diff(current) <= 1 || shown.contains(&i)));
         self.full_overlays.retain(|&i, _| on_screen(i));
+        self.shown = shown;
     }
 
     /// See [`Loader::set_library`]. The same list again (compare mode on or off) keeps the
     /// decodes in flight: their indices still mean the same photos.
-    fn switch(&mut self, paths: Arc<Vec<PathBuf>>, current: usize, pinned: Option<usize>) {
+    fn switch(&mut self, paths: Arc<Vec<PathBuf>>, current: usize, shown: Vec<usize>) {
         if *paths == *self.paths {
             self.paths = paths;
             self.current = current;
-            self.pinned = pinned;
+            self.shown = shown;
             self.prune();
             return;
         }
@@ -187,7 +190,7 @@ impl State {
         drop(positions);
         self.generation += 1;
         self.current = current;
-        self.pinned = pinned;
+        self.shown = shown;
         self.in_flight.clear();
         self.want_full.clear();
         self.full_in_flight.clear();
@@ -259,7 +262,7 @@ impl Loader {
                 generation: 0,
                 paths: Arc::new(Vec::new()),
                 current: 0,
-                pinned: None,
+                shown: Vec::new(),
                 target,
                 cache: HashMap::new(),
                 in_flight: HashSet::new(),
@@ -298,8 +301,8 @@ impl Loader {
 
     /// Switches to a new list. Images that are in both lists stay cached (re-sorting,
     /// filtering or deleting doesn't decode anything again).
-    pub fn set_library(&self, paths: Arc<Vec<PathBuf>>, current: usize, pinned: Option<usize>) {
-        self.shared.lock().switch(paths, current, pinned);
+    pub fn set_library(&self, paths: Arc<Vec<PathBuf>>, current: usize, shown: Vec<usize>) {
+        self.shared.lock().switch(paths, current, shown);
         self.shared.wake.notify_all();
     }
 
@@ -314,12 +317,13 @@ impl Loader {
         self.shared.wake.notify_all();
     }
 
-    pub fn set_pinned(&self, pinned: Option<usize>) {
+    /// The other photos on screen besides the current one (see `State::shown`).
+    pub fn set_shown(&self, shown: Vec<usize>) {
         let mut state = self.shared.lock();
-        if state.pinned == pinned {
+        if state.shown == shown {
             return;
         }
-        state.pinned = pinned;
+        state.shown = shown;
         state.prune();
         drop(state);
         self.shared.wake.notify_all();
@@ -603,8 +607,9 @@ fn full_overlay_job(state: &mut State, index: usize) -> Option<Job> {
     Some(job(state, Kind::FullOverlay, index))
 }
 
-/// Current photo, its overlay and full resolution, the pinned photo likewise, then the
-/// neighbours (and the overlay of the next and previous one).
+/// Current photo, its overlay and full resolution, the other photos on screen likewise (all
+/// their display images first), then the neighbours (and the overlay of the next and previous
+/// one).
 fn next_job(state: &mut State) -> Option<Job> {
     let current = state.current;
     if let Some(job) = display_job(state, current) {
@@ -616,9 +621,11 @@ fn next_job(state: &mut State) -> Option<Job> {
     if let Some(job) = on_screen_job(state, current) {
         return Some(job);
     }
-    if let Some(pinned) = state.pinned
-        && let Some(job) = display_job(state, pinned).or_else(|| on_screen_job(state, pinned))
-    {
+    let shown = state.shown.clone();
+    if let Some(job) = shown.iter().find_map(|&index| display_job(state, index)) {
+        return Some(job);
+    }
+    if let Some(job) = shown.iter().find_map(|&index| on_screen_job(state, index)) {
         return Some(job);
     }
     PREFETCH_ORDER.into_iter().skip(1).find_map(|offset| {
@@ -869,7 +876,7 @@ mod tests {
                     .collect(),
             ),
             current,
-            pinned,
+            shown: pinned.into_iter().collect(),
             target: [100, 100],
             cache: HashMap::new(),
             in_flight: HashSet::new(),
@@ -1065,15 +1072,18 @@ mod tests {
         let mut s = state(20, 3, None);
         s.in_flight.extend([3, 4]);
         let same = Arc::clone(&s.paths);
-        s.switch(Arc::new(same.to_vec()), 4, Some(3));
-        assert_eq!((s.generation, s.current, s.pinned), (0, 4, Some(3)));
+        s.switch(Arc::new(same.to_vec()), 4, vec![3]);
+        assert_eq!(
+            (s.generation, s.current, s.shown.as_slice()),
+            (0, 4, &[3][..])
+        );
         assert_eq!(
             s.in_flight,
             HashSet::from([3, 4]),
             "compare mode keeps them"
         );
         let fewer: Vec<PathBuf> = same.iter().skip(1).cloned().collect();
-        s.switch(Arc::new(fewer), 2, None);
+        s.switch(Arc::new(fewer), 2, Vec::new());
         assert_eq!(s.generation, 1);
         assert!(s.in_flight.is_empty(), "indices mean other photos now");
     }
@@ -1095,6 +1105,28 @@ mod tests {
                 (13, false),
                 (8, false),
                 (7, false),
+            ]
+        );
+    }
+
+    /// The four-up view: the four display images first, then full resolution for all of them.
+    #[test]
+    fn four_photos_on_screen_come_before_the_neighbours() {
+        let mut s = state(20, 10, None);
+        s.shown = vec![8, 9, 11];
+        s.want_full.extend([8, 9, 10, 11]);
+        let first: Vec<(usize, bool)> = order(&mut s).into_iter().take(8).collect();
+        assert_eq!(
+            first,
+            [
+                (10, false),
+                (10, true),
+                (8, false),
+                (9, false),
+                (11, false),
+                (8, true),
+                (9, true),
+                (11, true),
             ]
         );
     }
