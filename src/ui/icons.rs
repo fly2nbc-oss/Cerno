@@ -2,7 +2,8 @@
 //! taken from a font – egui has no flag emoji and no Lucide icons.
 
 use eframe::egui::{
-    Align2, Color32, FontId, Painter, Pos2, Rect, Shape, Stroke, StrokeKind, pos2, vec2,
+    Align2, Color32, CursorIcon, FontId, Id, Painter, Pos2, Rect, Sense, Shape, Stroke, StrokeKind,
+    Ui, Vec2, pos2, vec2,
 };
 
 use crate::i18n::Lang;
@@ -279,6 +280,32 @@ pub fn eye(painter: &Painter, center: Pos2, on: bool, color: Color32) {
         painter.circle_filled(center, 2.6, color);
     } else {
         painter.circle_stroke(center, 2.2, stroke);
+    }
+}
+
+/// A button with the copy mark that puts `text` on the clipboard. For a moment after a click
+/// it stays lit and its tooltip says `done` instead of `tip`; `id` keeps that moment.
+pub fn copy_button(ui: &mut Ui, size: Vec2, id: Id, text: &str, tip: &str, done: &str) {
+    let now = ui.input(|i| i.time);
+    let copied = ui
+        .data(|data| data.get_temp::<f64>(id))
+        .is_some_and(|until| until > now);
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+    let color = if copied || response.hovered() {
+        tokens::ACCENT
+    } else {
+        tokens::MUTED
+    };
+    button_background(ui.painter(), rect, response.hovered(), copied);
+    copy(ui.painter(), rect.center(), color);
+    let response = response
+        .on_hover_cursor(CursorIcon::PointingHand)
+        .on_hover_text(if copied { done } else { tip });
+    if response.clicked() {
+        ui.ctx().copy_text(text.to_owned());
+        ui.data_mut(|data| data.insert_temp(id, now + 1.6));
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(1700));
     }
 }
 

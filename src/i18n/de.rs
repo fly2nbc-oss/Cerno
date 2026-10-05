@@ -445,8 +445,8 @@ pub static TEXTS: Texts = Texts {
     exiftool_failed: |err| {
         format!("ExifTool ließ sich nicht laden: {err} – ein neuer Versuch macht dort weiter")
     },
-    copy_models_path: "Pfad kopieren",
-    models_path_copied: "Pfad kopiert",
+    copy_path: "Pfad kopieren",
+    path_copied: "Pfad kopiert",
     confirm_reset_taste_title: "Vorhersage zurücksetzen?",
     confirm_reset_taste_text: "Cerno vergisst, was es aus deinen Sternen und abgelehnten Fotos gelernt hat. Sterne in den Fotodateien bleiben unverändert.",
     confirm_delete_models_title: "Heruntergeladene Modelle löschen?",

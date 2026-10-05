@@ -1,6 +1,8 @@
 //! Side panel with analysis values of the current photo. Each row explains itself when the
 //! pointer rests on it; only the CLIP attributes fold out (they are further values).
 
+use std::path::Path;
+
 use eframe::egui::{
     Align, Color32, CursorIcon, FontId, Hyperlink, Id, Label, Layout, Rect, Response, RichText,
     ScrollArea, Sense, Stroke, Ui, UiBuilder, vec2,
@@ -114,6 +116,8 @@ pub fn tabs(ui: &mut Ui, rect: Rect, current: DetailsTab) -> Option<DetailsTab> 
 }
 
 pub struct Details<'a> {
+    /// The photo's file: the button in the File section's title copies its path.
+    pub path: &'a Path,
     pub scores: Option<Scores>,
     pub personal: Option<f32>,
     pub frame_percentile: Option<f32>,
@@ -333,11 +337,22 @@ fn analysis(ui: &mut Ui, d: &Details<'_>, attributes_open: &mut bool) -> Option<
     overlay
 }
 
-/// Size and load time, or a video's streams; the GPS position with its map links.
+/// Size and load time, or a video's streams; the GPS position with its map links. The title
+/// carries a button that copies the file's path – the tooltip shows which.
 fn file(ui: &mut Ui, d: &Details<'_>) {
     let t = i18n::t();
     if d.file.is_some() || d.media.is_some() {
-        section(ui, t.section_file);
+        let path = d.path.display().to_string();
+        section_with(ui, t.section_file, |ui| {
+            icons::copy_button(
+                ui,
+                vec2(22.0, 16.0),
+                Id::new("details_path_copied_until"),
+                &path,
+                &format!("{}\n{path}", t.copy_path),
+                t.path_copied,
+            );
+        });
         match (d.media, d.file) {
             (Some(media), _) => {
                 for (label, value) in media_rows(media) {
@@ -505,11 +520,30 @@ fn section(ui: &mut Ui, title: &str) {
     ui.add_space(2.0);
 }
 
-/// A section title with the eye that shows the section's values on the photo, at the right
-/// like the values below it. Whether the eye was clicked.
+/// A section title with the eye that shows the section's values on the photo. Whether the
+/// eye was clicked.
 fn section_with_eye(ui: &mut Ui, title: &str, on: bool) -> bool {
+    section_with(ui, title, |ui| {
+        let (rect, response) = ui.allocate_exact_size(vec2(22.0, 14.0), Sense::click());
+        let colour = if on {
+            tokens::ACCENT
+        } else if response.hovered() {
+            tokens::TEXT
+        } else {
+            tokens::MUTED
+        };
+        icons::eye(ui.painter(), rect.center(), on, colour);
+        response
+            .on_hover_cursor(CursorIcon::PointingHand)
+            .on_hover_text(i18n::t().overlay_show_on_photo)
+            .clicked()
+    })
+}
+
+/// A section title with a small button at the right, like the values below it.
+fn section_with<R>(ui: &mut Ui, title: &str, button: impl FnOnce(&mut Ui) -> R) -> R {
     ui.add_space(6.0);
-    let clicked = ui
+    let inner = ui
         .horizontal(|ui| {
             ui.add_space(PAD);
             ui.label(
@@ -519,25 +553,13 @@ fn section_with_eye(ui: &mut Ui, title: &str, on: bool) -> bool {
             );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.add_space(PAD);
-                let (rect, response) = ui.allocate_exact_size(vec2(22.0, 14.0), Sense::click());
-                let colour = if on {
-                    tokens::ACCENT
-                } else if response.hovered() {
-                    tokens::TEXT
-                } else {
-                    tokens::MUTED
-                };
-                icons::eye(ui.painter(), rect.center(), on, colour);
-                response
-                    .on_hover_cursor(CursorIcon::PointingHand)
-                    .on_hover_text(i18n::t().overlay_show_on_photo)
-                    .clicked()
+                button(ui)
             })
             .inner
         })
         .inner;
     ui.add_space(2.0);
-    clicked
+    inner
 }
 
 /// Label and value with its bar; the explanation shows while the pointer rests on the row.
@@ -825,6 +847,7 @@ mod tests {
 
     fn details_with_scores(status: &Status) -> Details<'_> {
         Details {
+            path: Path::new("D:/Fotos/IMG_1.jpg"),
             scores: Some(Scores {
                 sharpness: Some(1.0),
                 aesthetic: Some(5.0),
@@ -984,6 +1007,7 @@ mod tests {
         let status = status();
         let position = (48.5216, -9.0576);
         let details = Details {
+            path: Path::new("D:/Fotos/IMG_1.jpg"),
             scores: None,
             personal: None,
             frame_percentile: None,
@@ -1062,6 +1086,56 @@ mod tests {
         assert_eq!(opened, [metadata::osm_url(position)]);
     }
 
+    /// The button at the right of the File section's title copies the photo's path.
+    #[test]
+    fn the_file_title_copies_the_path() {
+        let ctx = Context::default();
+        let status = status();
+        let details = Details {
+            file: Some(([6000, 4000], 120)),
+            ..details_with_scores(&status)
+        };
+        let panel = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 1200.0));
+        let frame = |events: Vec<Event>| {
+            let mut output = ctx.run_ui(
+                RawInput {
+                    screen_rect: Some(panel),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    draw(ui, panel, &details, &mut false);
+                },
+            );
+            output.textures_delta.clear();
+            output
+        };
+        let title = texts(&frame(Vec::new()))
+            .into_iter()
+            .find(|(text, _)| text == "FILE")
+            .map(|(_, rect)| rect)
+            .expect("the File section is drawn");
+        let at = pos2(panel.right() - PAD - 11.0, title.center().y);
+        let button = |pressed| Event::PointerButton {
+            pos: at,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        };
+        frame(vec![Event::PointerMoved(at)]);
+        frame(vec![button(true)]);
+        let copied: Vec<String> = frame(vec![button(false)])
+            .platform_output
+            .commands
+            .into_iter()
+            .filter_map(|command| match command {
+                OutputCommand::CopyText(text) => Some(text),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(copied, ["D:/Fotos/IMG_1.jpg"]);
+    }
+
     /// The eye next to "Sharpness" turns the sharpness overlay on, and off again when lit.
     #[test]
     fn the_eye_switches_the_overlay() {
@@ -1070,6 +1144,7 @@ mod tests {
         let panel = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 1200.0));
         let run = |mode: overlay::Mode, events: Vec<Event>| {
             let details = Details {
+                path: Path::new("D:/Fotos/IMG_1.jpg"),
                 scores: None,
                 personal: None,
                 frame_percentile: None,
@@ -1208,6 +1283,7 @@ mod tests {
             ..MediaInfo::default()
         };
         let details = Details {
+            path: Path::new("D:/Fotos/IMG_1.jpg"),
             scores: None,
             personal: None,
             frame_percentile: None,

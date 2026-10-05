@@ -468,8 +468,8 @@ pub static TEXTS: Texts = Texts {
     exiftool_failed: |err| {
         format!("Impossible de télécharger ExifTool : {err} – un nouvel essai reprend là")
     },
-    copy_models_path: "Copier le chemin",
-    models_path_copied: "Chemin copié",
+    copy_path: "Copier le chemin",
+    path_copied: "Chemin copié",
     confirm_reset_taste_title: "Réinitialiser la prédiction ?",
     confirm_reset_taste_text: "Cerno oubliera ce qu'il a appris de vos étoiles et de vos photos rejetées. Les étoiles dans les fichiers photo restent inchangées.",
     confirm_delete_models_title: "Supprimer les modèles téléchargés ?",

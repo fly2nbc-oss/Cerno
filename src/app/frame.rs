@@ -320,6 +320,7 @@ impl CernoApp {
             ui,
             body,
             &details::Details {
+                path: &path,
                 scores,
                 personal,
                 frame_percentile: scores.and_then(|s| percentiles.frame(&s)),

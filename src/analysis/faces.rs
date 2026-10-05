@@ -25,6 +25,11 @@ const SCORE_THRESHOLD: f32 = 0.6;
 const NMS_IOU: f32 = 0.3;
 /// Faces narrower than this (in the analysis image) are too small for a meaningful measure.
 const MIN_FACE_WIDTH: f32 = 40.0;
+/// The eyes of a box between two faces lie further apart than this share of its width (see
+/// `bridges`). Measured on the author's index on 2026-10-05 (2115 faces): the bridges have
+/// 0.57–0.71, the closest real face that has an eye in a stronger one's box 0.49 (a child
+/// against its mother's cheek).
+const BRIDGE_EYE_SPAN: f32 = 0.53;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Face {
@@ -130,7 +135,7 @@ impl FaceDetector {
             ));
         }
         let back = 1.0 / scale;
-        Ok(non_maximum_suppression(faces, NMS_IOU)
+        Ok(without_bridges(non_maximum_suppression(faces, NMS_IOU))
             .into_iter()
             .map(|f| Face {
                 score: f.score,
@@ -139,6 +144,62 @@ impl FaceDetector {
             })
             .collect())
     }
+}
+
+/// A box YuNet puts between two neighbours in a group photo – their faces are only about
+/// 14 px wide at its 640 px input. Its "eyes" are one eye of each, so they lie further apart
+/// than a face's own, and exactly one of them is inside a face found with more confidence
+/// whose box it overlaps. NMS keeps it: it overlaps each neighbour only partly. Without this
+/// the faces grid showed both people twice.
+fn bridges(face: &Face, others: &[Face]) -> bool {
+    let [right, left] = [face.landmarks[0], face.landmarks[1]];
+    let span = (right[0] - left[0]).hypot(right[1] - left[1]) / face.bbox[2].max(f32::EPSILON);
+    let inside = |[x, y]: [f32; 2], [bx, by, bw, bh]: [f32; 4]| {
+        (bx..=bx + bw).contains(&x) && (by..=by + bh).contains(&y)
+    };
+    span > BRIDGE_EYE_SPAN
+        && others.iter().any(|other| {
+            other.score > face.score
+                && iou(&face.bbox, &other.bbox) > 0.0
+                && inside(right, other.bbox) != inside(left, other.bbox)
+        })
+}
+
+/// The faces without the boxes between two of them (`bridges`), each judged against all
+/// found – a bridge may be the stronger neighbour of a weaker one.
+pub fn without_bridges(faces: Vec<Face>) -> Vec<Face> {
+    let keep: Vec<bool> = faces.iter().map(|face| !bridges(face, &faces)).collect();
+    faces
+        .into_iter()
+        .zip(keep)
+        .filter_map(|(face, keep)| keep.then_some(face))
+        .collect()
+}
+
+/// Stored faces (0..1 of an image `width` × `height`) without the bridges. The index kept
+/// them before 1.9.0; they are left out where the faces show instead of analysing every photo
+/// again – the face count only decides "people or not", and a bridge needs two real faces.
+pub fn rows_without_bridges(
+    rows: Vec<crate::db::FaceRow>,
+    width: u32,
+    height: u32,
+) -> Vec<crate::db::FaceRow> {
+    let (w, h) = (width.max(1) as f32, height.max(1) as f32);
+    let faces: Vec<Face> = rows
+        .iter()
+        .map(|row| {
+            let [x, y, bw, bh] = row.bbox;
+            Face {
+                score: row.score,
+                bbox: [x * w, y * h, bw * w, bh * h],
+                landmarks: row.landmarks.map(|[lx, ly]| [lx * w, ly * h]),
+            }
+        })
+        .collect();
+    rows.into_iter()
+        .zip(&faces)
+        .filter_map(|(row, face)| (!bridges(face, &faces)).then_some(row))
+        .collect()
 }
 
 /// Decodes one stride's anchors (OpenCV's FaceDetectorYN post-processing).
@@ -367,6 +428,69 @@ mod tests {
         assert_eq!(kept.len(), 2);
         assert_eq!(kept[0].score, 0.9);
         assert_eq!(kept[1].score, 0.8);
+    }
+
+    /// A box between two faces goes – its eyes are one of each; a child's face against its
+    /// mother's cheek and a small face whose eyes are wide for its box stay.
+    #[test]
+    fn a_box_between_two_faces_goes() {
+        let face = |score, x: f32, eyes: [f32; 2]| Face {
+            score,
+            bbox: [x, 100.0, 40.0, 40.0],
+            landmarks: [
+                [eyes[0], 115.0],
+                [eyes[1], 115.0],
+                [x + 20.0, 125.0],
+                [x + 12.0, 132.0],
+                [x + 28.0, 132.0],
+            ],
+        };
+        let mother = face(0.85, 100.0, [110.0, 128.0]);
+        let child = face(0.80, 150.0, [160.0, 178.0]);
+        // Its right eye is the mother's left one, its left eye the child's right one: 0.625.
+        let bridge = face(0.65, 125.0, [128.0, 153.0]);
+        let kept = without_bridges(vec![mother, bridge, child]);
+        assert_eq!(kept, vec![mother, child]);
+
+        // A cheek against a cheek: one eye in the stronger box, but a face's span (0.45).
+        let cheek = face(0.65, 130.0, [136.0, 154.0]);
+        assert_eq!(without_bridges(vec![mother, cheek]).len(), 2);
+        // Wide eyes for its box, but none of them in another face (small faces have 0.55–0.65).
+        let small = face(0.65, 300.0, [305.0, 331.0]);
+        assert_eq!(without_bridges(vec![mother, small]).len(), 2);
+        // The stronger of the two is never the bridge.
+        let strong = face(0.9, 125.0, [128.0, 153.0]);
+        assert_eq!(without_bridges(vec![mother, strong]).len(), 2);
+    }
+
+    /// Stored rows are in 0..1 of width and height separately: the eye span is measured in
+    /// pixels, so a wide photo doesn't stretch it.
+    #[test]
+    fn stored_bridges_are_measured_in_pixels() {
+        // Pixels of a 2000 × 1000 photo → 0..1.
+        let row = |score, x: f32, eyes: [[f32; 2]; 2]| crate::db::FaceRow {
+            score,
+            bbox: [x / 2000.0, 0.1, 40.0 / 2000.0, 40.0 / 1000.0],
+            landmarks: [
+                eyes[0],
+                eyes[1],
+                [x + 20.0, 125.0],
+                [x + 12.0, 132.0],
+                [x + 28.0, 132.0],
+            ]
+            .map(|[px, py]| [px / 2000.0, py / 1000.0]),
+            eyes: None,
+        };
+        let mother = row(0.85, 100.0, [[110.0, 115.0], [128.0, 115.0]]);
+        let child = row(0.80, 150.0, [[160.0, 115.0], [178.0, 115.0]]);
+        let bridge = row(0.65, 125.0, [[128.0, 115.0], [153.0, 115.0]]);
+        // A tilted face against the mother's: 14 × 10 px apart, 0.43 of its width – in 0..1
+        // units the photo's 2:1 would double the 10 px and make it 0.61, a bridge.
+        let tilted = row(0.65, 130.0, [[136.0, 113.0], [150.0, 123.0]]);
+        assert_eq!(
+            rows_without_bridges(vec![mother, bridge, child, tilted], 2000, 1000),
+            vec![mother, child, tilted]
+        );
     }
 
     #[test]

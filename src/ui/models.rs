@@ -3,8 +3,8 @@
 //! delete the models). Opened from the menu – the details panel stays about the current photo.
 
 use eframe::egui::{
-    Align, Button, Color32, Context, FontId, Id, Key, Label, Layout, Modifiers, Rect, RichText,
-    Sense, Ui, vec2,
+    Align, Button, Color32, Context, FontId, Id, Key, Label, Layout, Modifiers, Rect, RichText, Ui,
+    vec2,
 };
 
 use crate::analysis::Status;
@@ -226,12 +226,6 @@ fn models_folder(ui: &mut Ui) {
         return;
     };
     let text = dir.display().to_string();
-    let copied_id = Id::new("models_path_copied_until");
-    let now = ui.input(|i| i.time);
-    let copied = ui
-        .data(|data| data.get_temp::<f64>(copied_id))
-        .is_some_and(|until| until > now);
-
     ui.horizontal(|ui| {
         let button = 24.0;
         let text_w = (ui.available_width() - button - 8.0).max(40.0);
@@ -246,27 +240,14 @@ fn models_folder(ui: &mut Ui) {
                 .wrap(),
             );
         });
-        let (rect, response) = ui.allocate_exact_size(vec2(button, button), Sense::click());
-        let color = if copied || response.hovered() {
-            tokens::ACCENT
-        } else {
-            tokens::MUTED
-        };
-        icons::button_background(ui.painter(), rect, response.hovered(), copied);
-        icons::copy(ui.painter(), rect.center(), color);
-        let tip = if copied {
-            t.models_path_copied
-        } else {
-            t.copy_models_path
-        };
-        response.clone().on_hover_text(tip);
-        if response.clicked() {
-            ui.ctx().copy_text(text);
-            let until = ui.input(|i| i.time) + 1.6;
-            ui.data_mut(|data| data.insert_temp(copied_id, until));
-            ui.ctx()
-                .request_repaint_after(std::time::Duration::from_millis(1700));
-        }
+        icons::copy_button(
+            ui,
+            vec2(button, button),
+            Id::new("models_path_copied_until"),
+            &text,
+            t.copy_path,
+            t.path_copied,
+        );
     });
 }
 
