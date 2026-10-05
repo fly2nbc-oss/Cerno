@@ -294,6 +294,7 @@ pub static TEXTS: Texts = Texts {
     row_location: "Ubicación",
     tab_values: "Valores",
     tab_description: "Descripción",
+    tab_faces: "Caras",
     section_comment: "Comentario",
     section_keywords: "Palabras clave",
     comment_hint: "Escribir un comentario …",
@@ -414,6 +415,26 @@ pub static TEXTS: Texts = Texts {
     },
     restore_failed: |n, name, err| format!("No se pudieron devolver {n} foto(s) – {name}: {err}"),
     deleted_mark: "Eliminada",
+    faces_loading: "Buscando caras…",
+    faces_unknown: "Aún sin analizar: las caras llegarán después.",
+    faces_none: "No se detectaron caras",
+    faces_only_small: "Solo caras pequeñas: demasiado pequeñas para juzgar",
+    face_eyes_blurry: "Ojos probablemente desenfocados",
+    faces_zoom_hint: "Haz clic para acercar esta cara",
+    faces_grid_hint: "Un clic o su número (1–9) acerca una cara · Esc cierra",
+    cmd_faces: "Caras",
+    cmd_face_grid: "Todas las caras en grande",
+    faces_small: |n| {
+        format!(
+            "+ {n} {}: demasiado pequeñas para juzgar",
+            if n == 1 {
+                "cara pequeña"
+            } else {
+                "caras pequeñas"
+            }
+        )
+    },
+    face_number: |n| format!("Cara {n}"),
     raw_preview_fact: "Vista previa RAW",
     preview_word: "vista previa",
     edit_failed: |detail| format!("No se ha escrito: {detail}"),
@@ -587,6 +608,10 @@ pub static TEXTS: Texts = Texts {
         (
             "Mayús+Tab",
             "Barra de filtros, detalles y tira de miniaturas a la vez",
+        ),
+        (
+            "G, Mayús+G",
+            "Caras: en el panel de detalles (G) o todas en grande (Mayús+G); un clic acerca",
         ),
     ],
     help_edit: [

@@ -295,6 +295,7 @@ pub static TEXTS: Texts = Texts {
     row_location: "Location",
     tab_values: "Values",
     tab_description: "Description",
+    tab_faces: "Faces",
     section_comment: "Comment",
     section_keywords: "Keywords",
     comment_hint: "Write a comment …",
@@ -415,6 +416,22 @@ pub static TEXTS: Texts = Texts {
     },
     restore_failed: |n, name, err| format!("Could not put back {n} photo(s) – {name}: {err}"),
     deleted_mark: "Deleted",
+    faces_loading: "Looking for faces…",
+    faces_unknown: "Not analysed yet – the faces follow.",
+    faces_none: "No faces found",
+    faces_only_small: "Only small faces – too small to judge",
+    face_eyes_blurry: "Eyes probably blurry",
+    faces_zoom_hint: "Click to zoom to this face",
+    faces_grid_hint: "A click or its number (1–9) zooms to a face · Esc closes",
+    cmd_faces: "Faces",
+    cmd_face_grid: "All faces large",
+    faces_small: |n| {
+        format!(
+            "+ {n} small {} – too small to judge",
+            if n == 1 { "face" } else { "faces" }
+        )
+    },
+    face_number: |n| format!("Face {n}"),
     raw_preview_fact: "RAW preview",
     preview_word: "preview",
     edit_failed: |detail| format!("Not written: {detail}"),
@@ -564,6 +581,10 @@ pub static TEXTS: Texts = Texts {
         ("Tab", "Details panel"),
         ("F6", "Filmstrip"),
         ("Shift+Tab", "Filter bar, details and filmstrip together"),
+        (
+            "G, Shift+G",
+            "Faces: in the details panel (G) or all of them large (Shift+G) – a click zooms there",
+        ),
     ],
     help_edit: [
         (

@@ -410,6 +410,7 @@ impl CernoApp {
         }
         self.thumbs.invalidate(path);
         self.analyzer.revisit(path);
+        self.forget_faces(path);
     }
 
     pub(super) fn handle_edit_keys(&mut self, ctx: &egui::Context) {

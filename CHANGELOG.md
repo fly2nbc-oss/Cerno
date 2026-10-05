@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **Faces at a glance** – `G` opens a *Faces* tab in the details panel with every face of the photo, left to right, and a note where the eyes are probably blurry; `Shift+G` shows them all large over the photo, for group photos. A click (or the face's number in the grid) zooms to it.
+
 ## [1.6.0] – 2026-10-05
 
 Deleted photos come back, the keyboard crops, and the help explains how to work with Cerno.

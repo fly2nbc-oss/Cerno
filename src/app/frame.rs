@@ -303,6 +303,13 @@ impl CernoApp {
             self.draw_description(ui, body, &path, image.as_deref());
             return;
         }
+        if self.details_tab == DetailsTab::Faces {
+            let state = self.faces_of_current(&ctx);
+            if let Some(face) = crate::ui::faces::tab(ui, body, &state.shown()) {
+                self.zoom_to_face(face);
+            }
+            return;
+        }
         let status = self.analyzer.status();
         let video = library::format_of(&path) == Some(library::Format::Video);
         let media = video.then(|| self.media_info(&ctx, &path)).flatten();

@@ -47,11 +47,13 @@ impl DetailsMode {
     }
 }
 
-/// What the panel shows: the analysis values or the photo's comment and keywords (`B`).
+/// What the panel shows: the analysis values, the photo's comment and keywords (`B`) or its
+/// faces (`G`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DetailsTab {
     Values,
     Description,
+    Faces,
 }
 
 impl DetailsTab {
@@ -59,11 +61,12 @@ impl DetailsTab {
         match self {
             Self::Values => "values",
             Self::Description => "description",
+            Self::Faces => "faces",
         }
     }
 
     pub fn from_id(id: &str) -> Option<Self> {
-        [Self::Values, Self::Description]
+        [Self::Values, Self::Description, Self::Faces]
             .into_iter()
             .find(|tab| tab.id() == id)
     }
@@ -72,7 +75,7 @@ impl DetailsTab {
 /// Height of the tab strip at the top of the panel.
 pub const TABS_HEIGHT: f32 = 34.0;
 
-/// The two tabs at the top of the panel. Returns the other tab when it was clicked.
+/// The tabs at the top of the panel. Returns another tab when it was clicked.
 pub fn tabs(ui: &mut Ui, rect: Rect, current: DetailsTab) -> Option<DetailsTab> {
     let t = i18n::t();
     let painter = ui.painter().with_clip_rect(rect);
@@ -80,8 +83,12 @@ pub fn tabs(ui: &mut Ui, rect: Rect, current: DetailsTab) -> Option<DetailsTab> 
     let line = Stroke::new(1.0, tokens::LINE);
     painter.vline(rect.left() + 0.5, rect.y_range(), line);
     painter.hline(rect.x_range(), rect.bottom() - 0.5, line);
-    let all = [DetailsTab::Values, DetailsTab::Description];
-    let labels = [t.tab_values, t.tab_description];
+    let all = [
+        DetailsTab::Values,
+        DetailsTab::Description,
+        DetailsTab::Faces,
+    ];
+    let labels = [t.tab_values, t.tab_description, t.tab_faces];
     let index = all.iter().position(|tab| *tab == current).unwrap_or(0);
     crate::ui::tabs::strip(
         ui,

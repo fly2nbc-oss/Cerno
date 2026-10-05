@@ -35,6 +35,30 @@ pub struct Face {
     pub landmarks: [[f32; 2]; 5],
 }
 
+/// The faces as the index keeps them (`Db::put_face_rows`): in 0..1 of the image they were
+/// found on, each with its own eye measure (`None` below `MIN_FACE_WIDTH`).
+pub fn rows(found: &[Face], rgb: &[u8], width: u32, height: u32) -> Vec<crate::db::FaceRow> {
+    let (w, h) = (width.max(1) as f32, height.max(1) as f32);
+    found
+        .iter()
+        .map(|face| {
+            let [x, y, fw, fh] = face.bbox;
+            crate::db::FaceRow {
+                score: face.score,
+                bbox: [x / w, y / h, fw / w, fh / h],
+                landmarks: face.landmarks.map(|[lx, ly]| [lx / w, ly / h]),
+                eyes: eye_sharpness(rgb, width, height, std::slice::from_ref(face)),
+            }
+        })
+        .collect()
+}
+
+/// Whether a face (in 0..1 of an image `width` wide) is large enough to measure its eyes, at
+/// the analysis size.
+pub fn measurable(bbox_w: f32, analysis_width: u32) -> bool {
+    bbox_w * analysis_width as f32 >= MIN_FACE_WIDTH
+}
+
 /// Raw network outputs of one stride.
 pub struct StrideOutput<'a> {
     pub stride: u32,
@@ -188,6 +212,114 @@ pub fn eye_sharpness(rgb: &[u8], width: u32, height: u32, faces: &[Face]) -> Opt
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Paints a face's box and its five points into an RGB image.
+    fn mark(rgb: &mut [u8], width: u32, height: u32, face: &Face) {
+        let mut dot = |x: f32, y: f32, colour: [u8; 3], radius: i32| {
+            for dy in -radius..=radius {
+                for dx in -radius..=radius {
+                    let (px, py) = (x as i32 + dx, y as i32 + dy);
+                    if px >= 0 && py >= 0 && (px as u32) < width && (py as u32) < height {
+                        let at = ((py as u32 * width + px as u32) * 3) as usize;
+                        rgb[at..at + 3].copy_from_slice(&colour);
+                    }
+                }
+            }
+        };
+        let [x, y, w, h] = face.bbox;
+        let steps = (2.0 * (w + h)) as i32;
+        for i in 0..=steps {
+            let t = i as f32 / steps.max(1) as f32;
+            for (px, py) in [
+                (x + t * w, y),
+                (x + t * w, y + h),
+                (x, y + t * h),
+                (x + w, y + t * h),
+            ] {
+                dot(px, py, [40, 220, 90], 1);
+            }
+        }
+        for (i, [lx, ly]) in face.landmarks.iter().enumerate() {
+            let colour = if i < 2 { [240, 40, 40] } else { [60, 120, 255] };
+            dot(*lx, *ly, colour, 3);
+        }
+    }
+
+    /// Roadmap 6: the detector on real photos. `CERNO_FACES_CHECK=<n>` takes n photos the index
+    /// saw faces on – half with one face, half with several – and n / 4 with none, from the live
+    /// index opened **read-only**, detects again on the analysis decode and writes each photo with
+    /// its boxes (green) and points (eyes red) into `CERNO_FACES_OUT`, a folder outside the
+    /// photos. One line per photo on stdout (`--nocapture`). Writes nothing else.
+    #[test]
+    #[ignore]
+    fn faces_on_real_photos() {
+        use rusqlite::{Connection, OpenFlags};
+        let Ok(count) = std::env::var("CERNO_FACES_CHECK") else {
+            return;
+        };
+        let count: usize = count.parse().expect("CERNO_FACES_CHECK is a number");
+        let out =
+            std::path::PathBuf::from(std::env::var("CERNO_FACES_OUT").expect("CERNO_FACES_OUT"));
+        std::fs::create_dir_all(&out).expect("output folder");
+        let db = crate::paths::database_path().expect("index path");
+        let conn = Connection::open_with_flags(&db, OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .expect("index, read-only");
+        let pick = |filter: &str, n: usize| -> Vec<(String, i64)> {
+            let mut stmt = conn
+                .prepare(&format!(
+                    "SELECT MIN(f.path), i.faces FROM files f JOIN images i ON i.fingerprint = f.fingerprint
+                     WHERE {filter} AND f.path NOT LIKE '%.originals%'
+                     GROUP BY f.fingerprint ORDER BY random() LIMIT {}",
+                    n * 3
+                ))
+                .expect("query");
+            stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+                .expect("rows")
+                .filter_map(Result::ok)
+                .filter(|(path, _): &(String, i64)| std::path::Path::new(path).is_file())
+                .take(n)
+                .collect()
+        };
+        let mut photos = pick("i.faces = 1", count / 2);
+        photos.extend(pick("i.faces > 1", count - count / 2));
+        photos.extend(pick("i.faces = 0", count / 4));
+        let mut detector = FaceDetector::load().expect("detector");
+        for (i, (path, stored)) in photos.iter().enumerate() {
+            let path = std::path::Path::new(path);
+            let Ok(bytes) = std::fs::read(path) else {
+                continue;
+            };
+            let Some(format) = crate::library::format_of(path) else {
+                continue;
+            };
+            let meta = crate::metadata::read_for(path, &bytes);
+            let Ok(mut image) =
+                decode::decode_for_display(&bytes, format, meta.orientation, [2048, 2048])
+            else {
+                println!("{path:?}: cannot decode");
+                continue;
+            };
+            let (w, h) = (image.width, image.height);
+            let found = detector.detect(&image.rgb, w, h).expect("detect");
+            let eyes = eye_sharpness(&image.rgb, w, h, &found);
+            let sizes: Vec<String> = found
+                .iter()
+                .map(|f| format!("{:.0}px/{:.2}", f.bbox[2], f.score))
+                .collect();
+            println!(
+                "{i:02} stored {stored} found {} eyes {:?} [{}] {}",
+                found.len(),
+                eyes.map(|e| e.round()),
+                sizes.join(" "),
+                path.display()
+            );
+            for face in &found {
+                mark(&mut image.rgb, w, h, face);
+            }
+            let jpeg = crate::edit::encode_jpeg(w, h, &image.rgb).expect("encode");
+            std::fs::write(out.join(format!("{i:02}-{}f.jpg", found.len())), jpeg).expect("write");
+        }
+    }
 
     /// A single confident anchor in the stride-32 grid decodes to the expected box and eyes.
     #[test]

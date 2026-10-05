@@ -21,6 +21,7 @@ mod deleted;
 mod describe;
 mod editing;
 mod external;
+mod faces;
 mod files;
 mod frame;
 mod gate;
@@ -132,8 +133,10 @@ pub struct CernoApp {
     session_labels: HashMap<PathBuf, Option<Label>>,
     /// Comments and keywords given in this session; they win over the file the same way.
     session_descriptions: HashMap<PathBuf, Description>,
-    /// Which tab the details panel shows (`B` opens the description).
+    /// Which tab the details panel shows (`B` opens the description, `G` the faces).
     details_tab: DetailsTab,
+    /// The current photo's faces (`G`, `Shift+G`).
+    faces: faces::Faces,
     /// The comment and keyword being typed in the description tab.
     drafts: description::Drafts,
     /// `0`–`5`, `X` and `6`–`9` also move to the next photo.
@@ -348,6 +351,7 @@ impl CernoApp {
             session_labels: HashMap::new(),
             session_descriptions: HashMap::new(),
             details_tab,
+            faces: faces::Faces::default(),
             drafts: description::Drafts::default(),
             auto_advance,
             subfolders,
@@ -445,6 +449,7 @@ impl CernoApp {
     fn poll_background(&mut self, ctx: &egui::Context) {
         self.process_deletions(ctx);
         self.poll_deleted(ctx);
+        self.poll_faces();
         self.poll_transfer(ctx);
         self.poll_external(ctx);
         self.poll_edits();
@@ -498,6 +503,7 @@ impl eframe::App for CernoApp {
                 .filter_map(|slot| self.frame_of(&ctx, slot))
                 .collect()
         };
+        self.apply_face_zoom(&frames);
         self.handle_keys(&ctx, &frames);
         self.update_video(&ctx);
         // Again: a key can empty the view (a mark took the last photo the filter showed), and

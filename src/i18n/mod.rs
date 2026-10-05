@@ -451,6 +451,17 @@ pub struct Texts {
     pub restore_failed: fn(usize, &str, &str) -> String,
     /// Beside the name in the info bar while a deleted photo shows.
     pub deleted_mark: &'static str,
+    pub faces_loading: &'static str,
+    pub faces_unknown: &'static str,
+    pub faces_none: &'static str,
+    pub faces_only_small: &'static str,
+    pub face_eyes_blurry: &'static str,
+    pub faces_zoom_hint: &'static str,
+    pub faces_grid_hint: &'static str,
+    pub cmd_faces: &'static str,
+    pub cmd_face_grid: &'static str,
+    pub faces_small: fn(usize) -> String,
+    pub face_number: fn(usize) -> String,
     /// In the info bar while a RAW file shows: its embedded JPEG preview, not a development.
     pub raw_preview_fact: &'static str,
     /// After a size or a section title that is about a RAW file's preview.
@@ -541,6 +552,7 @@ pub struct Texts {
     pub tab_values: &'static str,
     /// … and the photo's comment and keywords.
     pub tab_description: &'static str,
+    pub tab_faces: &'static str,
     pub section_comment: &'static str,
     pub section_keywords: &'static str,
     /// Placeholder of the empty comment field.
@@ -630,7 +642,7 @@ pub struct Texts {
     pub help_cull: [HelpRow; 5],
     pub help_video: [HelpRow; 4],
     pub help_view: [HelpRow; 7],
-    pub help_panels: [HelpRow; 4],
+    pub help_panels: [HelpRow; 5],
     pub help_edit: [HelpRow; 6],
     pub help_more: [HelpRow; 5],
 }

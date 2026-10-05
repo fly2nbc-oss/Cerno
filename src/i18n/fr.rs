@@ -317,6 +317,7 @@ pub static TEXTS: Texts = Texts {
     row_location: "Lieu",
     tab_values: "Valeurs",
     tab_description: "Description",
+    tab_faces: "Visages",
     section_comment: "Commentaire",
     section_keywords: "Mots-clés",
     comment_hint: "Écrire un commentaire …",
@@ -439,6 +440,26 @@ pub static TEXTS: Texts = Texts {
         format!("Impossible de remettre en place {n} photo(s) – {name} : {err}")
     },
     deleted_mark: "Supprimée",
+    faces_loading: "Recherche des visages…",
+    faces_unknown: "Pas encore analysée – les visages suivront.",
+    faces_none: "Aucun visage détecté",
+    faces_only_small: "Seulement de petits visages – trop petits pour juger",
+    face_eyes_blurry: "Yeux probablement flous",
+    faces_zoom_hint: "Cliquer pour zoomer sur ce visage",
+    faces_grid_hint: "Un clic ou son numéro (1–9) zoome sur un visage · Échap ferme",
+    cmd_faces: "Visages",
+    cmd_face_grid: "Tous les visages en grand",
+    faces_small: |n| {
+        format!(
+            "+ {n} {} – trop petits pour juger",
+            if n == 1 {
+                "petit visage"
+            } else {
+                "petits visages"
+            }
+        )
+    },
+    face_number: |n| format!("Visage {n}"),
     raw_preview_fact: "Aperçu RAW",
     preview_word: "aperçu",
     edit_failed: |detail| format!("Pas enregistré : {detail}"),
@@ -613,6 +634,10 @@ pub static TEXTS: Texts = Texts {
         ("Tab", "Panneau de détails"),
         ("F6", "Pellicule"),
         ("Maj+Tab", "Barre de filtres, détails et pellicule ensemble"),
+        (
+            "G, Maj+G",
+            "Visages : dans le panneau de détails (G) ou tous en grand (Maj+G) – un clic zoome dessus",
+        ),
     ],
     help_edit: [
         (

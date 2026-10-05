@@ -51,6 +51,9 @@ enum Action {
     Overlay(crate::overlay::Mode),
     Grid,
     Fullscreen,
+    /// `G`: the faces tab; `Shift+G`: every face over the photo.
+    Faces,
+    FaceGrid,
     Rate(Rating),
     Reject,
     /// Only photos like this one (`M`), or all again.
@@ -144,9 +147,10 @@ impl CernoApp {
         self.help_open = true;
     }
 
-    /// A card (models, confirmation) is open: keys and the photo's mouse handling pause.
+    /// A card (models, confirmation) or the faces grid is open: keys and the photo's mouse
+    /// handling pause.
     pub(super) fn modal_open(&self) -> bool {
-        self.models_open || self.confirm.is_some()
+        self.models_open || self.confirm.is_some() || self.faces.grid_open
     }
 
     /// Help page, menus, models card and confirmation – in this order, the last on top.
@@ -156,6 +160,16 @@ impl CernoApp {
         window: Rect,
         frames: &[viewer::Frame],
     ) {
+        if self.faces.grid_open {
+            let area = self.layout(window).area;
+            let state = self.faces_of_current(ctx);
+            let out = crate::ui::faces::grid(ctx, area, &state.shown());
+            if let Some(face) = out.clicked {
+                self.zoom_to_face(face);
+            } else if out.close {
+                self.faces.grid_open = false;
+            }
+        }
         if self.help_open {
             let out = help::overlay(ctx, window, self.help_page);
             if out.language {
@@ -303,6 +317,12 @@ impl CernoApp {
                     row(Row::new(Action::Zoom, t.cmd_zoom, key("Z")).toggle(self.zoom.is_zoomed())),
                     Entry::Group(Group::new(t.menu_overlay, key("O"), overlays)),
                     row(Row::new(Action::Grid, t.cmd_grid, key("F7")).toggle(self.grid)),
+                    row(Row::new(Action::Faces, t.cmd_faces, key("G"))),
+                    row(Row::new(
+                        Action::FaceGrid,
+                        t.cmd_face_grid,
+                        Some(i18n::with_shift("G")),
+                    )),
                     row(Row::new(Action::Fullscreen, t.cmd_fullscreen, key("F"))),
                 ],
             )));
@@ -642,6 +662,8 @@ impl CernoApp {
             }
             Action::Overlay(mode) => self.set_overlay(mode),
             Action::Grid => self.set_grid(!self.grid),
+            Action::Faces => self.open_faces(),
+            Action::FaceGrid => self.toggle_face_grid(),
             Action::Fullscreen => {
                 let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
                 ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!fullscreen));
