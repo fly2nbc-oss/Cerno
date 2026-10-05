@@ -341,9 +341,17 @@ impl CernoApp {
         if let Some(dir) = &self.dir {
             library::sort(dir, &mut all);
         }
+        // A RAW put back alone beside its JPEG pairs with it now; the hint reads the sidecars
+        // of the pairs back.
+        if self.pair_mode {
+            let (paired, found) = pairs::pair_up(all, Path::to_path_buf);
+            all = paired;
+            self.pairs.extend(found);
+        }
         self.all = Arc::new(all);
         if !restored.done.is_empty() {
             self.analyzer.taste_changed();
+            self.scan_raw_marks();
         }
         // Nothing deleted is left: the 🗑 box would only show an empty view.
         if self.deleted.is_empty() && self.options.filter.contains(FilterKind::Deleted) {

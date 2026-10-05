@@ -42,6 +42,11 @@ impl Pairs {
     pub fn insert(&mut self, primary: PathBuf, companion: PathBuf) {
         self.companions.insert(primary, companion);
     }
+
+    /// Adds the pairs found later (a RAW put back beside its JPEG).
+    pub fn extend(&mut self, other: Pairs) {
+        self.companions.extend(other.companions);
+    }
 }
 
 /// Takes the RAW of every pair out of `paths` (their order stays) and returns the pairs.
