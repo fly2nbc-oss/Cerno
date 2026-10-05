@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ### Added
 
+- **About Cerno** – the help (`H`) has a third tab with the version, the licence and the source code, and links to report a problem or suggest an idea on GitHub (version and system filled in) and to open the data folder with `crash.log`.
 - **ExifTool with one click (Windows)** – Cerno writes stars, colours, comments and keywords with ExifTool. When it is missing, Cerno now offers to download it (11 MB, from the official source, checked before it is used): once when a folder opens, at the first star, and in *Models & data*. Nothing to install by hand, no `winget`.
 
 ### Changed
@@ -17,6 +18,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ### Fixed
 
+- `Ctrl+Z` right after deleting brings the photo back, like `Esc`. It used to act on the next photo – and could put that photo's original over its edit.
 - Rating a RAW without ExifTool no longer leaves an empty XMP file behind that hid the camera's own stars.
 
 ## [1.8.0] – 2026-10-05

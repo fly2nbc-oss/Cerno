@@ -324,8 +324,10 @@ impl CernoApp {
         if self.help_open {
             if keys.help || keys.escape {
                 self.help_open = false;
-            } else if keys.next || keys.prev {
-                self.help_page = self.help_page.other();
+            } else if keys.next {
+                self.help_page = self.help_page.next();
+            } else if keys.prev {
+                self.help_page = self.help_page.prev();
             }
             return;
         }
@@ -381,7 +383,7 @@ impl CernoApp {
             self.rotate_quarter(true);
         }
         if keys.undo {
-            self.undo_edit();
+            self.undo(ctx);
         }
         if keys.open {
             self.pick_folder(ctx);

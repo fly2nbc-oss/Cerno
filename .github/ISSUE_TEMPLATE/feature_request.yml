@@ -1,0 +1,27 @@
+name: Feature request
+description: An idea that makes sorting photos with Cerno simpler or faster.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Cerno is meant to stay simple, fast and keyboard-first. Please describe the problem first – the best solution often looks different from the first idea.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you want to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+  - type: textarea
+    id: today
+    attributes:
+      label: How do you work around it today?
+  - type: input
+    id: version
+    attributes:
+      label: Cerno version
+      placeholder: "1.8.1"

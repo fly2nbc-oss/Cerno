@@ -560,6 +560,21 @@ pub static TEXTS: Texts = Texts {
     help_tab_keys: "Raccourcis",
     help_tab_tips: "Conseils",
     help_pages_hint: "←/→ change de page",
+    help_tab_about: "À propos",
+    about_intro: "Cerno affiche les photos sans attendre et aide à faire le tri – en local, sans compte ni cloud. Logiciel libre : le code source est ouvert.",
+    about_version: "Version",
+    about_license: "Licence",
+    about_source: "Code source",
+    about_bugs: "Signaler un problème",
+    about_bugs_text: "Quelque chose ne fonctionne pas ? Décrivez-le dans un ticket GitHub – il faut pour cela un compte GitHub gratuit. La version et le système sont déjà remplis ; photos et noms de fichiers ne sont pas nécessaires. Si Cerno s'est fermé brutalement, joignez le fichier crash.log du dossier de données.",
+    about_bug_link: "Le signaler sur GitHub",
+    about_open_data: "Ouvrir le dossier de données",
+    about_wishes: "Idées",
+    about_wishes_text: "Une idée qui rend le tri avec Cerno plus simple ou plus rapide ? Proposez-la – également avec un compte GitHub.",
+    about_wish_link: "La proposer sur GitHub",
+    about_third_party: "Tiers",
+    about_third_party_text: "Cerno utilise des bibliothèques libres d'autres auteurs, dont libheif et GStreamer avec FFmpeg (LGPL), et télécharge sur demande ExifTool et les modèles d'esthétique (V2.5 sous AGPL). Leurs licences sont fournies avec le programme.",
+    about_third_party_link: "Tous les tiers et leurs licences",
     help_tips: [
         (
             "Trier en deux passes",
@@ -689,7 +704,10 @@ pub static TEXTS: Texts = Texts {
             "Suppr",
             "Supprimer : va dans le dossier caché .originals après 5 secondes – rien n'est perdu",
         ),
-        ("Esc", "Récupérer les photos en attente de suppression"),
+        (
+            "Esc, Ctrl+Z",
+            "Récupérer les photos en attente de suppression",
+        ),
     ],
     help_video: [
         (

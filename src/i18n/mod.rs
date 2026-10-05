@@ -683,6 +683,21 @@ pub struct Texts {
     pub help_tab_keys: &'static str,
     pub help_tab_tips: &'static str,
     pub help_pages_hint: &'static str,
+    pub help_tab_about: &'static str,
+    pub about_intro: &'static str,
+    pub about_version: &'static str,
+    pub about_license: &'static str,
+    pub about_source: &'static str,
+    pub about_bugs: &'static str,
+    pub about_bugs_text: &'static str,
+    pub about_bug_link: &'static str,
+    pub about_open_data: &'static str,
+    pub about_wishes: &'static str,
+    pub about_wishes_text: &'static str,
+    pub about_wish_link: &'static str,
+    pub about_third_party: &'static str,
+    pub about_third_party_text: &'static str,
+    pub about_third_party_link: &'static str,
     /// The tips page: how to work with Cerno, six short sections.
     pub help_tips: [TipSection; 6],
     /// Start screen: one sentence, the five keys to begin with, and where the rest is.
@@ -893,6 +908,7 @@ mod tests {
                 assert!(tips.iter().all(|tip| !tip.trim().is_empty()));
             }
             assert!(!t.help_tab_keys.is_empty() && !t.help_tab_tips.is_empty());
+            assert!(!t.help_tab_about.is_empty());
         }
     }
 
