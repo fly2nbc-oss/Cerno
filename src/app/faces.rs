@@ -1,5 +1,5 @@
-//! The faces of the current photo, for the details panel's faces tab (`G`) and the grid of all
-//! faces (`Shift+G`). Where they are comes from the index (`Db::faces_of`); a photo analysed
+//! The faces of the current photo, for the details panel's faces tab (`Ctrl+Tab`) and the grid
+//! of all faces (`G`). Where they are comes from the index (`Db::faces_of`); a photo analysed
 //! before 1.7 has no rows yet, and its faces are looked for once more – only when one of the
 //! two shows it, then stored. The pictures are cut from the photo at full size on a thread, for
 //! the current photo only; nothing is analysed while browsing.
@@ -19,8 +19,9 @@ use crate::{decode, library, metadata, view};
 
 use super::CernoApp;
 
-/// The longest side of a face's picture.
-const CROP_SIDE: u32 = 384;
+/// The longest side of a face's picture: the details panel shows it at its full width,
+/// sharp on a 150 % display too.
+const CROP_SIDE: u32 = 512;
 /// A face's picture shows this much more than its box, so hair and chin are in it.
 const CROP_MARGIN: f32 = 1.8;
 /// The zoom to a face: its box takes this part of the photo area's height.
@@ -45,10 +46,10 @@ pub(super) struct Faces {
     path: Option<PathBuf>,
     found: Option<Arc<Found>>,
     rx: Option<mpsc::Receiver<Result<Found, String>>>,
-    /// `Shift+G`: every face over the photo.
+    /// `G`: every face over the photo.
     pub(super) grid_open: bool,
     /// A face to zoom to (0..1 box), once the photo's frame is known.
-    zoom_to: Option<[f32; 4]>,
+    pub(super) zoom_to: Option<[f32; 4]>,
 }
 
 /// What is known about the current photo's faces right now.
@@ -74,7 +75,7 @@ impl State {
 }
 
 impl CernoApp {
-    /// `G`: the faces tab of the details panel, like `B` opens the description.
+    /// The menu's *Faces*: the faces tab of the details panel (`Ctrl+Tab` steps there too).
     pub(super) fn open_faces(&mut self) {
         if self.details == DetailsMode::Off {
             self.set_details(DetailsMode::On);
@@ -83,7 +84,7 @@ impl CernoApp {
         self.set_details_tab(DetailsTab::Faces);
     }
 
-    /// `Shift+G`: every face of the photo large over it, or the photo again.
+    /// `G`: every face of the photo large over it, or the photo again.
     pub(super) fn toggle_face_grid(&mut self) {
         self.faces.grid_open = !self.faces.grid_open;
     }
@@ -324,7 +325,7 @@ mod tests {
         let big = image(2000, 1500);
         assert_eq!(
             crop(&big, [0.2, 0.2, 0.5, 0.5]).expect("crop").size,
-            [384, 384]
+            [CROP_SIDE as usize; 2]
         );
     }
 }

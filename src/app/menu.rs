@@ -63,7 +63,7 @@ enum Action {
     AlignCamera,
     /// *Visible photos ▸ Camera time …*: the card with every camera's offset.
     CameraTime,
-    /// `G`: the faces tab; `Shift+G`: every face over the photo.
+    /// The faces tab; `G`: every face over the photo.
     Faces,
     FaceGrid,
     Rate(Rating),
@@ -354,12 +354,8 @@ impl CernoApp {
                     row(Row::new(Action::Zoom, t.cmd_zoom, key("Z")).toggle(self.zoom.is_zoomed())),
                     Entry::Group(Group::new(t.menu_overlay, key("O"), overlays)),
                     row(Row::new(Action::Grid, t.cmd_grid, key("F7")).toggle(self.grid)),
-                    row(Row::new(Action::Faces, t.cmd_faces, key("G"))),
-                    row(Row::new(
-                        Action::FaceGrid,
-                        t.cmd_face_grid,
-                        Some(i18n::with_shift("G")),
-                    )),
+                    row(Row::new(Action::Faces, t.cmd_faces, None)),
+                    row(Row::new(Action::FaceGrid, t.cmd_face_grid, key("G"))),
                     row(Row::new(Action::Fullscreen, t.cmd_fullscreen, key("F"))),
                 ],
             )));
@@ -478,7 +474,7 @@ impl CernoApp {
             Row::new(Action::Reject, t.cmd_reject, key("X"))
                 .toggle(rating == Rating::Rejected)
                 .disabled(mark),
-            Row::new(Action::Describe, t.cmd_description, key("B")).disabled(mark),
+            Row::new(Action::Describe, t.cmd_description, None).disabled(mark),
             Row::new(Action::Compare, t.cmd_compare, key("C")).toggle(self.pinned.is_some()),
             Row::new(Action::Quad, t.cmd_quad, Some(i18n::with_shift("C")))
                 .toggle(self.quad.is_some()),

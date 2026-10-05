@@ -356,7 +356,7 @@ pub static TEXTS: Texts = Texts {
     ],
     explain_laion: "Quanto è bella la foto per un'IA addestrata su molte valutazioni di persone. Apprezza soprattutto persone, ritratti e cibo.",
     explain_v25: "Un'IA più recente per la stessa domanda, migliore con le foto di tutti i giorni. Apprezza soprattutto paesaggi, acqua e riprese aeree.",
-    explain_personal: "Le stelle che secondo Cerno daresti tu. Impara dalle tue stelle e dalle foto che elimini.",
+    explain_personal: "Le stelle che secondo Cerno daresti tu. Impara dalle tue stelle e dalle foto che rifiuti.",
     explain_aesthetics: "Il valore sotto la foto: la media delle due IA qui sotto, da 0 % (poco attraente) a 100 % (molto attraente). La maggior parte delle foto sta tra 40 e 60 %, da 80 % in su è molto buona. La scala è fissa – una foto ha lo stesso valore in ogni cartella.",
     explain_frame: "Quanto sono nitide le parti più nitide, rispetto alle altre foto di questa cartella. 80 % significa: più nitida dell'80 % delle altre.",
     explain_eyes: "Nitidezza proprio sugli occhi, se c'è un volto. Nei ritratti conta questa, non lo sfondo.",
@@ -411,9 +411,9 @@ pub static TEXTS: Texts = Texts {
     exiftool_old_state: |version| format!("{version}: troppo vecchio (serve 12.24 o successivo)"),
     exiftool_downloading: |percent| format!("download in corso … {percent:.0} %"),
     btn_exiftool: |size| format!("Scarica ExifTool ({size})"),
-    taste_sources: |stars, rejected, deleted| {
+    taste_sources: |stars, rejected| {
         format!(
-            "Appresa da {stars} foto con stelle, {rejected} rifiutate e {deleted} eliminate – le foto rifiutate ed eliminate contano come 0 ★."
+            "Appresa da {stars} foto con stelle e {rejected} rifiutate – le foto rifiutate contano come 0 ★, quelle eliminate per niente."
         )
     },
     btn_reset_taste: "Reimposta la previsione",
@@ -430,7 +430,7 @@ pub static TEXTS: Texts = Texts {
     copy_models_path: "Copia percorso",
     models_path_copied: "Percorso copiato",
     confirm_reset_taste_title: "Reimpostare la previsione?",
-    confirm_reset_taste_text: "Cerno dimenticherà ciò che ha imparato dalle tue stelle e dalle eliminazioni. Le stelle nei file foto restano invariate.",
+    confirm_reset_taste_text: "Cerno dimenticherà ciò che ha imparato dalle tue stelle e dalle foto rifiutate. Le stelle nei file foto restano invariate.",
     confirm_delete_models_title: "Eliminare i modelli scaricati?",
     confirm_delete_models_text: |size| {
         format!(
@@ -501,7 +501,6 @@ pub static TEXTS: Texts = Texts {
             }
         )
     },
-    face_number: |n| format!("Volto {n}"),
     raw_preview_fact: "Anteprima RAW",
     preview_word: "anteprima",
     edit_failed: |detail| format!("Non scritto: {detail}"),
@@ -578,7 +577,7 @@ pub static TEXTS: Texts = Texts {
         (
             "La previsione",
             &[
-                "Cerno impara dalle tue stelle e dalle foto rifiutate ed eliminate che cosa ti piace.",
+                "Cerno impara dalle tue stelle e dalle foto rifiutate che cosa ti piace; quelle eliminate non contano: spesso era solo una di troppo tra tante simili.",
                 "Sulle foto senza stelle mostra la sua stima con stelle appena riempite; darle resta compito tuo.",
                 "Ordinate per previsione, vengono prima le foto che probabilmente ti piaceranno.",
             ],
@@ -639,7 +638,6 @@ pub static TEXTS: Texts = Texts {
             "Maiusc+6 – 9",
             "Imposta il colore e vai alla foto successiva",
         ),
-        ("B", "Descrizione: modifica commento e parole chiave"),
     ],
     help_cull: [
         (
@@ -700,8 +698,12 @@ pub static TEXTS: Texts = Texts {
             "Barra dei filtri, dettagli e striscia di miniature insieme",
         ),
         (
-            "G, Maiusc+G",
-            "Volti: nel pannello dei dettagli (G) o tutti in grande (Maiusc+G); un clic ingrandisce",
+            "Ctrl+Tab",
+            "Schede del pannello dettagli: valori → descrizione → volti (Maiusc per tornare); nella descrizione, Invio porta il cursore nel campo delle parole chiave",
+        ),
+        (
+            "G",
+            "Tutti i volti in grande sopra la foto; un clic o 1–9 ingrandisce",
         ),
     ],
     help_edit: [

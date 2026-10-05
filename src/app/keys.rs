@@ -60,16 +60,14 @@ struct KeyInput {
     quad: bool,
     keep_left: bool,
     keep_right: bool,
-    /// `Enter`: in the grid, open the photo.
+    /// `Enter`: in the grid, open the photo; on the description tab, the keyword field.
     play: bool,
     /// Plain `Space` (with repeats; on a video only a fresh press plays or pauses).
     space: bool,
     /// The video keys (fresh presses): `Space`, `Alt+←`/`Alt+→`, `,`/`.`, `↑`/`↓`.
     video: super::video::VideoKeys,
-    /// `B`: the description tab (comment and keywords).
-    describe: bool,
-    /// `G`: the faces tab; `Shift+G`: every face over the photo.
-    faces: bool,
+    /// `G`: every face over the photo. (The details panel's tabs are `Ctrl+Tab`, taken in
+    /// `raw_input_hook`.)
     face_grid: bool,
     /// `E`: edit the photo in the remembered program (or choose one).
     edit_elsewhere: bool,
@@ -221,9 +219,7 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
                 plain && i.key_pressed(Key::ArrowUp),
             ),
         },
-        describe: plain && i.key_pressed(Key::B),
-        faces: plain && i.key_pressed(Key::G),
-        face_grid: i.modifiers.shift_only() && i.key_pressed(Key::G),
+        face_grid: plain && i.key_pressed(Key::G),
         edit_elsewhere: plain && i.key_pressed(Key::E),
         // Ctrl+O opens a folder.
         overlay: plain && i.key_pressed(Key::O),
@@ -270,16 +266,20 @@ impl CernoApp {
             self.open(ctx, &path);
         }
         let tabs = std::mem::take(&mut self.tab_presses);
-        // The faces grid closes with `Shift+G` too – read here, before the grid draws: it
-        // would see the press that opened it and close in the same frame.
-        if self.faces.grid_open && ctx.input(|i| i.modifiers.shift_only() && i.key_pressed(Key::G))
-        {
+        // The faces grid closes with `G` too – read here, before the grid draws: it would see
+        // the press that opened it and close in the same frame.
+        if self.faces.grid_open && ctx.input(|i| i.modifiers.is_none() && i.key_pressed(Key::G)) {
             self.faces.grid_open = false;
             return;
         }
         // The models card, a confirmation and the faces grid read their own keys.
         if self.modal_open() {
+            self.details_cycles.clear();
             return;
+        }
+        // `Ctrl+Tab` also leaves a field of the description tab for the next tab.
+        for backwards in std::mem::take(&mut self.details_cycles) {
+            self.cycle_details_tab(backwards);
         }
         // A comment or keyword is being typed: the keys belong to its field (`Esc` leaves it).
         // Otherwise `X` would reject, digits rate and `Space` move on while typing.
@@ -479,11 +479,13 @@ impl CernoApp {
         if keys.play && self.grid {
             self.set_grid(false);
         }
-        if keys.describe {
-            self.open_description(ctx);
-        }
-        if keys.faces {
-            self.open_faces();
+        // On the description tab `Enter` puts the cursor into the keyword field.
+        if keys.play
+            && !self.grid
+            && self.details != crate::ui::details::DetailsMode::Off
+            && self.details_tab == crate::ui::details::DetailsTab::Description
+        {
+            self.drafts.focus_keyword = true;
         }
         if keys.face_grid {
             self.toggle_face_grid();
@@ -834,5 +836,14 @@ mod tests {
         assert!(four.quad && !four.compare);
         let two = read(vec![key(Key::C, Key::C, plain)], plain);
         assert!(two.compare && !two.quad);
+    }
+
+    /// `G` alone shows every face; with Shift it is nothing any more.
+    #[test]
+    fn g_is_the_face_grid() {
+        let plain = Modifiers::NONE;
+        let shift = Modifiers::SHIFT;
+        assert!(read(vec![key(Key::G, Key::G, plain)], plain).face_grid);
+        assert!(!read(vec![key(Key::G, Key::G, shift)], shift).face_grid);
     }
 }

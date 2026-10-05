@@ -34,7 +34,7 @@ pub struct Drafts {
     pub base: Option<Description>,
     pub comment: String,
     pub keyword: String,
-    /// Put the cursor into the keyword field (`B`).
+    /// Put the cursor into the keyword field (`Enter` on this tab, the menu row).
     pub focus_keyword: bool,
 }
 
@@ -258,7 +258,7 @@ mod tests {
         }
     }
 
-    /// `B` puts the cursor into the keyword field; `Enter` adds (several with commas, none
+    /// `Enter` (on this tab) puts the cursor into the keyword field; `Enter` adds (several with commas, none
     /// twice) and the cursor stays for the next one.
     #[test]
     fn enter_adds_keywords_and_keeps_the_cursor() {

@@ -372,7 +372,7 @@ pub static TEXTS: Texts = Texts {
     ],
     explain_laion: "Wie schön eine KI das Foto findet – sie hat dafür viele Bewertungen von Menschen gelernt. Sie mag vor allem Menschen, Porträts und Essen.",
     explain_v25: "Eine neuere KI für dieselbe Frage, besser bei Alltagsfotos. Sie mag vor allem Landschaft, Wasser und Luftaufnahmen.",
-    explain_personal: "So viele Sterne würdest du laut Cerno vergeben. Sie lernt aus deinen Sternen und den Fotos, die du ablehnst oder löschst.",
+    explain_personal: "So viele Sterne würdest du laut Cerno vergeben. Sie lernt aus deinen Sternen und den Fotos, die du ablehnst.",
     explain_aesthetics: "Der Wert unter dem Foto: das Mittel aus den beiden KIs darunter, von 0 % (wenig ansprechend) bis 100 % (sehr ansprechend). Die meisten Fotos liegen bei 40–60 %, ab 80 % ist sehr gut. Die Skala ist fest – ein Foto hat in jedem Ordner denselben Wert.",
     explain_frame: "Wie scharf die schärfsten Stellen sind – im Vergleich zu den anderen Fotos im Ordner. 80 % heißt: schärfer als 80 % davon.",
     explain_eyes: "Schärfe direkt an den Augen, wenn ein Gesicht da ist. Bei Porträts zählt das, nicht der Hintergrund.",
@@ -427,9 +427,9 @@ pub static TEXTS: Texts = Texts {
     exiftool_old_state: |version| format!("{version} – zu alt (12.24 oder neuer nötig)"),
     exiftool_downloading: |percent| format!("wird geladen … {percent:.0} %"),
     btn_exiftool: |size| format!("ExifTool laden ({size})"),
-    taste_sources: |stars, rejected, deleted| {
+    taste_sources: |stars, rejected| {
         format!(
-            "Gelernt aus {stars} Fotos mit Sternen, {rejected} abgelehnten und {deleted} gelöschten – Abgelehnte und Gelöschte zählen als 0 ★."
+            "Gelernt aus {stars} Fotos mit Sternen und {rejected} abgelehnten – Abgelehnte zählen als 0 ★, Gelöschte gar nicht."
         )
     },
     btn_reset_taste: "Vorhersage zurücksetzen",
@@ -448,7 +448,7 @@ pub static TEXTS: Texts = Texts {
     copy_models_path: "Pfad kopieren",
     models_path_copied: "Pfad kopiert",
     confirm_reset_taste_title: "Vorhersage zurücksetzen?",
-    confirm_reset_taste_text: "Cerno vergisst, was es aus deinen Sternen und Löschungen gelernt hat. Sterne in den Fotodateien bleiben unverändert.",
+    confirm_reset_taste_text: "Cerno vergisst, was es aus deinen Sternen und abgelehnten Fotos gelernt hat. Sterne in den Fotodateien bleiben unverändert.",
     confirm_delete_models_title: "Heruntergeladene Modelle löschen?",
     confirm_delete_models_text: |size| {
         format!(
@@ -519,7 +519,6 @@ pub static TEXTS: Texts = Texts {
             }
         )
     },
-    face_number: |n| format!("Gesicht {n}"),
     raw_preview_fact: "RAW-Vorschau",
     preview_word: "Vorschau",
     edit_failed: |detail| format!("Nicht geschrieben: {detail}"),
@@ -596,7 +595,7 @@ pub static TEXTS: Texts = Texts {
         (
             "Die Vorhersage",
             &[
-                "Cerno lernt aus deinen Sternen, abgelehnten und gelöschten Fotos, was dir gefällt.",
+                "Cerno lernt aus deinen Sternen und abgelehnten Fotos, was dir gefällt – gelöschte zählen nicht: Oft war nur eines von vielen ähnlichen zu viel.",
                 "Bei Fotos ohne Sterne zeigt es seine Vermutung als leicht gefüllte Sterne – vergeben musst du sie selbst.",
                 "Nach Vorhersage sortiert stehen die Fotos vorn, die dir wahrscheinlich gefallen.",
             ],
@@ -651,7 +650,6 @@ pub static TEXTS: Texts = Texts {
             "Farbmarke: Rot, Gelb, Grün, Blau – noch einmal entfernt sie",
         ),
         ("Umschalt+6 – 9", "Diese Farbe setzen und zum nächsten Foto"),
-        ("B", "Beschreibung: Kommentar und Stichwörter bearbeiten"),
     ],
     help_cull: [
         (
@@ -709,8 +707,12 @@ pub static TEXTS: Texts = Texts {
             "Filterleiste, Details und Filmstreifen zusammen",
         ),
         (
-            "G, Umschalt+G",
-            "Gesichter: im Detailbereich (G) oder alle groß (Umschalt+G) – Klick zoomt hin",
+            "Strg+Tab",
+            "Reiter im Detailbereich: Werte → Beschreibung → Gesichter (mit Umschalt zurück); in der Beschreibung setzt Enter den Cursor ins Stichwortfeld",
+        ),
+        (
+            "G",
+            "Alle Gesichter groß über dem Foto – Klick oder 1–9 zoomt hin",
         ),
     ],
     help_edit: [

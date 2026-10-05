@@ -369,7 +369,7 @@ pub static TEXTS: Texts = Texts {
     ],
     explain_laion: "How beautiful the photo looks to an AI trained on many human ratings. It likes people, portraits and food most.",
     explain_v25: "A newer AI for the same question, better with everyday photos. It likes landscapes, water and aerial shots most.",
-    explain_personal: "The stars Cerno thinks you would give. It learns from your own stars and the photos you reject or delete.",
+    explain_personal: "The stars Cerno thinks you would give. It learns from your own stars and the photos you reject.",
     explain_aesthetics: "The value under the photo: the mean of the two AIs below, from 0 % (unappealing) to 100 % (very appealing). Most photos land at 40–60 %, from 80 % on it is very good. The scale is fixed – a photo reads the same in every folder.",
     explain_frame: "How sharp the sharpest parts are, compared with the other photos in this folder. 80 % means sharper than 80 % of them.",
     explain_eyes: "Sharpness right at the eyes, if there is a face. For portraits this counts, not the background.",
@@ -424,9 +424,9 @@ pub static TEXTS: Texts = Texts {
     exiftool_old_state: |version| format!("{version} – too old (12.24 or newer needed)"),
     exiftool_downloading: |percent| format!("downloading … {percent:.0} %"),
     btn_exiftool: |size| format!("Download ExifTool ({size})"),
-    taste_sources: |stars, rejected, deleted| {
+    taste_sources: |stars, rejected| {
         format!(
-            "Learned from {stars} photos with stars, {rejected} rejected and {deleted} deleted ones – rejected and deleted photos count as 0 ★."
+            "Learned from {stars} photos with stars and {rejected} rejected ones – rejected photos count as 0 ★, deleted ones not at all."
         )
     },
     btn_reset_taste: "Reset prediction",
@@ -443,7 +443,7 @@ pub static TEXTS: Texts = Texts {
     copy_models_path: "Copy path",
     models_path_copied: "Path copied",
     confirm_reset_taste_title: "Reset the prediction?",
-    confirm_reset_taste_text: "Cerno will forget what it learned from your stars and deletions. Star ratings in the photo files stay unchanged.",
+    confirm_reset_taste_text: "Cerno will forget what it learned from your stars and rejected photos. Star ratings in the photo files stay unchanged.",
     confirm_delete_models_title: "Delete downloaded models?",
     confirm_delete_models_text: |size| {
         format!(
@@ -508,7 +508,6 @@ pub static TEXTS: Texts = Texts {
             if n == 1 { "face" } else { "faces" }
         )
     },
-    face_number: |n| format!("Face {n}"),
     raw_preview_fact: "RAW preview",
     preview_word: "preview",
     edit_failed: |detail| format!("Not written: {detail}"),
@@ -585,7 +584,7 @@ pub static TEXTS: Texts = Texts {
         (
             "The prediction",
             &[
-                "Cerno learns from your stars and your rejected and deleted photos what you like.",
+                "Cerno learns from your stars and your rejected photos what you like – deleted ones don't count: often one of many alike was just one too many.",
                 "On photos without stars it shows its guess as lightly filled stars – the stars are still yours to give.",
                 "Sorted by prediction, the photos you will probably like come first.",
             ],
@@ -627,7 +626,6 @@ pub static TEXTS: Texts = Texts {
             "Colour label: red, yellow, green, blue – press again to remove",
         ),
         ("Shift+6 – 9", "Set that colour and go to the next photo"),
-        ("B", "Description: edit the comment and keywords"),
     ],
     help_cull: [
         (
@@ -682,8 +680,12 @@ pub static TEXTS: Texts = Texts {
         ("F6", "Filmstrip"),
         ("Shift+Tab", "Filter bar, details and filmstrip together"),
         (
-            "G, Shift+G",
-            "Faces: in the details panel (G) or all of them large (Shift+G) – a click zooms there",
+            "Ctrl+Tab",
+            "Details panel tabs: values → description → faces (back with Shift); on the description, Enter puts the cursor into the keyword field",
+        ),
+        (
+            "G",
+            "All faces large over the photo – a click or 1–9 zooms there",
         ),
     ],
     help_edit: [

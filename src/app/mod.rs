@@ -144,9 +144,9 @@ pub struct CernoApp {
     session_labels: HashMap<PathBuf, Option<Label>>,
     /// Comments and keywords given in this session; they win over the file the same way.
     session_descriptions: HashMap<PathBuf, Description>,
-    /// Which tab the details panel shows (`B` opens the description, `G` the faces).
+    /// Which tab the details panel shows (`Ctrl+Tab` steps through them).
     details_tab: DetailsTab,
-    /// The current photo's faces (`G`, `Shift+G`).
+    /// The current photo's faces (the faces tab, `G`).
     faces: faces::Faces,
     /// The comment and keyword being typed in the description tab.
     drafts: description::Drafts,
@@ -205,6 +205,8 @@ pub struct CernoApp {
     toolbar_held: bool,
     /// `Tab` presses taken out of egui's input (`true` = with Shift), see `raw_input_hook`.
     tab_presses: Vec<bool>,
+    /// `Ctrl+Tab` presses (`true` = with Shift: backwards): the details panel's tabs.
+    details_cycles: Vec<bool>,
     /// When the language was last switched (the flag shows for a moment).
     language_flash: Option<Instant>,
     /// Message over the photo; hints fade, errors wait for Esc or a click.
@@ -408,6 +410,7 @@ impl CernoApp {
             toolbar_before_actions: None,
             toolbar_held: false,
             tab_presses: Vec::new(),
+            details_cycles: Vec::new(),
             language_flash: None,
             notice,
             exiftool: exiftool::ExifToolSetup::new(),
@@ -559,9 +562,26 @@ impl eframe::App for CernoApp {
         overlays::drop_hint(ui, window);
     }
 
-    /// `Tab` toggles the details panel. egui would move keyboard focus to the next widget with
-    /// it – and `Space` would then click that widget – so it never reaches egui.
+    /// `Tab` toggles the details panel, `Ctrl+Tab` steps through its tabs. egui would move
+    /// keyboard focus to the next widget with `Tab` – and `Space` would then click that widget
+    /// – so it never reaches egui.
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        // `Ctrl+Tab` always: it also leaves a field of the description tab.
+        raw_input.events.retain(|event| match event {
+            egui::Event::Key {
+                key: Key::Tab,
+                pressed,
+                repeat,
+                modifiers,
+                ..
+            } if modifiers.command && !modifiers.alt => {
+                if *pressed && !*repeat {
+                    self.details_cycles.push(modifiers.shift);
+                }
+                false
+            }
+            _ => true,
+        });
         // While a comment or keyword is being typed, `Tab` belongs to the field.
         if ctx.egui_wants_keyboard_input() {
             return;
