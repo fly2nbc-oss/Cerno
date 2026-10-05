@@ -537,6 +537,21 @@ pub static TEXTS: Texts = Texts {
     help_tab_keys: "Tastenkürzel",
     help_tab_tips: "Tipps",
     help_pages_hint: "←/→ wechselt die Seite",
+    help_tab_about: "Über Cerno",
+    about_intro: "Cerno zeigt Fotos ohne Wartezeit und hilft beim Aussortieren – lokal, ohne Konto und ohne Cloud. Freie Software: Der Quellcode ist offen.",
+    about_version: "Version",
+    about_license: "Lizenz",
+    about_source: "Quellcode",
+    about_bugs: "Fehler melden",
+    about_bugs_text: "Etwas funktioniert nicht? Beschreib es in einem GitHub-Issue – dafür braucht es ein kostenloses GitHub-Konto. Version und System sind schon eingetragen; Fotos und Dateinamen braucht es nicht. Ist Cerno abgestürzt, häng die Datei crash.log aus dem Datenordner an.",
+    about_bug_link: "Fehler auf GitHub melden",
+    about_open_data: "Datenordner öffnen",
+    about_wishes: "Wünsche",
+    about_wishes_text: "Eine Idee, die das Aussortieren mit Cerno einfacher oder schneller macht? Schreib sie als Wunsch – ebenfalls mit GitHub-Konto.",
+    about_wish_link: "Wunsch auf GitHub schreiben",
+    about_third_party: "Drittanbieter",
+    about_third_party_text: "Cerno nutzt freie Bibliotheken anderer, darunter libheif und GStreamer mit FFmpeg (LGPL), und lädt auf Wunsch ExifTool und die Ästhetik-Modelle (V2.5 unter AGPL). Ihre Lizenztexte liegen dem Programm bei.",
+    about_third_party_link: "Alle Drittanbieter und Lizenzen",
     help_tips: [
         (
             "Aussortieren in zwei Durchgängen",
@@ -657,7 +672,7 @@ pub static TEXTS: Texts = Texts {
             "Entf",
             "Löschen: nach 5 Sekunden in den versteckten Ordner .originals – nichts geht verloren",
         ),
-        ("Esc", "Fotos zurückholen, die aufs Löschen warten"),
+        ("Esc, Strg+Z", "Fotos zurückholen, die aufs Löschen warten"),
     ],
     help_video: [
         (

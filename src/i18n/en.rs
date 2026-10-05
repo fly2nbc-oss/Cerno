@@ -526,6 +526,21 @@ pub static TEXTS: Texts = Texts {
     help_tab_keys: "Shortcuts",
     help_tab_tips: "Tips",
     help_pages_hint: "←/→ switches the page",
+    help_tab_about: "About Cerno",
+    about_intro: "Cerno shows photos without waiting and helps you sort them out – locally, without an account or a cloud. Free software: the source code is open.",
+    about_version: "Version",
+    about_license: "Licence",
+    about_source: "Source code",
+    about_bugs: "Report a problem",
+    about_bugs_text: "Something doesn't work? Describe it in a GitHub issue – that needs a free GitHub account. Version and system are filled in already; photos and file names are not needed. If Cerno crashed, attach the file crash.log from the data folder.",
+    about_bug_link: "Report it on GitHub",
+    about_open_data: "Open data folder",
+    about_wishes: "Ideas",
+    about_wishes_text: "An idea that makes sorting photos with Cerno simpler or faster? Write it as a feature request – also with a GitHub account.",
+    about_wish_link: "Suggest it on GitHub",
+    about_third_party: "Third parties",
+    about_third_party_text: "Cerno uses free libraries by others, among them libheif and GStreamer with FFmpeg (LGPL), and downloads ExifTool and the aesthetics models when asked (V2.5 under AGPL). Their licence texts come with the program.",
+    about_third_party_link: "All third parties and licences",
     help_tips: [
         (
             "Sort out in two passes",
@@ -633,7 +648,10 @@ pub static TEXTS: Texts = Texts {
             "Del",
             "Delete: moves into the hidden .originals folder after 5 seconds – nothing is lost",
         ),
-        ("Esc", "Bring back photos that are waiting to be deleted"),
+        (
+            "Esc, Ctrl+Z",
+            "Bring back photos that are waiting to be deleted",
+        ),
     ],
     help_video: [
         ("Space", "Play / pause (Shift+Space: next photo)"),

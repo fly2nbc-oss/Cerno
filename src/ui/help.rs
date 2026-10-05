@@ -1,11 +1,13 @@
-//! Help page: two tabs – every shortcut with a short explanation, and tips on working with
-//! Cerno. `H`/`F1` shows it over the photos (and over the start screen), always on the
-//! shortcuts; a click on a tab or `←`/`→` switches. The start screen is a small card: one
-//! sentence, "Open folder" and the five keys to begin with.
+//! Help page: three tabs – every shortcut with a short explanation, tips on working with
+//! Cerno, and About Cerno (version, licence, where to report a problem or suggest an idea).
+//! `H`/`F1` shows it over the photos (and over the start screen), always on the shortcuts; a
+//! click on a tab or `←`/`→` switches. The start screen is a small card: one sentence, "Open
+//! folder" and the five keys to begin with.
 
 use eframe::egui::{
-    Align2, Area, Color32, Context, CursorIcon, FontId, Id, Order, Painter, Pos2, Rect, ScrollArea,
-    Sense, Stroke, StrokeKind, Ui, UiBuilder, pos2, vec2,
+    Align, Align2, Area, Color32, Context, CursorIcon, FontId, Grid, Hyperlink, Id, Label, Layout,
+    Order, Painter, Pos2, Rect, RichText, ScrollArea, Sense, Stroke, StrokeKind, Ui, UiBuilder,
+    pos2, vec2,
 };
 
 use crate::i18n::{self, HelpRow, TipSection};
@@ -21,6 +23,10 @@ const PAD: f32 = 28.0;
 const TWO_COLUMNS: f32 = 700.0;
 const THREE_COLUMNS: f32 = 1100.0;
 
+const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const COPYRIGHT: &str = concat!("© 2026 ", env!("CARGO_PKG_AUTHORS"));
+
 /// The help page's tabs.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Page {
@@ -29,17 +35,23 @@ pub enum Page {
     Keys,
     /// How to work with Cerno.
     Tips,
+    /// Version, licence, links to report a problem or suggest an idea.
+    About,
 }
 
 impl Page {
-    pub const ALL: [Page; 2] = [Self::Keys, Self::Tips];
+    pub const ALL: [Page; 3] = [Self::Keys, Self::Tips, Self::About];
 
-    /// The other page (`←`/`→`).
-    pub fn other(self) -> Self {
-        match self {
-            Self::Keys => Self::Tips,
-            Self::Tips => Self::Keys,
-        }
+    /// The page to the right (`→`), from the last one round to the first.
+    pub fn next(self) -> Self {
+        let at = Self::ALL.iter().position(|p| *p == self).unwrap_or(0);
+        Self::ALL[(at + 1) % Self::ALL.len()]
+    }
+
+    /// The page to the left (`←`).
+    pub fn prev(self) -> Self {
+        let at = Self::ALL.iter().position(|p| *p == self).unwrap_or(0);
+        Self::ALL[(at + Self::ALL.len() - 1) % Self::ALL.len()]
     }
 }
 
@@ -48,8 +60,10 @@ pub struct HelpOutput {
     pub close: bool,
     pub open_folder: bool,
     pub language: bool,
-    /// The other tab was clicked.
+    /// Another tab was clicked.
     pub page: Option<Page>,
+    /// About Cerno: "Open data folder" (where `crash.log` is).
+    pub open_data_folder: bool,
 }
 
 /// Modal page over the whole window; a click beside the card closes it.
@@ -197,7 +211,7 @@ fn content(ui: &mut Ui, welcome: bool, page: Page) -> (HelpOutput, f32) {
             strip.bottom() - 0.5,
             Stroke::new(1.0, tokens::LINE),
         );
-        let labels = [t.help_tab_keys, t.help_tab_tips];
+        let labels = [t.help_tab_keys, t.help_tab_tips, t.help_tab_about];
         let current = Page::ALL.iter().position(|p| *p == page).unwrap_or(0);
         if let Some(i) = tabs::strip(
             ui,
@@ -214,6 +228,18 @@ fn content(ui: &mut Ui, welcome: bool, page: Page) -> (HelpOutput, f32) {
     if page == Page::Tips && !welcome {
         y = tips(&painter, left, y, width, &t.help_tips);
         y = footer(&painter, left, y, width);
+        ui.allocate_space(vec2(width, y - top.y));
+        return (out, y - top.y);
+    }
+    if page == Page::About && !welcome {
+        let space = Rect::from_min_size(pos2(left, y), vec2(width.min(760.0), f32::INFINITY));
+        let mut column = ui.new_child(
+            UiBuilder::new()
+                .max_rect(space)
+                .layout(Layout::top_down(Align::Min)),
+        );
+        about(&mut column, &mut out);
+        y = footer(&painter, left, column.min_rect().bottom() + 18.0, width);
         ui.allocate_space(vec2(width, y - top.y));
         return (out, y - top.y);
     }
@@ -295,6 +321,108 @@ fn content(ui: &mut Ui, welcome: bool, page: Page) -> (HelpOutput, f32) {
     y = footer(&painter, left, bottom, width);
     ui.allocate_space(vec2(width, y - top.y));
     (out, y - top.y)
+}
+
+/// About Cerno: what it is, version, copyright, licence and source; where to report a problem
+/// or suggest an idea – a GitHub issue with version and system filled in, never a path or a
+/// photo's name – and the third parties. The links only open the browser; Cerno sends nothing.
+fn about(ui: &mut Ui, out: &mut HelpOutput) {
+    let t = i18n::t();
+    let body = |text: &str, color| {
+        RichText::new(i18n::keep_together(text))
+            .font(FontId::proportional(text::BODY))
+            .color(color)
+    };
+    let paragraph = |ui: &mut Ui, text: &str| ui.add(Label::new(body(text, tokens::TEXT)).wrap());
+    let heading = |ui: &mut Ui, title: &str| {
+        ui.add_space(14.0);
+        ui.label(
+            RichText::new(title.to_uppercase())
+                .font(FontId::proportional(text::LABEL))
+                .color(tokens::MUTED),
+        );
+    };
+    ui.spacing_mut().item_spacing.y = 6.0;
+    paragraph(ui, t.about_intro);
+    ui.add_space(8.0);
+    Grid::new("about-facts")
+        .num_columns(2)
+        .spacing(vec2(24.0, 6.0))
+        .show(ui, |ui| {
+            for (label, value) in [
+                (t.about_version, VERSION),
+                ("Copyright", COPYRIGHT),
+                (t.about_license, env!("CARGO_PKG_LICENSE")),
+            ] {
+                ui.label(body(label, tokens::MUTED));
+                ui.label(body(value, tokens::TEXT));
+                ui.end_row();
+            }
+            ui.label(body(t.about_source, tokens::MUTED));
+            ui.add(link(REPOSITORY.trim_start_matches("https://"), REPOSITORY));
+            ui.end_row();
+        });
+
+    heading(ui, t.about_bugs);
+    paragraph(ui, t.about_bugs_text);
+    ui.horizontal(|ui| {
+        let report = issue_url("bug_report.yml", VERSION, &crate::system::name());
+        ui.add(link(t.about_bug_link, &report));
+        ui.add_space(18.0);
+        let folder = crate::paths::data_dir()
+            .map(|dir| dir.display().to_string())
+            .unwrap_or_default();
+        if ui.button(t.about_open_data).on_hover_text(folder).clicked() {
+            out.open_data_folder = true;
+        }
+    });
+
+    heading(ui, t.about_wishes);
+    paragraph(ui, t.about_wishes_text);
+    let wish = issue_url("feature_request.yml", VERSION, &crate::system::name());
+    ui.add(link(t.about_wish_link, &wish));
+
+    heading(ui, t.about_third_party);
+    paragraph(ui, t.about_third_party_text);
+    ui.add(link(t.about_third_party_link, &third_party_url(VERSION)));
+}
+
+/// A link that opens in the browser, in the accent colour (interaction) so it reads as one.
+fn link(label: &str, url: &str) -> Hyperlink {
+    Hyperlink::from_label_and_url(
+        RichText::new(label)
+            .font(FontId::proportional(text::BODY))
+            .color(tokens::ACCENT),
+        url,
+    )
+    .open_in_new_tab(true)
+}
+
+/// A new GitHub issue from one of the repository's forms, with the version and the system
+/// filled in (the forms' field ids).
+fn issue_url(template: &str, version: &str, system: &str) -> String {
+    format!(
+        "{REPOSITORY}/issues/new?template={template}&version={}&os={}",
+        encode(version),
+        encode(system)
+    )
+}
+
+/// The list of third parties as it was for this version.
+fn third_party_url(version: &str) -> String {
+    format!("{REPOSITORY}/blob/v{version}/THIRD_PARTY.md")
+}
+
+/// Percent-encodes everything but the unreserved characters of a URL.
+fn encode(text: &str) -> String {
+    text.bytes()
+        .map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                char::from(byte).to_string()
+            }
+            _ => format!("%{byte:02X}"),
+        })
+        .collect()
 }
 
 /// "←/→ switches the page · Esc, H or F1 closes this page"; returns the bottom.
@@ -465,8 +593,35 @@ mod tests {
         );
     }
 
-    /// Both pages – the shortcuts and the tips – fit a full HD window without scrolling (in
-    /// English: tests never switch the language).
+    #[test]
+    fn the_arrows_go_round_the_pages() {
+        assert_eq!(Page::Keys.next(), Page::Tips);
+        assert_eq!(Page::Tips.next(), Page::About);
+        assert_eq!(Page::About.next(), Page::Keys);
+        assert_eq!(Page::Keys.prev(), Page::About);
+        for page in Page::ALL {
+            assert_eq!(page.next().prev(), page);
+        }
+    }
+
+    /// The forms get the version and the system – nothing else, and encoded.
+    #[test]
+    fn a_report_carries_version_and_system() {
+        assert_eq!(
+            issue_url("bug_report.yml", "1.8.1", "Ubuntu 24.04.1 LTS (x86_64)"),
+            "https://github.com/fly2nbc-oss/Cerno/issues/new?template=bug_report.yml\
+             &version=1.8.1&os=Ubuntu%2024.04.1%20LTS%20%28x86_64%29"
+        );
+        assert_eq!(encode("Ä&b=c"), "%C3%84%26b%3Dc");
+        assert_eq!(
+            third_party_url("1.8.1"),
+            "https://github.com/fly2nbc-oss/Cerno/blob/v1.8.1/THIRD_PARTY.md"
+        );
+        assert!(COPYRIGHT.ends_with("fly2nbc-oss"), "{COPYRIGHT}");
+    }
+
+    /// Every page – the shortcuts, the tips and About – fits a full HD window without
+    /// scrolling (in English: tests never switch the language).
     #[test]
     fn both_pages_fit_a_full_hd_window() {
         let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(1920.0, 1080.0));

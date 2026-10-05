@@ -81,6 +81,25 @@ pub fn choose(path: &Path) -> Result<()> {
     platform::choose(path)
 }
 
+/// Shows a folder in the file manager: Explorer by its full path on Windows (never a bare
+/// name – the working directory could hold another `explorer.exe`), `xdg-open` elsewhere.
+pub fn open_folder(dir: &Path) -> Result<()> {
+    let program = if cfg!(windows) {
+        let root = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
+        Path::new(&root).join("explorer.exe")
+    } else {
+        "xdg-open".into()
+    };
+    Command::new(&program)
+        .arg(dir)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(drop)
+        .with_context(|| format!("cannot start {}", program.display()))
+}
+
 #[cfg(windows)]
 mod platform {
     use std::path::Path;

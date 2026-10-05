@@ -201,6 +201,13 @@ impl CernoApp {
             if let Some(page) = out.page {
                 self.help_page = page;
             }
+            if out.open_data_folder {
+                let opened =
+                    crate::paths::data_dir().and_then(|dir| crate::external::open_folder(&dir));
+                if let Err(err) = opened {
+                    self.notice = Some(super::notice::Notice::error(format!("{err:#}")));
+                }
+            }
             if out.close {
                 self.help_open = false;
             }
@@ -707,7 +714,7 @@ impl CernoApp {
             Action::RotateCcw => self.rotate_quarter(false),
             Action::RotateCw => self.rotate_quarter(true),
             Action::Crop => self.begin_crop(),
-            Action::Undo => self.undo_edit(),
+            Action::Undo => self.undo(ctx),
             Action::Zoom => {
                 if let Some(frame) = frames.last() {
                     self.zoom.toggle(frame, None);

@@ -531,6 +531,21 @@ pub static TEXTS: Texts = Texts {
     help_tab_keys: "Atajos",
     help_tab_tips: "Consejos",
     help_pages_hint: "←/→ cambia de página",
+    help_tab_about: "Acerca de Cerno",
+    about_intro: "Cerno muestra las fotos sin esperas y ayuda a seleccionarlas, en local, sin cuenta ni nube. Software libre: el código fuente es abierto.",
+    about_version: "Versión",
+    about_license: "Licencia",
+    about_source: "Código fuente",
+    about_bugs: "Informar de un error",
+    about_bugs_text: "¿Algo no funciona? Descríbelo en un issue de GitHub; hace falta una cuenta gratuita de GitHub. La versión y el sistema ya están rellenados; no hacen falta fotos ni nombres de archivo. Si Cerno se cerró de golpe, adjunta el archivo crash.log de la carpeta de datos.",
+    about_bug_link: "Informar en GitHub",
+    about_open_data: "Abrir la carpeta de datos",
+    about_wishes: "Ideas",
+    about_wishes_text: "¿Una idea que haga más simple o rápido seleccionar fotos con Cerno? Escríbela como propuesta, también con una cuenta de GitHub.",
+    about_wish_link: "Proponerla en GitHub",
+    about_third_party: "Terceros",
+    about_third_party_text: "Cerno usa bibliotecas libres de otros, entre ellas libheif y GStreamer con FFmpeg (LGPL), y descarga a petición ExifTool y los modelos de estética (V2.5 bajo AGPL). Sus licencias acompañan al programa.",
+    about_third_party_link: "Todos los terceros y licencias",
     help_tips: [
         (
             "Seleccionar en dos pasadas",
@@ -654,7 +669,10 @@ pub static TEXTS: Texts = Texts {
             "Supr",
             "Eliminar: va a la carpeta oculta .originals tras 5 segundos – no se pierde nada",
         ),
-        ("Esc", "Recuperar las fotos que esperan a ser eliminadas"),
+        (
+            "Esc, Ctrl+Z",
+            "Recuperar las fotos que esperan a ser eliminadas",
+        ),
     ],
     help_video: [
         (

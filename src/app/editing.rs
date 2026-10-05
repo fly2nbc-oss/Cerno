@@ -3,6 +3,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Instant;
 
 use eframe::egui::{self, Event, Key, MouseWheelUnit, Pos2, Rect};
 
@@ -14,6 +15,30 @@ use crate::ui::{edit as edit_ui, viewer};
 use super::CernoApp;
 use super::gate::{Blocked, Change};
 use super::notice::Notice;
+
+/// What `Ctrl+Z` undoes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Undo {
+    /// The photos waiting to be deleted come back (like `Esc`).
+    Deletion,
+    /// The deleted photo shown goes back into its folder.
+    Restore,
+    /// The kept original replaces the edited photo.
+    Original,
+}
+
+/// A deletion that still counts down comes first: the photo just deleted is hidden already, so
+/// the one on screen is its neighbour – `Ctrl+Z` must bring the deleted one back, never put the
+/// neighbour's original over its edit.
+fn undo_target(counting_down: bool, current_deleted: bool) -> Undo {
+    if counting_down {
+        Undo::Deletion
+    } else if current_deleted {
+        Undo::Restore
+    } else {
+        Undo::Original
+    }
+}
 
 pub(super) struct EditSession {
     /// The photo being edited; the session ends if another one becomes current.
@@ -349,15 +374,21 @@ impl CernoApp {
     /// `Ctrl+Z`: the first original of the current photo goes back into the file (the first
     /// straighten, crop or quarter turn keeps it in `.originals`, for good). On a deleted photo
     /// it undoes the deletion: the photo goes back into its folder.
-    pub(super) fn undo_edit(&mut self) {
-        if self
+    /// `Ctrl+Z` and the menu's *Undo*: a pending deletion, else a deleted photo, else an edit.
+    pub(super) fn undo(&mut self, ctx: &egui::Context) {
+        let counting_down = self.deletions.countdown(Instant::now()).is_some();
+        let deleted = self
             .view
             .get(self.current)
-            .is_some_and(|path| self.is_deleted(path))
-        {
-            self.restore_current();
-            return;
+            .is_some_and(|path| self.is_deleted(path));
+        match undo_target(counting_down, deleted) {
+            Undo::Deletion => self.undo_deletions(ctx),
+            Undo::Restore => self.restore_current(),
+            Undo::Original => self.undo_edit(),
         }
+    }
+
+    fn undo_edit(&mut self) {
         if self.pinned.is_some() {
             return;
         }
@@ -690,6 +721,14 @@ mod tests {
             repeat: false,
             modifiers,
         }
+    }
+
+    #[test]
+    fn ctrl_z_brings_a_pending_deletion_back_first() {
+        assert_eq!(undo_target(true, false), Undo::Deletion);
+        assert_eq!(undo_target(true, true), Undo::Deletion);
+        assert_eq!(undo_target(false, true), Undo::Restore);
+        assert_eq!(undo_target(false, false), Undo::Original);
     }
 
     /// `+` and `−` by the key typed, or by the key itself where Shift types another sign;

@@ -1,0 +1,69 @@
+name: Bug report
+description: Something in Cerno does not work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. A description is enough – please don't attach private photos or paths you don't want to share.
+        *Help ▸ About Cerno ▸ Report it on GitHub* fills in the version and the system.
+  - type: input
+    id: version
+    attributes:
+      label: Cerno version
+      description: Help (`H`) ▸ About Cerno shows it.
+      placeholder: "1.8.1"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "Windows (x86_64) / Ubuntu 24.04 LTS (x86_64)"
+    validations:
+      required: true
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      options:
+        - Windows installer
+        - Windows portable zip
+        - Linux AppImage
+        - Linux .deb
+        - Built from source
+  - type: dropdown
+    id: files
+    attributes:
+      label: Kind of files
+      multiple: true
+      options:
+        - JPEG
+        - HEIC
+        - RAW or DNG
+        - PNG, TIFF, WebP, BMP or GIF
+        - Video
+        - Not about a kind of file
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to make it happen again
+      placeholder: |
+        1. Open a folder with …
+        2. Press …
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+  - type: textarea
+    id: crash
+    attributes:
+      label: crash.log (if Cerno closed by itself)
+      description: The file `crash.log` in the data folder (Help ▸ About Cerno ▸ Open data folder). Look through it first – it can name files.
+      render: text

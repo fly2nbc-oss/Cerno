@@ -1,5 +1,5 @@
-//! What Cerno needs to know about the system it runs on: on Linux, the distribution
-//! (`/etc/os-release`) – which command installs ExifTool there.
+//! What Cerno needs to know about the system it runs on: its name for a bug report, and on
+//! Linux the distribution (`/etc/os-release`) – which command installs ExifTool there.
 
 /// `/etc/os-release`, else `/usr/lib/os-release`; empty where there is none (Windows).
 pub fn os_release() -> String {
@@ -7,6 +7,17 @@ pub fn os_release() -> String {
         .iter()
         .find_map(|path| std::fs::read_to_string(path).ok())
         .unwrap_or_default()
+}
+
+/// The system for a bug report: `Windows (x86_64)`, or the distribution's own name on Linux.
+pub fn name() -> String {
+    let arch = std::env::consts::ARCH;
+    if cfg!(windows) {
+        return format!("Windows ({arch})");
+    }
+    let release = os_release();
+    let name = os_field(&release, "PRETTY_NAME").unwrap_or("Linux");
+    format!("{name} ({arch})")
 }
 
 /// One `KEY=value` of an os-release text, without its quotes.
