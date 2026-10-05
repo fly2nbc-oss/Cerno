@@ -1,8 +1,10 @@
 //! Originals are never deleted. Before a photo's first straighten, crop or quarter turn its
 //! file is copied into a hidden `.originals` folder beside it – only that first original; later
-//! edits leave it alone – and a photo deleted in Cerno moves there instead of the trash. Cerno
-//! never shows that folder (`library`). The index (`backups` table) ties each photo to its
-//! original, so `Ctrl+Z` can write it back; the copy stays.
+//! edits leave it alone – and a photo deleted in Cerno moves there instead of the trash. The
+//! folder is never opened as a folder (`library`); its deleted photos show through the filter
+//! bar's 🗑 box and come back with `Ctrl+Z` ([`deleted_in`], [`restore`]), the kept originals
+//! never show. The index (`backups` table) ties each photo to its original, so `Ctrl+Z` can
+//! write it back; the copy stays.
 //!
 //! A row is only followed when its file lies directly in the photo's own `.originals` folder,
 //! or in the data folder where Cerno 1.0 kept its copies (not moved yet, e.g. the drive was
@@ -112,6 +114,102 @@ pub fn set_aside(photo: &Path) -> Result<PathBuf> {
         let name = paired.file_name().context("sidecar has no file name")?;
         if let Err(err) = move_into(&sidecar, &dir, name) {
             log::warn!("sidecar {}: {err:#}", sidecar.display());
+        }
+    }
+    Ok(to)
+}
+
+/// A photo deleted in Cerno, lying in `.originals`: where it is now and where it came from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Deleted {
+    pub aside: PathBuf,
+    pub original: PathBuf,
+}
+
+/// The deleted photos in the `.originals` folders of `folders`, oldest name order first. Kept
+/// originals (the `backups` rows) are not deleted photos, and neither are sidecars: they come
+/// back with their photo. Where a photo came from is recorded since 1.6 (`set_aside` rows);
+/// for an older deletion it is the folder above, under the same name – without the ` (n)`
+/// Cerno added when that name was taken in `.originals` already.
+pub fn deleted_in(db: &Db, folders: &[PathBuf]) -> Vec<Deleted> {
+    let kept: std::collections::HashSet<PathBuf> = db
+        .all_backups()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(_, _, copy)| PathBuf::from(copy))
+        .collect();
+    let mut found = Vec::new();
+    for folder in folders {
+        let dir = folder.join(FOLDER);
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        let recorded: std::collections::HashMap<PathBuf, PathBuf> = db
+            .set_aside_in(&dir.to_string_lossy())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(aside, original)| (PathBuf::from(aside), PathBuf::from(original)))
+            .collect();
+        for entry in entries.filter_map(Result::ok) {
+            let aside = entry.path();
+            let is_file = entry.file_type().is_ok_and(|kind| kind.is_file());
+            if !is_file || crate::library::format_of(&aside).is_none() || kept.contains(&aside) {
+                continue;
+            }
+            let original = recorded.get(&aside).cloned().unwrap_or_else(|| {
+                let name = aside.file_name().unwrap_or_default();
+                folder.join(cerno_free_name(&dir, name))
+            });
+            found.push(Deleted { aside, original });
+        }
+    }
+    found.sort_by(|a, b| {
+        let (x, y) = (a.original.to_string_lossy(), b.original.to_string_lossy());
+        crate::library::natural_cmp(&x, &y).then_with(|| a.aside.cmp(&b.aside))
+    });
+    found
+}
+
+/// `IMG_1 (2).jpg` was `IMG_1.jpg` when `IMG_1.jpg` lies in `.originals` too: Cerno numbers a
+/// name only when it is taken there. Otherwise the name is the photo's own.
+fn cerno_free_name(dir: &Path, name: &OsStr) -> OsString {
+    let path = Path::new(name);
+    let stem = path.file_stem().unwrap_or(name).to_string_lossy();
+    let Some((plain, number)) = stem.rsplit_once(" (") else {
+        return name.to_owned();
+    };
+    let numbered = number
+        .strip_suffix(')')
+        .is_some_and(|n| n.parse::<u32>().is_ok_and(|n| n >= 2));
+    if !numbered {
+        return name.to_owned();
+    }
+    let plain: OsString = match path.extension() {
+        Some(ext) => format!("{plain}.{}", ext.to_string_lossy()).into(),
+        None => plain.into(),
+    };
+    if dir.join(&plain).exists() {
+        plain
+    } else {
+        name.to_owned()
+    }
+}
+
+/// Puts a deleted photo back where it came from – under the next free name (`IMG_1 (2).jpg`)
+/// when that one is taken; nothing is overwritten. A RAW's or video's sidecar comes along under
+/// the photo's new name, unless one lies there already. A rename: the dates stay.
+pub fn restore(aside: &Path, original: &Path) -> Result<PathBuf> {
+    let dir = original.parent().context("photo has no folder")?;
+    let name = original.file_name().context("photo has no file name")?;
+    let to = move_into(aside, dir, name)?;
+    log::info!("restored: {} → {}", aside.display(), to.display());
+    let sidecar = crate::sidecar::path_of(aside);
+    if crate::sidecar::applies(aside) && sidecar.is_file() {
+        let paired = crate::sidecar::path_of(&to);
+        if paired.exists() {
+            log::warn!("sidecar stays in .originals: {} is taken", paired.display());
+        } else if let Err(err) = std::fs::rename(&sidecar, &paired) {
+            log::warn!("sidecar {}: {err}", sidecar.display());
         }
     }
     Ok(to)
@@ -368,6 +466,105 @@ mod tests {
             b"marks"
         );
         assert!(!root.join("IMG_5.xmp").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The deleted photos of a folder: kept originals and sidecars are not among them, a
+    /// recorded deletion knows where it came from, an older one is guessed from its name – the
+    /// ` (2)` goes only when Cerno added it.
+    #[test]
+    fn deleted_photos_are_found_with_where_they_came_from() {
+        let db = Db::open_in_memory().expect("db");
+        let root = temp("deleted");
+        let dir = root.join(FOLDER);
+        std::fs::create_dir_all(&dir).expect("dir");
+        for name in [
+            "IMG_1.jpg",
+            "IMG_1 (2).jpg",
+            "Urlaub (2).jpg",
+            "kept.jpg",
+            "IMG_5.NEF",
+            "IMG_5.xmp",
+            "notes.txt",
+        ] {
+            std::fs::write(dir.join(name), name).expect("file");
+        }
+        std::fs::write(dir.join("recorded.jpg"), b"x").expect("file");
+        db.push_backup(
+            &root.join("kept.jpg").to_string_lossy(),
+            &dir.join("kept.jpg").to_string_lossy(),
+            1,
+        )
+        .expect("kept original");
+        db.put_file(
+            &root.join("Neu.jpg").to_string_lossy(),
+            crate::db::FileStamp {
+                size: 1,
+                mtime_ns: 1,
+            },
+            9,
+            crate::metadata::Rating::Unrated,
+            None,
+        )
+        .expect("row");
+        db.record_deletion(
+            &root.join("Neu.jpg").to_string_lossy(),
+            Some(&dir.join("recorded.jpg").to_string_lossy()),
+        )
+        .expect("deletion");
+
+        let found: Vec<(String, String)> = deleted_in(&db, std::slice::from_ref(&root))
+            .into_iter()
+            .map(|d| {
+                (
+                    d.aside.file_name().unwrap().to_string_lossy().into_owned(),
+                    d.original
+                        .strip_prefix(&root)
+                        .unwrap()
+                        .to_string_lossy()
+                        .into_owned(),
+                )
+            })
+            .collect();
+        let pairs = |list: &[(&str, &str)]| -> Vec<(String, String)> {
+            list.iter()
+                .map(|(a, b)| (a.to_string(), b.to_string()))
+                .collect()
+        };
+        assert_eq!(
+            found,
+            pairs(&[
+                ("IMG_1 (2).jpg", "IMG_1.jpg"),
+                ("IMG_1.jpg", "IMG_1.jpg"),
+                ("IMG_5.NEF", "IMG_5.NEF"),
+                ("recorded.jpg", "Neu.jpg"),
+                ("Urlaub (2).jpg", "Urlaub (2).jpg"),
+            ])
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Put back under its own name, or the next free one when that is taken; nothing is
+    /// overwritten, and a RAW's sidecar comes along under the new name.
+    #[test]
+    fn a_deleted_photo_comes_back_without_overwriting() {
+        let root = temp("restore");
+        let photo = root.join("IMG_5.NEF");
+        std::fs::write(&photo, b"deleted").expect("raw");
+        std::fs::write(root.join("IMG_5.xmp"), b"marks").expect("sidecar");
+        let aside = set_aside(&photo).expect("set aside");
+        std::fs::write(&photo, b"a new photo").expect("same name again");
+
+        let back = restore(&aside, &photo).expect("restore");
+        assert_eq!(back, root.join("IMG_5 (2).NEF"));
+        assert_eq!(std::fs::read(&back).expect("back"), b"deleted");
+        assert_eq!(std::fs::read(&photo).expect("other"), b"a new photo");
+        assert_eq!(
+            std::fs::read(root.join("IMG_5 (2).xmp")).expect("sidecar back"),
+            b"marks"
+        );
+        assert!(!aside.exists());
+        assert_eq!(restore(&aside, &photo).ok(), None, "gone from .originals");
         let _ = std::fs::remove_dir_all(&root);
     }
 

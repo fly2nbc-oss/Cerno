@@ -74,6 +74,10 @@ enum Action {
     Copy,
     Move,
     DeleteSelection,
+    /// The deleted photo shown goes back into its folder.
+    Restore,
+    /// Every deleted photo the filter shows goes back.
+    RestoreShown,
 }
 
 impl CernoApp {
@@ -403,7 +407,12 @@ impl CernoApp {
                 Some(format!("{}+→", t.key_ctrl)),
             )
             .disabled(rewrite),
-            Row::new(Action::Undo, t.cmd_undo, Some(i18n::with_ctrl("Z"))).disabled(rewrite),
+            // On a deleted photo `Ctrl+Z` undoes the deletion; the row says so in its place.
+            if current.is_some_and(|path| self.is_deleted(path)) {
+                Row::new(Action::Restore, t.cmd_restore, Some(i18n::with_ctrl("Z")))
+            } else {
+                Row::new(Action::Undo, t.cmd_undo, Some(i18n::with_ctrl("Z"))).disabled(rewrite)
+            },
             Row::new(
                 Action::DeleteCurrent,
                 t.selection_delete,
@@ -494,7 +503,7 @@ impl CernoApp {
             .similar_to
             .as_ref()
             .map(|(path, _)| self.photo_name(path));
-        filter_rows(&self.options, similar_to.as_deref())
+        filter_rows(&self.options, similar_to.as_deref(), self.has_deleted())
     }
 
     /// What acts on many photos at once – the same in "Photos on screen" and in the action
@@ -512,7 +521,9 @@ impl CernoApp {
         let delete_shown = delete.or(self.options.top.map(|_| t.bulk_delete_top));
         // Harmless first: copy, then move, then delete. Each row says how many photos it
         // takes – the ones the filter shows; "rejected" counts the whole folder, and says so.
-        let shown = self.view.len();
+        // Deleted photos (the 🗑 box) stay where they are; they can only go back.
+        let deleted = self.deleted_shown();
+        let shown = self.view.len() - deleted;
         let mut rows = vec![
             Row::new(Action::Copy, (t.bulk_copy)(shown), None)
                 .hint(t.transfer_copy_cmd)
@@ -534,6 +545,12 @@ impl CernoApp {
                 )
                 .hint(t.delete_rejected_hint)
                 .disabled(delete),
+            );
+        }
+        if deleted > 0 {
+            rows.push(
+                Row::new(Action::RestoreShown, (t.bulk_restore)(deleted), None)
+                    .hint(t.bulk_restore_hint),
             );
         }
         rows
@@ -642,6 +659,8 @@ impl CernoApp {
             Action::Copy => self.begin_transfer(ctx, TransferMode::Copy),
             Action::Move => self.begin_transfer(ctx, TransferMode::Move),
             Action::DeleteSelection => self.delete_selection(ctx),
+            Action::Restore => self.restore_current(),
+            Action::RestoreShown => self.restore_shown(),
             Action::Help => self.help_open = true,
         }
     }
@@ -651,8 +670,13 @@ impl CernoApp {
 /// while nothing is filtered, so ticking the first filter doesn't push every row down under
 /// the cursor – then photos, videos or both and the best N photos (one choice, like the bar's
 /// first box), a switch per filter group by group, and "similar photos" last (named after its
-/// photo while on).
-fn filter_rows(options: &ViewOptions, similar_to: Option<&str>) -> Vec<palette::Entry<Action>> {
+/// photo while on). The 🗑 row is greyed out in a folder without deleted photos, unless it is
+/// on and has to be switched off.
+fn filter_rows(
+    options: &ViewOptions,
+    similar_to: Option<&str>,
+    has_deleted: bool,
+) -> Vec<palette::Entry<Action>> {
     use palette::{Entry, Group, Row};
     let t = i18n::t();
     let nothing = !options.is_filtered();
@@ -691,6 +715,9 @@ fn filter_rows(options: &ViewOptions, similar_to: Option<&str>) -> Vec<palette::
             .toggle(options.filter.contains(kind));
         Entry::Row(match kind {
             FilterKind::Colour(label) => row.swatch(crate::theme::label_color(label)),
+            FilterKind::Deleted if !has_deleted && !options.filter.contains(kind) => {
+                row.disabled(Some(t.filter_deleted_none))
+            }
             _ => row,
         })
     });
@@ -730,7 +757,10 @@ mod tests {
         let none = ViewOptions::default();
         let mut some = none;
         some.filter.set(FilterKind::Stars(3), true);
-        let (before, after) = (filter_rows(&none, None), filter_rows(&some, None));
+        let (before, after) = (
+            filter_rows(&none, None, false),
+            filter_rows(&some, None, false),
+        );
         assert_eq!(actions(&before), actions(&after));
         assert_eq!(row(&before[0]).action, Action::FilterClear);
         assert!(row(&before[0]).disabled.is_some() && row(&after[0]).disabled.is_none());
@@ -740,12 +770,12 @@ mod tests {
     /// switch it off.
     #[test]
     fn similar_photos_is_the_last_filter_row() {
-        let off = filter_rows(&ViewOptions::default(), Some("IMG_1.JPG"));
+        let off = filter_rows(&ViewOptions::default(), Some("IMG_1.JPG"), false);
         let on_options = ViewOptions {
             similar: true,
             ..ViewOptions::default()
         };
-        let on = filter_rows(&on_options, Some("IMG_1.JPG"));
+        let on = filter_rows(&on_options, Some("IMG_1.JPG"), false);
         assert_eq!(off.len(), on.len());
         let (last_off, last_on) = (row(off.last().unwrap()), row(on.last().unwrap()));
         assert_eq!(
@@ -766,7 +796,7 @@ mod tests {
             media: Media::Photos,
             ..ViewOptions::default()
         };
-        let entries = filter_rows(&top, None);
+        let entries = filter_rows(&top, None, false);
         assert_eq!(
             actions(&entries[..5]),
             vec![
@@ -798,5 +828,33 @@ mod tests {
             Action::Filter(FilterKind::Rejected)
         );
         assert!(row(&entries[0]).disabled.is_none(), "Show all ends Top N");
+    }
+
+    /// The 🗑 row is always there – rows must not move under the cursor – and greyed out
+    /// while the folder has no deleted photos, unless it is on.
+    #[test]
+    fn the_deleted_row_waits_for_deleted_photos() {
+        let deleted_row = |options: &ViewOptions, has: bool| {
+            filter_rows(options, None, has)
+                .iter()
+                .find_map(|entry| match entry {
+                    palette::Entry::Row(row)
+                        if row.action == Action::Filter(FilterKind::Deleted) =>
+                    {
+                        Some(row.disabled.is_some())
+                    }
+                    _ => None,
+                })
+                .expect("the row is there")
+        };
+        let mut on = ViewOptions::default();
+        on.filter.set(FilterKind::Deleted, true);
+        assert!(deleted_row(&ViewOptions::default(), false), "greyed out");
+        assert!(!deleted_row(&ViewOptions::default(), true));
+        assert!(!deleted_row(&on, false), "can be switched off");
+        assert_eq!(
+            filter_rows(&ViewOptions::default(), None, false).len(),
+            filter_rows(&ViewOptions::default(), None, true).len()
+        );
     }
 }

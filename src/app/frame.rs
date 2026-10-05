@@ -132,6 +132,7 @@ impl CernoApp {
                 .and_then(|p| p.as_ref())
                 .map(|original| self.photo_name(original)),
             video: library::format_of(path) == Some(library::Format::Video),
+            deleted: self.is_deleted(path),
         }
     }
 
@@ -271,6 +272,7 @@ impl CernoApp {
                 crate::overlay::Mode::Exposure => Some(i18n::t().overlay_fact_exposure),
             },
             similarity: self.similarity_to_reference(&path),
+            deleted: self.is_deleted(&path),
         };
         let out = info_bar::info_bar(ui, rect, &bar);
         if let Some(stars) = out.rating {
@@ -341,9 +343,10 @@ impl CernoApp {
             actions_open: self.action_menu.is_some(),
             similar_to: similar_to.as_deref(),
             shown: self.view.len(),
-            // Photos waiting to be deleted have left the view already; they don't count.
+            // Photos waiting to be deleted have left the view already; they don't count. The
+            // deleted ones do while the 🗑 box shows them.
             total: self
-                .all
+                .library
                 .iter()
                 .filter(|p| !self.deletions.is_hidden(p))
                 .count(),
@@ -351,6 +354,7 @@ impl CernoApp {
                 .all
                 .iter()
                 .any(|p| library::format_of(p) == Some(library::Format::Video)),
+            has_deleted: self.has_deleted(),
         };
         let mut options = self.options;
         let out = filter_bar::toolbar(ui, rect, &mut options, &info);

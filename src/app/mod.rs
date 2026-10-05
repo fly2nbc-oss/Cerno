@@ -4,6 +4,7 @@
 //! - `marks`: stars, rejection, colour labels
 //! - `describe`: comment and keywords (the details panel's description tab)
 //! - `files`: copy, move, delete with the countdown
+//! - `deleted`: the deleted photos in `.originals` – shown through 🗑, put back with `Ctrl+Z`
 //! - `editing`: straighten, crop, quarter turns, `Ctrl+Z`
 //! - `gate`: one action at a time on a photo
 //! - `keys`: the keyboard
@@ -16,6 +17,7 @@
 //! Drawing of the widgets themselves lives in `ui/`.
 
 mod browse;
+mod deleted;
 mod describe;
 mod editing;
 mod external;
@@ -93,7 +95,13 @@ pub struct CernoApp {
     dir: Option<PathBuf>,
     /// Every photo of the folder, in name order.
     all: Arc<Vec<PathBuf>>,
+    /// What sorting and filtering look at, and the analysis works on: `all`, plus the deleted
+    /// photos while the 🗑 box is ticked (`sync_library`).
+    library: Arc<Vec<PathBuf>>,
+    /// Index into `library`.
     all_index: HashMap<PathBuf, usize>,
+    /// The deleted photos of the folder, lying in `.originals`.
+    deleted: deleted::Deleted,
     /// What is shown, after sorting, filtering and hiding pending deletions.
     view: View,
     current: usize,
@@ -320,7 +328,9 @@ impl CernoApp {
             board,
             dir: None,
             all: Arc::new(Vec::new()),
+            library: Arc::new(Vec::new()),
             all_index: HashMap::new(),
+            deleted: deleted::Deleted::default(),
             view: View::default(),
             current: 0,
             pinned: None,
@@ -430,6 +440,7 @@ impl CernoApp {
     /// finished "Delete models".
     fn poll_background(&mut self, ctx: &egui::Context) {
         self.process_deletions(ctx);
+        self.poll_deleted(ctx);
         self.poll_transfer(ctx);
         self.poll_external(ctx);
         self.poll_edits();
@@ -552,8 +563,9 @@ impl eframe::App for CernoApp {
             self.retarget_moved(&outcome);
         }
         // Photos that were really set aside teach For you, as during the session.
-        for path in self.deletions.finish_now().deleted {
-            self.forget_deleted(&path);
+        for (path, aside) in self.deletions.finish_now().deleted {
+            self.forget_deleted(&path, &aside);
         }
+        self.finish_restores();
     }
 }

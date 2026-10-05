@@ -32,6 +32,8 @@ pub struct ToolbarInfo<'a> {
     pub total: usize,
     /// The folder holds at least one video (else "videos only" has nothing to show).
     pub has_videos: bool,
+    /// The folder has deleted photos (else the 🗑 box is greyed out).
+    pub has_deleted: bool,
 }
 
 #[derive(Default)]
@@ -96,7 +98,8 @@ pub fn toolbar(
                                             separator(ui);
                                         }
                                         for &kind in *group {
-                                            if filter_box(ui, kind, options.filter.contains(kind)) {
+                                            let on = options.filter.contains(kind);
+                                            if filter_box(ui, kind, on, info.has_deleted) {
                                                 options.filter.toggle(kind);
                                             }
                                         }
@@ -234,8 +237,9 @@ fn separator(ui: &mut Ui) {
 }
 
 /// One filter as a chip – rejected (`X`) and no stars (`0`) as symbols, like the keys that set
-/// them – or a colour as a square. Whether it was clicked.
-fn filter_box(ui: &mut Ui, kind: FilterKind, on: bool) -> bool {
+/// them – or a colour as a square. Whether it was clicked. The 🗑 box is greyed out while the
+/// folder has no deleted photos, unless it is on and has to be switched off.
+fn filter_box(ui: &mut Ui, kind: FilterKind, on: bool, has_deleted: bool) -> bool {
     let t = i18n::t();
     match kind {
         // Colours as small squares: five names would not fit next to the rest.
@@ -252,6 +256,17 @@ fn filter_box(ui: &mut Ui, kind: FilterKind, on: bool) -> bool {
         FilterKind::Rejected => chip(ui, on, Face::Rejected)
             .on_hover_text(format!("{} (X)", kind.label()))
             .clicked(),
+        FilterKind::Deleted => {
+            let enabled = has_deleted || on;
+            let tooltip = if enabled {
+                t.filter_deleted_tooltip
+            } else {
+                t.filter_deleted_none
+            };
+            chip_with(ui, on, Face::Deleted, enabled)
+                .on_hover_text(format!("{}\n{tooltip}", kind.label()))
+                .clicked()
+        }
         FilterKind::Unrated => chip(ui, on, Face::NoStars)
             .on_hover_text(format!("{} (0)", kind.label()))
             .clicked(),
@@ -288,10 +303,17 @@ enum Face<'a> {
     Person {
         crossed: bool,
     },
+    /// A waste bin: the deleted photos.
+    Deleted,
 }
 
 /// A filter that is on or off: outlined while off, on the accent's fill while on.
 fn chip(ui: &mut Ui, on: bool, face: Face<'_>) -> Response {
+    chip_with(ui, on, face, true)
+}
+
+/// A chip that can be greyed out: then it only explains itself, it takes no click.
+fn chip_with(ui: &mut Ui, on: bool, face: Face<'_>, enabled: bool) -> Response {
     const PAD: f32 = 8.0;
     const SYMBOL_WIDTH: f32 = 28.0;
     let galley = match face {
@@ -300,16 +322,21 @@ fn chip(ui: &mut Ui, on: bool, face: Face<'_>) -> Response {
             TextStyle::Button.resolve(ui.style()),
             tokens::TEXT,
         )),
-        Face::Rejected | Face::NoStars | Face::Person { .. } => None,
+        Face::Rejected | Face::NoStars | Face::Person { .. } | Face::Deleted => None,
     };
     let width = galley
         .as_ref()
         .map_or(SYMBOL_WIDTH, |galley| galley.size().x + 2.0 * PAD);
-    let (rect, response) = ui.allocate_exact_size(vec2(width, ITEM_HEIGHT), Sense::click());
+    let sense = if enabled {
+        Sense::click()
+    } else {
+        Sense::hover()
+    };
+    let (rect, response) = ui.allocate_exact_size(vec2(width, ITEM_HEIGHT), sense);
     let painter = ui.painter();
     let (fill, line) = if on {
         (tokens::ACCENT_SUBTLE, tokens::ACCENT)
-    } else if response.hovered() {
+    } else if response.hovered() && enabled {
         (tokens::SURFACE_MUTED, tokens::MUTED)
     } else {
         (Color32::TRANSPARENT, tokens::LINE)
@@ -342,9 +369,21 @@ fn chip(ui: &mut Ui, on: bool, face: Face<'_>) -> Response {
                 crossed.then_some(background),
             );
         }
+        (Face::Deleted, _) => {
+            let colour = match (on, enabled) {
+                (true, _) => tokens::TEXT,
+                (false, true) => tokens::MUTED,
+                (false, false) => tokens::LINE,
+            };
+            icons::trash(painter, rect.center(), 1.0, colour);
+        }
         (Face::Text(_), None) => {}
     }
-    response.on_hover_cursor(CursorIcon::PointingHand)
+    if enabled {
+        response.on_hover_cursor(CursorIcon::PointingHand)
+    } else {
+        response
+    }
 }
 
 /// The sort box is as wide as its longest entry in this language, so choosing another sort
@@ -623,6 +662,7 @@ mod tests {
                         shown,
                         total,
                         has_videos: true,
+                        has_deleted: false,
                     };
                     action = toolbar(ui, screen, &mut options, &info).actions_anchor;
                 },
@@ -708,6 +748,7 @@ mod tests {
                         shown: 340,
                         total: 340,
                         has_videos: true,
+                        has_deleted: false,
                     };
                     toolbar(ui, bar, &mut options, &info);
                 },
@@ -783,6 +824,7 @@ mod tests {
                         shown: 12,
                         total: 340,
                         has_videos: true,
+                        has_deleted: false,
                     };
                     let out = toolbar(ui, screen, &mut options, &info);
                     let action = out.actions_anchor.expect("the Action button is drawn");

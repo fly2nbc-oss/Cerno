@@ -102,10 +102,7 @@ impl Library {
 
         let mut paths = Vec::new();
         collect(&dir, subfolders, &mut paths)?;
-        paths.sort_by(|a, b| {
-            let (a, b) = (relative_key(&dir, a), relative_key(&dir, b));
-            natural_cmp(&a, &b).then_with(|| a.cmp(&b))
-        });
+        sort(&dir, &mut paths);
 
         let index = selected
             .and_then(|selected| paths.iter().position(|p| p == &selected))
@@ -118,6 +115,33 @@ impl Library {
             index,
         ))
     }
+}
+
+/// The library's order: natural, by the path below `dir` (a photo put back joins its place).
+pub fn sort(dir: &Path, paths: &mut [PathBuf]) {
+    paths.sort_by(|a, b| {
+        let (a, b) = (relative_key(dir, a), relative_key(dir, b));
+        natural_cmp(&a, &b).then_with(|| a.cmp(&b))
+    });
+}
+
+/// The folders `Library::open` walks: `start`, and with `subfolders` every folder below it
+/// that is not hidden (no directory symlinks) – where their `.originals` may lie.
+pub fn folders(start: &Path, subfolders: bool) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    let mut stack = vec![start.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        if subfolders && let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.filter_map(Result::ok) {
+                let path = entry.path();
+                if !is_hidden(&path) && entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                    stack.push(path);
+                }
+            }
+        }
+        found.push(dir);
+    }
+    found
 }
 
 /// `100CANON/IMG_0001.JPG` when the photo is in a subfolder of `root`, otherwise the file name.

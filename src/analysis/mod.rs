@@ -678,6 +678,8 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
         meta.rating.value,
         meta.label.known(),
     )?;
+    // A photo deleted before 1.6 and put back: its deletion stops counting now.
+    shared.db.settle_restored(&key, fingerprint)?;
     if !record.has_thumbnail {
         shared
             .db
