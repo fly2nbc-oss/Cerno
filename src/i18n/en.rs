@@ -39,6 +39,28 @@ pub static TEXTS: Texts = Texts {
     name_list_chip_tooltip: "Only the photos of the pasted list – a click shows all again",
     name_list_found: |found, total| format!("{found} of {total} found"),
     name_list_chip: |found, total| format!("List {found}/{total}  ×"),
+    cmd_align_camera: "Match right camera to left",
+    align_camera_hint: "Moves the capture time of every photo from the right camera in this folder, so the right photo was taken at the same moment as the left one. Only in the index – the files keep their time.",
+    align_needs_compare: "Compare two photos from different cameras first (C)",
+    align_no_time: "One of the two photos has no camera or capture time",
+    align_same_camera: "Both photos come from the same camera",
+    menu_camera_time: "Camera time …",
+    camera_time_title: "Camera time",
+    camera_time_intro: "When a camera's clock was off, an offset moves the capture time of all its photos in this folder – for sorting by capture time, the series and the display. Only in the index; the files keep their time.",
+    camera_time_reset: "Reset",
+    camera_time_invalid: "Offset as +h:mm:ss or −h:mm:ss, e.g. +1:30:00",
+    camera_time_apply: "Apply",
+    camera_time_none: "No photos with a camera and capture time in this folder yet.",
+    camera_time_applied: "Camera time applied",
+    camera_aligned: |camera, offset| format!("{camera}: capture time moved by {offset}"),
+    camera_time_photos: |n| {
+        if n == 1 {
+            "1 photo".into()
+        } else {
+            format!("{n} photos")
+        }
+    },
+    camera_time_tooltip: |taken, offset| format!("Camera time {taken} – adjusted by {offset}"),
     filter_clear: "Show all",
     media_all: "Photos and videos",
     media_photos: "Photos only",
@@ -473,6 +495,7 @@ pub static TEXTS: Texts = Texts {
                 "Sorted by capture time, series stay together, the sharpest photo first.",
                 "C shows two photos side by side; A keeps the left one, D the right one, the other is rejected.",
                 "M shows only photos like the current one.",
+                "Two cameras whose clocks differ: compare two photos taken at the same moment, then This photo › “Match right camera to left”.",
             ],
         ),
         (

@@ -55,6 +55,8 @@ pub struct InfoBar<'a> {
     pub deleted: bool,
     /// A RAW file: what shows is the JPEG preview inside it, and 100 % is that preview's size.
     pub raw_preview: bool,
+    /// The camera's clock was set right by this much (*Camera time …*): the date shows moved.
+    pub time_offset: Option<i64>,
 }
 
 #[derive(Default)]
@@ -152,19 +154,35 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     if let Some(name) = &bar.duplicate_of {
         facts.push((t.duplicate_of)(name));
     }
-    if let Some(taken) = bar.image.and_then(|image| image.camera.taken.as_ref()) {
-        facts.push(i18n::date(taken));
+    // A camera set right shows the moved time and the offset; the tooltip has the file's.
+    let mut date_tooltip = None;
+    if let Some(image) = bar.image
+        && let Some(taken) = image.camera.taken.as_ref()
+    {
+        match (bar.time_offset, image.camera.taken_ms) {
+            (Some(offset), Some(ms)) => {
+                let shift = crate::camera_time::format_offset(offset);
+                let moved = crate::metadata::format_millis(ms + offset);
+                facts.push(format!("{} ({shift})", i18n::date(&moved)));
+                date_tooltip = Some((t.camera_time_tooltip)(&i18n::date(taken), &shift));
+            }
+            _ => facts.push(i18n::date(taken)),
+        }
     }
     let font = FontId::proportional(text::SMALL);
     let room = (centre - centre_half - 12.0 - x).max(0.0);
     let text = fit_parts(painter, facts, "   ·   ", &font, room, Drop::Back);
-    left.text(
+    let line = left.text(
         pos2(x, row2),
         Align2::LEFT_CENTER,
         text,
         font,
         tokens::MUTED,
     );
+    if let Some(tooltip) = date_tooltip {
+        ui.interact(line, ui.id().with("facts-line"), Sense::hover())
+            .on_hover_text(tooltip);
+    }
 
     // Right, up to the buttons. Parts that don't fit are left out whole.
     let right_left = centre + centre_half + 12.0;
@@ -614,6 +632,7 @@ mod tests {
             deleted: false,
             raw_preview: false,
             similarity: None,
+            time_offset: None,
         }
     }
 

@@ -39,6 +39,28 @@ pub static TEXTS: Texts = Texts {
     name_list_chip_tooltip: "Nur die Fotos der eingefügten Liste – Klick zeigt wieder alle",
     name_list_found: |found, total| format!("{found} von {total} gefunden"),
     name_list_chip: |found, total| format!("Liste {found}/{total}  ×"),
+    cmd_align_camera: "Rechte Kamera an linke angleichen",
+    align_camera_hint: "Verschiebt die Aufnahmezeit aller Fotos der rechten Kamera in diesem Ordner, sodass das rechte Foto zur selben Zeit entstand wie das linke. Nur im Index – die Dateien behalten ihre Zeit.",
+    align_needs_compare: "Erst zwei Fotos verschiedener Kameras vergleichen (C)",
+    align_no_time: "Einem der beiden Fotos fehlt die Kamera oder die Aufnahmezeit",
+    align_same_camera: "Beide Fotos stammen von derselben Kamera",
+    menu_camera_time: "Kamerazeit angleichen …",
+    camera_time_title: "Kamerazeit angleichen",
+    camera_time_intro: "Ging die Uhr einer Kamera falsch, verschiebt ein Versatz die Aufnahmezeit all ihrer Fotos in diesem Ordner – für die Sortierung nach Aufnahmezeit, die Serien und die Anzeige. Nur im Index, die Dateien behalten ihre Zeit.",
+    camera_time_reset: "Zurücksetzen",
+    camera_time_invalid: "Versatz als +h:mm:ss oder −h:mm:ss, z. B. +1:30:00",
+    camera_time_apply: "Übernehmen",
+    camera_time_none: "Noch keine Fotos mit Kamera und Aufnahmezeit in diesem Ordner.",
+    camera_time_applied: "Kamerazeit übernommen",
+    camera_aligned: |camera, offset| format!("{camera}: Aufnahmezeit um {offset} verschoben"),
+    camera_time_photos: |n| {
+        if n == 1 {
+            "1 Foto".into()
+        } else {
+            format!("{n} Fotos")
+        }
+    },
+    camera_time_tooltip: |taken, offset| format!("Kamerazeit {taken} – angeglichen um {offset}"),
     filter_clear: "Alle anzeigen",
     media_all: "Fotos und Videos",
     media_photos: "Nur Fotos",
@@ -484,6 +506,7 @@ pub static TEXTS: Texts = Texts {
                 "Nach Aufnahmezeit sortiert stehen Serien zusammen, das schärfste Foto zuerst.",
                 "C zeigt zwei Fotos nebeneinander; A behält das linke, D das rechte, das andere wird abgelehnt.",
                 "M zeigt nur Fotos, die dem aktuellen ähneln.",
+                "Zwei Kameras mit verschiedener Uhrzeit: zwei gleichzeitige Fotos vergleichen, dann Dieses Foto › „Rechte Kamera an linke angleichen“.",
             ],
         ),
         (

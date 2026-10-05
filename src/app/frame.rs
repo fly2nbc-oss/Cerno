@@ -274,6 +274,7 @@ impl CernoApp {
             similarity: self.similarity_to_reference(&path),
             deleted: self.is_deleted(&path),
             raw_preview: library::format_of(&path).is_some_and(library::Format::is_raw),
+            time_offset: self.time_offset_of(&path),
         };
         let out = info_bar::info_bar(ui, rect, &bar);
         if let Some(stars) = out.rating {

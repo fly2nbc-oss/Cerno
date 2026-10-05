@@ -39,6 +39,28 @@ pub static TEXTS: Texts = Texts {
     name_list_chip_tooltip: "Solo las fotos de la lista pegada: un clic vuelve a mostrar todas",
     name_list_found: |found, total| format!("{found} de {total} encontrados"),
     name_list_chip: |found, total| format!("Lista {found}/{total}  ×"),
+    cmd_align_camera: "Igualar la cámara derecha a la izquierda",
+    align_camera_hint: "Desplaza la hora de captura de todas las fotos de la cámara derecha en esta carpeta, para que la foto derecha se tomara en el mismo momento que la izquierda. Solo en el índice: los archivos conservan su hora.",
+    align_needs_compare: "Primero compara dos fotos de cámaras distintas (C)",
+    align_no_time: "A una de las dos fotos le falta la cámara o la hora de captura",
+    align_same_camera: "Las dos fotos son de la misma cámara",
+    menu_camera_time: "Hora de la cámara …",
+    camera_time_title: "Hora de la cámara",
+    camera_time_intro: "Si el reloj de una cámara iba mal, un desfase mueve la hora de captura de todas sus fotos en esta carpeta, para ordenar por hora de captura, las series y lo que se muestra. Solo en el índice; los archivos conservan su hora.",
+    camera_time_reset: "Restablecer",
+    camera_time_invalid: "Desfase como +h:mm:ss o −h:mm:ss, p. ej. +1:30:00",
+    camera_time_apply: "Aplicar",
+    camera_time_none: "Aún no hay fotos con cámara y hora de captura en esta carpeta.",
+    camera_time_applied: "Hora de la cámara aplicada",
+    camera_aligned: |camera, offset| format!("{camera}: hora de captura desplazada {offset}"),
+    camera_time_photos: |n| {
+        if n == 1 {
+            "1 foto".into()
+        } else {
+            format!("{n} fotos")
+        }
+    },
+    camera_time_tooltip: |taken, offset| format!("Hora de la cámara {taken}, ajustada {offset}"),
     filter_clear: "Mostrar todas",
     media_all: "Fotos y vídeos",
     media_photos: "Solo fotos",
@@ -476,6 +498,7 @@ pub static TEXTS: Texts = Texts {
                 "Ordenadas por fecha de captura, las series quedan juntas, la foto más nítida primero.",
                 "C muestra dos fotos juntas; A conserva la izquierda, D la derecha, la otra queda rechazada.",
                 "M muestra solo las fotos parecidas a la actual.",
+                "Dos cámaras con distinta hora: compara dos fotos tomadas en el mismo momento y luego Esta foto › «Igualar la cámara derecha a la izquierda».",
             ],
         ),
         (

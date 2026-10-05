@@ -3,6 +3,7 @@
 
 mod analysis;
 mod app;
+mod camera_time;
 mod crashlog;
 mod db;
 mod decode;
