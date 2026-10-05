@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+## [1.7.0] – 2026-10-05
+
+Faces at a glance, the photos a client chose, and cameras whose clocks differ.
+
 ### Added
 
 - **Faces at a glance** – `G` opens a *Faces* tab in the details panel with every face of the photo, left to right, and a note where the eyes are probably blurry; `Shift+G` shows them all large over the photo, for group photos. A click (or the face's number in the grid) zooms to it.
