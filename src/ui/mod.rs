@@ -5,6 +5,7 @@ pub mod confirm;
 pub mod description;
 pub mod details;
 pub mod edit;
+pub mod faces;
 pub mod filmstrip;
 pub mod filter_bar;
 pub mod grid;

@@ -63,6 +63,20 @@ const SCHEMA: &str = "
     CREATE TABLE IF NOT EXISTS restored (
         path TEXT PRIMARY KEY
     );
+    -- Every face YuNet found, in 0..1 of the upright photo (the faces tab and grid, since 1.7).
+    -- `landmarks`: ten f32 LE – eyes, nose, mouth corners as x, y.
+    CREATE TABLE IF NOT EXISTS faces (
+        fingerprint INTEGER NOT NULL,
+        idx         INTEGER NOT NULL,
+        score       REAL NOT NULL,
+        x           REAL NOT NULL,
+        y           REAL NOT NULL,
+        w           REAL NOT NULL,
+        h           REAL NOT NULL,
+        landmarks   BLOB NOT NULL,
+        eyes        REAL,
+        PRIMARY KEY (fingerprint, idx)
+    );
 ";
 
 /// SQL: the column `path` lies outside every `.originals` folder. A deleted photo's row (it
@@ -170,6 +184,18 @@ pub struct FileRecord {
     /// Colour label Cerno understands (`Red` …). A foreign `xmp:Label` is stored as none.
     pub label: Option<Label>,
     pub image: ImageRecord,
+}
+
+/// One face of a photo, in 0..1 of the upright image (`faces` table).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FaceRow {
+    pub score: f32,
+    /// x, y, width, height.
+    pub bbox: [f32; 4],
+    /// Right eye, left eye, nose, right and left mouth corner.
+    pub landmarks: [[f32; 2]; 5],
+    /// Laplacian variance around its eyes; `None` when it is too small to measure.
+    pub eyes: Option<f32>,
 }
 
 /// One example of the taste model: the CLIP embedding and its label, 0–5 stars.
@@ -683,6 +709,76 @@ impl Db {
         Ok(())
     }
 
+    /// The faces found on a photo, in place of those stored before.
+    pub fn put_face_rows(&self, fingerprint: u64, faces: &[FaceRow]) -> Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        tx.execute(
+            "DELETE FROM faces WHERE fingerprint = ?1",
+            [fingerprint as i64],
+        )?;
+        for (idx, face) in faces.iter().enumerate() {
+            let landmarks: Vec<u8> = face
+                .landmarks
+                .iter()
+                .flatten()
+                .flat_map(|v| v.to_le_bytes())
+                .collect();
+            let [x, y, w, h] = face.bbox.map(f64::from);
+            tx.execute(
+                "INSERT INTO faces (fingerprint, idx, score, x, y, w, h, landmarks, eyes)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    fingerprint as i64,
+                    idx as i64,
+                    f64::from(face.score),
+                    x,
+                    y,
+                    w,
+                    h,
+                    landmarks,
+                    face.eyes.map(f64::from)
+                ],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// The faces stored for a photo, in the order they were found; `None` when none were
+    /// stored – the photo was analysed before 1.7, or has no face (`Scores::faces` says which).
+    pub fn faces_of(&self, fingerprint: u64) -> Result<Option<Vec<FaceRow>>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(
+            "SELECT score, x, y, w, h, landmarks, eyes FROM faces WHERE fingerprint = ?1
+             ORDER BY idx",
+        )?;
+        let rows: Vec<FaceRow> = stmt
+            .query_map([fingerprint as i64], |row| {
+                let points = blob_to_f32(&row.get::<_, Vec<u8>>(5)?);
+                let mut landmarks = [[0.0; 2]; 5];
+                for (i, point) in landmarks.iter_mut().enumerate() {
+                    *point = [
+                        points.get(2 * i).copied().unwrap_or(0.0),
+                        points.get(2 * i + 1).copied().unwrap_or(0.0),
+                    ];
+                }
+                Ok(FaceRow {
+                    score: row.get::<_, f64>(0)? as f32,
+                    bbox: [
+                        row.get::<_, f64>(1)? as f32,
+                        row.get::<_, f64>(2)? as f32,
+                        row.get::<_, f64>(3)? as f32,
+                        row.get::<_, f64>(4)? as f32,
+                    ],
+                    landmarks,
+                    eyes: opt_f32(row, 6)?,
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok((!rows.is_empty()).then_some(rows))
+    }
+
     pub fn put_thumbnail(&self, fingerprint: u64, jpeg: &[u8]) -> Result<()> {
         self.conn()
             .prepare_cached(
@@ -1031,6 +1127,34 @@ mod tests {
         };
         assert_eq!(backups("/p/IMG (2).jpg"), ["/p/.originals/IMG.jpg"]);
         assert_eq!(backups("/p/IMG.jpg"), ["/p/.originals/IMG (3).jpg"]);
+    }
+
+    /// Faces round-trip with their points and eye measure; storing again replaces them.
+    #[test]
+    fn faces_are_stored_per_photo() {
+        let db = Db::open_in_memory().unwrap();
+        assert_eq!(db.faces_of(3).unwrap(), None);
+        let face = |x: f32, eyes| FaceRow {
+            score: 0.9,
+            bbox: [x, 0.2, 0.1, 0.15],
+            landmarks: [
+                [x + 0.02, 0.25],
+                [x + 0.07, 0.25],
+                [x + 0.05, 0.28],
+                [x + 0.03, 0.31],
+                [x + 0.07, 0.31],
+            ],
+            eyes,
+        };
+        db.put_face_rows(3, &[face(0.1, Some(120.0)), face(0.5, None)])
+            .unwrap();
+        assert_eq!(
+            db.faces_of(3).unwrap(),
+            Some(vec![face(0.1, Some(120.0)), face(0.5, None)])
+        );
+        db.put_face_rows(3, &[face(0.7, None)]).unwrap();
+        assert_eq!(db.faces_of(3).unwrap(), Some(vec![face(0.7, None)]));
+        assert_eq!(db.faces_of(4).unwrap(), None);
     }
 
     #[test]

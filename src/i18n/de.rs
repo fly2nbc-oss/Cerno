@@ -298,6 +298,7 @@ pub static TEXTS: Texts = Texts {
     row_location: "Ort",
     tab_values: "Werte",
     tab_description: "Beschreibung",
+    tab_faces: "Gesichter",
     section_comment: "Kommentar",
     section_keywords: "Stichwörter",
     comment_hint: "Kommentar schreiben …",
@@ -422,6 +423,26 @@ pub static TEXTS: Texts = Texts {
         format!("{n} Foto(s) konnten nicht zurückgelegt werden – {name}: {err}")
     },
     deleted_mark: "Gelöscht",
+    faces_loading: "Gesichter werden gesucht…",
+    faces_unknown: "Noch nicht analysiert – die Gesichter folgen.",
+    faces_none: "Keine Gesichter erkannt",
+    faces_only_small: "Nur kleine Gesichter – zu klein zum Beurteilen",
+    face_eyes_blurry: "Augen wohl unscharf",
+    faces_zoom_hint: "Klick zoomt auf dieses Gesicht",
+    faces_grid_hint: "Klick oder Nummer (1–9) zoomt auf ein Gesicht · Esc schließt",
+    cmd_faces: "Gesichter",
+    cmd_face_grid: "Alle Gesichter groß",
+    faces_small: |n| {
+        format!(
+            "+ {n} {} – zu klein zum Beurteilen",
+            if n == 1 {
+                "kleines Gesicht"
+            } else {
+                "kleine Gesichter"
+            }
+        )
+    },
+    face_number: |n| format!("Gesicht {n}"),
     raw_preview_fact: "RAW-Vorschau",
     preview_word: "Vorschau",
     edit_failed: |detail| format!("Nicht geschrieben: {detail}"),
@@ -589,6 +610,10 @@ pub static TEXTS: Texts = Texts {
         (
             "Umschalt+Tab",
             "Filterleiste, Details und Filmstreifen zusammen",
+        ),
+        (
+            "G, Umschalt+G",
+            "Gesichter: im Detailbereich (G) oder alle groß (Umschalt+G) – Klick zoomt hin",
         ),
     ],
     help_edit: [

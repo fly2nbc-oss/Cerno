@@ -35,6 +35,30 @@ pub struct Face {
     pub landmarks: [[f32; 2]; 5],
 }
 
+/// The faces as the index keeps them (`Db::put_face_rows`): in 0..1 of the image they were
+/// found on, each with its own eye measure (`None` below `MIN_FACE_WIDTH`).
+pub fn rows(found: &[Face], rgb: &[u8], width: u32, height: u32) -> Vec<crate::db::FaceRow> {
+    let (w, h) = (width.max(1) as f32, height.max(1) as f32);
+    found
+        .iter()
+        .map(|face| {
+            let [x, y, fw, fh] = face.bbox;
+            crate::db::FaceRow {
+                score: face.score,
+                bbox: [x / w, y / h, fw / w, fh / h],
+                landmarks: face.landmarks.map(|[lx, ly]| [lx / w, ly / h]),
+                eyes: eye_sharpness(rgb, width, height, std::slice::from_ref(face)),
+            }
+        })
+        .collect()
+}
+
+/// Whether a face (in 0..1 of an image `width` wide) is large enough to measure its eyes, at
+/// the analysis size.
+pub fn measurable(bbox_w: f32, analysis_width: u32) -> bool {
+    bbox_w * analysis_width as f32 >= MIN_FACE_WIDTH
+}
+
 /// Raw network outputs of one stride.
 pub struct StrideOutput<'a> {
     pub stride: u32,

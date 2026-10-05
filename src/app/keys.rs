@@ -66,6 +66,9 @@ struct KeyInput {
     video: super::video::VideoKeys,
     /// `B`: the description tab (comment and keywords).
     describe: bool,
+    /// `G`: the faces tab; `Shift+G`: every face over the photo.
+    faces: bool,
+    face_grid: bool,
     /// `E`: edit the photo in the remembered program (or choose one).
     edit_elsewhere: bool,
     /// `O`: the next check overlay (sharp edges, clipping, off).
@@ -216,6 +219,8 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
             ),
         },
         describe: plain && i.key_pressed(Key::B),
+        faces: plain && i.key_pressed(Key::G),
+        face_grid: i.modifiers.shift_only() && i.key_pressed(Key::G),
         edit_elsewhere: plain && i.key_pressed(Key::E),
         // Ctrl+O opens a folder.
         overlay: plain && i.key_pressed(Key::O),
@@ -262,7 +267,14 @@ impl CernoApp {
             self.open(ctx, &path);
         }
         let tabs = std::mem::take(&mut self.tab_presses);
-        // The models card and a confirmation read their own Enter and Esc.
+        // The faces grid closes with `Shift+G` too – read here, before the grid draws: it
+        // would see the press that opened it and close in the same frame.
+        if self.faces.grid_open && ctx.input(|i| i.modifiers.shift_only() && i.key_pressed(Key::G))
+        {
+            self.faces.grid_open = false;
+            return;
+        }
+        // The models card, a confirmation and the faces grid read their own keys.
         if self.modal_open() {
             return;
         }
@@ -446,6 +458,12 @@ impl CernoApp {
         }
         if keys.describe {
             self.open_description(ctx);
+        }
+        if keys.faces {
+            self.open_faces();
+        }
+        if keys.face_grid {
+            self.toggle_face_grid();
         }
         if keys.delete {
             self.delete_current(ctx);

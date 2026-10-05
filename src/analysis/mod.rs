@@ -721,6 +721,11 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
         shared
             .db
             .put_faces(fingerprint, eyes, count, faces::VERSION)?;
+        // Where each face is, for the faces tab and grid (photos analysed before 1.7 get theirs
+        // when those show them).
+        shared
+            .db
+            .put_face_rows(fingerprint, &faces::rows(&found, rgb, w, h))?;
         record.scores.eyes = eyes;
         record.scores.faces = Some(count);
         lap("faces", &mut timings);

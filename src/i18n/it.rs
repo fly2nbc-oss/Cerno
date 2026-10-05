@@ -286,6 +286,7 @@ pub static TEXTS: Texts = Texts {
     row_location: "Posizione",
     tab_values: "Valori",
     tab_description: "Descrizione",
+    tab_faces: "Volti",
     section_comment: "Commento",
     section_keywords: "Parole chiave",
     comment_hint: "Scrivi un commento …",
@@ -408,6 +409,26 @@ pub static TEXTS: Texts = Texts {
         format!("Impossibile rimettere a posto {n} foto – {name}: {err}")
     },
     deleted_mark: "Eliminata",
+    faces_loading: "Ricerca dei volti…",
+    faces_unknown: "Non ancora analizzata: i volti arriveranno.",
+    faces_none: "Nessun volto rilevato",
+    faces_only_small: "Solo volti piccoli: troppo piccoli per giudicare",
+    face_eyes_blurry: "Occhi probabilmente sfocati",
+    faces_zoom_hint: "Clic per ingrandire questo volto",
+    faces_grid_hint: "Un clic o il suo numero (1–9) ingrandisce un volto · Esc chiude",
+    cmd_faces: "Volti",
+    cmd_face_grid: "Tutti i volti in grande",
+    faces_small: |n| {
+        format!(
+            "+ {n} {}: troppo piccoli per giudicare",
+            if n == 1 {
+                "volto piccolo"
+            } else {
+                "volti piccoli"
+            }
+        )
+    },
+    face_number: |n| format!("Volto {n}"),
     raw_preview_fact: "Anteprima RAW",
     preview_word: "anteprima",
     edit_failed: |detail| format!("Non scritto: {detail}"),
@@ -581,6 +602,10 @@ pub static TEXTS: Texts = Texts {
         (
             "Maiusc+Tab",
             "Barra dei filtri, dettagli e striscia di miniature insieme",
+        ),
+        (
+            "G, Maiusc+G",
+            "Volti: nel pannello dei dettagli (G) o tutti in grande (Maiusc+G); un clic ingrandisce",
         ),
     ],
     help_edit: [
