@@ -14,6 +14,7 @@ mod filelock;
 mod filetimes;
 mod histogram;
 mod i18n;
+mod jpeg_info;
 mod library;
 mod loader;
 mod metadata;

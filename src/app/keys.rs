@@ -304,16 +304,19 @@ impl CernoApp {
             self.palette = Some(palette::State::default());
             return;
         }
-        // The help page is modal: only closing it (and switching the language) works.
+        // The help page is modal: only closing it, switching its page (←/→) and the language
+        // work.
         if self.help_open {
             if keys.help || keys.escape {
                 self.help_open = false;
+            } else if keys.next || keys.prev {
+                self.help_page = self.help_page.other();
             }
             return;
         }
         // Also on the start screen, which only shows the first keys.
         if keys.help {
-            self.help_open = true;
+            self.open_help();
             return;
         }
         if self.edit.is_some() {

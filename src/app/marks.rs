@@ -116,6 +116,7 @@ impl CernoApp {
 
     fn rating_affects_view(&self) -> bool {
         !self.options.filter.is_all()
+            || self.options.hide_rejected
             || matches!(self.options.sort, SortKey::Rating | SortKey::Taken)
     }
 

@@ -16,5 +16,6 @@ pub mod models;
 pub mod overlays;
 pub mod palette;
 pub mod stars;
+pub mod tabs;
 pub mod video_controls;
 pub mod viewer;

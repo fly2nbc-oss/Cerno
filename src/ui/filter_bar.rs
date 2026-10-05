@@ -93,6 +93,12 @@ pub fn toolbar(
                             .show(ui, |ui| {
                                 ui.horizontal(|ui| {
                                     ui.spacing_mut().item_spacing.x = 6.0;
+                                    // It hides instead of picking out: before the boxes, on
+                                    // its own.
+                                    if without_rejected(ui, options.hide_rejected) {
+                                        options.toggle_hide_rejected();
+                                    }
+                                    separator(ui);
                                     for (index, group) in FilterKind::GROUPS.iter().enumerate() {
                                         if index > 0 {
                                             separator(ui);
@@ -100,7 +106,7 @@ pub fn toolbar(
                                         for &kind in *group {
                                             let on = options.filter.contains(kind);
                                             if filter_box(ui, kind, on, info.has_deleted) {
-                                                options.filter.toggle(kind);
+                                                options.toggle_filter(kind);
                                             }
                                         }
                                     }
@@ -292,6 +298,17 @@ fn filter_box(ui: &mut Ui, kind: FilterKind, on: bool, has_deleted: bool) -> boo
     }
 }
 
+/// "without ✕": the word and the reject cross. Whether it was clicked.
+fn without_rejected(ui: &mut Ui, on: bool) -> bool {
+    let t = i18n::t();
+    chip(ui, on, Face::Without(t.filter_without))
+        .on_hover_text(format!(
+            "{}\n{}",
+            t.filter_hide_rejected, t.filter_hide_rejected_tooltip
+        ))
+        .clicked()
+}
+
 /// What a chip shows.
 enum Face<'a> {
     Text(&'a str),
@@ -305,6 +322,8 @@ enum Face<'a> {
     },
     /// A waste bin: the deleted photos.
     Deleted,
+    /// A word and the reject cross: "without ✕".
+    Without(&'a str),
 }
 
 /// A filter that is on or off: outlined while off, on the accent's fill while on.
@@ -316,17 +335,25 @@ fn chip(ui: &mut Ui, on: bool, face: Face<'_>) -> Response {
 fn chip_with(ui: &mut Ui, on: bool, face: Face<'_>, enabled: bool) -> Response {
     const PAD: f32 = 8.0;
     const SYMBOL_WIDTH: f32 = 28.0;
+    // The cross after the word of "without ✕", and the gap before it.
+    const MARK: f32 = 9.0;
+    const MARK_GAP: f32 = 5.0;
     let galley = match face {
-        Face::Text(text) => Some(ui.painter().layout_no_wrap(
+        Face::Text(text) | Face::Without(text) => Some(ui.painter().layout_no_wrap(
             text.to_owned(),
             TextStyle::Button.resolve(ui.style()),
             tokens::TEXT,
         )),
         Face::Rejected | Face::NoStars | Face::Person { .. } | Face::Deleted => None,
     };
+    let mark = if matches!(face, Face::Without(_)) {
+        MARK_GAP + MARK
+    } else {
+        0.0
+    };
     let width = galley
         .as_ref()
-        .map_or(SYMBOL_WIDTH, |galley| galley.size().x + 2.0 * PAD);
+        .map_or(SYMBOL_WIDTH, |galley| galley.size().x + mark + 2.0 * PAD);
     let sense = if enabled {
         Sense::click()
     } else {
@@ -346,6 +373,12 @@ fn chip_with(ui: &mut Ui, on: bool, face: Face<'_>, enabled: bool) -> Response {
         (Face::Text(_), Some(galley)) => {
             let at = rect.center() - galley.size() / 2.0;
             painter.galley(at, galley, tokens::TEXT);
+        }
+        (Face::Without(_), Some(galley)) => {
+            let at = pos2(rect.left() + PAD, rect.center().y - galley.size().y / 2.0);
+            let cross = pos2(rect.right() - PAD - MARK / 2.0, rect.center().y);
+            painter.galley(at, galley, tokens::TEXT);
+            icons::reject_mark(painter, cross, MARK, tokens::STATUS_ERROR);
         }
         (Face::Rejected, _) => {
             icons::reject_mark(painter, rect.center(), 9.0, tokens::STATUS_ERROR);
@@ -377,7 +410,7 @@ fn chip_with(ui: &mut Ui, on: bool, face: Face<'_>, enabled: bool) -> Response {
             };
             icons::trash(painter, rect.center(), 1.0, colour);
         }
-        (Face::Text(_), None) => {}
+        (Face::Text(_) | Face::Without(_), None) => {}
     }
     if enabled {
         response.on_hover_cursor(CursorIcon::PointingHand)

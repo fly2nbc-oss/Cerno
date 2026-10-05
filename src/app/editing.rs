@@ -77,11 +77,52 @@ struct EditKeyInput {
     escape: bool,
     left: bool,
     right: bool,
+    up: bool,
+    down: bool,
+    /// `+` and `−`: the crop frame larger or smaller.
+    grow: bool,
+    shrink: bool,
     shift: bool,
     command: bool,
     flip: bool,
     cycle: bool,
     wheel: f64,
+}
+
+/// One keyboard step of the crop frame: 1 % of the photo's long side, with Shift one pixel
+/// (finer, like Shift in straighten).
+fn crop_step(image_size: [u32; 2], fine: bool) -> f64 {
+    if fine {
+        1.0
+    } else {
+        f64::from(image_size[0].max(image_size[1])) / 100.0
+    }
+}
+
+/// `+` / `−` while cropping, held down too. By the key typed – and with Shift by where the key
+/// sits: Shift turns them into `*` and `_` on German layouts, which egui has no name for, so it
+/// reports the position instead (`]` and `/` on a US keyboard). Measured with posted keys on a
+/// German layout on 2026-10-05.
+fn size_keys(events: &[Event]) -> (bool, bool) {
+    let (mut grow, mut shrink) = (false, false);
+    for event in events {
+        if let Event::Key {
+            key,
+            physical_key,
+            pressed: true,
+            modifiers,
+            ..
+        } = event
+        {
+            if modifiers.alt || modifiers.command {
+                continue;
+            }
+            let shifted = |place: Key| modifiers.shift && *physical_key == Some(place);
+            grow |= matches!(key, Key::Plus | Key::Equals) || shifted(Key::CloseBracket);
+            shrink |= *key == Key::Minus || shifted(Key::Slash);
+        }
+    }
+    (grow, shrink)
 }
 
 /// Wheel down rotates clockwise. One notch is `FINE_STEP`; Shift uses the finer step.
@@ -372,16 +413,23 @@ impl CernoApp {
     }
 
     pub(super) fn handle_edit_keys(&mut self, ctx: &egui::Context) {
-        let input = ctx.input(|input| EditKeyInput {
-            enter: input.key_pressed(Key::Enter),
-            escape: input.key_pressed(Key::Escape),
-            left: input.key_pressed(Key::ArrowLeft),
-            right: input.key_pressed(Key::ArrowRight),
-            shift: input.modifiers.shift,
-            command: input.modifiers.command,
-            flip: input.modifiers.is_none() && input.key_pressed(Key::X),
-            cycle: input.modifiers.is_none() && input.key_pressed(Key::A),
-            wheel: wheel_rotation(&input.events),
+        let input = ctx.input(|input| {
+            let (grow, shrink) = size_keys(&input.events);
+            EditKeyInput {
+                grow,
+                shrink,
+                enter: input.key_pressed(Key::Enter),
+                escape: input.key_pressed(Key::Escape),
+                left: input.key_pressed(Key::ArrowLeft),
+                right: input.key_pressed(Key::ArrowRight),
+                up: input.key_pressed(Key::ArrowUp),
+                down: input.key_pressed(Key::ArrowDown),
+                shift: input.modifiers.shift,
+                command: input.modifiers.command,
+                flip: input.modifiers.is_none() && input.key_pressed(Key::X),
+                cycle: input.modifiers.is_none() && input.key_pressed(Key::A),
+                wheel: wheel_rotation(&input.events),
+            }
         });
         if input.escape {
             self.cancel_edit();
@@ -432,6 +480,26 @@ impl CernoApp {
                     *ratio = ratio.next();
                     refit_crop(*ratio, *landscape, *image_size, crop);
                     *gesture = None;
+                }
+                // The keyboard instead of the mouse: arrows slide the frame, + and − resize it
+                // about its centre; Ctrl+arrows stay the quarter turns.
+                if !input.command && gesture.is_none() {
+                    let step = crop_step(*image_size, input.shift);
+                    let (w, h) = (f64::from(image_size[0]), f64::from(image_size[1]));
+                    let dx = f64::from(i8::from(input.right) - i8::from(input.left)) * step;
+                    let dy = f64::from(i8::from(input.down) - i8::from(input.up)) * step;
+                    if dx != 0.0 || dy != 0.0 {
+                        *crop = crop.translate(dx, dy, w, h);
+                    }
+                    let resize = f64::from(i8::from(input.grow) - i8::from(input.shrink)) * step;
+                    if resize != 0.0 {
+                        *crop = crop.resize_about_centre(
+                            resize,
+                            w,
+                            h,
+                            edit::min_side(image_size[0], image_size[1]),
+                        );
+                    }
                 }
             }
             EditKind::Straighten { .. } => {}
@@ -606,5 +674,51 @@ impl CernoApp {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn press(key: Key, physical: Option<Key>, modifiers: egui::Modifiers) -> Event {
+        Event::Key {
+            key,
+            physical_key: physical,
+            pressed: true,
+            repeat: false,
+            modifiers,
+        }
+    }
+
+    /// `+` and `−` by the key typed, or by the key itself where Shift types another sign;
+    /// with Ctrl or Alt they are not the crop's.
+    #[test]
+    fn plus_and_minus_size_the_crop_frame() {
+        let (plain, shift) = (egui::Modifiers::NONE, egui::Modifiers::SHIFT);
+        assert_eq!(size_keys(&[press(Key::Plus, None, plain)]), (true, false));
+        assert_eq!(
+            size_keys(&[press(Key::Equals, Some(Key::Equals), shift)]),
+            (true, false)
+        );
+        // German: Shift+`+` and Shift+`−` arrive by their place, `]` and `/` on US keys.
+        assert_eq!(
+            size_keys(&[press(Key::CloseBracket, Some(Key::CloseBracket), shift)]),
+            (true, false)
+        );
+        assert_eq!(
+            size_keys(&[press(Key::Slash, Some(Key::Slash), shift)]),
+            (false, true)
+        );
+        assert_eq!(
+            size_keys(&[press(Key::CloseBracket, Some(Key::CloseBracket), plain)]),
+            (false, false),
+            "a plain `]` is no plus"
+        );
+        assert_eq!(size_keys(&[press(Key::Minus, None, plain)]), (false, true));
+        let ctrl = press(Key::Plus, None, egui::Modifiers::COMMAND);
+        assert_eq!(size_keys(&[ctrl]), (false, false));
+        assert_eq!(crop_step([4000, 3000], false), 40.0);
+        assert_eq!(crop_step([4000, 3000], true), 1.0);
     }
 }

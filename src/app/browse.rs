@@ -204,6 +204,8 @@ impl CernoApp {
         filter.set(FilterKind::Deleted, false);
         self.db.put_setting("sort", self.options.sort.id());
         self.db.put_setting("filter", &filter.id());
+        let hide = if self.options.hide_rejected { "1" } else { "0" };
+        self.db.put_setting("hide_rejected", hide);
         self.db.put_setting("media", self.options.media.id());
     }
 

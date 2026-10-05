@@ -424,6 +424,9 @@ pub struct ViewOptions {
     /// Only the best N photos of what the other filters leave (`pick_top`, `Facts::top`); it
     /// takes the place of `media` – the best photos are photos. Never saved.
     pub top: Option<u16>,
+    /// "without ✕": the rejected photos of the folder are hidden – the other way round from
+    /// the ✕ box, which shows only them; the two exclude each other (`toggle_filter`). Saved.
+    pub hide_rejected: bool,
 }
 
 impl Default for ViewOptions {
@@ -434,6 +437,7 @@ impl Default for ViewOptions {
             similar: false,
             media: Media::All,
             top: None,
+            hide_rejected: false,
         }
     }
 }
@@ -448,17 +452,40 @@ impl ViewOptions {
         } != Self::default()
     }
 
-    /// Whether anything hides photos: a box, "similar photos", photos / videos only or Top N.
+    /// Whether anything hides photos: a box, "without ✕", "similar photos", photos / videos
+    /// only or Top N.
     pub fn is_filtered(&self) -> bool {
-        !self.filter.is_all() || self.similar || self.media != Media::All || self.top.is_some()
+        !self.filter.is_all()
+            || self.hide_rejected
+            || self.similar
+            || self.media != Media::All
+            || self.top.is_some()
     }
 
     /// "Show all": every filter off, the sort stays.
     pub fn clear_filters(&mut self) {
         self.filter.clear();
+        self.hide_rejected = false;
         self.similar = false;
         self.media = Media::All;
         self.top = None;
+    }
+
+    /// A box ticked or unticked. Ticking ✕ ends "without ✕" – both at once would hide every
+    /// photo.
+    pub fn toggle_filter(&mut self, kind: FilterKind) {
+        self.filter.toggle(kind);
+        if kind == FilterKind::Rejected && self.filter.contains(kind) {
+            self.hide_rejected = false;
+        }
+    }
+
+    /// "without ✕" on or off; on unticks ✕.
+    pub fn toggle_hide_rejected(&mut self) {
+        self.hide_rejected = !self.hide_rejected;
+        if self.hide_rejected {
+            self.filter.set(FilterKind::Rejected, false);
+        }
     }
 
     /// What a Top N pick depends on: every option but the sort – another sort shows the same
@@ -712,6 +739,10 @@ pub fn build(
         })
         .filter(|entry| {
             if hidden(entry.path) {
+                return false;
+            }
+            // "without ✕" is about the photos still in the folder.
+            if options.hide_rejected && !entry.deleted && entry.rating == Rating::Rejected {
                 return false;
             }
             let blurry = entry
@@ -1376,6 +1407,36 @@ mod tests {
             PhotoFilter::from_stored("*rejected,deleted").id(),
             "*rejected,deleted"
         );
+    }
+
+    /// "without ✕" hides the rejected photos – session rejections too – and nothing else;
+    /// ✕ and it exclude each other, "Show all" ends it.
+    #[test]
+    fn without_rejected_hides_them_and_excludes_the_reject_box() {
+        let (all, known) = fixture();
+        let lookup = |p: &Path| known.get(p).copied();
+        let session = HashMap::from([(PathBuf::from("a"), Rating::Rejected)]);
+        let mut options = ViewOptions::default();
+        options.toggle_hide_rejected();
+        let shown = |options: ViewOptions| {
+            names(&build(&all, options, lookup, &session, &HashMap::new(), |_| false).paths)
+        };
+        assert_eq!(shown(options), "bcde");
+        assert!(options.is_filtered());
+        let mut five = options;
+        five.toggle_filter(FilterKind::Stars(5));
+        assert_eq!(shown(five), "c", "together with the boxes");
+
+        options.toggle_filter(FilterKind::Rejected);
+        assert!(!options.hide_rejected, "✕ ends it");
+        assert_eq!(shown(options), "a");
+        options.toggle_hide_rejected();
+        assert!(
+            !options.filter.contains(FilterKind::Rejected),
+            "and the other way round"
+        );
+        options.clear_filters();
+        assert_eq!(options, ViewOptions::default());
     }
 
     #[test]

@@ -165,6 +165,8 @@ pub struct CernoApp {
     attributes_open: bool,
     /// Help page over the photos (`H`, `F1`, `?`).
     help_open: bool,
+    /// Its tab: the shortcuts or the tips (`←`/`→`); not saved.
+    help_page: crate::ui::help::Page,
     /// Models & data card (menu).
     models_open: bool,
     /// A confirmation waiting for Enter or Esc; `true` reopens the models card afterwards.
@@ -286,6 +288,7 @@ impl CernoApp {
                 .and_then(|m| Media::from_id(&m))
                 .unwrap_or_default(),
             top: None,
+            hide_rejected: db.setting("hide_rejected").as_deref() == Some("1"),
         };
         let auto_advance = db.setting("auto_advance").as_deref() == Some("1");
         let subfolders = db.setting("subfolders").as_deref() == Some("1");
@@ -367,6 +370,7 @@ impl CernoApp {
             },
             attributes_open: false,
             help_open: false,
+            help_page: crate::ui::help::Page::Keys,
             models_open: false,
             confirm: None,
             palette: None,
