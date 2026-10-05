@@ -144,6 +144,7 @@ impl CernoApp {
         if outcome.mode != TransferMode::Move {
             return;
         }
+        self.listed_follow(&outcome.done);
         for (src, dest) in &outcome.done {
             // The kept original follows into `.originals` at the destination first.
             if let Err(err) = originals::follow(&self.db, src, dest) {

@@ -65,6 +65,8 @@ impl CernoApp {
         // deleted photos lay beside it.
         self.options.similar = false;
         self.options.filter.set(FilterKind::Deleted, false);
+        self.options.name_list = false;
+        self.name_list.forget();
         self.similar_to = None;
         self.options.top = None;
         self.top_pick.clear();
@@ -235,6 +237,9 @@ impl CernoApp {
         if !self.options.similar {
             self.similar_to = None;
         }
+        if !self.options.name_list {
+            self.name_list.drop_applied();
+        }
         self.save_options();
         if self.top_pick_for != self.options.top_key() {
             self.pick_top();
@@ -363,9 +368,11 @@ impl CernoApp {
     /// hasn't reached yet is known to be deleted, which is all the 🗑 box needs.
     fn facts(&self, path: &Path) -> Option<Facts> {
         let deleted = self.is_deleted(path);
+        let listed = self.is_listed(path);
         let Some(known) = self.board.get(path) else {
-            return deleted.then(|| Facts {
+            return (deleted || listed).then(|| Facts {
                 deleted,
+                listed,
                 ..Facts::default()
             });
         };
@@ -380,6 +387,7 @@ impl CernoApp {
             similarity: self.similarity_to_reference(path),
             top: self.top_pick.contains(path),
             deleted,
+            listed,
         })
     }
 

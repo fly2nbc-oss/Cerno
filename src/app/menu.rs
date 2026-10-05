@@ -51,6 +51,8 @@ enum Action {
     Overlay(crate::overlay::Mode),
     Grid,
     Fullscreen,
+    /// *Filter ▸ By file list …*: the card for a pasted list.
+    NameList,
     /// `G`: the faces tab; `Shift+G`: every face over the photo.
     Faces,
     FaceGrid,
@@ -150,7 +152,10 @@ impl CernoApp {
     /// A card (models, confirmation) or the faces grid is open: keys and the photo's mouse
     /// handling pause.
     pub(super) fn modal_open(&self) -> bool {
-        self.models_open || self.confirm.is_some() || self.faces.grid_open
+        self.models_open
+            || self.confirm.is_some()
+            || self.faces.grid_open
+            || self.name_list.card_open()
     }
 
     /// Help page, menus, models card and confirmation – in this order, the last on top.
@@ -224,6 +229,7 @@ impl CernoApp {
                 self.run(ctx, action, frames);
             }
         }
+        self.draw_name_list_card(ctx, window);
         if self.models_open {
             let out = models::overlay(ctx, window, &self.analyzer.status());
             if out.close {
@@ -663,6 +669,7 @@ impl CernoApp {
             Action::Overlay(mode) => self.set_overlay(mode),
             Action::Grid => self.set_grid(!self.grid),
             Action::Faces => self.open_faces(),
+            Action::NameList => self.open_name_list(),
             Action::FaceGrid => self.toggle_face_grid(),
             Action::Fullscreen => {
                 let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
@@ -728,6 +735,7 @@ fn filter_rows(
     };
     let similar =
         Row::new(Action::Similar, similar_label, Some("M".to_owned())).toggle(options.similar);
+    let name_list = Row::new(Action::NameList, t.menu_name_list, None).hint(t.name_list_intro);
     let current = Scope::of(options);
     let media = Media::ALL.into_iter().map(|media| {
         Entry::Row(
@@ -774,6 +782,7 @@ fn filter_rows(
         .chain(std::iter::once(Entry::Group(top)))
         .chain(std::iter::once(Entry::Row(hide_rejected)))
         .chain(boxes)
+        .chain(std::iter::once(Entry::Row(name_list)))
         .chain(std::iter::once(Entry::Row(similar)))
         .collect()
 }

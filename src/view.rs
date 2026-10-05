@@ -427,6 +427,9 @@ pub struct ViewOptions {
     /// "without ✕": the rejected photos of the folder are hidden – the other way round from
     /// the ✕ box, which shows only them; the two exclude each other (`toggle_filter`). Saved.
     pub hide_rejected: bool,
+    /// Only the photos of a pasted file-name list (`Facts::listed`, `name_list`). Never saved:
+    /// the list is about this folder.
+    pub name_list: bool,
 }
 
 impl Default for ViewOptions {
@@ -438,6 +441,7 @@ impl Default for ViewOptions {
             media: Media::All,
             top: None,
             hide_rejected: false,
+            name_list: false,
         }
     }
 }
@@ -457,6 +461,7 @@ impl ViewOptions {
     pub fn is_filtered(&self) -> bool {
         !self.filter.is_all()
             || self.hide_rejected
+            || self.name_list
             || self.similar
             || self.media != Media::All
             || self.top.is_some()
@@ -466,6 +471,7 @@ impl ViewOptions {
     pub fn clear_filters(&mut self) {
         self.filter.clear();
         self.hide_rejected = false;
+        self.name_list = false;
         self.similar = false;
         self.media = Media::All;
         self.top = None;
@@ -568,6 +574,8 @@ pub struct Facts {
     pub top: bool,
     /// Deleted in Cerno: it lies in `.originals` and shows only through the 🗑 box.
     pub deleted: bool,
+    /// Named by the pasted file-name list, while that filter is on.
+    pub listed: bool,
 }
 
 /// Where a photo sits in its series (at least two photos). `index` is 1-based, sharpest
@@ -743,6 +751,9 @@ pub fn build(
             }
             // "without ✕" is about the photos still in the folder.
             if options.hide_rejected && !entry.deleted && entry.rating == Rating::Rejected {
+                return false;
+            }
+            if options.name_list && !entry.facts.is_some_and(|f| f.listed) {
                 return false;
             }
             let blurry = entry
@@ -1435,6 +1446,47 @@ mod tests {
             !options.filter.contains(FilterKind::Rejected),
             "and the other way round"
         );
+        options.clear_filters();
+        assert_eq!(options, ViewOptions::default());
+    }
+
+    /// A pasted file-name list keeps just its photos – analysed or not – together with the
+    /// boxes; "Show all" ends it.
+    #[test]
+    fn a_file_list_keeps_its_photos() {
+        let (all, mut known) = fixture();
+        for name in ["b", "c"] {
+            known.get_mut(Path::new(name)).expect("known").listed = true;
+        }
+        known.insert(
+            PathBuf::from("e"),
+            Facts {
+                listed: true,
+                ..Facts::default()
+            },
+        );
+        let lookup = |p: &Path| known.get(p).copied();
+        let shown = |options: ViewOptions| {
+            names(
+                &build(
+                    &all,
+                    options,
+                    lookup,
+                    &HashMap::new(),
+                    &HashMap::new(),
+                    |_| false,
+                )
+                .paths,
+            )
+        };
+        let mut options = ViewOptions {
+            name_list: true,
+            ..ViewOptions::default()
+        };
+        assert_eq!(shown(options), "bce");
+        assert!(options.is_filtered());
+        options.toggle_filter(FilterKind::Stars(5));
+        assert_eq!(shown(options), "c", "together with the boxes");
         options.clear_filters();
         assert_eq!(options, ViewOptions::default());
     }
