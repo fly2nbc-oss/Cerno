@@ -253,6 +253,35 @@ pub fn catch_panic<T>(job: impl FnOnce() -> Result<T>) -> Result<T> {
     })
 }
 
+/// An upright RGB picture (a video frame) scaled down to fit `max_size`, never up: with
+/// Lanczos3 when it is drawn pixel for pixel (`sharp`, like [`decode_for_screen`]), else with
+/// CatmullRom (like [`decode_for_display`]).
+pub fn fit_rgb(
+    width: u32,
+    height: u32,
+    rgb: Vec<u8>,
+    max_size: [u32; 2],
+    sharp: bool,
+) -> Result<DecodedImage> {
+    let [fit_w, fit_h] = fit_within([width, height], max_size);
+    let filter = if sharp {
+        FilterType::Lanczos3
+    } else {
+        FilterType::CatmullRom
+    };
+    let rgb = if [fit_w, fit_h] == [width, height] {
+        rgb
+    } else {
+        resize_with(rgb, width, height, fit_w, fit_h, filter)?
+    };
+    Ok(DecodedImage {
+        width: fit_w,
+        height: fit_h,
+        rgb,
+        original_size: [width, height],
+    })
+}
+
 pub fn resize_rgb(rgb: Vec<u8>, w: u32, h: u32, dst_w: u32, dst_h: u32) -> Result<Vec<u8>> {
     resize_with(rgb, w, h, dst_w, dst_h, FilterType::CatmullRom)
 }

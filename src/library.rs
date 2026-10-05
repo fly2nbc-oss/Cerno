@@ -44,7 +44,7 @@ pub enum Format {
     Dng,
     /// A camera RAW, shown by the largest JPEG preview it carries.
     Raw,
-    /// Shown by one frame (ffmpeg), played in the system's player.
+    /// Shown by one frame (`video::poster`), played inside Cerno (`playback`).
     Video,
 }
 

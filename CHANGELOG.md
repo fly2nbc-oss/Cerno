@@ -14,6 +14,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ### Changed
 
+- **No ffmpeg needed any more** – a video's still frame and filmstrip picture now come from GStreamer, which Cerno already uses to play videos – faster than before (a filmstrip picture in about 140 instead of 230 ms). Cerno takes them in separate helper processes, so a broken video can't take Cerno down.
 - **Without ExifTool, stars and colours are greyed out** with the reason, instead of showing and then being lost. On Linux the hint names the command that installs it. An ExifTool older than 12.24 is not used: it can run code hidden in a photo.
 
 ### Fixed

@@ -464,7 +464,6 @@ pub static TEXTS: Texts = Texts {
     video_no_zoom: "Videos are not zoomed",
     video_no_compare: "Videos can't be compared",
     video_no_sound: "No sound: Cerno found no audio output – the video plays silently",
-    video_no_ffmpeg: "No preview frame: Cerno needs ffmpeg for it (e.g. winget install Gyan.FFmpeg)",
     video_play_failed: |err| format!("Cannot play the video: {err}"),
     edit_writing: "Writing the photo…",
     edit_cancelled: "Another photo is shown – the edit was cancelled",

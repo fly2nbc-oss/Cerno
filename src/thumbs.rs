@@ -3,7 +3,8 @@
 //! Four sources: the display loader (downscaled from what it just decoded – instant for the
 //! neighbourhood), the analysis pass (every image, also stored in the database), the
 //! database for folders analysed before (loaded here on request), and for videos – which have
-//! no index row – a frame ffmpeg takes on request, kept in memory only.
+//! no index row – a frame GStreamer takes on request (`video::thumbnail`), kept in memory
+//! only.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -50,8 +51,8 @@ struct Inner {
     queue: Mutex<Queue>,
     /// Database lookups: a few milliseconds each.
     wake: Condvar,
-    /// Video frames: one ffmpeg run each, up to its timeout – on their own thread, so a slow
-    /// video never holds up the photos' thumbnails.
+    /// Video frames: one helper request each, up to its timeout – on their own thread, so a
+    /// slow video never holds up the photos' thumbnails.
     video_wake: Condvar,
     shutdown: AtomicBool,
 }
@@ -344,13 +345,10 @@ fn video_worker(inner: &Inner) {
     }
 }
 
-/// A frame of the video at thumbnail size – without ffmpeg or a frame, the placeholder's dark
-/// one. The strip paints the play sign over both.
+/// A frame of the video at thumbnail size – without a frame, the placeholder's dark one. The
+/// strip paints the play sign over both.
 fn video_thumbnail(path: &Path) -> (u32, u32, Vec<u8>) {
-    let frame = video::thumbnail(path, THUMB_SIZE).and_then(|jpeg| {
-        decode::catch_panic(|| decode::decode_for_display(&jpeg, Format::Jpeg, 1, [THUMB_SIZE; 2]))
-    });
-    let image = frame.unwrap_or_else(|err| {
+    let image = video::thumbnail(path, THUMB_SIZE).unwrap_or_else(|err| {
         log::debug!("no thumbnail frame of {}: {err:#}", path.display());
         video::blank([THUMB_SIZE; 2])
     });

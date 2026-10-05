@@ -465,7 +465,6 @@ pub static TEXTS: Texts = Texts {
     video_no_zoom: "Los vídeos no se amplían",
     video_no_compare: "Los vídeos no se pueden comparar",
     video_no_sound: "Sin sonido: Cerno no encontró ninguna salida de audio; el vídeo se reproduce sin sonido",
-    video_no_ffmpeg: "Sin vista previa: Cerno necesita ffmpeg (p. ej. winget install Gyan.FFmpeg)",
     video_play_failed: |err| format!("No se puede reproducir el vídeo: {err}"),
     edit_writing: "Escribiendo la foto…",
     edit_cancelled: "Se muestra otra foto: edición cancelada",

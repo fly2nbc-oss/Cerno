@@ -460,8 +460,6 @@ pub struct Texts {
     pub video_no_compare: &'static str,
     /// Once per run: no sound device, the video plays without sound.
     pub video_no_sound: &'static str,
-    /// Over a video's placeholder when ffmpeg is not installed.
-    pub video_no_ffmpeg: &'static str,
     /// The system's player could not be started.
     pub video_play_failed: fn(&str) -> String,
     pub edit_writing: &'static str,

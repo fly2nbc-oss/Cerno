@@ -134,6 +134,15 @@ pub fn warm_up() {
     engine::warm_up();
 }
 
+/// GStreamer loaded – waiting for a load in progress – before a video frame is taken
+/// (`frames`, `video`).
+pub fn ready() -> Result<(), String> {
+    #[cfg(feature = "video")]
+    return engine::init().map_err(|err| format!("{err:#}"));
+    #[cfg(not(feature = "video"))]
+    Err("this build plays no videos (feature `video`)".to_owned())
+}
+
 /// `cerno --check-video <file>`: plays a second of the file without a window and sound, jumps
 /// to its end and reports what decoded it. For the package tests.
 pub fn self_test(path: &Path) -> Result<String, String> {
@@ -264,7 +273,7 @@ mod engine {
     }
 
     /// GStreamer, loaded once; a second caller waits for the first.
-    fn init() -> Result<()> {
+    pub(super) fn init() -> Result<()> {
         INIT.get_or_init(|| {
             let started = Instant::now();
             let result = gst::init().map_err(|err| format!("{err}"));

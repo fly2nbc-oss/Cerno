@@ -296,7 +296,7 @@ jobs:
           | \`cerno_${VERSION}_x86_64.AppImage\` | Linux portable – glibc 2.39 or newer (Ubuntu 24.04, Debian 13, Fedora 40 and later) |
           | \`cerno_${VERSION}_amd64.deb\` | Ubuntu 24.04+, Debian 13+ |
 
-          Writing ratings, colour labels, comments and keywords needs [ExifTool](https://exiftool.org/): on Windows Cerno offers to download it the first time it is needed; the .deb recommends it. Videos play inside Cerno: the Windows packages bring GStreamer along, on Linux it comes from the system (the .deb depends on it). Their still frame and filmstrip thumbnail need [ffmpeg](https://ffmpeg.org/) (Windows: \`winget install Gyan.FFmpeg\`); without it videos show a placeholder and still play.
+          Writing ratings, colour labels, comments and keywords needs [ExifTool](https://exiftool.org/): on Windows Cerno offers to download it the first time it is needed; the .deb recommends it. Videos play inside Cerno: the Windows packages bring GStreamer along, on Linux it comes from the system (the .deb depends on it).
           EOF
       - uses: softprops/action-gh-release@v3
         with:
