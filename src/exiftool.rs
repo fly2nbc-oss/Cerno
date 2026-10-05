@@ -2,11 +2,22 @@
 //! Perl start-up.
 
 use std::ffi::OsStr;
+use std::fmt;
 use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio};
 
 use anyhow::{Context as _, Result, bail};
+
+/// ExifTool before 12.24 runs code hidden in a crafted file (CVE-2021-22204) – and Cerno hands
+/// it every photo that gets a mark.
+const MIN_VERSION: (u32, u32) = (12, 24);
+
+pub const NAME: &str = if cfg!(windows) {
+    "exiftool.exe"
+} else {
+    "exiftool"
+};
 
 pub struct ExifTool {
     child: Child,
@@ -14,6 +25,7 @@ pub struct ExifTool {
     stdout: BufReader<ChildStdout>,
     stderr: BufReader<ChildStderr>,
     counter: u32,
+    version: String,
 }
 
 pub struct Output {
@@ -21,12 +33,33 @@ pub struct Output {
     pub stderr: String,
 }
 
+/// Why no ExifTool runs: the UI says it in the user's language and blocks the marks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolError {
+    Missing,
+    /// The version found.
+    TooOld(String),
+}
+
+impl fmt::Display for ToolError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Missing => write!(f, "ExifTool not found"),
+            Self::TooOld(version) => write!(
+                f,
+                "ExifTool {version} is too old ({}.{} or newer needed)",
+                MIN_VERSION.0, MIN_VERSION.1
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ToolError {}
+
 impl ExifTool {
     pub fn spawn() -> Result<Self> {
-        let exe = locate().context(
-            "ExifTool not found – install it and put it on PATH (or set CERNO_EXIFTOOL)",
-        )?;
-        let mut command = Command::new(&exe);
+        let found = locate().ok_or(ToolError::Missing)?;
+        let mut command = Command::new(&found.path);
         // `-common_args` are added to every command. The UTF-8 charset is needed for non-ASCII
         // paths on Windows; `-P` and `-overwrite_original_in_place` keep the file's dates and
         // identity (same file, not a renamed copy).
@@ -41,27 +74,40 @@ impl ExifTool {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-            command.creation_flags(CREATE_NO_WINDOW);
+        // The ExifTool Cerno downloaded brings its own Perl: modules from elsewhere stay out.
+        if found.origin == Origin::Downloaded {
+            for variable in ["PERL5LIB", "PERL5OPT", "PERLLIB"] {
+                command.env_remove(variable);
+            }
         }
+        crate::process::hide_window(&mut command);
         let mut child = command
             .spawn()
-            .with_context(|| format!("cannot start {}", exe.display()))?;
-        log::info!("ExifTool started: {}", exe.display());
+            .with_context(|| format!("cannot start {}", found.path.display()))?;
 
         let stdin = child.stdin.take().context("ExifTool stdin")?;
         let stdout = BufReader::new(child.stdout.take().context("ExifTool stdout")?);
         let stderr = BufReader::new(child.stderr.take().context("ExifTool stderr")?);
-        Ok(Self {
+        let mut tool = Self {
             child,
             stdin,
             stdout,
             stderr,
             counter: 0,
-        })
+            version: String::new(),
+        };
+        let version = tool.execute(&["-ver"])?.stdout.trim().to_owned();
+        if !new_enough(&version) {
+            // Dropping `tool` ends the process.
+            return Err(ToolError::TooOld(version).into());
+        }
+        log::info!("ExifTool {version} started: {}", found.path.display());
+        tool.version = version;
+        Ok(tool)
+    }
+
+    pub fn version(&self) -> &str {
+        &self.version
     }
 
     /// Runs one command. Arguments go one per line; one with a line break (a comment) goes as a
@@ -127,58 +173,135 @@ fn read_until_sentinel(reader: &mut impl BufRead, sentinel: &str) -> Result<Stri
     }
 }
 
-/// `CERNO_EXIFTOOL`, then next to our executable (bundled), then `PATH`. Always an absolute
-/// path, and `spawn` starts exactly that file – with a bare name `Command` would search on
-/// its own and might start another one than the file checked here.
-pub fn locate() -> Option<PathBuf> {
-    if let Some(path) = std::env::var_os("CERNO_EXIFTOOL")
-        && let Ok(path) = std::path::absolute(path)
-        && path.is_file()
-    {
-        return Some(path);
+/// `12.24` and later; anything that is no version is too old.
+fn new_enough(version: &str) -> bool {
+    let mut parts = version.trim().split('.');
+    let number = |part: Option<&str>| part.and_then(|p| p.trim().parse::<u32>().ok());
+    match (number(parts.next()), number(parts.next())) {
+        (Some(major), Some(minor)) => (major, minor) >= MIN_VERSION,
+        _ => false,
     }
-    let name = if cfg!(windows) {
-        "exiftool.exe"
-    } else {
-        "exiftool"
-    };
-    let bundled = std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(|dir| dir.join(name)))
-        .filter(|p| p.is_file());
-    bundled.or_else(|| find_in_path(&std::env::var_os("PATH")?, name))
 }
 
-/// The first `<entry>/<name>` that is a file, from the absolute entries only: an empty entry
-/// (`;;`, a trailing `;`) or a relative one would be looked up in the working directory.
-pub(crate) fn find_in_path(paths: &OsStr, name: &str) -> Option<PathBuf> {
-    std::env::split_paths(paths)
-        .filter(|dir| dir.is_absolute())
-        .map(|dir| dir.join(name))
-        .find(|p| p.is_file())
+/// Where an ExifTool was found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Origin {
+    /// `CERNO_EXIFTOOL`.
+    Variable,
+    /// Next to `cerno.exe`.
+    BesideCerno,
+    /// The one Cerno downloaded into its data folder.
+    Downloaded,
+    /// Installed on the system, found on `PATH`.
+    Path,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Located {
+    pub path: PathBuf,
+    pub origin: Origin,
+}
+
+/// Where Cerno unpacks the ExifTool it downloads (`exiftool.exe` and `exiftool_files`).
+pub fn download_dir() -> Option<PathBuf> {
+    crate::paths::tools_dir()
+        .ok()
+        .map(|dir| dir.join("exiftool"))
+}
+
+/// `CERNO_EXIFTOOL`, then next to our executable, then the one Cerno downloaded, then `PATH`.
+/// Always an absolute path, and `spawn` starts exactly that file – with a bare name `Command`
+/// would search on its own and might start another one than the file checked here.
+pub fn locate() -> Option<Located> {
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf));
+    locate_in(
+        std::env::var_os("CERNO_EXIFTOOL").as_deref(),
+        exe_dir.as_deref(),
+        download_dir().as_deref(),
+        std::env::var_os("PATH").as_deref(),
+    )
+}
+
+fn locate_in(
+    variable: Option<&OsStr>,
+    exe_dir: Option<&Path>,
+    downloaded: Option<&Path>,
+    path_var: Option<&OsStr>,
+) -> Option<Located> {
+    let found = |path: PathBuf, origin| path.is_file().then_some(Located { path, origin });
+    variable
+        .filter(|v| !v.is_empty())
+        .and_then(|v| std::path::absolute(v).ok())
+        .and_then(|path| found(path, Origin::Variable))
+        .or_else(|| found(exe_dir?.join(NAME), Origin::BesideCerno))
+        .or_else(|| found(downloaded?.join(NAME), Origin::Downloaded))
+        .or_else(|| {
+            let path = crate::process::find_in_path(path_var?, NAME)?;
+            Some(Located {
+                path,
+                origin: Origin::Path,
+            })
+        })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
 
-    /// `cargo test` runs in the crate root, so relative entries would find files there.
+    /// The order: the variable, beside Cerno, the downloaded one, `PATH` – each only where
+    /// the file is.
     #[test]
-    fn only_absolute_path_entries_count() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let fixtures = root.join("tests").join("fixtures");
-        let join = |dirs: &[&Path]| std::env::join_paths(dirs).unwrap();
-        assert!(Path::new("Cargo.toml").is_file(), "runs in the crate root");
-
-        let empty_and_relative = join(&[Path::new(""), Path::new("tests/fixtures")]);
-        assert_eq!(find_in_path(&empty_and_relative, "Cargo.toml"), None);
-        assert_eq!(find_in_path(&empty_and_relative, "tiny.jpg"), None);
-
-        let absolute = join(&[Path::new(""), &fixtures]);
+    fn exiftool_is_looked_for_in_order() {
+        let root = std::env::temp_dir().join(format!("cerno-locate-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let [own, beside, downloaded, on_path] =
+            ["own", "beside", "downloaded", "path"].map(|name| root.join(name));
+        for dir in [&own, &beside, &downloaded, &on_path] {
+            std::fs::create_dir_all(dir).unwrap();
+            std::fs::write(dir.join(NAME), b"").unwrap();
+        }
+        let path_var = std::env::join_paths([Path::new(""), &on_path]).unwrap();
+        let variable = own.join(NAME).into_os_string();
+        let origin = |variable: Option<&OsStr>, beside: Option<&Path>, downloaded| {
+            locate_in(variable, beside, downloaded, Some(&path_var)).map(|l| l.origin)
+        };
+        let all = origin(Some(&variable), Some(&beside), Some(&downloaded));
+        assert_eq!(all, Some(Origin::Variable));
         assert_eq!(
-            find_in_path(&absolute, "tiny.jpg"),
-            Some(fixtures.join("tiny.jpg"))
+            origin(None, Some(&beside), Some(&downloaded)),
+            Some(Origin::BesideCerno)
+        );
+        assert_eq!(
+            origin(None, Some(&own.join("x")), Some(&downloaded)),
+            Some(Origin::Downloaded)
+        );
+        assert_eq!(origin(None, None, None), Some(Origin::Path));
+        // A variable pointing nowhere falls through to the next place.
+        let nowhere = root.join("missing").into_os_string();
+        assert_eq!(
+            origin(Some(&nowhere), None, Some(&downloaded)),
+            Some(Origin::Downloaded)
+        );
+        assert_eq!(locate_in(None, None, None, None), None);
+        let found = locate_in(None, None, Some(&downloaded), None).unwrap();
+        assert_eq!(found.path, downloaded.join(NAME));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn only_a_new_enough_exiftool_runs() {
+        assert!(new_enough("13.59"));
+        assert!(new_enough("12.24\n"));
+        assert!(new_enough("12.76"));
+        assert!(!new_enough("12.23"));
+        assert!(!new_enough("11.88"));
+        assert!(!new_enough(""));
+        assert!(!new_enough("Error"));
+        assert_eq!(
+            ToolError::TooOld("12.10".into()).to_string(),
+            "ExifTool 12.10 is too old (12.24 or newer needed)"
         );
     }
 

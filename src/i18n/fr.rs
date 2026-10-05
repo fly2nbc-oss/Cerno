@@ -327,6 +327,17 @@ pub static TEXTS: Texts = Texts {
             "Une esthétique plus fiable avec le second modèle V2.5 ({size}) : Menu → Modèles et données."
         )
     },
+    exiftool_offer: |size| {
+        format!(
+            "Cerno enregistre étoiles et couleurs avec ExifTool ({size}) : Menu → Modèles et données."
+        )
+    },
+    exiftool_title: "Télécharger ExifTool",
+    exiftool_text: |size| {
+        format!(
+            "Cerno écrit les étoiles, les couleurs, les commentaires et les retouches dans les photos avec ExifTool – l'outil libre de Phil Harvey.\n\nLe télécharger maintenant depuis la source officielle (SourceForge, {size}) ? Il va dans le dossier de données de Cerno ; un téléchargement interrompu reprend la prochaine fois."
+        )
+    },
 
     section_aesthetics: "Esthétique",
     section_sharpness: "Netteté (dans le dossier)",
@@ -425,6 +436,22 @@ pub static TEXTS: Texts = Texts {
     taste_trained: |n, error| format!("{n} photos, ±{error:.1} ★"),
     taste_photos: |n| format!("{n} photos"),
     taste_untrained: "pas encore entraîné",
+    exiftool_found: |version, downloaded| {
+        let from = if downloaded {
+            "téléchargé par Cerno"
+        } else {
+            "installé"
+        };
+        if version.is_empty() {
+            from.to_owned()
+        } else {
+            format!("{version} · {from}")
+        }
+    },
+    exiftool_absent: "absent – sans ExifTool, ni étoiles ni couleurs",
+    exiftool_old_state: |version| format!("{version} – trop ancien (12.24 ou plus récent requis)"),
+    exiftool_downloading: |percent| format!("téléchargement … {percent:.0} %"),
+    btn_exiftool: |size| format!("Télécharger ExifTool ({size})"),
     taste_sources: |stars, rejected, deleted| {
         format!(
             "Apprise de {stars} photos avec étoiles, {rejected} rejetées et {deleted} supprimées – les photos rejetées et supprimées comptent pour 0 ★."
@@ -436,6 +463,10 @@ pub static TEXTS: Texts = Texts {
     models_downloaded: "Modèles téléchargés – l'esthétique est en cours de calcul",
     download_failed: |err| {
         format!("Échec du téléchargement : {err} – un nouvel essai reprend là où il s'est arrêté")
+    },
+    exiftool_ready: "ExifTool est prêt – étoiles et couleurs sont enregistrées désormais",
+    exiftool_failed: |err| {
+        format!("Impossible de télécharger ExifTool : {err} – un nouvel essai reprend là")
     },
     copy_models_path: "Copier le chemin",
     models_path_copied: "Chemin copié",
@@ -470,6 +501,15 @@ pub static TEXTS: Texts = Texts {
     busy_moving: "Cette photo est en cours de déplacement",
     busy_deleted: "Photo supprimée – remettez-la d'abord en place (Ctrl+Z)",
     edit_needs_index: "La retouche a besoin de l'index, qui n'a pas pu être ouvert",
+    exiftool_missing: "Les étoiles, les couleurs et les retouches ont besoin d'ExifTool – Menu → Modèles et données",
+    exiftool_too_old: "L'ExifTool installé est trop ancien (12.24 ou plus récent requis) – Menu → Modèles et données",
+    exiftool_loading: "Téléchargement d'ExifTool – étoiles et couleurs fonctionnent dans un instant",
+    exiftool_install: |command| {
+        match command {
+        Some(command) => format!("Les étoiles, les couleurs et les retouches ont besoin d'ExifTool. Installation : {command}"),
+        None => "Les étoiles, les couleurs et les retouches ont besoin d'ExifTool. Installez-le avec le gestionnaire de paquets (paquet « exiftool » ou « perl-image-exiftool »).".to_owned(),
+    }
+    },
     edit_reencoded: "JPEG réencodé – Ctrl+Z restaure l'original.",
     undo_done: "Original restauré",
     undo_nothing: "Aucun original conservé pour cette photo",

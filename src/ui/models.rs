@@ -1,6 +1,6 @@
-//! Models & data: which model is installed and where it runs, where the model files are, and
-//! the maintenance actions (download, reset For you, delete the models). Opened from the menu
-//! – the details panel stays about the current photo.
+//! Models & data: ExifTool (which writes the marks), which model is installed and where it
+//! runs, where the model files are, and the maintenance actions (download, reset For you,
+//! delete the models). Opened from the menu – the details panel stays about the current photo.
 
 use eframe::egui::{
     Align, Button, Color32, Context, FontId, Id, Key, Label, Layout, Modifiers, Rect, RichText,
@@ -17,9 +17,33 @@ use crate::ui::{icons, modal};
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct ModelsOutput {
     pub close: bool,
+    /// "Download ExifTool" (Windows).
+    pub download_exiftool: bool,
     pub download: bool,
     pub reset_taste: bool,
     pub delete_models: bool,
+}
+
+/// What the ExifTool row says.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExifToolRow {
+    /// Its version (empty before it has started) and whether Cerno downloaded it.
+    Ready {
+        version: String,
+        downloaded: bool,
+    },
+    /// `download`: Cerno offers it (Windows); `install`: how to install it (Linux).
+    Missing {
+        download: bool,
+        install: Option<String>,
+    },
+    TooOld {
+        version: String,
+        download: bool,
+    },
+    Downloading {
+        percent: f32,
+    },
 }
 
 /// The download button's label and tooltip for what is missing: aesthetics as a whole, or
@@ -34,17 +58,22 @@ pub fn download_label(missing: &[Pack]) -> (&'static str, String) {
     }
 }
 
-pub fn overlay(ctx: &Context, window: Rect, status: &Status) -> ModelsOutput {
+pub fn overlay(
+    ctx: &Context,
+    window: Rect,
+    status: &Status,
+    exiftool: &ExifToolRow,
+) -> ModelsOutput {
     let escape = ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape));
     let modal = modal::show(ctx, window, Id::new("models"), 520.0, |ui| {
-        content(ui, status)
+        content(ui, status, exiftool)
     });
     let mut out = modal.inner;
     out.close |= escape || modal.outside;
     out
 }
 
-fn content(ui: &mut Ui, status: &Status) -> ModelsOutput {
+fn content(ui: &mut Ui, status: &Status, exiftool: &ExifToolRow) -> ModelsOutput {
     let t = i18n::t();
     let mut out = ModelsOutput::default();
     let top_right = ui.max_rect().right_top() + vec2(8.0, -8.0);
@@ -55,6 +84,9 @@ fn content(ui: &mut Ui, status: &Status) -> ModelsOutput {
     );
     out.close = modal::close_button(ui, top_right, t.btn_close);
     ui.add_space(14.0);
+
+    out.download_exiftool = exiftool_row(ui, exiftool);
+    ui.add_space(8.0);
 
     let taste = match status.taste.model {
         Some((n, error)) if error.is_finite() => (t.taste_trained)(n, error),
@@ -129,6 +161,45 @@ fn content(ui: &mut Ui, status: &Status) -> ModelsOutput {
         }
     });
     out
+}
+
+/// ExifTool first: without it no mark is saved. A missing one gets its button (Windows) or
+/// the install command (Linux) right there. `true`: the button was clicked.
+fn exiftool_row(ui: &mut Ui, exiftool: &ExifToolRow) -> bool {
+    let t = i18n::t();
+    let (value, download, install) = match exiftool {
+        ExifToolRow::Ready {
+            version,
+            downloaded,
+        } => ((t.exiftool_found)(version, *downloaded), false, None),
+        ExifToolRow::Missing { download, install } => {
+            (t.exiftool_absent.to_owned(), *download, install.as_deref())
+        }
+        ExifToolRow::TooOld { version, download } => {
+            ((t.exiftool_old_state)(version), *download, None)
+        }
+        ExifToolRow::Downloading { percent } => ((t.exiftool_downloading)(*percent), false, None),
+    };
+    row(ui, "ExifTool", &value);
+    if let Some(install) = install {
+        ui.add(
+            Label::new(
+                RichText::new(i18n::keep_together(install))
+                    .font(FontId::proportional(text::BODY))
+                    .color(tokens::MUTED),
+            )
+            .wrap(),
+        );
+    }
+    if !download {
+        return false;
+    }
+    let size = i18n::size(crate::tools::EXIFTOOL.bytes);
+    let button = Button::new(RichText::new((t.btn_exiftool)(&size)).color(Color32::WHITE))
+        .fill(tokens::ACCENT)
+        .min_size(vec2(0.0, 28.0));
+    ui.add_space(2.0);
+    ui.add(button).clicked()
 }
 
 fn row(ui: &mut Ui, label: &str, value: &str) {
@@ -222,6 +293,18 @@ mod tests {
     }
 
     fn run(status: &Status, events: Vec<Event>) -> (ModelsOutput, Vec<String>) {
+        let ready = ExifToolRow::Ready {
+            version: "13.59".into(),
+            downloaded: true,
+        };
+        run_with(status, &ready, events)
+    }
+
+    fn run_with(
+        status: &Status,
+        exiftool: &ExifToolRow,
+        events: Vec<Event>,
+    ) -> (ModelsOutput, Vec<String>) {
         let ctx = Context::default();
         let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 700.0));
         let mut out = ModelsOutput::default();
@@ -232,7 +315,7 @@ mod tests {
                 ..Default::default()
             },
             |ui| {
-                overlay(ui.ctx(), window, status);
+                overlay(ui.ctx(), window, status, exiftool);
             },
         );
         first.textures_delta.clear();
@@ -242,7 +325,7 @@ mod tests {
                 events,
                 ..Default::default()
             },
-            |ui| out = overlay(ui.ctx(), window, status),
+            |ui| out = overlay(ui.ctx(), window, status, exiftool),
         );
         output.textures_delta.clear();
         let texts = output
@@ -332,6 +415,51 @@ mod tests {
         assert!(tooltip.contains("1.7 GB"), "{tooltip}");
     }
 
+    /// The ExifTool row: its version, or the button (Windows) or the install command (Linux).
+    #[test]
+    fn the_exiftool_row_offers_what_is_missing() {
+        let t = crate::i18n::Lang::En.texts();
+        let models = status(ModelState::Available, ModelState::Available);
+        let size = crate::i18n::size(crate::tools::EXIFTOOL.bytes);
+        let button = (t.btn_exiftool)(&size);
+        let (_, ready) = run(&models, Vec::new());
+        assert!(
+            ready
+                .iter()
+                .any(|text| *text == (t.exiftool_found)("13.59", true))
+        );
+        assert!(!ready.contains(&button));
+        let missing = ExifToolRow::Missing {
+            download: true,
+            install: None,
+        };
+        let (_, windows) = run_with(&models, &missing, Vec::new());
+        assert!(windows.contains(&button), "{windows:?}");
+        assert!(windows.iter().any(|text| text == t.exiftool_absent));
+        let command = (t.exiftool_install)(Some("sudo apt install libimage-exiftool-perl"));
+        let linux = ExifToolRow::Missing {
+            download: false,
+            install: Some(command.clone()),
+        };
+        let (_, linux) = run_with(&models, &linux, Vec::new());
+        assert!(!linux.contains(&button));
+        assert!(
+            linux
+                .iter()
+                .any(|text| *text == crate::i18n::keep_together(&command)),
+            "{linux:?}"
+        );
+        let old = ExifToolRow::TooOld {
+            version: "12.10".into(),
+            download: true,
+        };
+        let (_, old) = run_with(&models, &old, Vec::new());
+        assert!(old.contains(&(t.exiftool_old_state)("12.10")) && old.contains(&button));
+        let loading = ExifToolRow::Downloading { percent: 42.0 };
+        let (_, loading) = run_with(&models, &loading, Vec::new());
+        assert!(loading.contains(&(t.exiftool_downloading)(42.0)));
+    }
+
     #[test]
     fn escape_closes() {
         let escape = Event::Key {
@@ -347,5 +475,6 @@ mod tests {
         );
         assert!(out.close);
         assert!(!out.download && !out.reset_taste && !out.delete_models);
+        assert!(!out.download_exiftool);
     }
 }

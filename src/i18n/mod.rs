@@ -475,6 +475,12 @@ pub struct Texts {
     pub busy_deleted: &'static str,
     /// Straighten, crop, quarter turns and Ctrl+Z are off while the index is the in-memory fallback.
     pub edit_needs_index: &'static str,
+    /// Why stars, colours and edits are greyed out: no ExifTool.
+    pub exiftool_missing: &'static str,
+    pub exiftool_too_old: &'static str,
+    pub exiftool_loading: &'static str,
+    /// Linux: how to install ExifTool – the command for the distribution, if it is known.
+    pub exiftool_install: fn(Option<&str>) -> String,
     pub edit_reencoded: &'static str,
     pub undo_done: &'static str,
     pub undo_nothing: &'static str,
@@ -551,6 +557,10 @@ pub struct Texts {
     pub aesthetics_offer: fn(&str) -> String,
     /// One-time hint when CLIP is there but V2.5 is missing; its size.
     pub v25_offer: fn(&str) -> String,
+    /// Windows, once: ExifTool is missing, where to get it.
+    pub exiftool_offer: fn(&str) -> String,
+    pub exiftool_title: &'static str,
+    pub exiftool_text: fn(&str) -> String,
 
     // Details panel.
     pub section_aesthetics: &'static str,
@@ -638,6 +648,13 @@ pub struct Texts {
     pub taste_trained: fn(usize, f32) -> String,
     pub taste_photos: fn(usize) -> String,
     pub taste_untrained: &'static str,
+    /// Models & data: the ExifTool that runs – its version (empty before it has started) and
+    /// whether Cerno downloaded it.
+    pub exiftool_found: fn(&str, bool) -> String,
+    pub exiftool_absent: &'static str,
+    pub exiftool_old_state: fn(&str) -> String,
+    pub exiftool_downloading: fn(f32) -> String,
+    pub btn_exiftool: fn(&str) -> String,
     /// Models card: where the prediction's examples come from (stars, rejected, deleted).
     pub taste_sources: fn(usize, usize, usize) -> String,
     pub btn_reset_taste: &'static str,
@@ -646,6 +663,8 @@ pub struct Texts {
     pub models_deleted: &'static str,
     pub models_downloaded: &'static str,
     pub download_failed: fn(&str) -> String,
+    pub exiftool_ready: &'static str,
+    pub exiftool_failed: fn(&str) -> String,
     /// Tooltip on the button that copies the models folder path.
     pub copy_models_path: &'static str,
     /// Shown briefly after that button copies the path.
@@ -798,6 +817,20 @@ mod tests {
             assert!(open.contains("D:/x") && open.contains("gone"), "{name}");
             assert!((t.no_photos_in)("D:/x").contains("D:/x"), "{name}");
             assert!((t.rating_not_saved)("locked").contains("locked"), "{name}");
+            let apt = "sudo apt install libimage-exiftool-perl";
+            assert!((t.exiftool_install)(Some(apt)).contains(apt), "{name}");
+            assert!((t.exiftool_install)(None).contains("exiftool"), "{name}");
+            for with_size in [t.exiftool_offer, t.exiftool_text, t.btn_exiftool] {
+                assert!(with_size("11.2 MB").contains("11.2 MB"), "{name}");
+            }
+            assert!((t.exiftool_failed)("timeout").contains("timeout"), "{name}");
+            assert_eq!(
+                (t.exiftool_found)("13.59", true).matches("13.59").count(),
+                1
+            );
+            assert!(!(t.exiftool_found)("", false).is_empty(), "{name}");
+            assert!((t.exiftool_old_state)("12.10").contains("12.10"), "{name}");
+            assert!((t.exiftool_downloading)(42.0).contains("42"), "{name}");
             let both = (t.download_text)(true, true, "2.9 GB");
             assert!(
                 both.contains("2.9 GB") && both.contains("CLIP") && both.contains("V2.5"),

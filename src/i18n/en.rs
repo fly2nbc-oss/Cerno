@@ -301,6 +301,15 @@ pub static TEXTS: Texts = Texts {
             "More reliable aesthetics with the second model V2.5 ({size}): Menu → Models & data."
         )
     },
+    exiftool_offer: |size| {
+        format!("Cerno saves stars and colours with ExifTool ({size}): Menu → Models & data.")
+    },
+    exiftool_title: "Download ExifTool",
+    exiftool_text: |size| {
+        format!(
+            "Cerno writes stars, colour labels, comments and edits into the photos with ExifTool – Phil Harvey's free tool.\n\nDownload it now from the official source (SourceForge, {size})? It goes into Cerno's data folder; an interrupted download continues next time."
+        )
+    },
 
     section_aesthetics: "Aesthetics",
     section_sharpness: "Sharpness (within folder)",
@@ -399,6 +408,22 @@ pub static TEXTS: Texts = Texts {
     taste_trained: |n, error| format!("{n} photos, ±{error:.1} ★"),
     taste_photos: |n| format!("{n} photos"),
     taste_untrained: "not trained yet",
+    exiftool_found: |version, downloaded| {
+        let from = if downloaded {
+            "downloaded by Cerno"
+        } else {
+            "installed"
+        };
+        if version.is_empty() {
+            from.to_owned()
+        } else {
+            format!("{version} · {from}")
+        }
+    },
+    exiftool_absent: "missing – no stars or colours without ExifTool",
+    exiftool_old_state: |version| format!("{version} – too old (12.24 or newer needed)"),
+    exiftool_downloading: |percent| format!("downloading … {percent:.0} %"),
+    btn_exiftool: |size| format!("Download ExifTool ({size})"),
     taste_sources: |stars, rejected, deleted| {
         format!(
             "Learned from {stars} photos with stars, {rejected} rejected and {deleted} deleted ones – rejected and deleted photos count as 0 ★."
@@ -410,6 +435,10 @@ pub static TEXTS: Texts = Texts {
     models_downloaded: "Models downloaded – aesthetics are being added now",
     download_failed: |err| {
         format!("Download failed: {err} – trying again continues where it stopped")
+    },
+    exiftool_ready: "ExifTool is ready – stars and colours are saved now",
+    exiftool_failed: |err| {
+        format!("ExifTool could not be downloaded: {err} – trying again continues there")
     },
     copy_models_path: "Copy path",
     models_path_copied: "Path copied",
@@ -444,6 +473,15 @@ pub static TEXTS: Texts = Texts {
     busy_moving: "This photo is being moved",
     busy_deleted: "Deleted photo – put it back first (Ctrl+Z)",
     edit_needs_index: "Editing needs the index, which could not be opened",
+    exiftool_missing: "Stars, colours and editing need ExifTool – Menu → Models & data",
+    exiftool_too_old: "The installed ExifTool is too old (12.24 or newer needed) – Menu → Models & data",
+    exiftool_loading: "ExifTool is downloading – stars and colours work in a moment",
+    exiftool_install: |command| {
+        match command {
+        Some(command) => format!("Stars, colours and editing need ExifTool. Install it with: {command}"),
+        None => "Stars, colours and editing need ExifTool. Install it with your package manager (package “exiftool” or “perl-image-exiftool”).".to_owned(),
+    }
+    },
     edit_reencoded: "JPEG re-encoded – Ctrl+Z brings the original back.",
     undo_done: "Original restored",
     undo_nothing: "No original kept for this photo",

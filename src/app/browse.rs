@@ -121,6 +121,10 @@ impl CernoApp {
     /// Each hint once: the models as a whole while CLIP is missing, V2.5 alone once CLIP is
     /// there (users of releases without the V2.5 download).
     fn offer_models(&mut self) {
+        // ExifTool first: without it no star is saved. The models' hint comes next time.
+        if self.offer_exiftool_once() {
+            return;
+        }
         let t = i18n::t();
         let missing = self.analyzer.status().missing();
         let size = i18n::size(missing.iter().map(|pack| pack.bytes()).sum());

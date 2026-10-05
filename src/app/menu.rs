@@ -24,6 +24,8 @@ use super::{CLIP_OFFER_SHOWN, CernoApp, V25_OFFER_SHOWN};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ConfirmAction {
     DownloadModel,
+    /// ExifTool into the data folder (Windows).
+    DownloadExifTool,
     ResetTaste,
     DeleteModels,
 }
@@ -123,6 +125,12 @@ impl CernoApp {
                     danger: false,
                 }
             }
+            ConfirmAction::DownloadExifTool => confirm::Confirm {
+                title: t.exiftool_title,
+                text: (t.exiftool_text)(&i18n::size(crate::tools::EXIFTOOL.bytes)),
+                confirm: t.btn_download,
+                danger: false,
+            },
             ConfirmAction::ResetTaste => confirm::Confirm {
                 title: t.confirm_reset_taste_title,
                 text: t.confirm_reset_taste_text.to_owned(),
@@ -138,8 +146,9 @@ impl CernoApp {
         }
     }
 
-    fn carry_out(&mut self, action: ConfirmAction) {
+    fn carry_out(&mut self, ctx: &egui::Context, action: ConfirmAction) {
         match action {
+            ConfirmAction::DownloadExifTool => self.download_exiftool(ctx),
             ConfirmAction::DownloadModel => {
                 // Asked for: no hint about the models any more.
                 self.db.put_setting(CLIP_OFFER_SHOWN, "1");
@@ -241,11 +250,12 @@ impl CernoApp {
         self.draw_name_list_card(ctx, window);
         self.draw_camera_time_card(ctx, window);
         if self.models_open {
-            let out = models::overlay(ctx, window, &self.analyzer.status());
+            let out = models::overlay(ctx, window, &self.analyzer.status(), &self.exiftool_row());
             if out.close {
                 self.models_open = false;
             }
             for (asked, action) in [
+                (out.download_exiftool, ConfirmAction::DownloadExifTool),
                 (out.download, ConfirmAction::DownloadModel),
                 (out.reset_taste, ConfirmAction::ResetTaste),
                 (out.delete_models, ConfirmAction::DeleteModels),
@@ -265,7 +275,7 @@ impl CernoApp {
             self.confirm = None;
             self.models_open = back_to_models;
             if yes {
-                self.carry_out(action);
+                self.carry_out(ctx, action);
             }
         }
     }
@@ -743,7 +753,10 @@ impl CernoApp {
             }
             Action::Subfolders => self.toggle_subfolders(ctx),
             Action::Language(lang) => self.set_language(ctx, lang),
-            Action::Models => self.models_open = true,
+            Action::Models => {
+                self.models_open = true;
+                self.exiftool_card_opens();
+            }
             Action::Copy => self.begin_transfer(ctx, TransferMode::Copy),
             Action::Move => self.begin_transfer(ctx, TransferMode::Move),
             Action::DeleteSelection => self.delete_selection(ctx),

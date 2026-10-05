@@ -12,7 +12,7 @@ use anyhow::{Context as _, Result, bail};
 use eframe::egui;
 
 use crate::db::{Db, FileStamp};
-use crate::exiftool::ExifTool;
+use crate::exiftool::{ExifTool, ToolError};
 use crate::filelock::FileLocks;
 use crate::filetimes;
 use crate::metadata::{self, Description, Label, LabelInfo, Rating, RatingInfo};
@@ -24,6 +24,11 @@ const DEBOUNCE: Duration = Duration::from_millis(400);
 pub struct WriterStatus {
     pub pending: usize,
     pub last_error: Option<String>,
+    /// The version of the ExifTool that runs (once one was started).
+    pub exiftool: Option<String>,
+    /// Why no ExifTool runs: missing or too old. Not a failed write – the UI blocks the marks
+    /// and says why; cleared once one runs.
+    pub tool_problem: Option<ToolError>,
 }
 
 enum Message {
@@ -58,6 +63,9 @@ enum Message {
     Restore {
         path: PathBuf,
     },
+    /// Start ExifTool now (it is started on the first write otherwise): its version is known
+    /// before a mark is set, and the first star needs no Perl start-up.
+    Prepare,
     /// Another program saved the file: the marks it dropped come back (`lost_marks`,
     /// `lost_description`).
     KeepMarks {
@@ -208,6 +216,12 @@ impl RatingWriter {
         });
     }
 
+    /// Starts ExifTool in the background, or tries again after it was missing; the outcome
+    /// shows in [`WriterStatus`].
+    pub fn prepare(&self) {
+        let _ = self.tx.send(Message::Prepare);
+    }
+
     /// Handle for a worker that encodes pixels and then hands the JPEG back here.
     pub fn channel(&self) -> EditChannel {
         EditChannel {
@@ -289,6 +303,7 @@ fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
                     .and_then(|()| crate::originals::keep(db, &path))
                     .and_then(|()| apply_quarter_turn(&mut exiftool, &path, clockwise, db));
                 drop(held);
+                note_tool(status, &result);
                 push_outcome(outcomes, path, result, Done::Rotated);
             }
             Ok(Message::ReplacePixels { path, jpeg }) => {
@@ -297,6 +312,7 @@ fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
                     .and_then(|()| crate::originals::keep(db, &path))
                     .and_then(|()| apply_pixels(&mut exiftool, &path, &jpeg, db));
                 drop(held);
+                note_tool(status, &result);
                 push_outcome(outcomes, path, result, Done::Reencoded);
             }
             Ok(Message::EditFailed { path, message }) => {
@@ -312,6 +328,7 @@ fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
                 let result = flush_pending(&mut pending, &mut exiftool, &path, status, files)
                     .and_then(|()| restore_original(&mut exiftool, &path, db));
                 drop(held);
+                note_tool(status, &result);
                 push_outcome(outcomes, path, result, Done::Restored);
             }
             Ok(Message::KeepMarks {
@@ -337,6 +354,17 @@ fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
                 note_marks(db, status, &path, result);
                 // A failed write shows in the status; the photo is reloaded either way.
                 push_outcome(outcomes, path, Ok(()), Done::Elsewhere);
+            }
+            Ok(Message::Prepare) => {
+                if exiftool.is_none() {
+                    let started = ExifTool::spawn().map(|tool| exiftool = Some(tool));
+                    if let Err(err) = &started
+                        && tool_problem(err).is_none()
+                    {
+                        log::warn!("ExifTool: {err:#}");
+                    }
+                    note_tool(status, &started);
+                }
             }
             Ok(Message::Shutdown) | Err(RecvTimeoutError::Disconnected) => shutting_down = true,
             Err(RecvTimeoutError::Timeout) => {}
@@ -366,6 +394,10 @@ fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
 
         if let Ok(mut status) = status.lock() {
             status.pending = pending.len();
+            if let Some(tool) = &exiftool {
+                status.exiftool = Some(tool.version().to_owned());
+                status.tool_problem = None;
+            }
         }
         ctx.request_repaint();
     }
@@ -393,6 +425,10 @@ fn note_marks(db: &Db, status: &Mutex<WriterStatus>, path: &Path, result: Result
     if let Ok(mut status) = status.lock() {
         match result {
             Ok(_) => status.last_error = None,
+            Err(err) if tool_problem(&err).is_some() => {
+                log::warn!("rating for {}: {err:#}", path.display());
+                status.tool_problem = tool_problem(&err);
+            }
             Err(err) => {
                 log::error!("rating for {}: {err:#}", path.display());
                 status.last_error = Some(format!(
@@ -401,6 +437,23 @@ fn note_marks(db: &Db, status: &Mutex<WriterStatus>, path: &Path, result: Result
                 ));
             }
         }
+    }
+}
+
+/// A missing or too old ExifTool, wherever in the error it sits.
+fn tool_problem(err: &anyhow::Error) -> Option<ToolError> {
+    err.chain()
+        .find_map(|cause| cause.downcast_ref::<ToolError>())
+        .cloned()
+}
+
+/// Remembers why ExifTool can't run, for the UI.
+fn note_tool<T>(status: &Mutex<WriterStatus>, result: &Result<T>) {
+    if let Err(err) = result
+        && let Some(problem) = tool_problem(err)
+        && let Ok(mut status) = status.lock()
+    {
+        status.tool_problem = Some(problem);
     }
 }
 
@@ -503,15 +556,17 @@ fn write_marks(
             label: written_label,
         }));
     }
+    // ExifTool first: without it an empty sidecar would be left behind, and from then on it
+    // would hide the RAW's own (in-camera) marks.
+    let tool = match exiftool {
+        Some(tool) => tool,
+        None => exiftool.insert(ExifTool::spawn()?),
+    };
     if sidecar {
         crate::sidecar::ensure(path)?;
     }
 
     let snapshot = filetimes::Snapshot::capture(&target).context("cannot read file times")?;
-    let tool = match exiftool {
-        Some(tool) => tool,
-        None => exiftool.insert(ExifTool::spawn()?),
-    };
     let mut command: Vec<&str> = args.iter().map(String::as_str).collect();
     command.push(path_str);
     let output = match tool.execute(&command) {
