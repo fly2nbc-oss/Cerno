@@ -53,6 +53,8 @@ enum Action {
     Fullscreen,
     /// *Filter ▸ By file list …*: the card for a pasted list.
     NameList,
+    /// `Shift+C`: four photos at once.
+    Quad,
     /// Compare mode: the right photo's camera takes the left one's time.
     AlignCamera,
     /// *Visible photos ▸ Camera time …*: the card with every camera's offset.
@@ -445,6 +447,8 @@ impl CernoApp {
                 .disabled(mark),
             Row::new(Action::Describe, t.cmd_description, key("B")).disabled(mark),
             Row::new(Action::Compare, t.cmd_compare, key("C")).toggle(self.pinned.is_some()),
+            Row::new(Action::Quad, t.cmd_quad, Some(i18n::with_shift("C")))
+                .toggle(self.quad.is_some()),
             Row::new(Action::AlignCamera, t.cmd_align_camera, None)
                 .hint(t.align_camera_hint)
                 .disabled(self.align_block()),
@@ -683,6 +687,7 @@ impl CernoApp {
             Action::Grid => self.set_grid(!self.grid),
             Action::Faces => self.open_faces(),
             Action::NameList => self.open_name_list(),
+            Action::Quad => self.toggle_quad(),
             Action::AlignCamera => self.align_right_camera(ctx),
             Action::CameraTime => self.open_camera_time(),
             Action::FaceGrid => self.toggle_face_grid(),

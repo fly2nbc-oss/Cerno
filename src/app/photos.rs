@@ -1,8 +1,9 @@
-//! The photo area: one photo or two side by side (compare mode), mouse zoom and pan.
+//! The photo area: one photo, two side by side (compare mode) or four (the four-up view), mouse
+//! zoom and pan.
 
 use std::path::{Path, PathBuf};
 
-use eframe::egui::{self, CursorIcon, PointerButton, Rect, Sense, pos2, vec2};
+use eframe::egui::{self, CursorIcon, PointerButton, Rect, Sense, Stroke, StrokeKind, pos2, vec2};
 
 use crate::analysis::aesthetic;
 use crate::i18n;
@@ -12,12 +13,13 @@ use crate::metadata::Rating;
 use crate::overlay;
 use crate::theme::tokens;
 use crate::ui::{overlays, viewer};
+use crate::view;
 
 use super::CernoApp;
 use super::gate::Change;
 use super::notice::Notice;
 
-/// Gap between the two photos in compare mode.
+/// Gap between the photos in compare mode and the four-up view.
 const COMPARE_GUTTER: f32 = 4.0;
 
 /// One photo slot on screen: which photo, where, and which side (compare mode).
@@ -33,6 +35,8 @@ enum Side {
     Single,
     Left,
     Right,
+    /// One of the four-up view.
+    Quad,
 }
 
 impl CernoApp {
@@ -40,7 +44,7 @@ impl CernoApp {
     /// compare mode.
     pub(super) fn toggle_compare(&mut self, ctx: &egui::Context) {
         if self.pinned.take().is_some() {
-            self.loader.set_pinned(None);
+            self.loader.set_shown(Vec::new());
             return;
         }
         let Some(path) = self.view.get(self.current).cloned() else {
@@ -55,8 +59,51 @@ impl CernoApp {
             return;
         }
         let right = self.neighbour(self.current, &[&path]);
+        // From the four-up view: the framed photo is pinned.
+        self.quad = None;
         self.pinned = Some(path);
         self.rebuild_view(ctx, right);
+    }
+
+    /// `Shift+C`: four photos at once from the current one, the frame on the current one – or
+    /// the single photo again. From compare mode it starts at the right photo.
+    pub(super) fn toggle_quad(&mut self) {
+        if self.quad.take().is_some() {
+            self.loader.set_shown(Vec::new());
+            return;
+        }
+        if self.view.len() < 2 {
+            self.notice = Some(Notice::hint(i18n::t().compare_needs_two));
+            return;
+        }
+        self.pinned = None;
+        if self.grid {
+            self.set_grid(false);
+        }
+        self.quad = Some(self.current.min(self.view.len().saturating_sub(view::QUAD)));
+        self.sync_quad();
+    }
+
+    /// The four-up window follows the current photo a row at a time, and the loader keeps the
+    /// photos on screen.
+    pub(super) fn sync_quad(&mut self) {
+        if let Some(start) = self.quad {
+            self.quad = (self.view.len() >= 2)
+                .then(|| view::quad_start(start, self.current, self.view.len()));
+        }
+        self.loader.set_shown(self.others_on_screen());
+    }
+
+    /// The photos on screen besides the current one: the pinned one, or the four-up view's.
+    pub(super) fn others_on_screen(&self) -> Vec<usize> {
+        if let Some(start) = self.quad {
+            let end = (start + view::QUAD).min(self.view.len());
+            return (start..end).filter(|&i| i != self.current).collect();
+        }
+        self.pinned_index()
+            .filter(|&pinned| pinned != self.current)
+            .into_iter()
+            .collect()
     }
 
     /// `A`: the left photo wins – the right one is rejected, compare mode ends on the left one.
@@ -109,6 +156,10 @@ impl CernoApp {
         if on && (self.edit.is_some() || self.view.is_empty()) {
             return;
         }
+        // The grid replaces the four-up view, like every other photo on screen.
+        if on && self.quad.take().is_some() {
+            self.loader.set_shown(Vec::new());
+        }
         self.grid = on;
         self.grid_shown = None;
         self.loader.set_prefetch(!on);
@@ -125,8 +176,32 @@ impl CernoApp {
         self.grid_shown = None;
     }
 
-    /// Photo slots on screen: one, or pinned left + current right in compare mode.
+    /// Photo slots on screen: one, pinned left + current right in compare mode, or the four-up
+    /// view in two rows – the current photo's slot last, where the zoom keys look.
     pub(super) fn slots(&self, area: Rect) -> Vec<Slot> {
+        if let Some(start) = self.quad {
+            let end = (start + view::QUAD).min(self.view.len());
+            let size = vec2(
+                (area.width() - COMPARE_GUTTER) / 2.0,
+                (area.height() - COMPARE_GUTTER) / 2.0,
+            );
+            let mut slots: Vec<Slot> = (start..end)
+                .map(|index| {
+                    let place = index - start;
+                    let offset = vec2(
+                        (place % 2) as f32 * (size.x + COMPARE_GUTTER),
+                        (place / 2) as f32 * (size.y + COMPARE_GUTTER),
+                    );
+                    Slot {
+                        index,
+                        area: Rect::from_min_size(area.min + offset, size),
+                        side: Side::Quad,
+                    }
+                })
+                .collect();
+            slots.sort_by_key(|slot| slot.index == self.current);
+            return slots;
+        }
         match self.pinned_index() {
             Some(pinned) if pinned != self.current => {
                 let half = (area.width() - COMPARE_GUTTER) / 2.0;
@@ -165,6 +240,14 @@ impl CernoApp {
         self.slots(area).iter().map(|slot| slot.area).collect()
     }
 
+    /// A click on one of the four-up view's photos: the frame moves there.
+    fn frame_slot(&mut self, ctx: &egui::Context, index: usize) {
+        if index != self.current {
+            let direction = if index > self.current { 1 } else { -1 };
+            self.go_to(ctx, index, direction);
+        }
+    }
+
     /// The slot shows a video (never zoomed, its own bar instead of the mouse zoom).
     pub(super) fn slot_is_video(&self, slot: &Slot) -> bool {
         self.view
@@ -182,11 +265,14 @@ impl CernoApp {
             })
     }
 
-    /// Mouse on a photo: double-click toggles 100 %, wheel zooms, drag pans. Both photos in
-    /// compare mode share one zoom, so they stay aligned.
-    fn handle_mouse(&mut self, ui: &egui::Ui, frame: &viewer::Frame, side: Side) {
-        let id = ui.id().with(("photo", side as u8));
+    /// Mouse on a photo: double-click toggles 100 %, wheel zooms, drag pans; in the four-up view
+    /// a click puts the frame on it. The photos on screen share one zoom, so they stay aligned.
+    fn handle_mouse(&mut self, ui: &egui::Ui, frame: &viewer::Frame, slot: &Slot) {
+        let id = ui.id().with(("photo", slot.side as u8, slot.index));
         let response = ui.interact(frame.area, id, Sense::click_and_drag());
+        if slot.side == Side::Quad && response.clicked() {
+            self.frame_slot(ui.ctx(), slot.index);
+        }
         if response.double_clicked() {
             self.zoom.toggle(frame, response.interact_pointer_pos());
         }
@@ -243,7 +329,13 @@ impl CernoApp {
             if editing && slot.side == Side::Single {
                 self.handle_edit_pointer(ui, &frame);
             } else if !editing && !is_video {
-                self.handle_mouse(ui, &frame, slot.side);
+                self.handle_mouse(ui, &frame, slot);
+            } else if !editing && slot.side == Side::Quad {
+                // A video in the four-up view has no zoom, but a click frames it.
+                let id = ui.id().with(("photo", slot.side as u8, slot.index));
+                if ui.interact(frame.area, id, Sense::click()).clicked() {
+                    self.frame_slot(ui.ctx(), slot.index);
+                }
             }
         }
         let full = self.loader.full(slot.index);
@@ -287,6 +379,15 @@ impl CernoApp {
         if slot.side != Side::Single {
             self.draw_compare_labels(ui, slot, image);
         }
+        // The four-up view's frame: the current photo, which marks and keys act on.
+        if slot.side == Side::Quad && slot.index == self.current {
+            ui.painter().rect_stroke(
+                slot.area,
+                0.0,
+                Stroke::new(2.0, tokens::ACCENT),
+                StrokeKind::Inside,
+            );
+        }
     }
 
     /// A video: its playing frame and bar, else the poster's play button – in the single view
@@ -306,18 +407,19 @@ impl CernoApp {
     fn draw_compare_labels(&mut self, ui: &egui::Ui, slot: &Slot, image: &LoadedImage) {
         let t = i18n::t();
         let path = self.view[slot.index].clone();
-        let (side, key) = if slot.side == Side::Left {
-            (t.compare_left, "A")
-        } else {
-            (t.compare_right, "D")
+        // The four-up view: the place in the view instead of a side, no key to keep it.
+        let (side, hint) = match slot.side {
+            Side::Left => (t.compare_left.to_owned(), (t.keeps_this)("A")),
+            Side::Quad => ((slot.index + 1).to_string(), String::new()),
+            _ => (t.compare_right.to_owned(), (t.keeps_this)("D")),
         };
         overlays::compare_label(
             ui,
             slot.area,
-            side,
+            &side,
             &library::file_name_lossy(&path),
             self.rating_of(&path, Some(image)),
-            &(t.keeps_this)(key),
+            &hint,
         );
         let scores = self.board.get(&path).map(|k| k.scores);
         let percentiles = self.percentiles().clone();

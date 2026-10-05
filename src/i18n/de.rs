@@ -172,6 +172,7 @@ pub static TEXTS: Texts = Texts {
     cmd_all_panels: "Filterleiste, Details und Filmstreifen",
     cmd_fullscreen: "Vollbild",
     cmd_compare: "Vergleichen",
+    cmd_quad: "Viereransicht",
     cmd_similar: "Nur ähnliche Fotos zeigen",
     cmd_zoom: "Ganzes Foto ↔ 100 %",
     menu_overlay: "Overlay",
@@ -601,6 +602,10 @@ pub static TEXTS: Texts = Texts {
         (
             "A, D",
             "Vergleichen: links / rechts behalten – das andere wird abgelehnt, der Vergleich endet",
+        ),
+        (
+            "Umschalt+C",
+            "Viereransicht: vier Fotos auf einmal, der Rahmen ist das aktuelle – ↑ ↓ eine Reihe",
         ),
         ("M", "Nur ähnliche Fotos zeigen – noch einmal: wieder alle"),
         (

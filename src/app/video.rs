@@ -64,7 +64,7 @@ pub(super) struct VideoKeys {
 impl CernoApp {
     /// The current photo, if it is a video shown alone (not in the grid, not compared).
     pub(super) fn current_video(&self) -> Option<&Path> {
-        if self.grid || self.pinned.is_some() {
+        if self.grid || self.pinned.is_some() || self.quad.is_some() {
             return None;
         }
         self.view

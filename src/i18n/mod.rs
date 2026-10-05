@@ -373,6 +373,7 @@ pub struct Texts {
     pub cmd_all_panels: &'static str,
     pub cmd_fullscreen: &'static str,
     pub cmd_compare: &'static str,
+    pub cmd_quad: &'static str,
     /// This photo ▸ (`M`): only photos like this one.
     pub cmd_similar: &'static str,
     pub cmd_zoom: &'static str,
@@ -665,7 +666,7 @@ pub struct Texts {
     pub help_sections: [&'static str; 8],
     pub help_browse: [HelpRow; 6],
     pub help_rate: [HelpRow; 7],
-    pub help_cull: [HelpRow; 5],
+    pub help_cull: [HelpRow; 6],
     pub help_video: [HelpRow; 4],
     pub help_view: [HelpRow; 7],
     pub help_panels: [HelpRow; 5],
