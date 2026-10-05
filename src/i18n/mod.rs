@@ -199,6 +199,9 @@ pub fn keep_together(text: &str) -> String {
 /// One line of the help page: keys (comma-separated, each drawn as a key cap) and what they do.
 pub type HelpRow = (&'static str, &'static str);
 
+/// One section of the help page's tips: a title and its tips, a paragraph each.
+pub type TipSection = (&'static str, &'static [&'static str]);
+
 pub struct Texts {
     pub date_style: DateStyle,
     /// North, south, east, west.
@@ -227,6 +230,11 @@ pub struct Texts {
     pub filter_deleted: &'static str,
     pub filter_deleted_tooltip: &'static str,
     pub filter_deleted_none: &'static str,
+    /// "without ✕": the rejected photos are hidden (menu row, tooltip title).
+    pub filter_hide_rejected: &'static str,
+    /// The word before the cross in the filter bar's "without ✕" box.
+    pub filter_without: &'static str,
+    pub filter_hide_rejected_tooltip: &'static str,
     pub filter_clear: &'static str,
     /// The filter bar's photos / videos box and the same rows in Filter ▸.
     pub media_all: &'static str,
@@ -504,6 +512,9 @@ pub struct Texts {
     pub section_file: &'static str,
     pub row_size: &'static str,
     pub row_load_time: &'static str,
+    pub row_file_size: &'static str,
+    pub row_jpeg_quality: &'static str,
+    pub explain_jpeg_quality: &'static str,
     /// The file section of a video (`playback::probe`).
     pub row_container: &'static str,
     pub row_duration: &'static str,
@@ -596,6 +607,12 @@ pub struct Texts {
     pub help_intro: &'static str,
     pub help_drop: &'static str,
     pub help_close: &'static str,
+    /// The help page's two tabs.
+    pub help_tab_keys: &'static str,
+    pub help_tab_tips: &'static str,
+    pub help_pages_hint: &'static str,
+    /// The tips page: how to work with Cerno, six short sections.
+    pub help_tips: [TipSection; 6],
     /// Start screen: one sentence, the five keys to begin with, and where the rest is.
     pub welcome_intro: &'static str,
     pub welcome_keys: [HelpRow; 5],

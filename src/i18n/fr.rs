@@ -26,6 +26,9 @@ pub static TEXTS: Texts = Texts {
     filter_deleted: "Supprimées",
     filter_deleted_tooltip: "Photos supprimées de ce dossier. Elles se trouvent dans le dossier caché .originals – Ctrl+Z en remet une en place.",
     filter_deleted_none: "Aucune photo supprimée dans ce dossier",
+    filter_hide_rejected: "Masquer les rejetées",
+    filter_without: "sans",
+    filter_hide_rejected_tooltip: "Les photos rejetées disparaissent, toutes les autres restent. × montre au contraire seulement les rejetées.",
     filter_clear: "Tout afficher",
     media_all: "Photos et vidéos",
     media_photos: "Photos seulement",
@@ -196,7 +199,7 @@ pub static TEXTS: Texts = Texts {
     menu_visible: "Photos affichées",
     menu_settings: "Réglages",
     menu_stars: "Étoiles",
-    label_none: "Aucune couleur",
+    label_none: "Sans couleur",
     loading: "Chargement…",
     cannot_show: "Impossible d'afficher cette image",
     no_match: "Aucune photo ne correspond au filtre",
@@ -289,6 +292,9 @@ pub static TEXTS: Texts = Texts {
     section_file: "Fichier",
     row_size: "Taille",
     row_load_time: "Temps de chargement",
+    row_file_size: "Taille du fichier",
+    row_jpeg_quality: "Qualité JPEG",
+    explain_jpeg_quality: "Estimée d'après les tables de quantification du fichier – la qualité elle-même n'y est pas enregistrée. 4:2:0 : couleur en demi-résolution (courant pour les appareils), 4:4:4 : en pleine résolution.",
     row_container: "Conteneur",
     row_duration: "Durée",
     row_video: "Vidéo",
@@ -433,7 +439,7 @@ pub static TEXTS: Texts = Texts {
     deleted_mark: "Supprimée",
     edit_failed: |detail| format!("Pas enregistré : {detail}"),
     edit_hint_straighten: "Molette ou ←/→ pour tourner, Maj plus fin · Entrée applique, Échap annule",
-    edit_hint_crop: "A : format · X : paysage/portrait · Entrée applique, Échap annule",
+    edit_hint_crop: "Flèches : déplacer · +/− : taille, Maj plus fin · A : format · X : paysage/portrait · Entrée applique, Échap annule",
     ratio_original: "Original",
     crop_landscape: "Paysage",
     crop_portrait: "Portrait",
@@ -442,6 +448,59 @@ pub static TEXTS: Texts = Texts {
     help_intro: "Cerno affiche vos photos instantanément et vous aide à faire le tri. Étoiles et couleurs vont dans le fichier photo, dont la date ne change pas ; tout le reste reste dans la base de données de Cerno.",
     help_drop: "Déposez un dossier ou une photo sur la fenêtre, ou appuyez sur Ctrl+O.",
     help_close: "Esc, H ou F1 ferme cette page",
+    help_tab_keys: "Raccourcis",
+    help_tab_tips: "Conseils",
+    help_pages_hint: "←/→ change de page",
+    help_tips: [
+        (
+            "Trier en deux passes",
+            &[
+                "D'abord parcourir vite (Espace) et rejeter les ratés avec X – sans trop réfléchir.",
+                "Puis « sans × » dans la barre de filtres : les rejetées disparaissent, noter alors de 1 à 5.",
+                "Pour finir, Action › « Supprimer les rejetées » (Ctrl+M).",
+            ],
+        ),
+        (
+            "Séries et comparaison",
+            &[
+                "Triées par date de prise de vue, les séries restent ensemble, la photo la plus nette en premier.",
+                "C montre deux photos côte à côte ; A garde celle de gauche, D celle de droite, l'autre est rejetée.",
+                "M ne montre que les photos qui ressemblent à la photo actuelle.",
+            ],
+        ),
+        (
+            "Les meilleures photos",
+            &[
+                "Choisir « Top 50 photos » dans la première case de la barre de filtres : Cerno propose les meilleures, d'abord une par série.",
+                "L'esthétique et la netteté sous la photo aident à décider – les étoiles, c'est vous qui les donnez.",
+            ],
+        ),
+        (
+            "Étiquettes de couleur",
+            &[
+                "Les couleurs n'ont pas de sens fixe dans Cerno. Deux lectures courantes :",
+                "Avancement : rouge à vérifier · jaune à retoucher · vert terminé · bleu exporté",
+                "Usage : rouge client · jaune réseaux sociaux · vert portfolio · bleu impression",
+                "6–9 posent rouge à bleu ; la barre de filtres montre une couleur.",
+            ],
+        ),
+        (
+            "Supprimé n'est pas perdu",
+            &[
+                "Les photos supprimées vont dans le dossier caché .originals à côté des photos.",
+                "La case corbeille de la barre de filtres les montre ; Ctrl+Z en remet une en place.",
+                "Avant le premier redressement, recadrage ou rotation, Cerno garde l'original – Ctrl+Z le restaure.",
+            ],
+        ),
+        (
+            "La prédiction",
+            &[
+                "Cerno apprend de vos étoiles et de vos photos rejetées et supprimées ce qui vous plaît.",
+                "Sur les photos sans étoiles, il montre son estimation en étoiles légèrement remplies – c'est toujours à vous de les donner.",
+                "Triées par prédiction, les photos qui vous plairont probablement viennent en premier.",
+            ],
+        ),
+    ],
     welcome_intro: "Voir, noter et trier vos photos sans attendre – les étoiles vont dans le fichier, sa date reste.",
     welcome_keys: [
         ("←, →", "Photo précédente / suivante"),
@@ -558,7 +617,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "R",
-            "Recadrer : tracer un cadre, A change le format, X bascule paysage/portrait",
+            "Recadrer : tracer un cadre ou le placer avec les flèches et +/−, A change le format, X bascule paysage/portrait",
         ),
         (
             "Entrée, Échap",
@@ -570,7 +629,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "Ctrl+Z",
-            "Récupérer l'original – il reste dans .originals à côté de la photo",
+            "Récupérer l'original – il reste dans .originals à côté de la photo ; remettre en place une photo supprimée",
         ),
         (
             "E",

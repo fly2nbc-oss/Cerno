@@ -26,6 +26,9 @@ pub static TEXTS: Texts = Texts {
     filter_deleted: "Gelöschte",
     filter_deleted_tooltip: "Gelöschte Fotos dieses Ordners. Sie liegen im versteckten Ordner .originals – Strg+Z legt eins zurück.",
     filter_deleted_none: "Keine gelöschten Fotos in diesem Ordner",
+    filter_hide_rejected: "Abgelehnte ausblenden",
+    filter_without: "ohne",
+    filter_hide_rejected_tooltip: "Die abgelehnten Fotos verschwinden, alle anderen bleiben. × zeigt dagegen nur die Abgelehnten.",
     filter_clear: "Alle anzeigen",
     media_all: "Fotos und Videos",
     media_photos: "Nur Fotos",
@@ -183,7 +186,7 @@ pub static TEXTS: Texts = Texts {
     menu_visible: "Sichtbare Fotos",
     menu_settings: "Einstellungen",
     menu_stars: "Sterne",
-    label_none: "Keine Farbe",
+    label_none: "Ohne Farbe",
     loading: "Wird geladen…",
     cannot_show: "Dieses Bild kann nicht angezeigt werden",
     no_match: "Kein Foto passt zum Filter",
@@ -270,6 +273,9 @@ pub static TEXTS: Texts = Texts {
     section_file: "Datei",
     row_size: "Größe",
     row_load_time: "Ladezeit",
+    row_file_size: "Dateigröße",
+    row_jpeg_quality: "JPEG-Qualität",
+    explain_jpeg_quality: "Geschätzt aus den Quantisierungstabellen der Datei – die Qualität selbst steht nicht darin. 4:2:0 heißt: Farbe in halber Auflösung (üblich bei Kameras), 4:4:4: Farbe in voller.",
     row_container: "Container",
     row_duration: "Dauer",
     row_video: "Video",
@@ -416,7 +422,7 @@ pub static TEXTS: Texts = Texts {
     deleted_mark: "Gelöscht",
     edit_failed: |detail| format!("Nicht geschrieben: {detail}"),
     edit_hint_straighten: "Mausrad oder ←/→ dreht, Umschalt feiner · Enter übernimmt, Esc verwirft",
-    edit_hint_crop: "A: Seitenverhältnis · X: Quer/Hoch · Enter übernimmt, Esc verwirft",
+    edit_hint_crop: "Pfeile verschieben · +/− Größe, Umschalt feiner · A: Seitenverhältnis · X: Quer/Hoch · Enter übernimmt, Esc verwirft",
     ratio_original: "Original",
     crop_landscape: "Querformat",
     crop_portrait: "Hochformat",
@@ -425,6 +431,59 @@ pub static TEXTS: Texts = Texts {
     help_intro: "Cerno zeigt deine Fotos ohne Wartezeit und hilft beim Aussortieren. Sterne und Farbmarken landen in der Fotodatei, das Dateidatum bleibt; alles andere speichert Cerno in seiner eigenen Datenbank.",
     help_drop: "Ordner oder Foto aufs Fenster ziehen oder Strg+O drücken.",
     help_close: "Esc, H oder F1 schließt diese Seite",
+    help_tab_keys: "Tastenkürzel",
+    help_tab_tips: "Tipps",
+    help_pages_hint: "←/→ wechselt die Seite",
+    help_tips: [
+        (
+            "Aussortieren in zwei Durchgängen",
+            &[
+                "Erst zügig blättern (Leertaste) und Misslungenes mit X ablehnen – ohne lange zu überlegen.",
+                "Dann „ohne ×“ in der Filterleiste: Die Abgelehnten sind weg, jetzt mit 1–5 bewerten.",
+                "Zum Schluss Aktion › „Abgelehnte löschen“ (Strg+M).",
+            ],
+        ),
+        (
+            "Serien und Vergleich",
+            &[
+                "Nach Aufnahmezeit sortiert stehen Serien zusammen, das schärfste Foto zuerst.",
+                "C zeigt zwei Fotos nebeneinander; A behält das linke, D das rechte, das andere wird abgelehnt.",
+                "M zeigt nur Fotos, die dem aktuellen ähneln.",
+            ],
+        ),
+        (
+            "Die besten Fotos",
+            &[
+                "Im ersten Feld der Filterleiste „Top 50 Fotos“ wählen: Cerno schlägt die besten vor, aus jeder Serie zuerst eines.",
+                "Ästhetik und Schärfe unter dem Foto helfen beim Entscheiden – die Sterne vergibst du.",
+            ],
+        ),
+        (
+            "Farbmarken",
+            &[
+                "Farben haben in Cerno keine feste Bedeutung. Zwei übliche Lesarten:",
+                "Arbeitsstand: Rot prüfen · Gelb bearbeiten · Grün fertig · Blau exportiert",
+                "Verwendung: Rot Kunde · Gelb Social Media · Grün Portfolio · Blau Druck",
+                "6–9 setzen Rot bis Blau, die Filterleiste zeigt eine Farbe.",
+            ],
+        ),
+        (
+            "Gelöscht ist nicht weg",
+            &[
+                "Gelöschte Fotos kommen in den versteckten Ordner .originals neben den Fotos.",
+                "Das Papierkorb-Kästchen in der Filterleiste zeigt sie, Strg+Z legt eins zurück.",
+                "Vor dem ersten Ausrichten, Zuschneiden oder Drehen behält Cerno das Original – Strg+Z holt es zurück.",
+            ],
+        ),
+        (
+            "Die Vorhersage",
+            &[
+                "Cerno lernt aus deinen Sternen, abgelehnten und gelöschten Fotos, was dir gefällt.",
+                "Bei Fotos ohne Sterne zeigt es seine Vermutung als leicht gefüllte Sterne – vergeben musst du sie selbst.",
+                "Nach Vorhersage sortiert stehen die Fotos vorn, die dir wahrscheinlich gefallen.",
+            ],
+        ),
+    ],
     welcome_intro: "Fotos ohne Wartezeit ansehen, bewerten und aussortieren – Sterne landen in der Datei, das Dateidatum bleibt.",
     welcome_keys: [
         ("←, →", "Vorheriges / nächstes Foto"),
@@ -535,7 +594,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "R",
-            "Ausschnitt: Rahmen aufziehen, A wechselt das Format, X dreht Quer/Hoch",
+            "Ausschnitt: Rahmen aufziehen oder mit Pfeilen und +/− setzen, A wechselt das Format, X dreht Quer/Hoch",
         ),
         (
             "Enter, Esc",
@@ -547,7 +606,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "Strg+Z",
-            "Original zurückholen – es bleibt in .originals neben dem Foto",
+            "Original zurückholen – es bleibt in .originals neben dem Foto; ein gelöschtes Foto zurücklegen",
         ),
         (
             "E",

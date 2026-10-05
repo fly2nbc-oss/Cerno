@@ -26,6 +26,9 @@ pub static TEXTS: Texts = Texts {
     filter_deleted: "Deleted",
     filter_deleted_tooltip: "Photos deleted in this folder. They lie in the hidden .originals folder – Ctrl+Z puts one back.",
     filter_deleted_none: "No deleted photos in this folder",
+    filter_hide_rejected: "Hide rejected",
+    filter_without: "without",
+    filter_hide_rejected_tooltip: "The rejected photos go, every other one stays. × shows only the rejected ones instead.",
     filter_clear: "Show all",
     media_all: "Photos and videos",
     media_photos: "Photos only",
@@ -267,6 +270,9 @@ pub static TEXTS: Texts = Texts {
     section_file: "File",
     row_size: "Size",
     row_load_time: "Load time",
+    row_file_size: "File size",
+    row_jpeg_quality: "JPEG quality",
+    explain_jpeg_quality: "Estimated from the file's quantisation tables – the quality itself is not stored. 4:2:0 means colour at half resolution (usual for cameras), 4:4:4 at full.",
     row_container: "Container",
     row_duration: "Duration",
     row_video: "Video",
@@ -409,7 +415,7 @@ pub static TEXTS: Texts = Texts {
     deleted_mark: "Deleted",
     edit_failed: |detail| format!("Not written: {detail}"),
     edit_hint_straighten: "Wheel or ←/→ rotates, Shift is finer · Enter applies, Esc cancels",
-    edit_hint_crop: "A: ratio · X: landscape/portrait · Enter applies, Esc cancels",
+    edit_hint_crop: "Arrows move · +/− size, Shift finer · A: ratio · X: landscape/portrait · Enter applies, Esc cancels",
     ratio_original: "Original",
     crop_landscape: "Landscape",
     crop_portrait: "Portrait",
@@ -418,6 +424,59 @@ pub static TEXTS: Texts = Texts {
     help_intro: "Cerno shows your photos instantly and helps you sort them out. Stars and colour labels go into the photo file with its date untouched; everything else stays in Cerno's own database.",
     help_drop: "Drop a folder or photo onto the window, or press Ctrl+O.",
     help_close: "Esc, H or F1 closes this page",
+    help_tab_keys: "Shortcuts",
+    help_tab_tips: "Tips",
+    help_pages_hint: "←/→ switches the page",
+    help_tips: [
+        (
+            "Sort out in two passes",
+            &[
+                "First browse quickly (Space) and reject what failed with X – don't think twice.",
+                "Then tick “without ×” in the filter bar: the rejected ones are gone, now rate with 1–5.",
+                "Finally Action › “Delete rejected” (Ctrl+M).",
+            ],
+        ),
+        (
+            "Series and comparing",
+            &[
+                "Sorted by capture time, series stay together, the sharpest photo first.",
+                "C shows two photos side by side; A keeps the left one, D the right one, the other is rejected.",
+                "M shows only photos like the current one.",
+            ],
+        ),
+        (
+            "The best photos",
+            &[
+                "Choose “Top 50 photos” in the filter bar's first box: Cerno suggests the best, one from each series first.",
+                "Aesthetics and sharpness under the photo help you decide – the stars are yours to give.",
+            ],
+        ),
+        (
+            "Colour labels",
+            &[
+                "Colours have no fixed meaning in Cerno. Two common readings:",
+                "Progress: red to check · yellow to edit · green done · blue exported",
+                "Use: red client · yellow social media · green portfolio · blue print",
+                "6–9 set red to blue; the filter bar shows one colour.",
+            ],
+        ),
+        (
+            "Deleted is not gone",
+            &[
+                "Deleted photos move into the hidden .originals folder beside the photos.",
+                "The bin box in the filter bar shows them; Ctrl+Z puts one back.",
+                "Before the first straighten, crop or turn Cerno keeps the original – Ctrl+Z brings it back.",
+            ],
+        ),
+        (
+            "The prediction",
+            &[
+                "Cerno learns from your stars and your rejected and deleted photos what you like.",
+                "On photos without stars it shows its guess as lightly filled stars – the stars are still yours to give.",
+                "Sorted by prediction, the photos you will probably like come first.",
+            ],
+        ),
+    ],
     welcome_intro: "View, rate and cull photos without waiting – stars go into the file, its date stays.",
     welcome_keys: [
         ("←, →", "Previous / next photo"),
@@ -509,7 +568,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "R",
-            "Crop: draw a frame, A changes the ratio, X flips landscape/portrait",
+            "Crop: draw a frame or set it with the arrows and +/−, A changes the ratio, X flips landscape/portrait",
         ),
         ("Enter, Esc", "Apply or cancel straighten and crop"),
         (
@@ -518,7 +577,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "Ctrl+Z",
-            "Bring back the original – it stays in .originals beside the photo",
+            "Bring back the original – it stays in .originals beside the photo; put a deleted photo back",
         ),
         (
             "E",

@@ -26,6 +26,9 @@ pub static TEXTS: Texts = Texts {
     filter_deleted: "Eliminate",
     filter_deleted_tooltip: "Foto eliminate in questa cartella. Si trovano nella cartella nascosta .originals: Ctrl+Z ne rimette a posto una.",
     filter_deleted_none: "Nessuna foto eliminata in questa cartella",
+    filter_hide_rejected: "Nascondi rifiutate",
+    filter_without: "senza",
+    filter_hide_rejected_tooltip: "Le foto rifiutate spariscono, tutte le altre restano. × invece mostra solo le rifiutate.",
     filter_clear: "Mostra tutte",
     media_all: "Foto e video",
     media_photos: "Solo foto",
@@ -169,7 +172,7 @@ pub static TEXTS: Texts = Texts {
     menu_visible: "Foto visibili",
     menu_settings: "Impostazioni",
     menu_stars: "Stelle",
-    label_none: "Nessun colore",
+    label_none: "Senza colore",
     loading: "Caricamento…",
     cannot_show: "Impossibile mostrare questa immagine",
     no_match: "Nessuna foto corrisponde al filtro",
@@ -258,6 +261,9 @@ pub static TEXTS: Texts = Texts {
     section_file: "File",
     row_size: "Dimensioni",
     row_load_time: "Tempo di caricamento",
+    row_file_size: "Dimensione file",
+    row_jpeg_quality: "Qualità JPEG",
+    explain_jpeg_quality: "Stimata dalle tabelle di quantizzazione del file: la qualità in sé non vi è salvata. 4:2:0 significa colore a metà risoluzione (comune nelle fotocamere), 4:4:4 a risoluzione piena.",
     row_container: "Contenitore",
     row_duration: "Durata",
     row_video: "Video",
@@ -402,7 +408,7 @@ pub static TEXTS: Texts = Texts {
     deleted_mark: "Eliminata",
     edit_failed: |detail| format!("Non scritto: {detail}"),
     edit_hint_straighten: "Rotella o ←/→ ruota, Maiusc più fine · Invio applica, Esc annulla",
-    edit_hint_crop: "A: proporzioni · X: orizzontale/verticale · Invio applica, Esc annulla",
+    edit_hint_crop: "Frecce spostano · +/− dimensione, Maiusc più fine · A: proporzioni · X: orizzontale/verticale · Invio applica, Esc annulla",
     ratio_original: "Originale",
     crop_landscape: "Orizzontale",
     crop_portrait: "Verticale",
@@ -411,6 +417,59 @@ pub static TEXTS: Texts = Texts {
     help_intro: "Cerno mostra subito le tue foto e ti aiuta a fare una selezione. Stelle e colori finiscono nel file della foto, senza cambiarne la data; tutto il resto resta nel database di Cerno.",
     help_drop: "Trascina una cartella o una foto sulla finestra, oppure premi Ctrl+O.",
     help_close: "Esc, H o F1 chiude questa pagina",
+    help_tab_keys: "Scorciatoie",
+    help_tab_tips: "Suggerimenti",
+    help_pages_hint: "←/→ cambia pagina",
+    help_tips: [
+        (
+            "Selezionare in due passate",
+            &[
+                "Prima scorrere veloce (Spazio) e rifiutare con X ciò che non va, senza pensarci troppo.",
+                "Poi «senza ×» nella barra dei filtri: le rifiutate spariscono, ora valutare da 1 a 5.",
+                "Infine Azione › «Elimina le rifiutate» (Ctrl+M).",
+            ],
+        ),
+        (
+            "Serie e confronto",
+            &[
+                "Ordinate per data di scatto, le serie restano insieme, la foto più nitida per prima.",
+                "C mostra due foto affiancate; A tiene quella a sinistra, D quella a destra, l'altra viene rifiutata.",
+                "M mostra solo le foto simili a quella attuale.",
+            ],
+        ),
+        (
+            "Le foto migliori",
+            &[
+                "Scegliere «Top 50 foto» nella prima casella della barra dei filtri: Cerno propone le migliori, prima una per serie.",
+                "Estetica e nitidezza sotto la foto aiutano a decidere; le stelle le dai tu.",
+            ],
+        ),
+        (
+            "Etichette colore",
+            &[
+                "In Cerno i colori non hanno un significato fisso. Due letture comuni:",
+                "Avanzamento: rosso da controllare · giallo da ritoccare · verde finito · blu esportato",
+                "Uso: rosso cliente · giallo social · verde portfolio · blu stampa",
+                "6–9 impostano da rosso a blu; la barra dei filtri mostra un colore.",
+            ],
+        ),
+        (
+            "Eliminata non è persa",
+            &[
+                "Le foto eliminate finiscono nella cartella nascosta .originals accanto alle foto.",
+                "La casella del cestino nella barra dei filtri le mostra; Ctrl+Z ne rimette a posto una.",
+                "Prima del primo raddrizzamento, ritaglio o rotazione Cerno conserva l'originale; Ctrl+Z lo ripristina.",
+            ],
+        ),
+        (
+            "La previsione",
+            &[
+                "Cerno impara dalle tue stelle e dalle foto rifiutate ed eliminate che cosa ti piace.",
+                "Sulle foto senza stelle mostra la sua stima con stelle appena riempite; darle resta compito tuo.",
+                "Ordinate per previsione, vengono prima le foto che probabilmente ti piaceranno.",
+            ],
+        ),
+    ],
     welcome_intro: "Guarda, valuta e scarta le foto senza attese: le stelle finiscono nel file, la sua data resta.",
     welcome_keys: [
         ("←, →", "Foto precedente / successiva"),
@@ -527,7 +586,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "R",
-            "Ritaglio: traccia una cornice, A cambia il formato, X scambia orizzontale/verticale",
+            "Ritaglio: traccia una cornice o regolala con le frecce e +/−, A cambia il formato, X scambia orizzontale/verticale",
         ),
         ("Invio, Esc", "Applica o annulla raddrizzamento e ritaglio"),
         (
@@ -536,7 +595,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "Ctrl+Z",
-            "Recupera l'originale – resta in .originals accanto alla foto",
+            "Recupera l'originale – resta in .originals accanto alla foto; rimetti a posto una foto eliminata",
         ),
         (
             "E",

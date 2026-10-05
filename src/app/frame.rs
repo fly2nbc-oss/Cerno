@@ -279,7 +279,7 @@ impl CernoApp {
             self.set_rating(&ctx, stars, false);
         }
         if out.help {
-            self.help_open = true;
+            self.open_help();
         }
         if out.menu {
             self.help_open = false;
@@ -317,6 +317,8 @@ impl CernoApp {
                 histogram: image.as_deref().map(|i| &i.histogram),
                 status: &status,
                 file: image.as_deref().map(|i| (i.original_size, i.load_ms)),
+                file_bytes: image.as_deref().map(|i| i.file_bytes),
+                jpeg: image.as_deref().and_then(|i| i.jpeg),
                 position: image.as_deref().and_then(|i| i.camera.gps),
                 media: media.as_ref(),
                 video,

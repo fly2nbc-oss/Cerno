@@ -10,6 +10,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 ### Added
 
 - **Deleted photos can come back** – a bin box beside ✕ in the filter bar (and *Filter ▸ Deleted*) shows the photos deleted in this folder; they still lie in the hidden `.originals` folder. `Ctrl+Z` puts the photo shown back into its folder, *Put back (n photos)* in the action menu every one the filter shows. When its name is taken, a photo comes back as `name (2).jpg` – nothing is overwritten. Deleted photos only look: no stars, labels or edits until they are back. With ✕ the box shows everything sorted out; it is greyed out in a folder without deleted photos and never saved.
+- **"without ✕"** in the filter bar (and *Filter ▸ Hide rejected*) hides the rejected photos and keeps every other one – the other way round from ✕, which shows only them.
+- **Crop with the keyboard** – the arrows slide the frame, `+` and `−` make it larger or smaller about its centre; Shift makes each step one pixel, as in straighten.
+- **Tips in the help** – the help page has two tabs, the shortcuts and tips on working with Cerno (two passes, series, the best photos, colour labels, deleted photos, the prediction); `←`/`→` or a click switches.
+- **Details › File shows the file size**, for photos and videos, and for a JPEG its quality and colour subsampling (≈ 92 · 4:2:0) – estimated from the file, which does not store the quality itself.
+
+### Changed
+
+- **The menus show what a row sets** – stars before the star ratings, a dot before the colours, ✕ and the bin before rejected and deleted, as in the filter bar. "No colour" sits on top like "No stars" (German: „Ohne Farbe“).
 
 ## [1.5.2] – 2026-10-03
 

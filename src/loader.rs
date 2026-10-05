@@ -53,6 +53,17 @@ pub struct LoadedImage {
     /// Comment and keywords as stored in the file when it was decoded.
     pub description: Description,
     pub load_ms: u128,
+    /// The file's size in bytes (Details › File).
+    pub file_bytes: u64,
+    /// A JPEG's estimated quality and its chroma subsampling.
+    pub jpeg: Option<crate::jpeg_info::JpegInfo>,
+}
+
+/// What the file itself says, besides its pixels: its size and, for a JPEG, its compression.
+#[derive(Default)]
+struct FileFacts {
+    bytes: u64,
+    jpeg: Option<crate::jpeg_info::JpegInfo>,
 }
 
 /// An image at 100 %, as tiles in image pixel coordinates.
@@ -642,10 +653,20 @@ fn picture(
     shared: &Shared,
     path: &Path,
     target: [u32; 2],
-) -> Result<(metadata::FileMetadata, decode::DecodedImage, bool)> {
+) -> Result<(
+    metadata::FileMetadata,
+    decode::DecodedImage,
+    bool,
+    FileFacts,
+)> {
     let format = library::format_of(path).context("unsupported file type")?;
     if format == library::Format::Video {
         let meta = metadata::read_sidecar(path);
+        // Never read into memory: its size from the file system.
+        let facts = FileFacts {
+            bytes: std::fs::metadata(path).map_or(0, |m| m.len()),
+            jpeg: None,
+        };
         let (decoded, framed) = match crate::video::poster(path) {
             Ok(jpeg) => (
                 decode::decode_for_screen(&jpeg, library::Format::Jpeg, 1, target)?,
@@ -656,18 +677,24 @@ fn picture(
                 (crate::video::placeholder(target), false)
             }
         };
-        return Ok((meta, decoded, framed));
+        return Ok((meta, decoded, framed, facts));
     }
     let bytes = read(&shared.files, path)?;
     let meta = metadata::read_for(path, &bytes);
     let decoded = decode::decode_for_screen(&bytes, format, meta.orientation, target)?;
-    Ok((meta, decoded, true))
+    let facts = FileFacts {
+        bytes: bytes.len() as u64,
+        jpeg: (format == library::Format::Jpeg)
+            .then(|| crate::jpeg_info::read(&bytes))
+            .flatten(),
+    };
+    Ok((meta, decoded, true, facts))
 }
 
 /// The display image and, when the job asks for it, its overlay.
 fn load_display(shared: &Shared, job: &Job) -> Result<(LoadedImage, Option<TextureHandle>)> {
     let started = Instant::now();
-    let (meta, decoded, framed) = picture(shared, &job.path, job.target)?;
+    let (meta, decoded, framed, facts) = picture(shared, &job.path, job.target)?;
 
     // The neighbourhood's filmstrip thumbnails come almost for free from here.
     if framed
@@ -699,6 +726,8 @@ fn load_display(shared: &Shared, job: &Job) -> Result<(LoadedImage, Option<Textu
         camera: meta.camera,
         description: meta.description,
         load_ms: started.elapsed().as_millis(),
+        file_bytes: facts.bytes,
+        jpeg: facts.jpeg,
     };
     Ok((image, overlay))
 }
@@ -729,7 +758,7 @@ fn load_overlay(shared: &Shared, job: &Job) -> Result<Option<TextureHandle>> {
     if !takes_overlay(job) {
         return Ok(None);
     }
-    let (_, decoded, _) = picture(shared, &job.path, job.target)?;
+    let (_, decoded, _, _) = picture(shared, &job.path, job.target)?;
     Ok(display_overlay(shared, job, &decoded))
 }
 
@@ -742,7 +771,7 @@ fn read(files: &FileLocks, path: &Path) -> Result<Vec<u8>> {
 /// The full resolution as tiles and, when the job asks for it, the overlay's tiles.
 fn load_full(shared: &Shared, job: &Job) -> Result<(FullImage, Option<Vec<Tile>>)> {
     let ctx = &shared.ctx;
-    let (_, decoded, _) = picture(shared, &job.path, [u32::MAX; 2])?;
+    let (_, decoded, _, _) = picture(shared, &job.path, [u32::MAX; 2])?;
     let (width, height) = (decoded.width, decoded.height);
     let tiles = tile_regions(ctx, width, height)
         .into_iter()
@@ -777,7 +806,7 @@ fn load_full_overlay(shared: &Shared, job: &Job) -> Result<Option<Vec<Tile>>> {
     if !takes_overlay(job) {
         return Ok(None);
     }
-    let (_, decoded, _) = picture(shared, &job.path, [u32::MAX; 2])?;
+    let (_, decoded, _, _) = picture(shared, &job.path, [u32::MAX; 2])?;
     Ok(full_overlay_tiles(shared, job, &decoded))
 }
 
@@ -890,6 +919,8 @@ mod tests {
             camera: CameraInfo::default(),
             description: Description::default(),
             load_ms: 0,
+            file_bytes: 0,
+            jpeg: None,
         }))
     }
 

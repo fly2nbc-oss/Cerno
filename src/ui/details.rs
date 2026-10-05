@@ -2,8 +2,8 @@
 //! pointer rests on it; only the CLIP attributes fold out (they are further values).
 
 use eframe::egui::{
-    Align, Align2, Color32, CursorIcon, FontId, Hyperlink, Id, Label, Layout, Rect, Response,
-    RichText, ScrollArea, Sense, Stroke, Ui, UiBuilder, vec2,
+    Align, Color32, CursorIcon, FontId, Hyperlink, Id, Label, Layout, Rect, Response, RichText,
+    ScrollArea, Sense, Stroke, Ui, UiBuilder, vec2,
 };
 
 use crate::analysis::{ModelState, Status, aesthetic, exposure};
@@ -80,42 +80,18 @@ pub fn tabs(ui: &mut Ui, rect: Rect, current: DetailsTab) -> Option<DetailsTab> 
     let line = Stroke::new(1.0, tokens::LINE);
     painter.vline(rect.left() + 0.5, rect.y_range(), line);
     painter.hline(rect.x_range(), rect.bottom() - 0.5, line);
-    let half = rect.width() / 2.0;
-    let mut clicked = None;
-    for (i, (tab, label)) in [
-        (DetailsTab::Values, t.tab_values),
-        (DetailsTab::Description, t.tab_description),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let cell = Rect::from_min_size(
-            rect.min + vec2(half * i as f32, 0.0),
-            vec2(half, rect.height()),
-        );
-        let response = ui
-            .interact(cell, Id::new(("details-tab", i)), Sense::click())
-            .on_hover_cursor(CursorIcon::PointingHand);
-        let active = tab == current;
-        painter.text(
-            cell.center(),
-            Align2::CENTER_CENTER,
-            label,
-            FontId::proportional(text::BODY),
-            if active { tokens::TEXT } else { tokens::MUTED },
-        );
-        if active {
-            painter.hline(
-                cell.x_range().shrink(14.0),
-                rect.bottom() - 1.5,
-                Stroke::new(2.0, tokens::ACCENT),
-            );
-        }
-        if response.clicked() && !active {
-            clicked = Some(tab);
-        }
-    }
-    clicked
+    let all = [DetailsTab::Values, DetailsTab::Description];
+    let labels = [t.tab_values, t.tab_description];
+    let index = all.iter().position(|tab| *tab == current).unwrap_or(0);
+    crate::ui::tabs::strip(
+        ui,
+        rect,
+        &labels,
+        index,
+        Id::new("details-tab"),
+        crate::ui::tabs::Widths::Equal,
+    )
+    .map(|i| all[i])
 }
 
 pub struct Details<'a> {
@@ -128,6 +104,10 @@ pub struct Details<'a> {
     pub status: &'a Status,
     /// Original size in pixels and how long the display image took to load.
     pub file: Option<([u32; 2], u128)>,
+    /// The file's size in bytes – photos and videos.
+    pub file_bytes: Option<u64>,
+    /// A JPEG's estimated quality and chroma subsampling.
+    pub jpeg: Option<crate::jpeg_info::JpegInfo>,
     /// GPS position (latitude, longitude) from the EXIF data.
     pub position: Option<(f64, f64)>,
     /// A video's streams (`playback::probe`): shown instead of the size and load time.
@@ -344,6 +324,12 @@ fn file(ui: &mut Ui, d: &Details<'_>) {
                 plain_row(ui, t.row_load_time, format!("{load_ms} ms"));
             }
             (None, None) => {}
+        }
+        if let Some(bytes) = d.file_bytes.filter(|bytes| *bytes > 0) {
+            plain_row(ui, t.row_file_size, i18n::size(bytes));
+        }
+        if let Some(value) = d.jpeg.and_then(jpeg_value) {
+            explained_row(ui, t.row_jpeg_quality, value, t.explain_jpeg_quality);
         }
         if let Some((lat, lon)) = d.position {
             plain_row(ui, t.row_location, i18n::coordinates(lat, lon));
@@ -591,6 +577,52 @@ fn attributes(ui: &mut Ui, d: &Details<'_>, open: &mut bool) {
     ui.add_space(ROW_INNER);
 }
 
+/// "≈ 92 · 4:2:0": the estimated quality and the subsampling, what of them the file tells.
+fn jpeg_value(jpeg: crate::jpeg_info::JpegInfo) -> Option<String> {
+    let parts: Vec<String> = [
+        jpeg.quality.map(|q| format!("≈ {q}")),
+        jpeg.subsampling.map(str::to_owned),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    (!parts.is_empty()).then(|| parts.join(" · "))
+}
+
+/// A plain row that explains itself while the pointer rests on it.
+fn explained_row(ui: &mut Ui, label: &str, value: String, explain: &str) {
+    let explain = i18n::keep_together(explain);
+    ui.horizontal(|ui| {
+        ui.add_space(PAD + 14.0);
+        // Not selectable: a selectable label takes the pointer, and the row's tooltip with it.
+        ui.add(
+            Label::new(
+                RichText::new(label)
+                    .font(FontId::proportional(text::SMALL))
+                    .color(tokens::MUTED),
+            )
+            .selectable(false),
+        )
+        .on_hover_text(&explain);
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.add_space(PAD);
+            ui.add(
+                Label::new(
+                    RichText::new(value)
+                        .font(FontId::proportional(text::SMALL))
+                        .color(tokens::TEXT),
+                )
+                .selectable(false),
+            )
+            .on_hover_text(&explain);
+        });
+    })
+    .response
+    .interact(Sense::hover())
+    .on_hover_text(&explain);
+    ui.add_space(2.0);
+}
+
 /// Muted label and a plain value, without a bar or a fold.
 fn plain_row(ui: &mut Ui, label: &str, value: String) {
     ui.horizontal(|ui| {
@@ -752,6 +784,8 @@ mod tests {
             histogram: None,
             status,
             file: None,
+            file_bytes: None,
+            jpeg: None,
             position: None,
             media: None,
             video: false,
@@ -900,6 +934,8 @@ mod tests {
             histogram: None,
             status: &status,
             file: Some(([6000, 4000], 120)),
+            file_bytes: None,
+            jpeg: None,
             position: Some(position),
             media: None,
             video: false,
@@ -983,6 +1019,8 @@ mod tests {
                 histogram: None,
                 status: &status,
                 file: None,
+                file_bytes: None,
+                jpeg: None,
                 position: None,
                 media: None,
                 video: false,
@@ -1118,6 +1156,8 @@ mod tests {
             histogram: None,
             status: &status,
             file: Some(([1920, 1080], 40)),
+            file_bytes: None,
+            jpeg: None,
             position: None,
             media: Some(&media),
             video: true,

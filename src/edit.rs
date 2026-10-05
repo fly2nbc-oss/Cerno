@@ -134,6 +134,28 @@ impl Crop {
         }
     }
 
+    /// Grows (`step` > 0) or shrinks the rectangle by `step` pixels along its long side, about
+    /// its centre and in its own aspect: at most the largest that fits the photo, at least
+    /// `min_side` on its short side. Near an edge the centre gives way, so it stays inside.
+    pub fn resize_about_centre(self, step: f64, image_w: f64, image_h: f64, min_side: f64) -> Self {
+        let aspect = (self.w / self.h.max(1e-6)).max(1e-6);
+        let largest = Self::max_centered(image_w, image_h, aspect);
+        let (step_w, min_w) = if self.w >= self.h {
+            (step, min_side * aspect)
+        } else {
+            (step * aspect, min_side)
+        };
+        let w = (self.w + step_w).clamp(min_w.min(largest.w), largest.w);
+        let h = w / aspect;
+        let (cx, cy) = (self.x + self.w / 2.0, self.y + self.h / 2.0);
+        Self {
+            x: (cx - w / 2.0).clamp(0.0, (image_w - w).max(0.0)),
+            y: (cy - h / 2.0).clamp(0.0, (image_h - h).max(0.0)),
+            w,
+            h,
+        }
+    }
+
     /// The whole photo, within half a pixel.
     pub fn covers_image(self, image_w: f64, image_h: f64) -> bool {
         self.w >= image_w - 0.5 && self.h >= image_h - 0.5
@@ -384,6 +406,46 @@ fn decode_jpeg(path: &Path, files: &FileLocks) -> Result<(u32, u32, Vec<u8>)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `+` / `−`: about the centre, in the frame's own aspect, never outside the photo nor
+    /// beyond the largest frame or below the shortest side.
+    #[test]
+    fn a_frame_resizes_about_its_centre_and_stays_inside() {
+        let (w, h) = (4000.0, 3000.0);
+        let full = Crop::max_centered(w, h, 1.5);
+        assert_eq!((full.w, full.h), (4000.0, 4000.0 / 1.5));
+        let smaller = full.resize_about_centre(-400.0, w, h, 32.0);
+        assert!((smaller.w - 3600.0).abs() < 1e-9);
+        assert!((smaller.w / smaller.h - 1.5).abs() < 1e-9, "same aspect");
+        let centre = |c: Crop| (c.x + c.w / 2.0, c.y + c.h / 2.0);
+        assert!((centre(smaller).0 - centre(full).0).abs() < 1e-9);
+        assert_eq!(
+            full.resize_about_centre(400.0, w, h, 32.0),
+            full,
+            "no larger than fits"
+        );
+        // In a corner, growing pushes the centre in instead of leaving the photo.
+        let corner = Crop {
+            x: 0.0,
+            y: 0.0,
+            w: 600.0,
+            h: 400.0,
+        };
+        let grown = corner.resize_about_centre(300.0, w, h, 32.0);
+        assert_eq!((grown.x, grown.y), (0.0, 0.0));
+        assert!((grown.w - 900.0).abs() < 1e-9);
+        // A portrait frame: the step goes along its long side, the height.
+        let portrait = Crop {
+            x: 1000.0,
+            y: 500.0,
+            w: 1000.0,
+            h: 1500.0,
+        };
+        let taller = portrait.resize_about_centre(150.0, w, h, 32.0);
+        assert!((taller.h - 1650.0).abs() < 1e-9);
+        let tiny = portrait.resize_about_centre(-10_000.0, w, h, 32.0);
+        assert!((tiny.w - 32.0).abs() < 1e-9, "the short side keeps 32 px");
+    }
 
     #[test]
     fn cover_scale_is_one_at_zero_and_root_two_for_a_square() {

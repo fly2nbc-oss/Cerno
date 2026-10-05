@@ -33,13 +33,64 @@ pub enum Mark {
     Choice(bool),
 }
 
+/// A small picture in front of a row's label, the way the filter bar and the filmstrip show
+/// the same thing: stars, a colour, the reject cross, the bin.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum RowIcon {
+    /// A colour label's dot.
+    Swatch(Color32),
+    /// An empty ring: no colour label.
+    NoColour,
+    /// 1–5 filled stars.
+    Stars(u8),
+    /// An empty star: no stars.
+    NoStars,
+    /// The reject cross.
+    Reject,
+    /// The bin: deleted photos.
+    Trash,
+}
+
+/// Radius of a row's stars and the distance between them.
+const ICON_STAR: f32 = 4.5;
+const ICON_STAR_GAP: f32 = 10.8;
+
+impl RowIcon {
+    /// How much room it takes before the label.
+    fn width(self) -> f32 {
+        match self {
+            Self::Stars(n) => ICON_STAR_GAP * f32::from(n.max(1) - 1) + 2.0 * ICON_STAR,
+            _ => 12.0,
+        }
+    }
+
+    /// Painted left-aligned from `x`, centred on `y`.
+    fn paint(self, painter: &eframe::egui::Painter, x: f32, y: f32, colour: Color32) {
+        let centre = pos2(x + self.width() / 2.0, y);
+        match self {
+            Self::Swatch(swatch) => {
+                painter.circle_filled(centre, 5.0, swatch);
+            }
+            Self::NoColour => {
+                painter.circle_stroke(centre, 4.5, Stroke::new(1.2, tokens::MUTED));
+            }
+            Self::Stars(n) => {
+                crate::ui::stars::paint_mini_rating(painter, centre, n, ICON_STAR, colour);
+            }
+            Self::NoStars => crate::ui::stars::paint_star(painter, centre, 5.5, false, colour),
+            Self::Reject => icons::reject_mark(painter, centre, 9.0, tokens::STATUS_ERROR),
+            Self::Trash => icons::trash(painter, centre, 0.85, colour),
+        }
+    }
+}
+
 pub struct Row<A> {
     pub action: A,
     pub label: String,
     pub shortcut: Option<String>,
     pub mark: Mark,
-    /// A colour dot in front of the label (colour labels).
-    pub swatch: Option<Color32>,
+    /// A picture in front of the label; the rows of one list keep their labels in line.
+    pub icon: Option<RowIcon>,
     /// Why the row can't run right now (greyed out, the reason as its tooltip).
     pub disabled: Option<&'static str>,
     /// What the row does, in more words than its label (its tooltip while it can run).
@@ -53,7 +104,7 @@ impl<A> Row<A> {
             label: label.into(),
             shortcut,
             mark: Mark::None,
-            swatch: None,
+            icon: None,
             disabled: None,
             hint: None,
         }
@@ -80,9 +131,24 @@ impl<A> Row<A> {
     }
 
     pub fn swatch(mut self, colour: Color32) -> Self {
-        self.swatch = Some(colour);
+        self.icon = Some(RowIcon::Swatch(colour));
         self
     }
+
+    pub fn icon(mut self, icon: RowIcon) -> Self {
+        self.icon = Some(icon);
+        self
+    }
+}
+
+/// The room the icons of one list take: its widest icon, so every label starts in one line.
+fn icon_column<A>(list: &[Entry<A>]) -> f32 {
+    list.iter()
+        .filter_map(|entry| match entry {
+            Entry::Row(row) => row.icon.map(RowIcon::width),
+            Entry::Group(_) => None,
+        })
+        .fold(0.0, f32::max)
 }
 
 pub struct Group<A> {
@@ -276,6 +342,7 @@ pub fn show<A: Copy>(
             loop {
                 let card = cards[k];
                 paint_card(ui.painter(), card);
+                let icons = icon_column(list);
                 let mut next = None;
                 for (index, entry) in list.iter().enumerate() {
                     let row = Rect::from_min_size(
@@ -297,7 +364,7 @@ pub fn show<A: Copy>(
                                 ui,
                                 row,
                                 id.with(("row", k, index)),
-                                RowLook::of(item),
+                                RowLook::of(item, icons),
                                 lit,
                             );
                             if response.hovered {
@@ -312,7 +379,8 @@ pub fn show<A: Copy>(
                                 label: &group.label,
                                 shortcut: group.shortcut.as_deref(),
                                 mark: Mark::None,
-                                swatch: None,
+                                icon: None,
+                                icon_column: icons,
                                 submenu: true,
                                 disabled: None,
                                 hint: None,
@@ -502,19 +570,22 @@ struct RowLook<'a> {
     label: &'a str,
     shortcut: Option<&'a str>,
     mark: Mark,
-    swatch: Option<Color32>,
+    icon: Option<RowIcon>,
+    /// The room the list's icons take ([`icon_column`]); 0 without any.
+    icon_column: f32,
     submenu: bool,
     disabled: Option<&'static str>,
     hint: Option<&'static str>,
 }
 
 impl<'a> RowLook<'a> {
-    fn of<A>(row: &'a Row<A>) -> Self {
+    fn of<A>(row: &'a Row<A>, icon_column: f32) -> Self {
         Self {
             label: &row.label,
             shortcut: row.shortcut.as_deref(),
             mark: row.mark,
-            swatch: row.swatch,
+            icon: row.icon,
+            icon_column,
             submenu: false,
             disabled: row.disabled,
             hint: row.hint,
@@ -597,9 +668,11 @@ fn row_button(
         Mark::Choice(false) | Mark::None => {}
     }
     let mut x = row.left() + 30.0;
-    if let Some(colour) = look.swatch {
-        painter.circle_filled(pos2(x + 5.0, y), 5.0, colour);
-        x += 16.0;
+    if let Some(icon) = look.icon {
+        icon.paint(painter, x, y, text_colour);
+    }
+    if look.icon_column > 0.0 {
+        x += look.icon_column + 6.0;
     }
     let right_reserve = if look.submenu { 22.0 } else { 10.0 };
     let mut label_right = row.right() - right_reserve;

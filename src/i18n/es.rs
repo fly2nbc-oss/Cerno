@@ -26,6 +26,9 @@ pub static TEXTS: Texts = Texts {
     filter_deleted: "Eliminadas",
     filter_deleted_tooltip: "Fotos eliminadas de esta carpeta. Están en la carpeta oculta .originals: Ctrl+Z devuelve una a su sitio.",
     filter_deleted_none: "No hay fotos eliminadas en esta carpeta",
+    filter_hide_rejected: "Ocultar rechazadas",
+    filter_without: "sin",
+    filter_hide_rejected_tooltip: "Las fotos rechazadas desaparecen y las demás se quedan. ×, en cambio, muestra solo las rechazadas.",
     filter_clear: "Mostrar todas",
     media_all: "Fotos y vídeos",
     media_photos: "Solo fotos",
@@ -266,6 +269,9 @@ pub static TEXTS: Texts = Texts {
     section_file: "Archivo",
     row_size: "Tamaño",
     row_load_time: "Tiempo de carga",
+    row_file_size: "Tamaño del archivo",
+    row_jpeg_quality: "Calidad JPEG",
+    explain_jpeg_quality: "Estimada a partir de las tablas de cuantización del archivo: la calidad en sí no se guarda. 4:2:0 significa color a media resolución (habitual en cámaras), 4:4:4 a resolución completa.",
     row_container: "Contenedor",
     row_duration: "Duración",
     row_video: "Vídeo",
@@ -408,7 +414,7 @@ pub static TEXTS: Texts = Texts {
     deleted_mark: "Eliminada",
     edit_failed: |detail| format!("No se ha escrito: {detail}"),
     edit_hint_straighten: "Rueda o ←/→ gira, Mayús más fino · Intro aplica, Esc cancela",
-    edit_hint_crop: "A: proporción · X: horizontal/vertical · Intro aplica, Esc cancela",
+    edit_hint_crop: "Flechas mueven · +/− tamaño, Mayús más fino · A: proporción · X: horizontal/vertical · Intro aplica, Esc cancela",
     ratio_original: "Original",
     crop_landscape: "Horizontal",
     crop_portrait: "Vertical",
@@ -417,6 +423,59 @@ pub static TEXTS: Texts = Texts {
     help_intro: "Cerno muestra tus fotos al instante y te ayuda a seleccionarlas. Las estrellas y los colores se guardan en el archivo, sin cambiar su fecha; todo lo demás queda en la base de datos de Cerno.",
     help_drop: "Arrastra una carpeta o una foto a la ventana, o pulsa Ctrl+O.",
     help_close: "Esc, H o F1 cierra esta página",
+    help_tab_keys: "Atajos",
+    help_tab_tips: "Consejos",
+    help_pages_hint: "←/→ cambia de página",
+    help_tips: [
+        (
+            "Seleccionar en dos pasadas",
+            &[
+                "Primero recorrer rápido (Espacio) y rechazar lo fallido con X, sin pensarlo mucho.",
+                "Después «sin ×» en la barra de filtros: las rechazadas desaparecen; ahora valorar de 1 a 5.",
+                "Por último, Acción › «Eliminar las rechazadas» (Ctrl+M).",
+            ],
+        ),
+        (
+            "Series y comparación",
+            &[
+                "Ordenadas por fecha de captura, las series quedan juntas, la foto más nítida primero.",
+                "C muestra dos fotos juntas; A conserva la izquierda, D la derecha, la otra queda rechazada.",
+                "M muestra solo las fotos parecidas a la actual.",
+            ],
+        ),
+        (
+            "Las mejores fotos",
+            &[
+                "Elegir «Top 50 fotos» en la primera casilla de la barra de filtros: Cerno propone las mejores, primero una de cada serie.",
+                "La estética y la nitidez bajo la foto ayudan a decidir; las estrellas las pones tú.",
+            ],
+        ),
+        (
+            "Etiquetas de color",
+            &[
+                "Los colores no tienen un significado fijo en Cerno. Dos lecturas habituales:",
+                "Estado: rojo revisar · amarillo editar · verde terminado · azul exportado",
+                "Uso: rojo cliente · amarillo redes sociales · verde portfolio · azul impresión",
+                "6–9 ponen de rojo a azul; la barra de filtros muestra un color.",
+            ],
+        ),
+        (
+            "Eliminada no es perdida",
+            &[
+                "Las fotos eliminadas van a la carpeta oculta .originals junto a las fotos.",
+                "La casilla de la papelera en la barra de filtros las muestra; Ctrl+Z devuelve una a su sitio.",
+                "Antes del primer enderezado, recorte o giro, Cerno guarda el original; Ctrl+Z lo recupera.",
+            ],
+        ),
+        (
+            "La predicción",
+            &[
+                "Cerno aprende de tus estrellas y de tus fotos rechazadas y eliminadas lo que te gusta.",
+                "En las fotos sin estrellas muestra su estimación como estrellas ligeramente rellenas; ponerlas sigue siendo cosa tuya.",
+                "Ordenadas por predicción, primero aparecen las fotos que probablemente te gustarán.",
+            ],
+        ),
+    ],
     welcome_intro: "Ver, puntuar y descartar fotos sin esperas: las estrellas van al archivo y su fecha no cambia.",
     welcome_keys: [
         ("←, →", "Foto anterior / siguiente"),
@@ -533,7 +592,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "R",
-            "Recorte: trazar un marco, A cambia el formato, X cambia horizontal/vertical",
+            "Recorte: trazar un marco o ajustarlo con las flechas y +/−, A cambia el formato, X cambia horizontal/vertical",
         ),
         ("Intro, Esc", "Aplicar o cancelar enderezar y recorte"),
         (
@@ -542,7 +601,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "Ctrl+Z",
-            "Recuperar el original – se queda en .originals junto a la foto",
+            "Recuperar el original – se queda en .originals junto a la foto; devolver a su sitio una foto eliminada",
         ),
         ("E", "Editar en otro programa: el recordado o elegir uno"),
     ],

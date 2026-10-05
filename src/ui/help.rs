@@ -1,15 +1,17 @@
-//! Help page: every shortcut with a short explanation. `H`/`F1` shows it over the photos
-//! (and over the start screen). The start screen is a small card: one sentence, "Open folder"
-//! and the five keys to begin with.
+//! Help page: two tabs – every shortcut with a short explanation, and tips on working with
+//! Cerno. `H`/`F1` shows it over the photos (and over the start screen), always on the
+//! shortcuts; a click on a tab or `←`/`→` switches. The start screen is a small card: one
+//! sentence, "Open folder" and the five keys to begin with.
 
 use eframe::egui::{
     Align2, Area, Color32, Context, CursorIcon, FontId, Id, Order, Painter, Pos2, Rect, ScrollArea,
     Sense, Stroke, StrokeKind, Ui, UiBuilder, pos2, vec2,
 };
 
-use crate::i18n::{self, HelpRow};
+use crate::i18n::{self, HelpRow, TipSection};
 use crate::theme::{self, text, tokens};
 use crate::ui::icons;
+use crate::ui::tabs::{self, Widths};
 
 const MAX_WIDTH: f32 = 1340.0;
 /// The start screen is a small card: one sentence, the button and five keys.
@@ -19,15 +21,39 @@ const PAD: f32 = 28.0;
 const TWO_COLUMNS: f32 = 700.0;
 const THREE_COLUMNS: f32 = 1100.0;
 
+/// The help page's tabs.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Page {
+    /// Every shortcut.
+    #[default]
+    Keys,
+    /// How to work with Cerno.
+    Tips,
+}
+
+impl Page {
+    pub const ALL: [Page; 2] = [Self::Keys, Self::Tips];
+
+    /// The other page (`←`/`→`).
+    pub fn other(self) -> Self {
+        match self {
+            Self::Keys => Self::Tips,
+            Self::Tips => Self::Keys,
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct HelpOutput {
     pub close: bool,
     pub open_folder: bool,
     pub language: bool,
+    /// The other tab was clicked.
+    pub page: Option<Page>,
 }
 
 /// Modal page over the whole window; a click beside the card closes it.
-pub fn overlay(ctx: &Context, window: Rect) -> HelpOutput {
+pub fn overlay(ctx: &Context, window: Rect, page: Page) -> HelpOutput {
     Area::new(Id::new("help"))
         .order(Order::Foreground)
         .fixed_pos(window.min)
@@ -35,7 +61,7 @@ pub fn overlay(ctx: &Context, window: Rect) -> HelpOutput {
             let backdrop = ui.allocate_rect(window, Sense::click());
             ui.painter()
                 .rect_filled(window, 0.0, Color32::from_black_alpha(170));
-            let mut out = card_with_content(ui, window, false);
+            let mut out = card_with_content(ui, window, false, page);
             out.close |= backdrop.clicked();
             out
         })
@@ -44,13 +70,14 @@ pub fn overlay(ctx: &Context, window: Rect) -> HelpOutput {
 
 /// The start screen: the help content with the "Open folder" button, centred in `rect`.
 pub fn welcome(ui: &mut Ui, rect: Rect) -> HelpOutput {
-    card_with_content(ui, rect, true)
+    card_with_content(ui, rect, true, Page::Keys)
 }
 
 /// The card, centred in `space`: as high as its content was last frame, at most the space.
-fn card_with_content(ui: &mut Ui, space: Rect, welcome: bool) -> HelpOutput {
+/// Each page remembers its own height, so switching does not flicker.
+fn card_with_content(ui: &mut Ui, space: Rect, welcome: bool, page: Page) -> HelpOutput {
     const MARGIN_Y: f32 = 20.0;
-    let height_id = Id::new(("help-height", welcome));
+    let height_id = Id::new(("help-height", welcome, page));
     let max_height = (space.height() - 48.0).max(200.0);
     let height = ui
         .data(|d| d.get_temp::<f32>(height_id))
@@ -82,7 +109,7 @@ fn card_with_content(ui: &mut Ui, space: Rect, welcome: bool) -> HelpOutput {
     // Not `content_size`: without auto-shrinking it is at least the visible area.
     let (out, content_height) = ScrollArea::vertical()
         .auto_shrink(false)
-        .show(&mut inner, |ui| content(ui, welcome))
+        .show(&mut inner, |ui| content(ui, welcome, page))
         .inner;
     if ui.data(|d| d.get_temp::<f32>(height_id)) != Some(content_height) {
         ui.data_mut(|d| d.insert_temp(height_id, content_height));
@@ -92,7 +119,7 @@ fn card_with_content(ui: &mut Ui, space: Rect, welcome: bool) -> HelpOutput {
 }
 
 /// Draws the page; returns what was clicked and the height it needs.
-fn content(ui: &mut Ui, welcome: bool) -> (HelpOutput, f32) {
+fn content(ui: &mut Ui, welcome: bool, page: Page) -> (HelpOutput, f32) {
     let t = i18n::t();
     let mut out = HelpOutput::default();
     let top = ui.cursor().min;
@@ -162,6 +189,34 @@ fn content(ui: &mut Ui, welcome: bool) -> (HelpOutput, f32) {
         out.language = true;
     }
     y += title_height + 12.0;
+
+    if !welcome {
+        let strip = Rect::from_min_size(pos2(left, y), vec2(width, 34.0));
+        painter.hline(
+            strip.x_range(),
+            strip.bottom() - 0.5,
+            Stroke::new(1.0, tokens::LINE),
+        );
+        let labels = [t.help_tab_keys, t.help_tab_tips];
+        let current = Page::ALL.iter().position(|p| *p == page).unwrap_or(0);
+        if let Some(i) = tabs::strip(
+            ui,
+            strip,
+            &labels,
+            current,
+            Id::new("help-tab"),
+            Widths::Natural,
+        ) {
+            out.page = Some(Page::ALL[i]);
+        }
+        y = strip.bottom() + 16.0;
+    }
+    if page == Page::Tips && !welcome {
+        y = tips(&painter, left, y, width, &t.help_tips);
+        y = footer(&painter, left, y, width);
+        ui.allocate_space(vec2(width, y - top.y));
+        return (out, y - top.y);
+    }
 
     // Intro.
     let intro = painter.layout(
@@ -237,20 +292,66 @@ fn content(ui: &mut Ui, welcome: bool) -> (HelpOutput, f32) {
         }
         bottom = bottom.max(cy);
     }
-    y = bottom;
-
-    if !welcome {
-        painter.text(
-            pos2(left + width / 2.0, y + 4.0),
-            Align2::CENTER_TOP,
-            t.help_close,
-            FontId::proportional(text::SMALL),
-            tokens::MUTED,
-        );
-        y += 24.0;
-    }
+    y = footer(&painter, left, bottom, width);
     ui.allocate_space(vec2(width, y - top.y));
     (out, y - top.y)
+}
+
+/// "←/→ switches the page · Esc, H or F1 closes this page"; returns the bottom.
+fn footer(painter: &Painter, left: f32, y: f32, width: f32) -> f32 {
+    let t = i18n::t();
+    painter.text(
+        pos2(left + width / 2.0, y + 4.0),
+        Align2::CENTER_TOP,
+        format!("{}   ·   {}", t.help_pages_hint, t.help_close),
+        FontId::proportional(text::SMALL),
+        tokens::MUTED,
+    );
+    y + 24.0
+}
+
+/// The tips: their sections in columns like the shortcuts, each tip a paragraph with a dot in
+/// front. Returns the bottom.
+fn tips(painter: &Painter, left: f32, y: f32, width: f32, sections: &[TipSection]) -> f32 {
+    let columns: Vec<&[TipSection]> = if width >= THREE_COLUMNS {
+        sections.chunks(sections.len().div_ceil(3)).collect()
+    } else if width >= TWO_COLUMNS {
+        sections.chunks(sections.len().div_ceil(2)).collect()
+    } else {
+        vec![sections]
+    };
+    let gap = 36.0;
+    let column_width = (width - gap * (columns.len() - 1) as f32) / columns.len() as f32;
+    let mut bottom = y;
+    for (i, column) in columns.iter().enumerate() {
+        let x = left + i as f32 * (column_width + gap);
+        let mut cy = y;
+        for (title, paragraphs) in column.iter() {
+            painter.text(
+                pos2(x, cy),
+                Align2::LEFT_TOP,
+                title.to_uppercase(),
+                FontId::proportional(text::LABEL),
+                tokens::MUTED,
+            );
+            cy += 22.0;
+            for paragraph in paragraphs.iter() {
+                let galley = painter.layout(
+                    i18n::keep_together(paragraph),
+                    FontId::proportional(text::BODY),
+                    tokens::TEXT,
+                    column_width - 14.0,
+                );
+                painter.circle_filled(pos2(x + 3.0, cy + 9.0), 2.0, tokens::MUTED);
+                let height = galley.size().y;
+                painter.galley(pos2(x + 14.0, cy), galley, tokens::TEXT);
+                cy += height + 6.0;
+            }
+            cy += 14.0;
+        }
+        bottom = bottom.max(cy);
+    }
+    bottom
 }
 
 /// Section title and its rows; returns the bottom.
@@ -356,11 +457,40 @@ mod tests {
             output.textures_delta.clear();
         }
         let content = ctx
-            .data(|d| d.get_temp::<f32>(Id::new(("help-height", true))))
+            .data(|d| d.get_temp::<f32>(Id::new(("help-height", true, Page::Keys))))
             .expect("content height");
         assert!(
             content + 40.0 <= window.height() - 48.0,
             "start screen needs {content} px"
         );
+    }
+
+    /// Both pages – the shortcuts and the tips – fit a full HD window without scrolling (in
+    /// English: tests never switch the language).
+    #[test]
+    fn both_pages_fit_a_full_hd_window() {
+        let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(1920.0, 1080.0));
+        for page in Page::ALL {
+            let ctx = Context::default();
+            for _ in 0..2 {
+                let mut output = ctx.run_ui(
+                    RawInput {
+                        screen_rect: Some(window),
+                        ..Default::default()
+                    },
+                    |ui| {
+                        overlay(ui.ctx(), window, page);
+                    },
+                );
+                output.textures_delta.clear();
+            }
+            let content = ctx
+                .data(|d| d.get_temp::<f32>(Id::new(("help-height", false, page))))
+                .expect("content height");
+            assert!(
+                content + 40.0 <= window.height() - 48.0,
+                "{page:?} needs {content} px"
+            );
+        }
     }
 }

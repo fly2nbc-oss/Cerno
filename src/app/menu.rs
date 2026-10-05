@@ -13,6 +13,7 @@ use crate::metadata::{Label, Rating};
 use crate::transfer::Mode as TransferMode;
 use crate::ui::details::DetailsMode;
 use crate::ui::icons::Panel;
+use crate::ui::palette::RowIcon;
 use crate::ui::{confirm, filter_bar, help, models, palette, viewer};
 use crate::view::{FilterKind, Media, Scope, SortKey, TOP_LEVELS, ViewOptions};
 
@@ -33,6 +34,8 @@ enum Action {
     Open,
     Sort(SortKey),
     Filter(FilterKind),
+    /// "Hide rejected" (`ViewOptions::hide_rejected`).
+    HideRejected,
     FilterClear,
     Media(Media),
     /// Only the best N photos (`ViewOptions::top`).
@@ -135,6 +138,12 @@ impl CernoApp {
         }
     }
 
+    /// The help page, always on its shortcuts (`H`, `F1`, `?`, the button, the menu).
+    pub(super) fn open_help(&mut self) {
+        self.help_page = help::Page::Keys;
+        self.help_open = true;
+    }
+
     /// A card (models, confirmation) is open: keys and the photo's mouse handling pause.
     pub(super) fn modal_open(&self) -> bool {
         self.models_open || self.confirm.is_some()
@@ -148,9 +157,12 @@ impl CernoApp {
         frames: &[viewer::Frame],
     ) {
         if self.help_open {
-            let out = help::overlay(ctx, window);
+            let out = help::overlay(ctx, window, self.help_page);
             if out.language {
                 self.switch_language(ctx);
+            }
+            if let Some(page) = out.page {
+                self.help_page = page;
             }
             if out.close {
                 self.help_open = false;
@@ -348,42 +360,47 @@ impl CernoApp {
         });
         let colour = current.and_then(|path| self.label_of(path, image.as_deref()));
 
+        // Each row shows what it sets, as the filmstrip does: ☆, then 1–5 stars.
         let stars = [Rating::Unrated]
             .into_iter()
             .chain((1..=5).map(Rating::Stars))
             .map(|value| {
-                let (label, digit) = match value {
-                    Rating::Stars(n) => ((t.filter_stars)(n), n),
-                    _ => (t.filter_unrated.to_owned(), 0),
+                let (label, digit, icon) = match value {
+                    Rating::Stars(n) => ((t.filter_stars)(n), n, RowIcon::Stars(n)),
+                    _ => (t.filter_unrated.to_owned(), 0, RowIcon::NoStars),
                 };
                 Row::new(Action::Rate(value), label, Some(digit.to_string()))
+                    .icon(icon)
                     .choice(rating == value)
                     .disabled(mark)
             })
             .collect();
-        let mut labels: Vec<Row<Action>> = [
-            (Label::Red, Some("6")),
-            (Label::Yellow, Some("7")),
-            (Label::Green, Some("8")),
-            (Label::Blue, Some("9")),
-            (Label::Purple, None),
-        ]
-        .into_iter()
-        .map(|(label, shortcut)| {
-            Row::new(
-                Action::Label(Some(label)),
-                i18n::label_name(label),
-                shortcut.map(str::to_owned),
-            )
-            .choice(colour == Some(label))
-            .swatch(crate::theme::label_color(label))
-            .disabled(mark)
-        })
-        .collect();
-        labels.push(
+        // "No colour" on top, like "No stars": an empty ring, then the colours.
+        let mut labels = vec![
             Row::new(Action::Label(None), t.label_none, None)
+                .icon(RowIcon::NoColour)
                 .choice(colour.is_none())
                 .disabled(mark),
+        ];
+        labels.extend(
+            [
+                (Label::Red, Some("6")),
+                (Label::Yellow, Some("7")),
+                (Label::Green, Some("8")),
+                (Label::Blue, Some("9")),
+                (Label::Purple, None),
+            ]
+            .into_iter()
+            .map(|(label, shortcut)| {
+                Row::new(
+                    Action::Label(Some(label)),
+                    i18n::label_name(label),
+                    shortcut.map(str::to_owned),
+                )
+                .choice(colour == Some(label))
+                .swatch(crate::theme::label_color(label))
+                .disabled(mark)
+            }),
         );
 
         let rows = [
@@ -600,7 +617,8 @@ impl CernoApp {
         match action {
             Action::Open => self.pick_folder(ctx),
             Action::Sort(sort) => self.change_options(ctx, |o| o.sort = sort),
-            Action::Filter(kind) => self.change_options(ctx, |o| o.filter.toggle(kind)),
+            Action::Filter(kind) => self.change_options(ctx, |o| o.toggle_filter(kind)),
+            Action::HideRejected => self.change_options(ctx, ViewOptions::toggle_hide_rejected),
             Action::FilterClear => self.change_options(ctx, ViewOptions::clear_filters),
             Action::Media(media) => self.change_options(ctx, |o| Scope::Media(media).apply(o)),
             Action::Top(n) => self.change_options(ctx, |o| Scope::Top(n).apply(o)),
@@ -661,7 +679,7 @@ impl CernoApp {
             Action::DeleteSelection => self.delete_selection(ctx),
             Action::Restore => self.restore_current(),
             Action::RestoreShown => self.restore_shown(),
-            Action::Help => self.help_open = true,
+            Action::Help => self.open_help(),
         }
     }
 }
@@ -710,20 +728,29 @@ fn filter_rows(
             })
             .collect(),
     );
+    // Before the boxes, like "without ✕" before the rating group in the bar.
+    let hide_rejected =
+        Row::new(Action::HideRejected, t.filter_hide_rejected, None).toggle(options.hide_rejected);
     let boxes = FilterKind::GROUPS.into_iter().flatten().map(|&kind| {
         let row = Row::new(Action::Filter(kind), kind.label(), None)
             .toggle(options.filter.contains(kind));
+        // The bar's symbols in front: ✕, 🗑, ☆, ★ and the colours.
         Entry::Row(match kind {
             FilterKind::Colour(label) => row.swatch(crate::theme::label_color(label)),
-            FilterKind::Deleted if !has_deleted && !options.filter.contains(kind) => {
-                row.disabled(Some(t.filter_deleted_none))
-            }
+            FilterKind::Rejected => row.icon(RowIcon::Reject),
+            FilterKind::Unrated => row.icon(RowIcon::NoStars),
+            FilterKind::Stars(_) => row.icon(RowIcon::Stars(1)),
+            FilterKind::Deleted if !has_deleted && !options.filter.contains(kind) => row
+                .icon(RowIcon::Trash)
+                .disabled(Some(t.filter_deleted_none)),
+            FilterKind::Deleted => row.icon(RowIcon::Trash),
             _ => row,
         })
     });
     std::iter::once(Entry::Row(clear))
         .chain(media)
         .chain(std::iter::once(Entry::Group(top)))
+        .chain(std::iter::once(Entry::Row(hide_rejected)))
         .chain(boxes)
         .chain(std::iter::once(Entry::Row(similar)))
         .collect()
@@ -823,8 +850,9 @@ mod tests {
             .map(|row| row.action)
             .collect();
         assert_eq!(ticked, vec![Action::Top(50)]);
+        assert_eq!(row(&entries[5]).action, Action::HideRejected);
         assert_eq!(
-            row(&entries[5]).action,
+            row(&entries[6]).action,
             Action::Filter(FilterKind::Rejected)
         );
         assert!(row(&entries[0]).disabled.is_none(), "Show all ends Top N");
