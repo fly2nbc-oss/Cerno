@@ -2,7 +2,8 @@
 //! filter bar's 🗑 box shows them, `Ctrl+Z` and the menus put them back. Found on a thread when
 //! a folder opens and kept up to date by deleting and putting back – never read per frame.
 //! While shown they are part of the library the analysis and the loader see (thumbnails,
-//! scores); otherwise they cost nothing.
+//! scores); otherwise they cost nothing. A deleted RAW + JPG pair is one photo here too, paired
+//! by the names they had (never with a live photo), and goes back together.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -13,6 +14,7 @@ use eframe::egui;
 use crate::i18n;
 use crate::library;
 use crate::originals;
+use crate::pairs::{self, Pairs};
 use crate::view::FilterKind;
 
 use super::CernoApp;
@@ -21,19 +23,38 @@ use super::gate::Change;
 use super::notice::Notice;
 
 /// What a restore worker did: (where it lay, where it came from, where it is now), and what
-/// failed.
+/// failed; a pair's RAW with the place its JPEG got.
 #[derive(Default)]
 struct Restored {
     done: Vec<(PathBuf, PathBuf, PathBuf)>,
     failed: Vec<(PathBuf, String)>,
+    riders: Vec<Rider>,
+}
+
+/// A deleted pair's RAW that went back with its JPEG.
+struct Rider {
+    aside: PathBuf,
+    original: PathBuf,
+    to: PathBuf,
+    /// Where its JPEG is now.
+    primary: PathBuf,
+}
+
+/// One photo to put back: where it lies, where it came from, and its RAW if it is a pair.
+struct Job {
+    aside: PathBuf,
+    original: PathBuf,
+    rider: Option<(PathBuf, PathBuf)>,
 }
 
 #[derive(Default)]
 pub(super) struct Deleted {
     /// Where each photo lies now → where it came from.
     from: HashMap<PathBuf, PathBuf>,
-    /// Where they lie, in the order of their original names.
+    /// Where they lie, in the order of their original names – a pair's RAW not among them.
     paths: Vec<PathBuf>,
+    /// The deleted pairs: the RAW lying beside each deleted JPEG.
+    pairs: Pairs,
     /// The scan of the open folder's `.originals`.
     scan: Option<mpsc::Receiver<Vec<originals::Deleted>>>,
     /// Waiting to go back: a playing video closes its file first.
@@ -48,6 +69,11 @@ impl Deleted {
         self.from.contains_key(path)
     }
 
+    /// The RAW lying beside a deleted JPEG of a pair.
+    pub(super) fn companion(&self, aside: &Path) -> Option<&Path> {
+        self.pairs.companion(aside)
+    }
+
     pub(super) fn original_of(&self, path: &Path) -> Option<&Path> {
         self.from.get(path).map(PathBuf::as_path)
     }
@@ -56,24 +82,37 @@ impl Deleted {
         self.paths.is_empty()
     }
 
-    fn set(&mut self, found: Vec<originals::Deleted>) {
-        self.paths = found.iter().map(|d| d.aside.clone()).collect();
+    fn set(&mut self, found: Vec<originals::Deleted>, pair: bool) {
         self.from = found.into_iter().map(|d| (d.aside, d.original)).collect();
+        self.arrange(pair);
     }
 
-    fn add(&mut self, aside: PathBuf, original: PathBuf) {
-        self.from.insert(aside.clone(), original);
-        self.paths.push(aside);
-        let from = &self.from;
-        self.paths.sort_by(|a, b| {
-            let name = |p: &PathBuf| from.get(p).unwrap_or(p).to_string_lossy().into_owned();
-            library::natural_cmp(&name(a), &name(b)).then_with(|| a.cmp(b))
-        });
+    fn add(&mut self, aside: PathBuf, original: PathBuf, pair: bool) {
+        self.from.insert(aside, original);
+        self.arrange(pair);
     }
 
     fn remove(&mut self, aside: &Path) {
         self.from.remove(aside);
         self.paths.retain(|p| p != aside);
+        self.pairs.forget(aside);
+    }
+
+    /// In the order of their original names; pairs by those names too.
+    fn arrange(&mut self, pair: bool) {
+        let from = &self.from;
+        let mut all: Vec<PathBuf> = from.keys().cloned().collect();
+        all.sort_by(|a, b| {
+            let name = |p: &PathBuf| from.get(p).unwrap_or(p).to_string_lossy().into_owned();
+            library::natural_cmp(&name(a), &name(b)).then_with(|| a.cmp(b))
+        });
+        (self.paths, self.pairs) = if pair {
+            pairs::pair_up(all, |p| {
+                from.get(p).cloned().unwrap_or_else(|| p.to_path_buf())
+            })
+        } else {
+            (all, Pairs::default())
+        };
     }
 }
 
@@ -139,7 +178,7 @@ impl CernoApp {
 
     /// A deletion was carried out: the photo now lies at `aside`.
     pub(super) fn add_deleted(&mut self, original: PathBuf, aside: PathBuf) {
-        self.deleted.add(aside, original);
+        self.deleted.add(aside, original, self.pair_mode);
     }
 
     /// `Ctrl+Z` or the menu on a deleted photo: it goes back into its folder.
@@ -202,7 +241,7 @@ impl CernoApp {
     pub(super) fn poll_deleted(&mut self, ctx: &egui::Context) {
         if let Some(found) = self.deleted.scan.as_ref().and_then(|rx| rx.try_recv().ok()) {
             self.deleted.scan = None;
-            self.deleted.set(found);
+            self.deleted.set(found, self.pair_mode);
             if self.options.filter.contains(FilterKind::Deleted) {
                 self.sync_library();
                 self.rebuild_view(ctx, None);
@@ -228,13 +267,21 @@ impl CernoApp {
         }
     }
 
-    /// The queued photos, with where each one goes back to.
-    fn take_queued(&mut self) -> Vec<(PathBuf, PathBuf)> {
+    /// The queued photos, with where each one goes back to (a pair's RAW with it).
+    fn take_queued(&mut self) -> Vec<Job> {
         std::mem::take(&mut self.deleted.queued)
             .into_iter()
             .filter_map(|aside| {
                 let original = self.deleted.original_of(&aside)?.to_path_buf();
-                Some((aside, original))
+                let rider = self.deleted.pairs.companion(&aside).and_then(|raw| {
+                    let from = self.deleted.original_of(raw)?;
+                    Some((raw.to_path_buf(), from.to_path_buf()))
+                });
+                Some(Job {
+                    aside,
+                    original,
+                    rider,
+                })
             })
             .collect()
     }
@@ -276,6 +323,20 @@ impl CernoApp {
             self.deleted.remove(aside);
             self.thumbs.invalidate(aside);
             all.push(to.clone());
+        }
+        // A pair's RAW is back beside its JPEG and rides along again.
+        for rider in &restored.riders {
+            if let Err(err) = self.db.record_restore(
+                &rider.aside.to_string_lossy(),
+                &rider.to.to_string_lossy(),
+                &rider.original.to_string_lossy(),
+            ) {
+                log::warn!("index: {err:#}");
+            }
+            self.deleted.remove(&rider.aside);
+            if self.pair_mode {
+                self.pairs.insert(rider.primary.clone(), rider.to.clone());
+            }
         }
         if let Some(dir) = &self.dir {
             library::sort(dir, &mut all);
@@ -329,7 +390,16 @@ impl CernoApp {
             finished.push(run_restores(&self.files, queued));
         }
         for restored in &finished {
-            for (aside, original, to) in &restored.done {
+            let riders = restored
+                .riders
+                .iter()
+                .map(|r| (&r.aside, &r.original, &r.to));
+            for (aside, original, to) in restored
+                .done
+                .iter()
+                .map(|(a, o, t)| (a, o, t))
+                .chain(riders)
+            {
                 if let Err(err) = self.db.record_restore(
                     &aside.to_string_lossy(),
                     &to.to_string_lossy(),
@@ -342,15 +412,45 @@ impl CernoApp {
     }
 }
 
-/// Puts each photo back (`originals::restore`), holding it while it moves.
-fn run_restores(files: &crate::filelock::FileLocks, jobs: Vec<(PathBuf, PathBuf)>) -> Restored {
+/// Puts each photo back (`originals::restore`), holding it while it moves. A pair's RAW
+/// follows its JPEG under the JPEG's new name (`IMG_1 (2).CR3` beside `IMG_1 (2).jpg`), or the
+/// next free one when that is taken.
+fn run_restores(files: &crate::filelock::FileLocks, jobs: Vec<Job>) -> Restored {
     let mut out = Restored::default();
-    for (aside, original) in jobs {
-        let _held = files.hold_write(&aside);
-        match originals::restore(&aside, &original) {
-            Ok(to) => out.done.push((aside, original, to)),
-            Err(err) => out.failed.push((aside, format!("{err:#}"))),
+    for job in jobs {
+        let held = files.hold_write(&job.aside);
+        let result = originals::restore(&job.aside, &job.original);
+        drop(held);
+        let to = match result {
+            Ok(to) => to,
+            Err(err) => {
+                out.failed.push((job.aside, format!("{err:#}")));
+                continue;
+            }
+        };
+        if let Some((raw, raw_original)) = job.rider {
+            let beside = to.with_extension(raw_original.extension().unwrap_or_default());
+            let _held = files.hold_write(&raw);
+            match originals::restore(&raw, &beside) {
+                Ok(raw_to) => {
+                    if raw_to != beside {
+                        log::warn!(
+                            "RAW back as {}: {} is taken",
+                            raw_to.display(),
+                            beside.display()
+                        );
+                    }
+                    out.riders.push(Rider {
+                        aside: raw,
+                        original: raw_original,
+                        to: raw_to,
+                        primary: to.clone(),
+                    });
+                }
+                Err(err) => out.failed.push((raw, format!("{err:#}"))),
+            }
         }
+        out.done.push((job.aside, job.original, to));
     }
     out
 }

@@ -40,6 +40,7 @@ impl CernoApp {
         }
         self.session_ratings.insert(path.clone(), rating);
         self.writer.set(path.clone(), rating);
+        self.rate_companion(&path, rating);
         self.analyzer.taste_changed();
         self.finish_mark(ctx, &path, next, advance, self.rating_affects_view());
     }
@@ -79,6 +80,7 @@ impl CernoApp {
         let next = self.next_path();
         self.session_labels.insert(path.clone(), label);
         self.writer.set_label(path.clone(), label);
+        self.label_companion(&path, label);
         self.finish_mark(ctx, &path, next, advance, self.options.filter.has_colour());
     }
 

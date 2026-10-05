@@ -71,9 +71,14 @@ impl CernoApp {
             self.notice = Some(Notice::hint(t.no_match));
             return;
         }
+        // A pair's RAW rides along with its JPEG.
+        let riders = sources
+            .iter()
+            .filter_map(|jpeg| Some((jpeg.clone(), self.pairs.companion(jpeg)?.to_path_buf())))
+            .collect();
         // A playing video keeps its file open; the job waits until it is closed.
         self.stop_video();
-        self.transfers.push(mode, sources, dest);
+        self.transfers.push(mode, sources, riders, dest);
         self.poll_transfer(ctx);
     }
 
@@ -124,6 +129,7 @@ impl CernoApp {
                 self.session_ratings.remove(src);
                 self.session_labels.remove(src);
                 self.session_descriptions.remove(src);
+                self.pairs.forget(src);
             }
             if self.pinned.as_ref().is_some_and(|path| gone.contains(path)) {
                 self.pinned = None;
@@ -145,7 +151,7 @@ impl CernoApp {
             return;
         }
         self.listed_follow(&outcome.done);
-        for (src, dest) in &outcome.done {
+        for (src, dest) in outcome.done.iter().chain(&outcome.riders) {
             // The kept original follows into `.originals` at the destination first.
             if let Err(err) = originals::follow(&self.db, src, dest) {
                 log::warn!("kept original of {}: {err:#}", src.display());
@@ -181,9 +187,17 @@ impl CernoApp {
             .cloned()
             .collect();
         for path in shown {
-            self.deletions.push(path, now);
+            self.queue_deletion(path, now);
         }
         self.rebuild_view(ctx, None);
+    }
+
+    /// Queues a photo for the countdown – a pair's RAW rides along, uncounted.
+    fn queue_deletion(&mut self, path: PathBuf, now: Instant) {
+        if let Some(raw) = self.pairs.companion(&path) {
+            self.deletions.push_rider(raw.to_path_buf());
+        }
+        self.deletions.push(path, now);
     }
 
     /// All rejected photos are set aside – with the usual countdown, `Esc` brings them back.
@@ -193,14 +207,14 @@ impl CernoApp {
         }
         let now = Instant::now();
         for path in self.rejected() {
-            self.deletions.push(path, now);
+            self.queue_deletion(path, now);
         }
         self.rebuild_view(ctx, None);
     }
 
     /// Hides the photo at once; it moves into `.originals` when the countdown runs out.
     fn delete(&mut self, ctx: &egui::Context, path: PathBuf, keep: Option<PathBuf>) {
-        self.deletions.push(path, Instant::now());
+        self.queue_deletion(path, Instant::now());
         self.rebuild_view(ctx, keep);
     }
 
@@ -255,6 +269,7 @@ impl CernoApp {
                     .cloned()
                     .collect();
                 for (path, aside) in &done.deleted {
+                    self.pairs.forget(path);
                     self.session_ratings.remove(path);
                     self.session_descriptions.remove(path);
                     self.forget_deleted(path, aside);

@@ -61,6 +61,13 @@ pub static TEXTS: Texts = Texts {
         }
     },
     camera_time_tooltip: |taken, offset| format!("Hora de la cámara {taken}, ajustada {offset}"),
+    cmd_pairs: "RAW+JPG como una sola foto",
+    pairs_hint: "Un RAW y un JPG con el mismo nombre aparecen como una sola foto: se muestra el JPG. Estrellas, color y descripción van a los dos archivos, copiar, mover y eliminar se llevan ambos; las ediciones solo cambian el JPG.",
+    pairs_on: "RAW+JPG aparecen como una sola foto",
+    pairs_off: "RAW y JPG aparecen por separado",
+    pair_badge: "RAW+JPG",
+    pair_edit_jpeg_only: "Solo cambia el JPG: el RAW queda intacto.",
+    pair_raw_marks: |marks| format!("RAW: {marks}"),
     filter_clear: "Mostrar todas",
     media_all: "Fotos y vídeos",
     media_photos: "Solo fotos",

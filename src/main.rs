@@ -22,6 +22,7 @@ mod metadata;
 mod name_list;
 mod originals;
 mod overlay;
+mod pairs;
 mod paths;
 mod playback;
 mod rating;

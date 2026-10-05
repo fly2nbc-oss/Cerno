@@ -36,6 +36,7 @@ impl CernoApp {
         }
         self.session_descriptions
             .insert(path.clone(), description.clone());
+        self.describe_companion(&path, &description);
         self.writer.set_description(path, description);
     }
 

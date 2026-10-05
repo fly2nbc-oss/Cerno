@@ -133,6 +133,7 @@ impl CernoApp {
                 .map(|original| self.photo_name(original)),
             video: library::format_of(path) == Some(library::Format::Video),
             deleted: self.is_deleted(path),
+            pair: self.pair_note(path),
         }
     }
 
@@ -275,6 +276,7 @@ impl CernoApp {
             deleted: self.is_deleted(&path),
             raw_preview: library::format_of(&path).is_some_and(library::Format::is_raw),
             time_offset: self.time_offset_of(&path),
+            pair: self.pair_note(&path).map(|(note, _)| note),
         };
         let out = info_bar::info_bar(ui, rect, &bar);
         if let Some(stars) = out.rating {

@@ -10,6 +10,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 ### Added
 
 - **Four photos at once** – `Shift+C` shows four photos of the view side by side, from the current one. A frame marks the current photo: stars, labels, `X` and `Delete` act on it, `←`/`→` move the frame a photo, `↑`/`↓` a row, a click puts it on a photo. Zooming and `Ctrl+1` show all four at the same place. `Shift+C` again or `Esc` shows the single photo; comparing two with `C`, `A` and `D` stays as it is.
+- **RAW + JPG as one photo** – a RAW (or DNG) and a JPG of the same name appear once, as the JPG, with a `RAW+JPG` mark. Stars, colour, comment and keywords go into both files; copy, move and delete take both, and a deleted pair comes back together. Straightening, cropping and turning change the JPG only. Where the RAW's XMP file holds other marks, the info bar says so (`RAW+JPG – RAW: 5 stars, Red`) – nothing is changed until you set a mark yourself. *Settings ▸ RAW+JPG as one photo* turns it off.
 
 ## [1.7.0] – 2026-10-05
 
