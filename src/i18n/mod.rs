@@ -662,10 +662,10 @@ pub struct Texts {
     pub download_failed: fn(&str) -> String,
     pub exiftool_ready: &'static str,
     pub exiftool_failed: fn(&str) -> String,
-    /// Tooltip on the button that copies the models folder path.
-    pub copy_models_path: &'static str,
-    /// Shown briefly after that button copies the path.
-    pub models_path_copied: &'static str,
+    /// Tooltip on the buttons that copy a path (the models folder, the photo in Details › File).
+    pub copy_path: &'static str,
+    /// Shown briefly after such a button copied it.
+    pub path_copied: &'static str,
     pub confirm_reset_taste_title: &'static str,
     pub confirm_reset_taste_text: &'static str,
     pub confirm_delete_models_title: &'static str,

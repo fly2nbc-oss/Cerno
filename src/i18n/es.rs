@@ -441,8 +441,8 @@ pub static TEXTS: Texts = Texts {
     exiftool_failed: |err| {
         format!("No se pudo descargar ExifTool: {err}. Un nuevo intento continúa desde ahí")
     },
-    copy_models_path: "Copiar ruta",
-    models_path_copied: "Ruta copiada",
+    copy_path: "Copiar ruta",
+    path_copied: "Ruta copiada",
     confirm_reset_taste_title: "¿Restablecer la predicción?",
     confirm_reset_taste_text: "Cerno olvidará lo aprendido de tus estrellas y fotos rechazadas. Las estrellas en los archivos de foto no cambian.",
     confirm_delete_models_title: "¿Eliminar los modelos descargados?",

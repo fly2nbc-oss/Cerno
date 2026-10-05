@@ -440,8 +440,8 @@ pub static TEXTS: Texts = Texts {
     exiftool_failed: |err| {
         format!("ExifTool could not be downloaded: {err} – trying again continues there")
     },
-    copy_models_path: "Copy path",
-    models_path_copied: "Path copied",
+    copy_path: "Copy path",
+    path_copied: "Path copied",
     confirm_reset_taste_title: "Reset the prediction?",
     confirm_reset_taste_text: "Cerno will forget what it learned from your stars and rejected photos. Star ratings in the photo files stay unchanged.",
     confirm_delete_models_title: "Delete downloaded models?",

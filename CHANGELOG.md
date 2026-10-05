@@ -15,6 +15,7 @@ No more ffmpeg, ExifTool with one click, an About page, and the details panel's 
 
 - **About Cerno** – the help (`H`) has a third tab with the version, the licence and the source code, and links to report a problem or suggest an idea on GitHub (version and system filled in) and to open the data folder with `crash.log`.
 - **ExifTool with one click (Windows)** – Cerno writes stars, colours, comments and keywords with ExifTool. When it is missing, Cerno now offers to download it (11 MB, from the official source, checked before it is used): once when a folder opens, at the first star, and in *Models & data*. Nothing to install by hand, no `winget`.
+- **Copy a photo's path** – a small button in the details panel's *File* title puts the photo's full path on the clipboard; its tooltip shows the path.
 
 ### Changed
 
@@ -29,6 +30,7 @@ No more ffmpeg, ExifTool with one click, an About page, and the details panel's 
 
 - `Ctrl+Z` right after deleting brings the photo back, like `Esc`. It used to act on the next photo – and could put that photo's original over its edit.
 - Rating a RAW without ExifTool no longer leaves an empty XMP file behind that hid the camera's own stars.
+- In a group photo, the faces (`G` and the Faces tab) no longer show two people twice: the face detection sometimes found a "face" between two heads, with an eye of each. Such boxes are now left out – also for photos analysed before, without analysing them again.
 
 ## [1.8.0] – 2026-10-05
 

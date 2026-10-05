@@ -244,6 +244,8 @@ fn cut_out(
             rows
         }
     };
+    // Stored before 1.9.0, a box between two neighbours would show both people twice.
+    let rows = detection::rows_without_bridges(rows, aw, ah);
     let mut judged: Vec<&FaceRow> = rows
         .iter()
         .filter(|row| detection::measurable(row.bbox[2], aw))
