@@ -17,6 +17,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ### Changed
 
+- **A RAW file says that its preview shows** – what Cerno shows of a RAW is the JPEG the camera embedded: the info bar says *RAW preview* (and *Zoom 100 % of the preview*), Details › File marks the size as the preview's and explains it, the histogram and exposure say *(preview)*.
 - **The menus show what a row sets** – stars before the star ratings, a dot before the colours, ✕ and the bin before rejected and deleted, as in the filter bar. "No colour" sits on top like "No stars" (German: „Ohne Farbe“).
 
 ## [1.5.2] – 2026-10-03

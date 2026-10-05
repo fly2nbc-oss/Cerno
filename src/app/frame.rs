@@ -273,6 +273,7 @@ impl CernoApp {
             },
             similarity: self.similarity_to_reference(&path),
             deleted: self.is_deleted(&path),
+            raw_preview: library::format_of(&path).is_some_and(library::Format::is_raw),
         };
         let out = info_bar::info_bar(ui, rect, &bar);
         if let Some(stars) = out.rating {
@@ -319,6 +320,7 @@ impl CernoApp {
                 file: image.as_deref().map(|i| (i.original_size, i.load_ms)),
                 file_bytes: image.as_deref().map(|i| i.file_bytes),
                 jpeg: image.as_deref().and_then(|i| i.jpeg),
+                raw_preview: library::format_of(&path).is_some_and(library::Format::is_raw),
                 position: image.as_deref().and_then(|i| i.camera.gps),
                 media: media.as_ref(),
                 video,

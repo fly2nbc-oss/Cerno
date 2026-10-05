@@ -333,6 +333,8 @@ pub struct Texts {
     /// Tooltip over the light stars: the prediction, 0..=5.
     pub personal_hint: fn(f32) -> String,
     pub zoom: fn(f32) -> String,
+    /// The zoom of a RAW file: 100 % is the size of its preview, not of the sensor.
+    pub zoom_preview: fn(f32) -> String,
     pub digital_zoom: fn(f64) -> String,
     pub button_toolbar: &'static str,
     pub button_details: &'static str,
@@ -449,6 +451,10 @@ pub struct Texts {
     pub restore_failed: fn(usize, &str, &str) -> String,
     /// Beside the name in the info bar while a deleted photo shows.
     pub deleted_mark: &'static str,
+    /// In the info bar while a RAW file shows: its embedded JPEG preview, not a development.
+    pub raw_preview_fact: &'static str,
+    /// After a size or a section title that is about a RAW file's preview.
+    pub preview_word: &'static str,
     pub edit_failed: fn(&str) -> String,
     /// Banner hints while straightening and cropping.
     pub edit_hint_straighten: &'static str,
@@ -515,6 +521,7 @@ pub struct Texts {
     pub row_file_size: &'static str,
     pub row_jpeg_quality: &'static str,
     pub explain_jpeg_quality: &'static str,
+    pub explain_raw_preview: &'static str,
     /// The file section of a video (`playback::probe`).
     pub row_container: &'static str,
     pub row_duration: &'static str,
@@ -682,6 +689,23 @@ mod tests {
             assert!((t.star_tooltip)(4).contains('4'), "{name}");
             assert!((t.personal_hint)(2.4).contains("2.4"), "{name}");
             assert!((t.zoom)(250.0).contains("250"), "{name}");
+            assert!((t.zoom_preview)(100.0).contains("100"), "{name}");
+            assert!((t.bulk_restore)(12).contains("12"), "{name}");
+            let back = (t.restored)(6, 2, "IMG_1 (2).jpg");
+            assert!(back.contains('6') && back.contains('2'), "{name}");
+            assert!(
+                (t.restored)(1, 0, "IMG_1.jpg").contains("IMG_1.jpg"),
+                "{name}"
+            );
+            assert!(
+                (t.restored)(1, 1, "IMG_1 (2).jpg").contains("IMG_1 (2).jpg"),
+                "{name}"
+            );
+            let failed = (t.restore_failed)(3, "b.jpg", "busy");
+            assert!(
+                failed.contains('3') && failed.contains("b.jpg") && failed.contains("busy"),
+                "{name}"
+            );
             assert!((t.digital_zoom)(2.0).contains('2'), "{name}");
             assert!((t.button_language)(name).contains(name), "{name}");
             assert!((t.cmd_delete_rejected)(7).contains('7'), "{name}");
@@ -769,6 +793,11 @@ mod tests {
                 assert!(!keys.trim().is_empty() && !action.trim().is_empty());
             }
             assert!(t.help_sections.iter().all(|title| !title.is_empty()));
+            for (title, tips) in &t.help_tips {
+                assert!(!title.is_empty() && !tips.is_empty());
+                assert!(tips.iter().all(|tip| !tip.trim().is_empty()));
+            }
+            assert!(!t.help_tab_keys.is_empty() && !t.help_tab_tips.is_empty());
         }
     }
 
