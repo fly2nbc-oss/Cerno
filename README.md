@@ -19,11 +19,11 @@ Cerno (Latin *cerno* – "I sift, see clearly") helps you go through a folder of
 - **Instant switching** – the photos around the current one are loaded in advance.
 - **Rate from the keyboard** – stars, reject, colour labels, comment and keywords.
 - **Two helpers under every photo** – *Aesthetics* and *Sharpness*, both in percent (see [the values](#the-values)). Empty stars fill lightly with Cerno's guess of your rating.
-- **Sort and filter** – by capture time, rating, aesthetics, sharpness; photos or videos only; blurry shots, duplicates, similar photos, photos with or without people. Filters of different kinds work together: *4★* and *Blurry* are the blurry 4-star photos.
+- **Sort and filter** – by capture time, rating, aesthetics, sharpness; photos or videos only; blurry shots, duplicates, similar photos, photos with or without people; *without ✕* hides the rejected ones. Filters of different kinds work together: *4★* and *Blurry* are the blurry 4-star photos.
 - **Top 10 … Top 250** – the best photos of what the filters leave, for a slideshow or a photo book: by your stars (else Cerno's guess), aesthetics and sharpness, the best of each burst first. Rejected and blurry shots and duplicates never count, and nothing in the photos changes.
 - **Compare** two photos side by side, or see the whole folder as a grid.
-- **Straighten, crop and rotate** JPEGs – the original is kept and `Ctrl+Z` brings it back.
-- **Nothing is lost** – deleting moves a photo into a hidden `.originals` folder beside it, after a 5-second countdown you can undo with `Esc`.
+- **Straighten, crop and rotate** JPEGs – with the mouse or the keyboard; the original is kept and `Ctrl+Z` brings it back.
+- **Nothing is lost** – deleting moves a photo into a hidden `.originals` folder beside it, after a 5-second countdown you can undo with `Esc`. Later the bin box in the filter bar shows the deleted photos, and `Ctrl+Z` puts one back.
 - **Videos play right here** – with sound: `Space` plays and pauses, `Alt+←`/`Alt+→` jump 5 seconds, the bar under the video seeks and sets the volume.
 - **Formats** – JPEG, HEIC, PNG, TIFF, WebP, BMP, GIF, RAW (its embedded preview) and videos (MP4, MOV, MKV, WebM, AVI, MTS …).
 - **Five languages** – German, English, French, Spanish, Italian.
@@ -60,7 +60,8 @@ The Windows files are not signed yet: SmartScreen asks once (*More info* → *Ru
 | `Ctrl+U` | Include subfolders (on / off) |
 | `Ctrl+K` | Menu with every function |
 | `Ctrl+M` | Copy, move or delete all photos the filter shows |
-| `H` | Help with all keys |
+| `Ctrl+Z` | Undo an edit – on a deleted photo: put it back |
+| `H` | Help: all keys, and tips on working with Cerno |
 
 ## The values
 

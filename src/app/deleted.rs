@@ -228,29 +228,26 @@ impl CernoApp {
         }
     }
 
-    fn start_restore(&mut self, ctx: &egui::Context) {
-        let jobs: Vec<(PathBuf, PathBuf)> = std::mem::take(&mut self.deleted.queued)
+    /// The queued photos, with where each one goes back to.
+    fn take_queued(&mut self) -> Vec<(PathBuf, PathBuf)> {
+        std::mem::take(&mut self.deleted.queued)
             .into_iter()
             .filter_map(|aside| {
                 let original = self.deleted.original_of(&aside)?.to_path_buf();
                 Some((aside, original))
             })
-            .collect();
+            .collect()
+    }
+
+    fn start_restore(&mut self, ctx: &egui::Context) {
+        let jobs = self.take_queued();
         let files = Arc::clone(&self.files);
         let repaint = ctx.clone();
         let (tx, rx) = mpsc::channel();
         let spawned = std::thread::Builder::new()
             .name("cerno-restore".into())
             .spawn(move || {
-                let mut out = Restored::default();
-                for (aside, original) in jobs {
-                    let _held = files.hold_write(&aside);
-                    match originals::restore(&aside, &original) {
-                        Ok(to) => out.done.push((aside, original, to)),
-                        Err(err) => out.failed.push((aside, format!("{err:#}"))),
-                    }
-                }
-                let _ = tx.send(out);
+                let _ = tx.send(run_restores(&files, jobs));
                 repaint.request_repaint();
             });
         match spawned {
@@ -318,11 +315,20 @@ impl CernoApp {
         });
     }
 
-    /// On exit: a restore still running finishes and is recorded.
+    /// On exit: a restore still running finishes, one still queued is carried out (the video
+    /// that held it is stopped by now), and both are recorded.
     pub(super) fn finish_restores(&mut self) {
+        let mut finished = Vec::new();
         if let Some(rx) = self.deleted.restoring.take()
             && let Ok(restored) = rx.recv_timeout(std::time::Duration::from_secs(5))
         {
+            finished.push(restored);
+        }
+        let queued = self.take_queued();
+        if !queued.is_empty() {
+            finished.push(run_restores(&self.files, queued));
+        }
+        for restored in &finished {
             for (aside, original, to) in &restored.done {
                 if let Err(err) = self.db.record_restore(
                     &aside.to_string_lossy(),
@@ -334,4 +340,17 @@ impl CernoApp {
             }
         }
     }
+}
+
+/// Puts each photo back (`originals::restore`), holding it while it moves.
+fn run_restores(files: &crate::filelock::FileLocks, jobs: Vec<(PathBuf, PathBuf)>) -> Restored {
+    let mut out = Restored::default();
+    for (aside, original) in jobs {
+        let _held = files.hold_write(&aside);
+        match originals::restore(&aside, &original) {
+            Ok(to) => out.done.push((aside, original, to)),
+            Err(err) => out.failed.push((aside, format!("{err:#}"))),
+        }
+    }
+    out
 }
