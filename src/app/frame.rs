@@ -366,6 +366,7 @@ impl CernoApp {
                 .iter()
                 .any(|p| library::format_of(p) == Some(library::Format::Video)),
             has_deleted: self.has_deleted(),
+            name_list: self.name_list.counts(),
         };
         let mut options = self.options;
         let out = filter_bar::toolbar(ui, rect, &mut options, &info);

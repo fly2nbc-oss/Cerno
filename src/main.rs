@@ -18,6 +18,7 @@ mod jpeg_info;
 mod library;
 mod loader;
 mod metadata;
+mod name_list;
 mod originals;
 mod overlay;
 mod paths;

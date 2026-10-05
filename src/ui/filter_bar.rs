@@ -34,6 +34,8 @@ pub struct ToolbarInfo<'a> {
     pub has_videos: bool,
     /// The folder has deleted photos (else the 🗑 box is greyed out).
     pub has_deleted: bool,
+    /// The pasted file-name list while it filters: found and asked for.
+    pub name_list: Option<(usize, usize)>,
 }
 
 #[derive(Default)]
@@ -115,6 +117,20 @@ pub fn toolbar(
                                     // nothing.
                                     similar_clicked =
                                         similar_chip(ui, options.similar, info.similar_to);
+                                    // While a pasted list filters: how much of it was found; a
+                                    // click shows every photo again.
+                                    if let Some((found, total)) =
+                                        info.name_list.filter(|_| options.name_list)
+                                        && chip(
+                                            ui,
+                                            true,
+                                            Face::Text(&(t.name_list_chip)(found, total)),
+                                        )
+                                        .on_hover_text(t.name_list_chip_tooltip)
+                                        .clicked()
+                                    {
+                                        options.name_list = false;
+                                    }
                                 });
                             });
                         overflow_hint(
@@ -696,6 +712,7 @@ mod tests {
                         total,
                         has_videos: true,
                         has_deleted: false,
+                        name_list: None,
                     };
                     action = toolbar(ui, screen, &mut options, &info).actions_anchor;
                 },
@@ -782,6 +799,7 @@ mod tests {
                         total: 340,
                         has_videos: true,
                         has_deleted: false,
+                        name_list: None,
                     };
                     toolbar(ui, bar, &mut options, &info);
                 },
@@ -858,6 +876,7 @@ mod tests {
                         total: 340,
                         has_videos: true,
                         has_deleted: false,
+                        name_list: None,
                     };
                     let out = toolbar(ui, screen, &mut options, &info);
                     let action = out.actions_anchor.expect("the Action button is drawn");

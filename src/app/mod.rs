@@ -28,6 +28,7 @@ mod gate;
 mod keys;
 mod marks;
 mod menu;
+mod name_list;
 mod notice;
 mod panels;
 mod photos;
@@ -103,6 +104,8 @@ pub struct CernoApp {
     all_index: HashMap<PathBuf, usize>,
     /// The deleted photos of the folder, lying in `.originals`.
     deleted: deleted::Deleted,
+    /// The pasted file-name list (*Filter ▸ By file list …*).
+    name_list: name_list::NameList,
     /// What is shown, after sorting, filtering and hiding pending deletions.
     view: View,
     current: usize,
@@ -292,6 +295,7 @@ impl CernoApp {
                 .unwrap_or_default(),
             top: None,
             hide_rejected: db.setting("hide_rejected").as_deref() == Some("1"),
+            name_list: false,
         };
         let auto_advance = db.setting("auto_advance").as_deref() == Some("1");
         let subfolders = db.setting("subfolders").as_deref() == Some("1");
@@ -337,6 +341,7 @@ impl CernoApp {
             library: Arc::new(Vec::new()),
             all_index: HashMap::new(),
             deleted: deleted::Deleted::default(),
+            name_list: name_list::NameList::default(),
             view: View::default(),
             current: 0,
             pinned: None,

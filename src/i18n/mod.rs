@@ -235,6 +235,16 @@ pub struct Texts {
     /// The word before the cross in the filter bar's "without ✕" box.
     pub filter_without: &'static str,
     pub filter_hide_rejected_tooltip: &'static str,
+    pub menu_name_list: &'static str,
+    pub name_list_title: &'static str,
+    pub name_list_intro: &'static str,
+    pub name_list_hint: &'static str,
+    pub name_list_missing: &'static str,
+    pub name_list_ambiguous: &'static str,
+    pub name_list_apply: &'static str,
+    pub name_list_chip_tooltip: &'static str,
+    pub name_list_found: fn(usize, usize) -> String,
+    pub name_list_chip: fn(usize, usize) -> String,
     pub filter_clear: &'static str,
     /// The filter bar's photos / videos box and the same rows in Filter ▸.
     pub media_all: &'static str,
