@@ -48,6 +48,12 @@ pub(super) enum Blocked {
     NotJpeg,
     /// The photo is deleted (in `.originals`): it takes nothing until it is put back.
     Deleted,
+    /// Marks and edits are written by ExifTool, and there is none.
+    NoExifTool,
+    /// The ExifTool found is older than 12.24 (`exiftool::MIN_VERSION`).
+    ExifToolOld,
+    /// ExifTool is being downloaded.
+    ExifToolLoading,
 }
 
 impl Blocked {
@@ -61,8 +67,29 @@ impl Blocked {
             Self::NoIndex => t.edit_needs_index,
             Self::NotJpeg => t.edit_not_jpeg,
             Self::Deleted => t.busy_deleted,
+            Self::NoExifTool => t.exiftool_missing,
+            Self::ExifToolOld => t.exiftool_too_old,
+            Self::ExifToolLoading => t.exiftool_loading,
         }
     }
+
+    /// The fix is ExifTool: the hint offers it.
+    pub(super) fn needs_exiftool(self) -> bool {
+        matches!(
+            self,
+            Self::NoExifTool | Self::ExifToolOld | Self::ExifToolLoading
+        )
+    }
+}
+
+/// Whether ExifTool can write now.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Tool {
+    #[default]
+    Ready,
+    Missing,
+    TooOld,
+    Loading,
 }
 
 /// What is going on right now, as far as [`blocked`] is concerned.
@@ -78,6 +105,8 @@ struct Activity {
     no_index: bool,
     /// The photo is deleted, lying in `.originals`.
     deleted: bool,
+    /// ExifTool, which writes marks and edits.
+    tool: Tool,
 }
 
 fn blocked(change: Change, now: Activity) -> Option<Blocked> {
@@ -87,12 +116,26 @@ fn blocked(change: Change, now: Activity) -> Option<Blocked> {
         transfer,
         no_index,
         deleted,
+        tool,
     } = now;
     // A deleted photo is only looked at – and put back, which is all that may happen to it.
     match (change, deleted) {
         (Change::Restore, _) => return None,
         (_, true) => return Some(Blocked::Deleted),
         _ => {}
+    }
+    // Marks and edits go through ExifTool (`E` too: its save may drop the marks, which come
+    // back through ExifTool). Without it they are greyed out instead of failing.
+    if matches!(
+        change,
+        Change::Mark | Change::Edit | Change::Rewrite | Change::External
+    ) {
+        match tool {
+            Tool::Ready => {}
+            Tool::Missing => return Some(Blocked::NoExifTool),
+            Tool::TooOld => return Some(Blocked::ExifToolOld),
+            Tool::Loading => return Some(Blocked::ExifToolLoading),
+        }
     }
     if no_index && matches!(change, Change::Edit | Change::Rewrite | Change::External) {
         return Some(Blocked::NoIndex);
@@ -137,6 +180,7 @@ impl CernoApp {
                 transfer,
                 no_index: self.db.is_in_memory(),
                 deleted: path.is_some_and(|p| self.is_deleted(p)),
+                tool: self.exiftool_tool(),
             },
         )
         .or_else(|| {
@@ -146,9 +190,18 @@ impl CernoApp {
         })
     }
 
-    /// `true` when `change` may go ahead; otherwise a hint says why not.
+    /// `true` when `change` may go ahead; otherwise a hint says why not. ExifTool is looked
+    /// for once more first (installed meanwhile); without it the hint offers it.
     pub(super) fn allowed(&mut self, change: Change, path: Option<&Path>) -> bool {
-        match self.blocked_for(change, path) {
+        let mut reason = self.blocked_for(change, path);
+        if reason.is_some_and(Blocked::needs_exiftool) && self.recheck_exiftool() {
+            reason = self.blocked_for(change, path);
+        }
+        match reason {
+            Some(reason) if reason.needs_exiftool() => {
+                self.offer_exiftool(reason);
+                false
+            }
             Some(reason) => {
                 self.notice = Some(Notice::hint(reason.hint()));
                 false
@@ -244,5 +297,28 @@ mod tests {
         ] {
             assert_eq!(blocked(Restore, now), None);
         }
+        // Without ExifTool nothing is written into a photo; deleting, putting back, copying
+        // and moving don't need it.
+        for (tool, reason) in [
+            (Tool::Missing, Blocked::NoExifTool),
+            (Tool::TooOld, Blocked::ExifToolOld),
+            (Tool::Loading, Blocked::ExifToolLoading),
+        ] {
+            let now = Activity { tool, ..idle };
+            for change in [Mark, Edit, Rewrite, External] {
+                assert_eq!(blocked(change, now), Some(reason), "{change:?}");
+                assert!(reason.needs_exiftool());
+            }
+            for change in [Delete, Transfer, Restore] {
+                assert_eq!(blocked(change, now), None, "{change:?}");
+            }
+            // A deleted photo says so first: putting it back is what it needs.
+            let gone = Activity {
+                deleted: true,
+                ..now
+            };
+            assert_eq!(blocked(Mark, gone), Some(Blocked::Deleted));
+        }
+        assert!(!Blocked::Writing.needs_exiftool());
     }
 }

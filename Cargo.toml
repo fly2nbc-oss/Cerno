@@ -48,6 +48,8 @@ sys-locale = "0.3"
 # The system's certificate store (`platform-verifier`, still rustls): an antivirus or company
 # proxy that inspects HTTPS puts its root there, and the model download has to get through.
 ureq = { version = "3.4.2", features = ["platform-verifier"] }
+# Unpacks the ExifTool download (Windows): deflate only, through the flate2 already in the tree.
+zip = { version = "8.6", default-features = false, features = ["deflate-flate2"] }
 zune-core = "0.5.3"
 zune-jpeg = "0.5.15"
 

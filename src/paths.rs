@@ -1,4 +1,4 @@
-//! Where Cerno keeps its own data: the index database and downloaded models.
+//! Where Cerno keeps its own data: the index database, downloaded models and tools.
 
 use std::path::PathBuf;
 
@@ -24,6 +24,12 @@ fn default_data_dir() -> Result<PathBuf> {
 /// that are already downloaded.
 pub fn models_dir() -> Result<PathBuf> {
     Ok(default_data_dir()?.join("models"))
+}
+
+/// The programs Cerno downloads itself (ExifTool on Windows). It follows `CERNO_DATA_DIR`, so
+/// a scripted test can start without ExifTool and fetch it into its own folder.
+pub fn tools_dir() -> Result<PathBuf> {
+    Ok(data_dir()?.join("tools"))
 }
 
 pub fn database_path() -> Result<PathBuf> {

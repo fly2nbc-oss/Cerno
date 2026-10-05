@@ -42,7 +42,7 @@ Download from [Releases](https://github.com/fly2nbc-oss/Cerno/releases):
 
 The Windows files are not signed yet: SmartScreen asks once (*More info* → *Run anyway*).
 
-**Needed for writing stars and labels:** [ExifTool](https://exiftool.org/) (Windows: `winget install OliverBetz.ExifTool`, Linux: `apt install libimage-exiftool-perl`). Viewing works without it.
+**Writing stars and labels** needs [ExifTool](https://exiftool.org/): on Windows Cerno offers to download it (11 MB) the first time it is needed; on Linux install it with the package manager (`apt install libimage-exiftool-perl`). Viewing works without it.
 **Videos** play with GStreamer: the Windows downloads bring it along; on Linux the `.deb` installs it, and the AppImage uses the one every desktop has. **Optional:** [ffmpeg](https://ffmpeg.org/) shows a still frame and a filmstrip picture of each video (Windows: `winget install Gyan.FFmpeg`, Linux: `apt install ffmpeg`).
 
 ## The most important keys

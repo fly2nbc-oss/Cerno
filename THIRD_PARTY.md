@@ -44,6 +44,6 @@ The V2.5 head is deliberately kept out of the repository and the binary; Cerno r
 ## Used from the system
 
 - **Segoe UI** (Windows) or DejaVu Sans / Noto Sans (Linux) as UI font – read from the system at start-up, not distributed.
-- **ExifTool** – separate program, called to write ratings; not distributed.
+- **ExifTool** (© Phil Harvey; the Perl Artistic License or the GPL, like Perl) – separate program, called to write the marks. Not distributed: on Windows Cerno downloads the official, unchanged package (`exiftool-13.59_64.zip` from SourceForge, checked by size and SHA-256) into its data folder when the user asks; the package brings its licence (`exiftool_files/LICENSE`). On Linux it comes from the distribution.
 - **ffmpeg** (optional) – separate program, called for one frame of each video (still frame and thumbnail); not distributed. Without it videos show a placeholder and still play.
 - **GStreamer** (Linux) – the distribution's GStreamer and its plugins play videos; not distributed.

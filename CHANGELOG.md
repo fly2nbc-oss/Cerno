@@ -7,6 +7,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **ExifTool with one click (Windows)** – Cerno writes stars, colours, comments and keywords with ExifTool. When it is missing, Cerno now offers to download it (11 MB, from the official source, checked before it is used): once when a folder opens, at the first star, and in *Models & data*. Nothing to install by hand, no `winget`.
+
+### Changed
+
+- **Without ExifTool, stars and colours are greyed out** with the reason, instead of showing and then being lost. On Linux the hint names the command that installs it. An ExifTool older than 12.24 is not used: it can run code hidden in a photo.
+
+### Fixed
+
+- Rating a RAW without ExifTool no longer leaves an empty XMP file behind that hid the camera's own stars.
+
 ## [1.8.0] – 2026-10-05
 
 Four photos at once, and a RAW with its JPG as one photo.

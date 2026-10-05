@@ -7,6 +7,7 @@
 //! - `deleted`: the deleted photos in `.originals` – shown through 🗑, put back with `Ctrl+Z`
 //! - `editing`: straighten, crop, quarter turns, `Ctrl+Z`
 //! - `gate`: one action at a time on a photo
+//! - `exiftool`: ExifTool – found or not, its download, the offer
 //! - `keys`: the keyboard
 //! - `photos`: the photo area, compare mode, mouse zoom and pan
 //! - `frame`: the layout and the bars around the photo
@@ -21,6 +22,7 @@ mod camera_time;
 mod deleted;
 mod describe;
 mod editing;
+mod exiftool;
 mod external;
 mod faces;
 mod files;
@@ -207,6 +209,8 @@ pub struct CernoApp {
     language_flash: Option<Instant>,
     /// Message over the photo; hints fade, errors wait for Esc or a click.
     notice: Option<Notice>,
+    /// ExifTool: found or not, its download (Windows).
+    exiftool: exiftool::ExifToolSetup,
     /// Process start, for the start-up log lines.
     started: Instant,
     logged_first_frame: bool,
@@ -408,6 +412,7 @@ impl CernoApp {
             tab_presses: Vec::new(),
             language_flash: None,
             notice,
+            exiftool: exiftool::ExifToolSetup::new(),
             started,
             logged_first_frame: false,
             logged_first_photo: false,
@@ -477,6 +482,7 @@ impl CernoApp {
         self.poll_transfer(ctx);
         self.poll_external(ctx);
         self.poll_edits();
+        self.poll_exiftool();
         self.refresh_marks(ctx);
         if let Some(removal) = self.analyzer.take_removal() {
             self.notice = Some(match removal {
@@ -581,6 +587,8 @@ impl eframe::App for CernoApp {
     }
 
     fn on_exit(&mut self) {
+        // A running ExifTool download stops; its `.part` waits for the next attempt.
+        self.exiftool.cancel();
         // A rating given right before closing must still reach the file, and a deletion that
         // wasn't undone is carried out. A confirmed edit encodes first, then the writer
         // applies it.

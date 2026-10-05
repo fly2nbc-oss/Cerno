@@ -32,7 +32,7 @@ pub fn locate() -> Option<PathBuf> {
         .ok()
         .and_then(|exe| exe.parent().map(|dir| dir.join(name)))
         .filter(|p| p.is_file());
-    bundled.or_else(|| crate::exiftool::find_in_path(&std::env::var_os("PATH")?, name))
+    bundled.or_else(|| crate::process::find_in_path(&std::env::var_os("PATH")?, name))
 }
 
 /// One frame as JPEG bytes: at one second, or – for a clip shorter than that – the first.
@@ -77,7 +77,7 @@ fn frame_at(exe: &Path, path: &Path, seconds: &str, side: Option<u32>) -> Result
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    no_window(&mut command);
+    crate::process::hide_window(&mut command);
     let mut child = command
         .spawn()
         .with_context(|| format!("cannot start {}", exe.display()))?;
@@ -159,16 +159,6 @@ pub fn blank(max_size: [u32; 2]) -> DecodedImage {
     }
 }
 
-#[cfg(windows)]
-fn no_window(command: &mut Command) {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    command.creation_flags(CREATE_NO_WINDOW);
-}
-
-#[cfg(not(windows))]
-fn no_window(_command: &mut Command) {}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -200,7 +190,7 @@ mod tests {
             .arg("testsrc=duration=0.5:size=320x240:rate=10")
             .args(["-pix_fmt", "yuv420p"])
             .arg(&clip);
-        no_window(&mut make);
+        crate::process::hide_window(&mut make);
         assert!(make.status().unwrap().success());
 
         let jpeg = poster(&clip).expect("a frame");

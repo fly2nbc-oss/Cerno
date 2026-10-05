@@ -5,17 +5,7 @@
 
 use super::aesthetic;
 
-pub struct ModelFile {
-    /// File name in the models directory.
-    pub name: &'static str,
-    /// Pinned: a Hugging Face commit or a GitHub release tag that is never re-used.
-    pub url: &'static str,
-    /// Tried once when `url` fails; it must serve the same bytes.
-    pub mirror: Option<&'static str>,
-    pub bytes: u64,
-    /// Lower-case hex.
-    pub sha256: &'static str,
-}
+pub use crate::download::RemoteFile as ModelFile;
 
 /// A model that is downloaded as a whole: usable once all its files are there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
