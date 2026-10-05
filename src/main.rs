@@ -14,6 +14,7 @@ mod exiftool;
 mod external;
 mod filelock;
 mod filetimes;
+mod frames;
 mod histogram;
 mod i18n;
 mod jpeg_info;
@@ -53,6 +54,12 @@ fn main() -> eframe::Result {
         .format_timestamp_millis()
         .init();
     crashlog::install();
+
+    // `cerno --frames`: a helper that takes video frames for Cerno (`video`).
+    let first = std::env::args_os().nth(1);
+    if first.as_deref() == Some(std::ffi::OsStr::new("--frames")) {
+        std::process::exit(video::serve_frames());
+    }
 
     // `cerno --check-video <file>`: the package tests' check that the shipped GStreamer plays.
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--check-video")) {

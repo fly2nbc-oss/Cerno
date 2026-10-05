@@ -13,8 +13,8 @@ use crate::theme::{text, tokens};
 use crate::ui::{icons, stars};
 
 /// Over a video's frame, near the bottom: a round button with a large painted play sign (its
-/// tooltip says `Space`); above it, when there is no frame, why (`note`).
-pub fn video_badge(ui: &Ui, area: Rect, note: Option<&str>, slot: usize) -> Response {
+/// tooltip says `Space`).
+pub fn video_badge(ui: &Ui, area: Rect, slot: usize) -> Response {
     let painter = ui.painter().with_clip_rect(area);
     let radius = 28.0;
     let centre = bottom_slot(area, 0);
@@ -37,15 +37,6 @@ pub fn video_badge(ui: &Ui, area: Rect, note: Option<&str>, slot: usize) -> Resp
         tokens::TEXT,
         Stroke::NONE,
     ));
-    if let Some(note) = note {
-        painter.text(
-            pos2(area.center().x, button.top() - 10.0),
-            Align2::CENTER_BOTTOM,
-            note,
-            FontId::proportional(text::SMALL),
-            tokens::MUTED,
-        );
-    }
     response
 }
 

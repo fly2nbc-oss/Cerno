@@ -396,9 +396,8 @@ impl CernoApp {
         if self.draw_video(ui, slot.area, path) || self.current_video() != Some(path) {
             return;
         }
-        let note = self.no_ffmpeg.then_some(i18n::t().video_no_ffmpeg);
         // A click on the play button plays it, like `Enter` or `Space`.
-        if overlays::video_badge(ui, slot.area, note, slot.index).clicked() {
+        if overlays::video_badge(ui, slot.area, slot.index).clicked() {
             self.toggle_video(ui.ctx());
         }
     }

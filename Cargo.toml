@@ -120,9 +120,8 @@ priority = "optional"
 # The package version is the crate version, like the file name.
 revision = ""
 depends = "$auto, libheif-plugin-libde265, libxkbcommon0, libxkbcommon-x11-0, libwayland-client0, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxcb1, libvulkan1 | libegl1, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad, gstreamer1.0-libav"
-# ExifTool writes the ratings; ffmpeg gives videos their frame; the UI font is read from the
-# system (egui's own lacks ← →).
-recommends = "libimage-exiftool-perl, ffmpeg, mesa-vulkan-drivers, xdg-desktop-portal, fonts-dejavu-core | fonts-noto-core"
+# ExifTool writes the ratings; the UI font is read from the system (egui's own lacks ← →).
+recommends = "libimage-exiftool-perl, mesa-vulkan-drivers, xdg-desktop-portal, fonts-dejavu-core | fonts-noto-core"
 assets = [
     ["target/release/cerno", "usr/bin/", "755"],
     ["packaging/linux/cerno.desktop", "usr/share/applications/", "644"],

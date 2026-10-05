@@ -215,8 +215,6 @@ pub struct CernoApp {
     started: Instant,
     logged_first_frame: bool,
     logged_first_photo: bool,
-    /// ffmpeg was not found at start: videos show a placeholder instead of a frame.
-    no_ffmpeg: bool,
     /// The program `E` opens photos in (remembered).
     external_editor: Option<crate::external::Editor>,
     /// The programs the system offers, per file extension (asked once).
@@ -416,7 +414,6 @@ impl CernoApp {
             started,
             logged_first_frame: false,
             logged_first_photo: false,
-            no_ffmpeg: crate::video::locate().is_none(),
             external_editor,
             editors: HashMap::new(),
             watched: Vec::new(),

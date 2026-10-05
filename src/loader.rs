@@ -654,7 +654,7 @@ fn stale(slot: &Slot, target: [u32; 2]) -> bool {
 
 /// The picture of `path`, fitted into `target`, and its metadata: a photo from its bytes
 /// (marks from the sidecar where they live there), a video from one frame – or a placeholder
-/// without ffmpeg – and its sidecar. The flag is false for that placeholder: its play sign is
+/// when none could be taken – and its sidecar. The flag is false for that placeholder: its play sign is
 /// no thumbnail, the filmstrip paints its own over every video.
 fn picture(
     shared: &Shared,
@@ -674,11 +674,8 @@ fn picture(
             bytes: std::fs::metadata(path).map_or(0, |m| m.len()),
             jpeg: None,
         };
-        let (decoded, framed) = match crate::video::poster(path) {
-            Ok(jpeg) => (
-                decode::decode_for_screen(&jpeg, library::Format::Jpeg, 1, target)?,
-                true,
-            ),
+        let (decoded, framed) = match crate::video::poster(path, target) {
+            Ok(frame) => (frame, true),
             Err(err) => {
                 log::info!("no frame of {}: {err:#}", path.display());
                 (crate::video::placeholder(target), false)
