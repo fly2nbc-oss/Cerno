@@ -52,7 +52,31 @@ const SCHEMA: &str = "
         backup TEXT NOT NULL,
         at_ms  INTEGER NOT NULL
     );
+    -- Photos deleted in Cerno lie in `.originals`: where each one came from (since 1.6).
+    CREATE TABLE IF NOT EXISTS set_aside (
+        aside    TEXT PRIMARY KEY,
+        original TEXT NOT NULL,
+        at_ms    INTEGER NOT NULL
+    );
+    -- Put back before their fingerprint was known: the deletion stops counting for the taste
+    -- model once the analysis has it (`settle_restored`).
+    CREATE TABLE IF NOT EXISTS restored (
+        path TEXT PRIMARY KEY
+    );
 ";
+
+/// SQL: the column `path` lies outside every `.originals` folder. A deleted photo's row (it
+/// lies there, see `record_deletion`) teaches the taste model as a deletion, never with the
+/// stars it had. `LIKE` ignores ASCII case, like `originals::is_inside`.
+fn live(path: &str) -> String {
+    format!("{path} NOT LIKE '%/.originals/%' AND {path} NOT LIKE '%\\.originals\\%'")
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64)
+}
 
 /// Columns added after the first release; `migrate` adds whichever an index lacks.
 const ADDED_IMAGE_COLUMNS: &[(&str, &str)] = &[
@@ -384,9 +408,11 @@ impl Db {
         Ok(())
     }
 
-    /// A deleted photo becomes a negative example (label 0) for the taste model. Must run
-    /// before its `files` row goes – that row is the only link to the fingerprint.
-    pub fn record_deletion(&self, path: &str) -> Result<()> {
+    /// A deleted photo becomes a negative example (label 0) for the taste model. Its `files` row
+    /// follows it to `aside` in `.originals` (a rename keeps size and dates, so its scores and
+    /// thumbnail are found there at once) and `set_aside` remembers where it came from; without
+    /// `aside` the row goes.
+    pub fn record_deletion(&self, path: &str, aside: Option<&str>) -> Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
         let fingerprint: Option<i64> = tx
@@ -405,8 +431,94 @@ impl Db {
              FROM files WHERE path = ?1",
             [path],
         )?;
-        tx.execute("DELETE FROM files WHERE path = ?1", [path])?;
+        match aside {
+            Some(aside) => {
+                tx.execute("DELETE FROM files WHERE path = ?1", [aside])?;
+                tx.execute(
+                    "UPDATE files SET path = ?1 WHERE path = ?2",
+                    params![aside, path],
+                )?;
+                tx.execute(
+                    "INSERT OR REPLACE INTO set_aside (aside, original, at_ms) VALUES (?1, ?2, ?3)",
+                    params![aside, path, now_ms()],
+                )?;
+            }
+            None => {
+                tx.execute("DELETE FROM files WHERE path = ?1", [path])?;
+            }
+        }
         tx.commit()?;
+        Ok(())
+    }
+
+    /// Where the photos set aside into the folder `dir` (an `.originals`) came from.
+    pub fn set_aside_in(&self, dir: &str) -> Result<Vec<(String, String)>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT aside, original FROM set_aside WHERE substr(aside, 1, length(?1)) = ?1",
+        )?;
+        let rows = stmt.query_map([dir], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// A deleted photo is back, at `to` (`original`, or a free name beside it). Its row moves
+    /// along and its deletion no longer teaches the taste model – right away when the
+    /// fingerprint is known, else once the analysis has it (`settle_restored`). Back under
+    /// another name, it takes the kept originals from before its deletion along: the photo now
+    /// called `original` must not undo an edit with them.
+    pub fn record_restore(&self, aside: &str, to: &str, original: &str) -> Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let fingerprint: Option<i64> = tx
+            .query_row(
+                "SELECT fingerprint FROM files WHERE path = ?1",
+                [aside],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let deleted_at: Option<i64> = tx
+            .query_row(
+                "SELECT at_ms FROM set_aside WHERE aside = ?1",
+                [aside],
+                |row| row.get(0),
+            )
+            .optional()?;
+        tx.execute("DELETE FROM files WHERE path = ?1", [to])?;
+        tx.execute(
+            "UPDATE files SET path = ?1 WHERE path = ?2",
+            params![to, aside],
+        )?;
+        if to != original
+            && let Some(at) = deleted_at
+        {
+            tx.execute(
+                "UPDATE backups SET path = ?1 WHERE path = ?2 AND at_ms <= ?3",
+                params![to, original, at],
+            )?;
+        }
+        tx.execute("DELETE FROM set_aside WHERE aside = ?1", [aside])?;
+        match fingerprint {
+            Some(fp) => {
+                tx.execute("DELETE FROM feedback WHERE fingerprint = ?1", [fp])?;
+            }
+            None => {
+                tx.execute("INSERT OR REPLACE INTO restored (path) VALUES (?1)", [to])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// The analysis fingerprinted `path`: when it is a photo put back before its fingerprint
+    /// was known, its deletion stops counting now.
+    pub fn settle_restored(&self, path: &str, fingerprint: u64) -> Result<()> {
+        let conn = self.conn();
+        if conn.execute("DELETE FROM restored WHERE path = ?1", [path])? > 0 {
+            conn.execute(
+                "DELETE FROM feedback WHERE fingerprint = ?1",
+                [fingerprint as i64],
+            )?;
+        }
         Ok(())
     }
 
@@ -435,15 +547,17 @@ impl Db {
 
     /// Training data for the taste model: (CLIP embedding, label 0–5), and where the examples
     /// come from. Rejected photos count as 0 like deleted ones; explicit ratings win over
-    /// deletion feedback for the same pixels.
+    /// deletion feedback for the same pixels. Rows of deleted photos (in `.originals`) count as
+    /// deletions only, whatever stars they had.
     pub fn taste_examples(&self) -> Result<(Vec<TasteExample>, TasteSources)> {
         let conn = self.conn();
         // The third column: 1 = stars, 2 = rejected, 3 = deleted.
-        let mut stmt = conn.prepare_cached(
+        let mut stmt = conn.prepare_cached(&format!(
             "SELECT i.embedding, CAST(MAX(MAX(f.rating, 0)) AS REAL),
                     CASE WHEN MAX(f.rating) >= 1 THEN 1 ELSE 2 END
              FROM files f JOIN images i ON i.fingerprint = f.fingerprint
              WHERE (f.rating BETWEEN 1 AND 5 OR f.rating = -1) AND i.embedding IS NOT NULL
+               AND {}
                AND f.fingerprint NOT IN (SELECT fingerprint FROM taste_skip)
              GROUP BY f.fingerprint
              UNION ALL
@@ -451,9 +565,12 @@ impl Db {
              FROM feedback fb JOIN images i ON i.fingerprint = fb.fingerprint
              WHERE i.embedding IS NOT NULL
                AND fb.fingerprint NOT IN
-                   (SELECT fingerprint FROM files WHERE rating BETWEEN 1 AND 5 OR rating = -1)
+                   (SELECT fingerprint FROM files
+                    WHERE (rating BETWEEN 1 AND 5 OR rating = -1) AND {})
                AND fb.fingerprint NOT IN (SELECT fingerprint FROM taste_skip)",
-        )?;
+            live("f.path"),
+            live("path"),
+        ))?;
         let mut sources = TasteSources::default();
         let mut examples = Vec::new();
         let mut rows = stmt.query([])?;
@@ -800,7 +917,7 @@ mod tests {
             db.put_aesthetic(fp, 5.0, "m", &[fp as f32; 768]).unwrap();
             db.put_file(path, STAMP, fp, rating, None).unwrap();
         }
-        db.record_deletion("binned.jpg").unwrap();
+        db.record_deletion("binned.jpg", None).unwrap();
         assert!(db.lookup("binned.jpg", STAMP).unwrap().is_none());
 
         let (examples, sources) = db.taste_examples().unwrap();
@@ -818,6 +935,102 @@ mod tests {
                 deleted: 1
             }
         );
+    }
+
+    fn sources(db: &Db) -> TasteSources {
+        db.taste_examples().unwrap().1
+    }
+
+    /// A deleted photo's row lies in `.originals` with it (scores and thumbnail are found there
+    /// at once) and counts as a deletion, not with its stars – on both kinds of separator.
+    /// Put back, it counts with its stars again, and the deletion is forgotten.
+    #[test]
+    fn a_deleted_photo_counts_as_deleted_until_it_is_back() {
+        for (dir, sep) in [("/p", "/"), (r"C:\p", r"\")] {
+            let db = Db::open_in_memory().unwrap();
+            let (photo, aside) = (
+                format!("{dir}{sep}IMG.jpg"),
+                format!("{dir}{sep}.originals{sep}IMG.jpg"),
+            );
+            db.put_aesthetic(5, 5.0, "m", &[5.0; 768]).unwrap();
+            db.put_file(&photo, STAMP, 5, Rating::Stars(5), None)
+                .unwrap();
+            db.record_deletion(&photo, Some(&aside)).unwrap();
+            assert!(db.lookup(&photo, STAMP).unwrap().is_none());
+            assert_eq!(db.lookup(&aside, STAMP).unwrap().unwrap().fingerprint, 5);
+            assert_eq!(
+                sources(&db),
+                TasteSources {
+                    deleted: 1,
+                    ..TasteSources::default()
+                },
+                "{dir}"
+            );
+            assert_eq!(
+                db.set_aside_in(&format!("{dir}{sep}.originals")).unwrap(),
+                [(aside.clone(), photo.clone())]
+            );
+
+            let back = format!("{dir}{sep}IMG (2).jpg");
+            db.record_restore(&aside, &back, &photo).unwrap();
+            assert_eq!(db.lookup(&back, STAMP).unwrap().unwrap().fingerprint, 5);
+            assert!(
+                db.set_aside_in(&format!("{dir}{sep}.originals"))
+                    .unwrap()
+                    .is_empty()
+            );
+            assert_eq!(
+                sources(&db),
+                TasteSources {
+                    stars: 1,
+                    ..TasteSources::default()
+                }
+            );
+        }
+    }
+
+    /// Put back before the analysis knew its fingerprint (deleted before 1.6): the deletion
+    /// goes once the analysis has it.
+    #[test]
+    fn a_photo_put_back_unknown_settles_later() {
+        let db = Db::open_in_memory().unwrap();
+        db.put_aesthetic(6, 5.0, "m", &[6.0; 768]).unwrap();
+        db.put_file("/p/old.jpg", STAMP, 6, Rating::Unrated, None)
+            .unwrap();
+        db.record_deletion("/p/old.jpg", None).unwrap();
+        db.record_restore("/p/.originals/old.jpg", "/p/old.jpg", "/p/old.jpg")
+            .unwrap();
+        assert_eq!(sources(&db).deleted, 1, "fingerprint not known yet");
+        db.settle_restored("/p/other.jpg", 6).unwrap();
+        assert_eq!(sources(&db).deleted, 1, "another path settles nothing");
+        db.settle_restored("/p/old.jpg", 6).unwrap();
+        assert_eq!(sources(&db).deleted, 0);
+    }
+
+    /// Back under another name, the photo takes the kept originals from before its deletion
+    /// along; a later one belongs to the photo that has the name now.
+    #[test]
+    fn kept_originals_follow_a_photo_put_back_under_another_name() {
+        let db = Db::open_in_memory().unwrap();
+        db.put_file("/p/IMG.jpg", STAMP, 7, Rating::Unrated, None)
+            .unwrap();
+        db.push_backup("/p/IMG.jpg", "/p/.originals/IMG.jpg", 1)
+            .unwrap();
+        db.record_deletion("/p/IMG.jpg", Some("/p/.originals/IMG (2).jpg"))
+            .unwrap();
+        db.push_backup("/p/IMG.jpg", "/p/.originals/IMG (3).jpg", i64::MAX)
+            .unwrap();
+        db.record_restore("/p/.originals/IMG (2).jpg", "/p/IMG (2).jpg", "/p/IMG.jpg")
+            .unwrap();
+        let backups = |path| -> Vec<String> {
+            db.backups_of(path)
+                .unwrap()
+                .into_iter()
+                .map(|(_, b)| b)
+                .collect()
+        };
+        assert_eq!(backups("/p/IMG (2).jpg"), ["/p/.originals/IMG.jpg"]);
+        assert_eq!(backups("/p/IMG.jpg"), ["/p/.originals/IMG (3).jpg"]);
     }
 
     #[test]

@@ -23,6 +23,9 @@ pub static TEXTS: Texts = Texts {
     filter_people: "Mit Personen",
     filter_no_people: "Ohne Personen",
     filter_people_tooltip: "Erkannt an Gesichtern: Personen von hinten oder sehr klein im Bild zählen nicht.",
+    filter_deleted: "Gelöschte",
+    filter_deleted_tooltip: "Gelöschte Fotos dieses Ordners. Sie liegen im versteckten Ordner .originals – Strg+Z legt eins zurück.",
+    filter_deleted_none: "Keine gelöschten Fotos in diesem Ordner",
     filter_clear: "Alle anzeigen",
     media_all: "Fotos und Videos",
     media_photos: "Nur Fotos",
@@ -89,6 +92,13 @@ pub static TEXTS: Texts = Texts {
     bulk_delete: |n| format!("Löschen ({n} {})", if n == 1 { "Foto" } else { "Fotos" }),
     bulk_delete_hint: "Alle Fotos, die der Filter gerade zeigt. Sie kommen nach 5 Sekunden in den versteckten Ordner .originals neben den Fotos – nichts wird endgültig gelöscht, Esc holt sie zurück.",
     delete_rejected_hint: "Alle abgelehnten Fotos des Ordners, auch die, die der Filter gerade ausblendet. Sie kommen nach 5 Sekunden in den versteckten Ordner .originals – nichts wird endgültig gelöscht.",
+    bulk_restore: |n| {
+        format!(
+            "Zurücklegen ({n} {})",
+            if n == 1 { "Foto" } else { "Fotos" }
+        )
+    },
+    bulk_restore_hint: "Alle gelöschten Fotos, die der Filter gerade zeigt, kommen zurück in ihren Ordner. Ist ein Name dort vergeben, bekommt das Foto eine Nummer – nichts wird überschrieben.",
     photos_shown: |shown, total| format!("{shown} von {total} Fotos"),
     photos_count: |n| format!("{n} {}", if n == 1 { "Foto" } else { "Fotos" }),
     photos_badge_tooltip: "So viele Fotos zeigt der Filter gerade – auf genau diese wirkt „Aktion“.",
@@ -388,10 +398,22 @@ pub static TEXTS: Texts = Texts {
     busy_editing: "Die Bearbeitung ist noch offen – Enter übernimmt, Esc verwirft",
     busy_copying: "Das Foto wird gerade kopiert – gleich wieder möglich",
     busy_moving: "Das Foto wird gerade verschoben",
+    busy_deleted: "Gelöschtes Foto – erst zurücklegen (Strg+Z)",
     edit_needs_index: "Bearbeiten braucht den Index, und der ließ sich nicht öffnen",
     edit_reencoded: "JPEG neu kodiert – Strg+Z holt das Original zurück.",
     undo_done: "Original zurückgeholt",
     undo_nothing: "Für dieses Foto ist kein Original aufbewahrt",
+    cmd_restore: "Zurücklegen",
+    restored: |n, renamed, name| match (n, renamed) {
+        (1, 0) => format!("Zurückgelegt: {name}"),
+        (1, _) => format!("Zurückgelegt als {name} – der Name war vergeben"),
+        (n, 0) => format!("{n} Fotos zurückgelegt"),
+        (n, r) => format!("{n} Fotos zurückgelegt, {r} davon unter neuem Namen"),
+    },
+    restore_failed: |n, name, err| {
+        format!("{n} Foto(s) konnten nicht zurückgelegt werden – {name}: {err}")
+    },
+    deleted_mark: "Gelöscht",
     edit_failed: |detail| format!("Nicht geschrieben: {detail}"),
     edit_hint_straighten: "Mausrad oder ←/→ dreht, Umschalt feiner · Enter übernimmt, Esc verwirft",
     edit_hint_crop: "A: Seitenverhältnis · X: Quer/Hoch · Enter übernimmt, Esc verwirft",

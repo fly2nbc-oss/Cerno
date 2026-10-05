@@ -25,6 +25,8 @@ pub(super) enum Change {
     External,
     /// Copy or move the photos on screen.
     Transfer,
+    /// Put a deleted photo back into its folder.
+    Restore,
 }
 
 /// Why a photo can't be changed right now: one action at a time on a photo. Checked against
@@ -44,6 +46,8 @@ pub(super) enum Blocked {
     NoIndex,
     /// Straighten, crop, quarter turns and `Ctrl+Z` exist for JPEG only.
     NotJpeg,
+    /// The photo is deleted (in `.originals`): it takes nothing until it is put back.
+    Deleted,
 }
 
 impl Blocked {
@@ -56,6 +60,7 @@ impl Blocked {
             Self::Moving => t.busy_moving,
             Self::NoIndex => t.edit_needs_index,
             Self::NotJpeg => t.edit_not_jpeg,
+            Self::Deleted => t.busy_deleted,
         }
     }
 }
@@ -71,6 +76,8 @@ struct Activity {
     transfer: Option<TransferMode>,
     /// The index is the in-memory fallback.
     no_index: bool,
+    /// The photo is deleted, lying in `.originals`.
+    deleted: bool,
 }
 
 fn blocked(change: Change, now: Activity) -> Option<Blocked> {
@@ -79,7 +86,14 @@ fn blocked(change: Change, now: Activity) -> Option<Blocked> {
         editing,
         transfer,
         no_index,
+        deleted,
     } = now;
+    // A deleted photo is only looked at – and put back, which is all that may happen to it.
+    match (change, deleted) {
+        (Change::Restore, _) => return None,
+        (_, true) => return Some(Blocked::Deleted),
+        _ => {}
+    }
     if no_index && matches!(change, Change::Edit | Change::Rewrite | Change::External) {
         return Some(Blocked::NoIndex);
     }
@@ -122,6 +136,7 @@ impl CernoApp {
                 editing: self.edit.is_some(),
                 transfer,
                 no_index: self.db.is_in_memory(),
+                deleted: path.is_some_and(|p| self.is_deleted(p)),
             },
         )
         .or_else(|| {
@@ -206,6 +221,28 @@ mod tests {
         }
         for change in [Mark, Delete, Transfer] {
             assert_eq!(blocked(change, no_index), None);
+        }
+        // A deleted photo takes nothing but going back – not even while another one is
+        // being written.
+        let deleted = Activity {
+            deleted: true,
+            ..idle
+        };
+        for change in [Mark, Delete, Edit, Rewrite, External, Transfer] {
+            assert_eq!(
+                blocked(change, deleted),
+                Some(Blocked::Deleted),
+                "{change:?}"
+            );
+        }
+        for now in [
+            deleted,
+            Activity {
+                writing: true,
+                ..deleted
+            },
+        ] {
+            assert_eq!(blocked(Restore, now), None);
         }
     }
 }

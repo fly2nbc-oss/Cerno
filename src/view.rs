@@ -104,10 +104,12 @@ pub enum FilterKind {
     People,
     /// The face detection ran and found none.
     NoPeople,
+    /// Deleted in Cerno, lying in `.originals`; shown only while this box is ticked.
+    Deleted,
 }
 
 impl FilterKind {
-    pub const ALL: [FilterKind; 16] = [
+    pub const ALL: [FilterKind; 17] = [
         Self::Stars(1),
         Self::Stars(2),
         Self::Stars(3),
@@ -124,6 +126,7 @@ impl FilterKind {
         Self::Colour(Label::Purple),
         Self::People,
         Self::NoPeople,
+        Self::Deleted,
     ];
 
     pub fn label(self) -> String {
@@ -137,6 +140,7 @@ impl FilterKind {
             Self::Colour(label) => i18n::label_name(label).to_owned(),
             Self::People => t.filter_people.to_owned(),
             Self::NoPeople => t.filter_no_people.to_owned(),
+            Self::Deleted => t.filter_deleted.to_owned(),
         }
     }
 
@@ -155,6 +159,7 @@ impl FilterKind {
             Self::Colour(label) => label.id(),
             Self::People => "people",
             Self::NoPeople => "nopeople",
+            Self::Deleted => "deleted",
         }
     }
 
@@ -168,6 +173,7 @@ impl FilterKind {
     pub const GROUPS: [&'static [FilterKind]; 4] = [
         &[
             Self::Rejected,
+            Self::Deleted,
             Self::Unrated,
             Self::Stars(1),
             Self::Stars(2),
@@ -203,6 +209,7 @@ pub struct PhotoFilter {
     colours: [bool; 5],
     people: bool,
     no_people: bool,
+    deleted: bool,
 }
 
 impl PhotoFilter {
@@ -215,6 +222,7 @@ impl PhotoFilter {
             && !self.colours.iter().any(|on| *on)
             && !self.people
             && !self.no_people
+            && !self.deleted
     }
 
     /// Any colour box is ticked, so changing a label can hide the current photo.
@@ -232,6 +240,7 @@ impl PhotoFilter {
             FilterKind::Colour(label) => self.colours[colour_index(label)],
             FilterKind::People => self.people,
             FilterKind::NoPeople => self.no_people,
+            FilterKind::Deleted => self.deleted,
             FilterKind::Stars(_) => false,
         }
     }
@@ -246,6 +255,7 @@ impl PhotoFilter {
             FilterKind::Colour(label) => self.colours[colour_index(label)] = on,
             FilterKind::People => self.people = on,
             FilterKind::NoPeople => self.no_people = on,
+            FilterKind::Deleted => self.deleted = on,
             FilterKind::Stars(_) => {}
         }
     }
@@ -261,7 +271,9 @@ impl PhotoFilter {
 
     /// A photo matches every group with a ticked box: its rating is ticked, its colour is
     /// ticked, it is blurry or a copy when one of those boxes is ticked, and it has faces or
-    /// none (`faces`: `None` until the face detection ran – then neither box takes it).
+    /// none (`faces`: `None` until the face detection ran – then neither box takes it). A
+    /// deleted photo shows only through the 🗑 box, which stands for its rating: 🗑 + ✕ are the
+    /// deleted and the rejected photos, 🗑 + red the deleted ones with a red label.
     pub fn accepts(
         self,
         rating: Rating,
@@ -269,9 +281,15 @@ impl PhotoFilter {
         is_duplicate: bool,
         colour: Option<Label>,
         faces: Option<u8>,
+        deleted: bool,
     ) -> bool {
-        let rating_ticked = self.stars.iter().any(|on| *on) || self.unrated || self.rejected;
+        if deleted && !self.deleted {
+            return false;
+        }
+        let rating_ticked =
+            self.stars.iter().any(|on| *on) || self.unrated || self.rejected || self.deleted;
         let by_rating = !rating_ticked
+            || deleted
             || match rating {
                 Rating::Stars(n) if (1..=5).contains(&n) => self.stars[n as usize - 1],
                 Rating::Unrated => self.unrated,
@@ -521,6 +539,8 @@ pub struct Facts {
     pub similarity: Option<f32>,
     /// In the Top N picked when that filter was chosen (`pick_top`).
     pub top: bool,
+    /// Deleted in Cerno: it lies in `.originals` and shows only through the 🗑 box.
+    pub deleted: bool,
 }
 
 /// Where a photo sits in its series (at least two photos). `index` is 1-based, sharpest
@@ -612,12 +632,15 @@ struct Entry<'a> {
     camera: Option<u64>,
     /// Subject sharpness percentile, when the photo has been measured.
     sharp: Option<f32>,
+    /// In `.originals`: no part of the folder's percentiles or duplicates.
+    deleted: bool,
 }
 
 /// Filters and sorts `all` (which is in name order). Session ratings and labels win over those
 /// read from the files. Photos without scores yet are kept and sorted last, so nothing
 /// disappears just because the analysis hasn't reached it. `hidden` drops photos that are
-/// waiting to be deleted.
+/// waiting to be deleted. Deleted photos (`Facts::deleted`) show only through the 🗑 box and
+/// take no part in the sharpness ranks or the duplicate marks of the photos still there.
 pub fn build(
     all: &[PathBuf],
     options: ViewOptions,
@@ -646,16 +669,19 @@ pub fn build(
                 label,
                 facts: known,
                 sharp: None,
+                deleted: known.is_some_and(|f| f.deleted),
             }
         })
         .collect();
     let percentiles = Percentiles::from_scores(
         entries
             .iter()
+            .filter(|e| !e.deleted)
             .filter_map(|e| e.facts.as_ref().map(|f| &f.scores)),
     );
     let fingerprints: HashMap<&Path, u64> = entries
         .iter()
+        .filter(|entry| !entry.deleted)
         .filter_map(|entry| {
             entry
                 .facts
@@ -707,9 +733,14 @@ pub fn build(
             let faces = entry.facts.and_then(|f| f.scores.faces);
             similar
                 && in_scope
-                && options
-                    .filter
-                    .accepts(entry.rating, blurry, is_duplicate, entry.label, faces)
+                && options.filter.accepts(
+                    entry.rating,
+                    blurry,
+                    is_duplicate,
+                    entry.label,
+                    faces,
+                    entry.deleted,
+                )
         })
         .collect();
 
@@ -805,7 +836,7 @@ pub fn pick_top(
             continue;
         };
         let rating = session_ratings.get(path).copied().unwrap_or(known.rating);
-        if rating == Rating::Rejected || percentiles.is_blurry(&known.scores) {
+        if rating == Rating::Rejected || known.deleted || percentiles.is_blurry(&known.scores) {
             continue;
         }
         let Some(value) = top_value(rating, &known, &percentiles) else {
@@ -1249,7 +1280,7 @@ mod tests {
             filter
         };
         let accepts = |kinds: &[FilterKind], faces: Option<u8>| {
-            filter_of(kinds).accepts(Rating::Unrated, false, false, None, faces)
+            filter_of(kinds).accepts(Rating::Unrated, false, false, None, faces, false)
         };
         assert!(accepts(&[FilterKind::People], Some(2)));
         assert!(!accepts(&[FilterKind::People], Some(0)));
@@ -1267,6 +1298,84 @@ mod tests {
         assert!(accepts(&[], None));
         let stored = PhotoFilter::from_stored(&filter_of(&[FilterKind::NoPeople]).id());
         assert!(stored.contains(FilterKind::NoPeople) && !stored.contains(FilterKind::People));
+    }
+
+    /// Deleted photos show only through the 🗑 box, which stands for their rating – 🗑 + ✕ are
+    /// everything sorted out – and other groups still apply. They don't rank the folder's
+    /// sharpness or make a photo still there a duplicate.
+    #[test]
+    fn deleted_photos_show_only_through_their_box() {
+        let (mut all, mut known) = fixture();
+        // "x" is a deleted copy of "b" (same pixels) with 5 stars and a red label.
+        all.push(PathBuf::from("x"));
+        known.get_mut(Path::new("b")).unwrap().fingerprint = Some(7);
+        known.insert(
+            PathBuf::from("x"),
+            Facts {
+                rating: Rating::Stars(5),
+                label: Some(Label::Red),
+                fingerprint: Some(7),
+                deleted: true,
+                ..facts(Rating::Stars(5), None, Some(1.0), None)
+            },
+        );
+        let lookup = |p: &Path| known.get(p).copied();
+        let session = HashMap::from([(PathBuf::from("a"), Rating::Rejected)]);
+        let view_of = |kinds: &[FilterKind]| {
+            let mut filter = PhotoFilter::default();
+            for kind in kinds {
+                filter.set(*kind, true);
+            }
+            let options = ViewOptions {
+                filter,
+                ..ViewOptions::default()
+            };
+            build(&all, options, lookup, &session, &HashMap::new(), |_| false)
+        };
+        assert_eq!(
+            names(&view_of(&[]).paths),
+            "abcde",
+            "hidden without the box"
+        );
+        assert_eq!(names(&view_of(&[FilterKind::Stars(5)]).paths), "c");
+        assert_eq!(names(&view_of(&[FilterKind::Deleted]).paths), "x");
+        assert_eq!(
+            names(&view_of(&[FilterKind::Rejected, FilterKind::Deleted]).paths),
+            "ax"
+        );
+        assert_eq!(
+            names(&view_of(&[FilterKind::Deleted, FilterKind::Colour(Label::Red)]).paths),
+            "x"
+        );
+        assert_eq!(
+            names(&view_of(&[FilterKind::Deleted, FilterKind::Colour(Label::Blue)]).paths),
+            ""
+        );
+        assert_eq!(
+            names(&view_of(&[FilterKind::Blurry]).paths),
+            "a",
+            "x, blurrier still, would lift a out of the blurriest fifth"
+        );
+        let all_shown = view_of(&[FilterKind::Deleted, FilterKind::Unrated]);
+        assert_eq!(names(&all_shown.paths), "bex");
+        assert!(
+            all_shown.duplicate_of.iter().all(Option::is_none),
+            "b is no copy of a deleted photo"
+        );
+        let picked = pick_top(
+            &all,
+            ViewOptions::default(),
+            lookup,
+            &HashMap::new(),
+            &HashMap::new(),
+            |_| false,
+            10,
+        );
+        assert!(!picked.contains(Path::new("x")), "never among the best");
+        assert_eq!(
+            PhotoFilter::from_stored("*rejected,deleted").id(),
+            "*rejected,deleted"
+        );
     }
 
     #[test]

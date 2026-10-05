@@ -23,6 +23,9 @@ pub static TEXTS: Texts = Texts {
     filter_people: "Avec des personnes",
     filter_no_people: "Sans personnes",
     filter_people_tooltip: "Repérées à leur visage : les personnes de dos ou toutes petites dans l'image ne comptent pas.",
+    filter_deleted: "Supprimées",
+    filter_deleted_tooltip: "Photos supprimées de ce dossier. Elles se trouvent dans le dossier caché .originals – Ctrl+Z en remet une en place.",
+    filter_deleted_none: "Aucune photo supprimée dans ce dossier",
     filter_clear: "Tout afficher",
     media_all: "Photos et vidéos",
     media_photos: "Photos seulement",
@@ -102,6 +105,13 @@ pub static TEXTS: Texts = Texts {
     },
     bulk_delete_hint: "Toutes les photos que le filtre affiche. Après 5 secondes, elles vont dans le dossier caché .originals à côté d'elles – rien n'est supprimé définitivement, Esc les ramène.",
     delete_rejected_hint: "Toutes les photos rejetées du dossier, même celles que le filtre masque. Après 5 secondes, elles vont dans le dossier caché .originals – rien n'est supprimé définitivement.",
+    bulk_restore: |n| {
+        format!(
+            "Remettre en place ({n} {})",
+            if n == 1 { "photo" } else { "photos" }
+        )
+    },
+    bulk_restore_hint: "Toutes les photos supprimées que montre le filtre retournent dans leur dossier. Si le nom y est déjà pris, la photo reçoit un numéro – rien n'est écrasé.",
     photos_shown: |shown, total| format!("{shown} sur {total} photos"),
     photos_count: |n| format!("{n} {}", if n == 1 { "photo" } else { "photos" }),
     photos_badge_tooltip: "Le nombre de photos que le filtre affiche – « Action » agit sur exactement celles-ci.",
@@ -405,10 +415,22 @@ pub static TEXTS: Texts = Texts {
     busy_editing: "La retouche est encore ouverte – Entrée applique, Échap annule",
     busy_copying: "Cette photo est en cours de copie – possible dans un instant",
     busy_moving: "Cette photo est en cours de déplacement",
+    busy_deleted: "Photo supprimée – remettez-la d'abord en place (Ctrl+Z)",
     edit_needs_index: "La retouche a besoin de l'index, qui n'a pas pu être ouvert",
     edit_reencoded: "JPEG réencodé – Ctrl+Z restaure l'original.",
     undo_done: "Original restauré",
     undo_nothing: "Aucun original conservé pour cette photo",
+    cmd_restore: "Remettre en place",
+    restored: |n, renamed, name| match (n, renamed) {
+        (1, 0) => format!("Remise en place : {name}"),
+        (1, _) => format!("Remise en place sous le nom {name} – le nom était pris"),
+        (n, 0) => format!("{n} photos remises en place"),
+        (n, r) => format!("{n} photos remises en place, dont {r} sous un nouveau nom"),
+    },
+    restore_failed: |n, name, err| {
+        format!("Impossible de remettre en place {n} photo(s) – {name} : {err}")
+    },
+    deleted_mark: "Supprimée",
     edit_failed: |detail| format!("Pas enregistré : {detail}"),
     edit_hint_straighten: "Molette ou ←/→ pour tourner, Maj plus fin · Entrée applique, Échap annule",
     edit_hint_crop: "A : format · X : paysage/portrait · Entrée applique, Échap annule",

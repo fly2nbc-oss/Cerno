@@ -223,6 +223,10 @@ pub struct Texts {
     pub filter_people: &'static str,
     pub filter_no_people: &'static str,
     pub filter_people_tooltip: &'static str,
+    /// The 🗑 box: photos deleted in Cerno, lying in `.originals`.
+    pub filter_deleted: &'static str,
+    pub filter_deleted_tooltip: &'static str,
+    pub filter_deleted_none: &'static str,
     pub filter_clear: &'static str,
     /// The filter bar's photos / videos box and the same rows in Filter ▸.
     pub media_all: &'static str,
@@ -287,6 +291,9 @@ pub struct Texts {
     /// Tooltip of the delete row: what goes, and where.
     pub bulk_delete_hint: &'static str,
     pub delete_rejected_hint: &'static str,
+    /// The action menu's row for the deleted photos the filter shows.
+    pub bulk_restore: fn(usize) -> String,
+    pub bulk_restore_hint: &'static str,
     /// The filter bar's count while a filter is on: shown of all.
     pub photos_shown: fn(usize, usize) -> String,
     /// The filter bar's count without a filter.
@@ -420,11 +427,20 @@ pub struct Texts {
     pub busy_editing: &'static str,
     pub busy_copying: &'static str,
     pub busy_moving: &'static str,
+    /// Why a deleted photo takes no mark or edit.
+    pub busy_deleted: &'static str,
     /// Straighten, crop, quarter turns and Ctrl+Z are off while the index is the in-memory fallback.
     pub edit_needs_index: &'static str,
     pub edit_reencoded: &'static str,
     pub undo_done: &'static str,
     pub undo_nothing: &'static str,
+    /// Puts the deleted photo shown back into its folder (`Ctrl+Z`).
+    pub cmd_restore: &'static str,
+    /// Photos put back, how many of them under a new name, and the (new) name of the first.
+    pub restored: fn(usize, usize, &str) -> String,
+    pub restore_failed: fn(usize, &str, &str) -> String,
+    /// Beside the name in the info bar while a deleted photo shows.
+    pub deleted_mark: &'static str,
     pub edit_failed: fn(&str) -> String,
     /// Banner hints while straightening and cropping.
     pub edit_hint_straighten: &'static str,

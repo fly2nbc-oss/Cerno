@@ -166,6 +166,25 @@ pub fn person(painter: &Painter, center: Pos2, color: Color32, crossed: Option<C
     }
 }
 
+/// A waste bin – lid with its handle, a body narrowing downwards with two grooves – for the
+/// deleted photos (which lie in `.originals`, not in the system's trash). About 12 × 14 px at
+/// `size` 1.0.
+pub fn trash(painter: &Painter, center: Pos2, size: f32, color: Color32) {
+    let s = |x: f32, y: f32| center + vec2(x, y) * size;
+    let stroke = Stroke::new(1.3 * size.max(0.8), color);
+    // Lid and handle.
+    painter.line_segment([s(-6.0, -4.5), s(6.0, -4.5)], stroke);
+    painter.line_segment([s(-2.0, -4.5), s(-2.0, -6.5)], stroke);
+    painter.line_segment([s(-2.0, -6.5), s(2.0, -6.5)], stroke);
+    painter.line_segment([s(2.0, -6.5), s(2.0, -4.5)], stroke);
+    // Body.
+    let body = vec![s(-4.6, -2.8), s(4.6, -2.8), s(3.6, 6.5), s(-3.6, 6.5)];
+    painter.add(Shape::closed_line(body, stroke));
+    for x in [-1.4, 1.4] {
+        painter.line_segment([s(x, -0.8), s(x * 0.85, 4.6)], stroke);
+    }
+}
+
 /// "Probably blurry": a status-coloured disc with a painted exclamation mark (a 9 px text "!"
 /// was below the design system's 12 px minimum for icons).
 pub fn warning(painter: &Painter, center: Pos2) {

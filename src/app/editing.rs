@@ -306,8 +306,17 @@ impl CernoApp {
     }
 
     /// `Ctrl+Z`: the first original of the current photo goes back into the file (the first
-    /// straighten, crop or quarter turn keeps it in `.originals`, for good).
+    /// straighten, crop or quarter turn keeps it in `.originals`, for good). On a deleted photo
+    /// it undoes the deletion: the photo goes back into its folder.
     pub(super) fn undo_edit(&mut self) {
+        if self
+            .view
+            .get(self.current)
+            .is_some_and(|path| self.is_deleted(path))
+        {
+            self.restore_current();
+            return;
+        }
         if self.pinned.is_some() {
             return;
         }

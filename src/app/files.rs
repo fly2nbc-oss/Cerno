@@ -13,7 +13,6 @@ use crate::originals;
 use crate::transfer::{Mode as TransferMode, Outcome as TransferOutcome};
 
 use super::CernoApp;
-use super::browse::index_of;
 use super::gate::Change;
 use super::notice::Notice;
 
@@ -60,7 +59,18 @@ impl CernoApp {
             self.notice = Some(Notice::hint(t.transfer_same_folder));
             return;
         }
-        let sources = self.view.paths.iter().cloned().collect();
+        // Deleted photos (the 🗑 box) stay where they are.
+        let sources: Vec<PathBuf> = self
+            .view
+            .paths
+            .iter()
+            .filter(|path| !self.is_deleted(path))
+            .cloned()
+            .collect();
+        if sources.is_empty() {
+            self.notice = Some(Notice::hint(t.no_match));
+            return;
+        }
         // A playing video keeps its file open; the job waits until it is closed.
         self.stop_video();
         self.transfers.push(mode, sources, dest);
@@ -124,15 +134,8 @@ impl CernoApp {
                 .filter(|path| !gone.contains(*path))
                 .cloned()
                 .collect();
-            self.all_index = index_of(&all);
             self.all = Arc::new(all);
-            let current = self
-                .view
-                .get(self.current)
-                .and_then(|path| self.all_index.get(path))
-                .copied()
-                .unwrap_or(0);
-            self.analyzer.set_library(Arc::clone(&self.all), current);
+            self.sync_library();
             self.rebuild_view(ctx, None);
         }
     }
@@ -170,7 +173,13 @@ impl CernoApp {
             return;
         }
         let now = Instant::now();
-        for path in self.view.paths.iter().cloned() {
+        let shown: Vec<PathBuf> = self
+            .view
+            .iter()
+            .filter(|path| !self.is_deleted(path))
+            .cloned()
+            .collect();
+        for path in shown {
             self.deletions.push(path, now);
         }
         self.rebuild_view(ctx, None);
@@ -212,10 +221,14 @@ impl CernoApp {
         }
     }
 
-    /// A photo was really set aside: it teaches the taste model what the user doesn't like.
-    /// Its first original stays in `.originals`, and so does the index row pointing at it.
-    pub(super) fn forget_deleted(&self, path: &Path) {
-        if let Err(err) = self.db.record_deletion(&path.to_string_lossy()) {
+    /// A photo was really set aside at `aside`: it teaches the taste model what the user
+    /// doesn't like. Its first original stays in `.originals`, and so does the index row
+    /// pointing at it; its own row moves along, so it can come back (`deleted`).
+    pub(super) fn forget_deleted(&self, path: &Path, aside: &Path) {
+        if let Err(err) = self
+            .db
+            .record_deletion(&path.to_string_lossy(), Some(&aside.to_string_lossy()))
+        {
             log::warn!("index: {err:#}");
         }
     }
@@ -233,28 +246,22 @@ impl CernoApp {
         }
         if let Some(done) = self.deletions.poll() {
             if !done.deleted.is_empty() {
-                let gone: HashSet<&PathBuf> = done.deleted.iter().collect();
+                let gone: HashSet<&PathBuf> = done.deleted.iter().map(|(from, _)| from).collect();
                 let all: Vec<PathBuf> = self
                     .all
                     .iter()
                     .filter(|p| !gone.contains(p))
                     .cloned()
                     .collect();
-                for path in &done.deleted {
+                for (path, aside) in &done.deleted {
                     self.session_ratings.remove(path);
                     self.session_descriptions.remove(path);
-                    self.forget_deleted(path);
+                    self.forget_deleted(path, aside);
+                    self.add_deleted(path.clone(), aside.clone());
                 }
                 self.analyzer.taste_changed();
-                self.all_index = index_of(&all);
                 self.all = Arc::new(all);
-                let current = self
-                    .view
-                    .get(self.current)
-                    .and_then(|p| self.all_index.get(p))
-                    .copied()
-                    .unwrap_or(0);
-                self.analyzer.set_library(Arc::clone(&self.all), current);
+                self.sync_library();
             }
             if let Some((path, err)) = done.failed.first() {
                 self.notice = Some(Notice::error((i18n::t().delete_failed)(

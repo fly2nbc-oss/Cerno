@@ -11,7 +11,7 @@ use eframe::egui::{self, ViewportCommand};
 use crate::analysis::manifest::Pack;
 use crate::i18n;
 use crate::library::{self, Library};
-use crate::view::{self, Facts, Percentiles, View, ViewOptions};
+use crate::view::{self, Facts, FilterKind, Percentiles, View, ViewOptions};
 
 use super::notice::Notice;
 use super::{CLIP_OFFER_SHOWN, CernoApp, V25_OFFER_SHOWN};
@@ -56,10 +56,15 @@ impl CernoApp {
             .then(|| library.paths.get(index).cloned())
             .flatten();
         self.all = Arc::clone(&library.paths);
+        self.library = Arc::clone(&self.all);
         self.dir = Some(library.dir);
+        // Found in the background; the 🗑 box shows them once they are known.
+        self.scan_deleted();
         self.pinned = None;
-        // "Similar photos" was about a photo of the previous folder, Top N picked from it.
+        // "Similar photos" was about a photo of the previous folder, Top N picked from it, the
+        // deleted photos lay beside it.
         self.options.similar = false;
+        self.options.filter.set(FilterKind::Deleted, false);
         self.similar_to = None;
         self.options.top = None;
         self.top_pick.clear();
@@ -119,9 +124,9 @@ impl CernoApp {
         self.set_view(ctx, view, keep);
     }
 
-    fn build_view(&self) -> View {
+    pub(super) fn build_view(&self) -> View {
         view::build(
-            &self.all,
+            &self.library,
             self.options,
             |p| self.facts(p),
             &self.session_ratings,
@@ -130,7 +135,7 @@ impl CernoApp {
         )
     }
 
-    fn set_view(&mut self, ctx: &egui::Context, view: View, keep: Option<PathBuf>) {
+    pub(super) fn set_view(&mut self, ctx: &egui::Context, view: View, keep: Option<PathBuf>) {
         let keep = keep.or_else(|| self.view.get(self.current).cloned());
         // Comparing needs the pinned photo plus at least one other.
         if self.pinned.as_ref().is_some_and(|p| !view.contains(p)) || view.len() < 2 {
@@ -193,9 +198,12 @@ impl CernoApp {
         self.view.iter().position(|p| p == pinned)
     }
 
+    /// The deleted photos are about this folder: the 🗑 box is never saved.
     pub(super) fn save_options(&self) {
+        let mut filter = self.options.filter;
+        filter.set(FilterKind::Deleted, false);
         self.db.put_setting("sort", self.options.sort.id());
-        self.db.put_setting("filter", &self.options.filter.id());
+        self.db.put_setting("filter", &filter.id());
         self.db.put_setting("media", self.options.media.id());
     }
 
@@ -229,6 +237,8 @@ impl CernoApp {
         if self.top_pick_for != self.options.top_key() {
             self.pick_top();
         }
+        // The 🗑 box adds the deleted photos to what is looked at, or takes them away.
+        self.sync_library();
         self.rebuild_view(ctx, None);
     }
 
@@ -341,21 +351,22 @@ impl CernoApp {
 
     fn update_title(&self, ctx: &egui::Context) {
         let title = match self.view.get(self.current) {
-            Some(path) => format!(
-                "{} – Cerno",
-                self.dir
-                    .as_ref()
-                    .map(|dir| library::display_name(dir, path))
-                    .unwrap_or_else(|| library::file_name_lossy(path))
-            ),
+            Some(path) => format!("{} – Cerno", self.photo_name(path)),
             None => "Cerno".to_owned(),
         };
         ctx.send_viewport_cmd(ViewportCommand::Title(title));
     }
 
-    /// What sorting, filtering and the UI know about a photo.
+    /// What sorting, filtering and the UI know about a photo. A deleted photo the analysis
+    /// hasn't reached yet is known to be deleted, which is all the 🗑 box needs.
     fn facts(&self, path: &Path) -> Option<Facts> {
-        let known = self.board.get(path)?;
+        let deleted = self.is_deleted(path);
+        let Some(known) = self.board.get(path) else {
+            return deleted.then(|| Facts {
+                deleted,
+                ..Facts::default()
+            });
+        };
         Some(Facts {
             rating: known.rating,
             label: known.label,
@@ -366,10 +377,14 @@ impl CernoApp {
             personal: self.analyzer.personal(path),
             similarity: self.similarity_to_reference(path),
             top: self.top_pick.contains(path),
+            deleted,
         })
     }
 
+    /// The name the info bar and the title show: relative to the open folder, and for a
+    /// deleted photo the one it had there.
     pub(super) fn photo_name(&self, path: &Path) -> String {
+        let path = self.deleted.original_of(path).unwrap_or(path);
         self.dir
             .as_ref()
             .map(|dir| library::display_name(dir, path))

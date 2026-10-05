@@ -37,6 +37,8 @@ pub struct CellInfo {
     pub duplicate_of: Option<String>,
     /// A video: the play button over the cell.
     pub video: bool,
+    /// Deleted (in `.originals`), shown through the 🗑 box: dimmed, with a bin.
+    pub deleted: bool,
 }
 
 /// What an empty cell (no thumbnail yet) says about its photo.
@@ -98,8 +100,8 @@ pub fn paint(
         );
     }
 
-    // Rejects are dimmed – below the selection frame.
-    if info.rating == Rating::Rejected {
+    // Rejects and deleted photos are dimmed – below the selection frame.
+    if info.rating == Rating::Rejected || info.deleted {
         painter.rect_filled(cell, 4.0, Color32::from_black_alpha(150));
     }
     if info.current {
@@ -160,6 +162,15 @@ pub fn paint(
     if let Some(reason) = &info.blurry {
         icons::warning(painter, pos2(cell.right() - 10.0, cell.top() + 10.0));
         tooltip.push(reason.clone());
+    }
+    if info.deleted {
+        let badge = Rect::from_min_size(
+            pos2(cell.left() + 4.0, cell.bottom() - 24.0),
+            vec2(20.0, 20.0),
+        );
+        painter.rect_filled(badge, 3.0, tokens::SURFACE);
+        icons::trash(painter, badge.center(), 0.9, tokens::TEXT);
+        tooltip.push(i18n::t().deleted_mark.to_owned());
     }
     if info.rating == Rating::Rejected {
         tooltip.push(i18n::t().rejected.to_owned());

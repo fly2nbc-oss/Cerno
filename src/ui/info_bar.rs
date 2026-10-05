@@ -51,6 +51,8 @@ pub struct InfoBar<'a> {
     /// How alike the photo is to the one "similar photos" is about (0..=1), while that filter
     /// is on.
     pub similarity: Option<f32>,
+    /// A deleted photo (in `.originals`), shown through the 🗑 box.
+    pub deleted: bool,
 }
 
 #[derive(Default)]
@@ -120,6 +122,9 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     // Size and load time live in the details panel. What doesn't fit is left out whole, the
     // capture date first.
     let mut facts = vec![format!("{} / {}", bar.position.0, bar.position.1)];
+    if bar.deleted {
+        facts.push(t.deleted_mark.to_owned());
+    }
     if bar.auto_advance {
         facts.push(t.auto_advance_on.to_owned());
     }
@@ -597,6 +602,7 @@ mod tests {
             saving: false,
             zoom: Some(100.0),
             overlay: None,
+            deleted: false,
             similarity: None,
         }
     }

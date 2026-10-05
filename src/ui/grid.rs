@@ -254,6 +254,7 @@ mod tests {
             in_current_series: false,
             duplicate_of: None,
             video: false,
+            deleted: false,
         }
     }
 

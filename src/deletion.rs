@@ -14,19 +14,18 @@ use std::time::{Duration, Instant};
 
 pub const DELAY: Duration = Duration::from_secs(5);
 
-/// Moves one file away; `.originals` in the app, a recorder in tests.
-pub type Remover = fn(&Path) -> Result<(), String>;
+/// Moves one file away and says where it went; `.originals` in the app, a recorder in tests.
+pub type Remover = fn(&Path) -> Result<PathBuf, String>;
 
-pub fn set_aside(path: &Path) -> Result<(), String> {
-    crate::originals::set_aside(path)
-        .map(|_| ())
-        .map_err(|e| format!("{e:#}"))
+pub fn set_aside(path: &Path) -> Result<PathBuf, String> {
+    crate::originals::set_aside(path).map_err(|e| format!("{e:#}"))
 }
 
 /// Result of one finished batch.
 #[derive(Debug, Default, PartialEq)]
 pub struct Finished {
-    pub deleted: Vec<PathBuf>,
+    /// Where each photo was, and where it lies now (in `.originals`, so it can come back).
+    pub deleted: Vec<(PathBuf, PathBuf)>,
     pub failed: Vec<(PathBuf, String)>,
 }
 
@@ -112,7 +111,8 @@ impl DeleteQueue {
             for path in batch
                 .deleted
                 .iter()
-                .chain(batch.failed.iter().map(|(p, _)| p))
+                .map(|(path, _)| path)
+                .chain(batch.failed.iter().map(|(path, _)| path))
             {
                 self.in_progress.remove(path);
             }
@@ -148,9 +148,9 @@ fn run(remove: Remover, batch: Vec<PathBuf>) -> Finished {
     let mut finished = Finished::default();
     for path in batch {
         match remove(&path) {
-            Ok(()) => {
+            Ok(to) => {
                 log::info!("deleted (set aside): {}", path.display());
-                finished.deleted.push(path);
+                finished.deleted.push((path, to));
             }
             Err(err) => {
                 log::warn!("could not delete {}: {err}", path.display());
@@ -165,16 +165,25 @@ fn run(remove: Remover, batch: Vec<PathBuf>) -> Finished {
 mod tests {
     use super::*;
 
-    fn ok(_: &Path) -> Result<(), String> {
-        Ok(())
+    fn aside(path: &Path) -> PathBuf {
+        Path::new(".originals").join(path)
     }
 
-    fn locked(path: &Path) -> Result<(), String> {
+    fn ok(path: &Path) -> Result<PathBuf, String> {
+        Ok(aside(path))
+    }
+
+    fn locked(path: &Path) -> Result<PathBuf, String> {
         if path.ends_with("locked.jpg") {
             Err("in use".into())
         } else {
-            Ok(())
+            Ok(aside(path))
         }
+    }
+
+    /// Where the photos were, without where they went.
+    fn sources(done: &Finished) -> Vec<PathBuf> {
+        done.deleted.iter().map(|(from, _)| from.clone()).collect()
     }
 
     fn wait_for(queue: &mut DeleteQueue) -> Finished {
@@ -206,8 +215,13 @@ mod tests {
         );
         let done = wait_for(&mut queue);
         assert_eq!(
-            done.deleted,
+            sources(&done),
             [PathBuf::from("a.jpg"), PathBuf::from("b.jpg")]
+        );
+        assert_eq!(
+            done.deleted[0].1,
+            aside(Path::new("a.jpg")),
+            "where it went"
         );
         assert!(!queue.is_hidden(Path::new("a.jpg")));
         assert!(queue.countdown(t0 + Duration::from_secs(9)).is_none());
@@ -233,7 +247,7 @@ mod tests {
         queue.push("free.jpg".into(), t0);
         assert!(queue.tick(t0 + DELAY, || {}));
         let done = wait_for(&mut queue);
-        assert_eq!(done.deleted, [PathBuf::from("free.jpg")]);
+        assert_eq!(sources(&done), [PathBuf::from("free.jpg")]);
         assert_eq!(done.failed.len(), 1);
         assert!(!queue.is_hidden(Path::new("locked.jpg")));
     }
@@ -243,7 +257,7 @@ mod tests {
         let mut queue = DeleteQueue::new(ok);
         queue.push("a.jpg".into(), Instant::now());
         let done = queue.finish_now();
-        assert_eq!(done.deleted, [PathBuf::from("a.jpg")]);
+        assert_eq!(sources(&done), [PathBuf::from("a.jpg")]);
         assert!(queue.countdown(Instant::now()).is_none());
         assert!(!queue.is_hidden(Path::new("a.jpg")));
     }
@@ -255,7 +269,7 @@ mod tests {
         queue.push("running.jpg".into(), t0);
         assert!(queue.tick(t0 + DELAY, || {}));
         queue.push("waiting.jpg".into(), t0 + DELAY);
-        let mut done = queue.finish_now().deleted;
+        let mut done = sources(&queue.finish_now());
         done.sort();
         assert_eq!(
             done,
