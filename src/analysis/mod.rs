@@ -66,6 +66,8 @@ pub struct Known {
 #[derive(Default)]
 pub struct ScoreBoard {
     entries: RwLock<HashMap<PathBuf, Known>>,
+    /// The model name behind each `Known::camera`, for the camera time card.
+    camera_names: RwLock<HashMap<u64, String>>,
     version: AtomicU64,
 }
 
@@ -80,6 +82,33 @@ impl ScoreBoard {
 
     pub fn version(&self) -> u64 {
         self.version.load(Ordering::Relaxed)
+    }
+
+    /// The id of a camera model (`metadata::camera_id`); its name is kept for the UI.
+    fn camera(&self, model: Option<&str>) -> Option<u64> {
+        let model = model?.trim();
+        let id = metadata::camera_id(model);
+        let known = self
+            .camera_names
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .contains_key(&id);
+        if !known {
+            self.camera_names
+                .write()
+                .unwrap_or_else(|p| p.into_inner())
+                .insert(id, model.to_owned());
+        }
+        Some(id)
+    }
+
+    /// The model name of a camera id, as the file states it.
+    pub fn camera_name(&self, id: u64) -> Option<String> {
+        self.camera_names
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(&id)
+            .cloned()
     }
 
     /// Only a real change bumps the version (the analysis re-confirms known values).
@@ -211,7 +240,7 @@ fn is_complete(image: &ImageRecord, caps: Capabilities) -> bool {
 
 /// What the index knows. For a photo whose marks live in a sidecar the sidecar has the last
 /// word: another program may have changed it without touching the photo's stamp.
-fn known_from(path: &Path, record: &crate::db::FileRecord) -> Known {
+fn known_from(path: &Path, record: &crate::db::FileRecord, board: &ScoreBoard) -> Known {
     let (mut rating, mut label) = (record.rating, record.label);
     if crate::sidecar::applies(path)
         && let Some(bytes) = crate::sidecar::read(path)
@@ -223,7 +252,7 @@ fn known_from(path: &Path, record: &crate::db::FileRecord) -> Known {
         rating,
         label,
         taken_ms: record.image.taken_ms,
-        camera: record.image.camera.as_deref().map(metadata::camera_id),
+        camera: board.camera(record.image.camera.as_deref()),
         fingerprint: Some(record.fingerprint),
         scores: record.image.scores,
     }
@@ -325,7 +354,8 @@ impl Analyzer {
             };
             if let Ok(Some(record)) = self.shared.db.lookup(&path.to_string_lossy(), stamp) {
                 remember_embedding(&self.shared, path, record.image.embedding.as_deref());
-                self.shared.board.set(path, known_from(path, &record));
+                let known = known_from(path, &record, &self.shared.board);
+                self.shared.board.set(path, known);
             }
         }
         log::info!(
@@ -597,7 +627,9 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
     if let Some(record) = shared.db.lookup(&key, stamp)? {
         remember_embedding(shared, path, record.image.embedding.as_deref());
         if is_complete(&record.image, caps) {
-            shared.board.set(path, known_from(path, &record));
+            shared
+                .board
+                .set(path, known_from(path, &record, &shared.board));
             return Ok(Outcome::Done);
         }
         // Scores are done; only the capture time (and a fresh read of rating/label) is missing.
@@ -626,7 +658,7 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
                     rating: meta.rating.value,
                     label: meta.label.known(),
                     taken_ms: meta.camera.taken_ms,
-                    camera: meta.camera.model.as_deref().map(metadata::camera_id),
+                    camera: shared.board.camera(meta.camera.model.as_deref()),
                     fingerprint: Some(record.fingerprint),
                     scores: record.image.scores,
                 },
@@ -780,7 +812,7 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
             rating: meta.rating.value,
             label: meta.label.known(),
             taken_ms: meta.camera.taken_ms,
-            camera: meta.camera.model.as_deref().map(metadata::camera_id),
+            camera: shared.board.camera(meta.camera.model.as_deref()),
             fingerprint: Some(fingerprint),
             scores: record.scores,
         },

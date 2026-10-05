@@ -17,6 +17,7 @@
 //! Drawing of the widgets themselves lives in `ui/`.
 
 mod browse;
+mod camera_time;
 mod deleted;
 mod describe;
 mod editing;
@@ -106,6 +107,8 @@ pub struct CernoApp {
     deleted: deleted::Deleted,
     /// The pasted file-name list (*Filter ▸ By file list …*).
     name_list: name_list::NameList,
+    /// Camera clocks set right in the open folder (*Camera time …*).
+    camera_time: camera_time::CameraTime,
     /// What is shown, after sorting, filtering and hiding pending deletions.
     view: View,
     current: usize,
@@ -342,6 +345,7 @@ impl CernoApp {
             all_index: HashMap::new(),
             deleted: deleted::Deleted::default(),
             name_list: name_list::NameList::default(),
+            camera_time: camera_time::CameraTime::default(),
             view: View::default(),
             current: 0,
             pinned: None,

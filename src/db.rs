@@ -5,7 +5,7 @@
 //! re-rated file keeps its scores. `feedback` remembers deleted photos as negative examples
 //! for the personal taste model.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, UNIX_EPOCH};
@@ -76,6 +76,14 @@ const SCHEMA: &str = "
         landmarks   BLOB NOT NULL,
         eyes        REAL,
         PRIMARY KEY (fingerprint, idx)
+    );
+    -- A camera whose clock was off, per open folder (since 1.7): added to the capture time of
+    -- every photo of that camera model (`metadata::camera_id`) there. The files keep theirs.
+    CREATE TABLE IF NOT EXISTS camera_offsets (
+        folder    TEXT NOT NULL,
+        camera    INTEGER NOT NULL,
+        offset_ms INTEGER NOT NULL,
+        PRIMARY KEY (folder, camera)
     );
 ";
 
@@ -779,6 +787,35 @@ impl Db {
         Ok((!rows.is_empty()).then_some(rows))
     }
 
+    /// The camera clocks set right in `folder`: camera id → milliseconds added.
+    pub fn camera_offsets(&self, folder: &str) -> Result<HashMap<u64, i64>> {
+        let conn = self.conn();
+        let mut stmt =
+            conn.prepare_cached("SELECT camera, offset_ms FROM camera_offsets WHERE folder = ?1")?;
+        let rows = stmt.query_map([folder], |row| {
+            Ok((row.get::<_, i64>(0)? as u64, row.get::<_, i64>(1)?))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Sets a camera's offset in `folder`; 0 removes it.
+    pub fn set_camera_offset(&self, folder: &str, camera: u64, offset_ms: i64) -> Result<()> {
+        let conn = self.conn();
+        if offset_ms == 0 {
+            conn.execute(
+                "DELETE FROM camera_offsets WHERE folder = ?1 AND camera = ?2",
+                params![folder, camera as i64],
+            )?;
+        } else {
+            conn.execute(
+                "INSERT OR REPLACE INTO camera_offsets (folder, camera, offset_ms)
+                 VALUES (?1, ?2, ?3)",
+                params![folder, camera as i64, offset_ms],
+            )?;
+        }
+        Ok(())
+    }
+
     pub fn put_thumbnail(&self, fingerprint: u64, jpeg: &[u8]) -> Result<()> {
         self.conn()
             .prepare_cached(
@@ -1186,5 +1223,24 @@ mod tests {
         assert_eq!(moved.rating, Rating::Stars(4));
         assert_eq!(moved.label, Some(Label::Red));
         db.retarget_path("missing.jpg", "other.jpg").unwrap();
+    }
+
+    /// Offsets are per folder and camera; 0 removes one. A camera id above `i64::MAX` comes
+    /// back as it went in.
+    #[test]
+    fn camera_offsets_per_folder() {
+        let db = Db::open_in_memory().unwrap();
+        let big = u64::MAX - 7;
+        db.set_camera_offset("/trip", 1, -7_777_000).unwrap();
+        db.set_camera_offset("/trip", big, 3_000).unwrap();
+        db.set_camera_offset("/other", 1, 60_000).unwrap();
+        let trip = db.camera_offsets("/trip").unwrap();
+        assert_eq!(trip, HashMap::from([(1, -7_777_000), (big, 3_000)]));
+        db.set_camera_offset("/trip", 1, 0).unwrap();
+        assert_eq!(
+            db.camera_offsets("/trip").unwrap(),
+            HashMap::from([(big, 3_000)])
+        );
+        assert_eq!(db.camera_offsets("/other").unwrap()[&1], 60_000);
     }
 }

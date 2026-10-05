@@ -245,6 +245,22 @@ pub struct Texts {
     pub name_list_chip_tooltip: &'static str,
     pub name_list_found: fn(usize, usize) -> String,
     pub name_list_chip: fn(usize, usize) -> String,
+    pub cmd_align_camera: &'static str,
+    pub align_camera_hint: &'static str,
+    pub align_needs_compare: &'static str,
+    pub align_no_time: &'static str,
+    pub align_same_camera: &'static str,
+    pub menu_camera_time: &'static str,
+    pub camera_time_title: &'static str,
+    pub camera_time_intro: &'static str,
+    pub camera_time_reset: &'static str,
+    pub camera_time_invalid: &'static str,
+    pub camera_time_apply: &'static str,
+    pub camera_time_none: &'static str,
+    pub camera_time_applied: &'static str,
+    pub camera_aligned: fn(&str, &str) -> String,
+    pub camera_time_photos: fn(usize) -> String,
+    pub camera_time_tooltip: fn(&str, &str) -> String,
     pub filter_clear: &'static str,
     /// The filter bar's photos / videos box and the same rows in Filter ▸.
     pub media_all: &'static str,
@@ -713,6 +729,21 @@ mod tests {
             assert!((t.zoom)(250.0).contains("250"), "{name}");
             assert!((t.zoom_preview)(100.0).contains("100"), "{name}");
             assert!((t.bulk_restore)(12).contains("12"), "{name}");
+            for list in [t.name_list_found, t.name_list_chip] {
+                let text = list(23, 25);
+                assert!(text.contains("23") && text.contains("25"), "{name}");
+            }
+            let aligned = (t.camera_aligned)("Pixel 7a", "+2:09:37");
+            assert!(
+                aligned.contains("Pixel 7a") && aligned.contains("+2:09:37"),
+                "{name}"
+            );
+            let adjusted = (t.camera_time_tooltip)("24.08.2026 11:55", "+2:09:37");
+            assert!(
+                adjusted.contains("24.08.2026 11:55") && adjusted.contains("+2:09:37"),
+                "{name}"
+            );
+            assert!((t.camera_time_photos)(312).contains("312"), "{name}");
             let back = (t.restored)(6, 2, "IMG_1 (2).jpg");
             assert!(back.contains('6') && back.contains('2'), "{name}");
             assert!(

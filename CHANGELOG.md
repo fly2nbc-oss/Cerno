@@ -11,6 +11,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 - **Faces at a glance** – `G` opens a *Faces* tab in the details panel with every face of the photo, left to right, and a note where the eyes are probably blurry; `Shift+G` shows them all large over the photo, for group photos. A click (or the face's number in the grid) zooms to it.
 - **The photos a client chose** – *Filter ▸ By file list …* takes a pasted list of file names or numbers (one per line, or separated by commas or semicolons; case and extension don't matter, `345` finds `IMG_0345`) and shows just those photos. While you type it says how many it finds and which names it can't; the filter bar then shows `List 23/25 ×`, and a click shows every photo again.
+- **Cameras whose clocks differ** – when two cameras were off by a few minutes or hours, their photos stood apart in capture-time order and formed no series together. Compare two photos taken at the same moment and choose *This photo ▸ Match right camera to left*: every photo of the right camera in this folder moves by that offset. *Visible photos ▸ Camera time …* shows each camera with its offset to adjust or reset. The info bar shows the corrected time with the offset, its tooltip the file's own; the files are not changed.
 
 ## [1.6.0] – 2026-10-05
 

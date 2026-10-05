@@ -58,6 +58,7 @@ impl CernoApp {
         self.all = Arc::clone(&library.paths);
         self.library = Arc::clone(&self.all);
         self.dir = Some(library.dir);
+        self.load_camera_offsets();
         // Found in the background; the 🗑 box shows them once they are known.
         self.scan_deleted();
         self.pinned = None;
@@ -379,7 +380,10 @@ impl CernoApp {
         Some(Facts {
             rating: known.rating,
             label: known.label,
-            taken_ms: known.taken_ms,
+            // A camera whose clock was off counts with the time set right.
+            taken_ms: known
+                .taken_ms
+                .map(|taken| taken + self.camera_time.offset(known.camera)),
             camera: known.camera,
             fingerprint: known.fingerprint,
             scores: known.scores,

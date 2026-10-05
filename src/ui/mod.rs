@@ -1,5 +1,6 @@
 //! Drawing code for the parts of the window. State lives in `app/`.
 
+pub mod camera_time;
 pub mod cells;
 pub mod confirm;
 pub mod description;

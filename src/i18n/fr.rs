@@ -39,6 +39,32 @@ pub static TEXTS: Texts = Texts {
     name_list_chip_tooltip: "Seulement les photos de la liste collée – un clic les montre toutes",
     name_list_found: |found, total| format!("{found} sur {total} trouvés"),
     name_list_chip: |found, total| format!("Liste {found}/{total}  ×"),
+    cmd_align_camera: "Caler l'appareil de droite sur celui de gauche",
+    align_camera_hint: "Décale l'heure de prise de vue de toutes les photos de l'appareil de droite dans ce dossier, pour que la photo de droite ait été prise au même moment que celle de gauche. Seulement dans l'index – les fichiers gardent leur heure.",
+    align_needs_compare: "Comparer d'abord deux photos d'appareils différents (C)",
+    align_no_time: "Il manque l'appareil ou l'heure de prise de vue à l'une des deux photos",
+    align_same_camera: "Les deux photos viennent du même appareil",
+    menu_camera_time: "Heure de l'appareil …",
+    camera_time_title: "Heure de l'appareil",
+    camera_time_intro: "Si l'horloge d'un appareil était fausse, un décalage déplace l'heure de prise de vue de toutes ses photos dans ce dossier – pour le tri par date de prise de vue, les séries et l'affichage. Seulement dans l'index ; les fichiers gardent leur heure.",
+    camera_time_reset: "Réinitialiser",
+    camera_time_invalid: "Décalage au format +h:mm:ss ou −h:mm:ss, p. ex. +1:30:00",
+    camera_time_apply: "Appliquer",
+    camera_time_none: "Aucune photo avec appareil et heure de prise de vue dans ce dossier pour l'instant.",
+    camera_time_applied: "Heure de l'appareil appliquée",
+    camera_aligned: |camera, offset| {
+        format!("{camera} : heure de prise de vue décalée de {offset}")
+    },
+    camera_time_photos: |n| {
+        if n == 1 {
+            "1 photo".into()
+        } else {
+            format!("{n} photos")
+        }
+    },
+    camera_time_tooltip: |taken, offset| {
+        format!("Heure de l'appareil {taken} – décalée de {offset}")
+    },
     filter_clear: "Tout afficher",
     media_all: "Photos et vidéos",
     media_photos: "Photos seulement",
@@ -501,6 +527,7 @@ pub static TEXTS: Texts = Texts {
                 "Triées par date de prise de vue, les séries restent ensemble, la photo la plus nette en premier.",
                 "C montre deux photos côte à côte ; A garde celle de gauche, D celle de droite, l'autre est rejetée.",
                 "M ne montre que les photos qui ressemblent à la photo actuelle.",
+                "Deux appareils à l'heure différente : comparer deux photos prises au même moment, puis Cette photo › « Caler l'appareil de droite sur celui de gauche ».",
             ],
         ),
         (

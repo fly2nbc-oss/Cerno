@@ -53,6 +53,10 @@ enum Action {
     Fullscreen,
     /// *Filter ▸ By file list …*: the card for a pasted list.
     NameList,
+    /// Compare mode: the right photo's camera takes the left one's time.
+    AlignCamera,
+    /// *Visible photos ▸ Camera time …*: the card with every camera's offset.
+    CameraTime,
     /// `G`: the faces tab; `Shift+G`: every face over the photo.
     Faces,
     FaceGrid,
@@ -156,6 +160,7 @@ impl CernoApp {
             || self.confirm.is_some()
             || self.faces.grid_open
             || self.name_list.card_open()
+            || self.camera_time.card_open()
     }
 
     /// Help page, menus, models card and confirmation – in this order, the last on top.
@@ -230,6 +235,7 @@ impl CernoApp {
             }
         }
         self.draw_name_list_card(ctx, window);
+        self.draw_camera_time_card(ctx, window);
         if self.models_open {
             let out = models::overlay(ctx, window, &self.analyzer.status());
             if out.close {
@@ -287,6 +293,10 @@ impl CernoApp {
                         .collect(),
                 )),
                 Entry::Group(Group::nested(t.menu_filter, None, self.filter_rows())),
+                Entry::Row(
+                    Row::new(Action::CameraTime, t.menu_camera_time, None)
+                        .hint(t.camera_time_intro),
+                ),
             ];
             if self.options.depends_on_scores() && self.board.version() != self.view_version {
                 visible.push(Entry::Row(Row::new(Action::Refresh, t.refresh_order, None)));
@@ -435,6 +445,9 @@ impl CernoApp {
                 .disabled(mark),
             Row::new(Action::Describe, t.cmd_description, key("B")).disabled(mark),
             Row::new(Action::Compare, t.cmd_compare, key("C")).toggle(self.pinned.is_some()),
+            Row::new(Action::AlignCamera, t.cmd_align_camera, None)
+                .hint(t.align_camera_hint)
+                .disabled(self.align_block()),
             Row::new(Action::Similar, t.cmd_similar, key("M")).toggle(self.options.similar),
             Row::new(Action::Straighten, t.cmd_straighten, key("S")).disabled(edit),
             Row::new(Action::Crop, t.cmd_crop, key("R")).disabled(edit),
@@ -670,6 +683,8 @@ impl CernoApp {
             Action::Grid => self.set_grid(!self.grid),
             Action::Faces => self.open_faces(),
             Action::NameList => self.open_name_list(),
+            Action::AlignCamera => self.align_right_camera(ctx),
+            Action::CameraTime => self.open_camera_time(),
             Action::FaceGrid => self.toggle_face_grid(),
             Action::Fullscreen => {
                 let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
