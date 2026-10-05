@@ -128,6 +128,7 @@ pub static TEXTS: Texts = Texts {
         )
     },
     zoom: |percent| format!("Zoom {percent:.0} %"),
+    zoom_preview: |percent| format!("Zoom {percent:.0} % der Vorschau"),
     digital_zoom: |ratio| format!("{ratio:.1}× Digitalzoom"),
     button_toolbar: "Filterleiste",
     button_details: "Detailansicht",
@@ -276,6 +277,7 @@ pub static TEXTS: Texts = Texts {
     row_file_size: "Dateigröße",
     row_jpeg_quality: "JPEG-Qualität",
     explain_jpeg_quality: "Geschätzt aus den Quantisierungstabellen der Datei – die Qualität selbst steht nicht darin. 4:2:0 heißt: Farbe in halber Auflösung (üblich bei Kameras), 4:4:4: Farbe in voller.",
+    explain_raw_preview: "Bei RAW-Dateien zeigt Cerno das JPEG, das die Kamera eingebettet hat – keine RAW-Entwicklung. Farbe und Belichtung sind die der Kamera, 100 % ist die Größe dieser Vorschau, nicht die des Sensors. Histogramm und Belichtung messen die Vorschau.",
     row_container: "Container",
     row_duration: "Dauer",
     row_video: "Video",
@@ -420,6 +422,8 @@ pub static TEXTS: Texts = Texts {
         format!("{n} Foto(s) konnten nicht zurückgelegt werden – {name}: {err}")
     },
     deleted_mark: "Gelöscht",
+    raw_preview_fact: "RAW-Vorschau",
+    preview_word: "Vorschau",
     edit_failed: |detail| format!("Nicht geschrieben: {detail}"),
     edit_hint_straighten: "Mausrad oder ←/→ dreht, Umschalt feiner · Enter übernimmt, Esc verwirft",
     edit_hint_crop: "Pfeile verschieben · +/− Größe, Umschalt feiner · A: Seitenverhältnis · X: Quer/Hoch · Enter übernimmt, Esc verwirft",

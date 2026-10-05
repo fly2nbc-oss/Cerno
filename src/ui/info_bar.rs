@@ -53,6 +53,8 @@ pub struct InfoBar<'a> {
     pub similarity: Option<f32>,
     /// A deleted photo (in `.originals`), shown through the 🗑 box.
     pub deleted: bool,
+    /// A RAW file: what shows is the JPEG preview inside it, and 100 % is that preview's size.
+    pub raw_preview: bool,
 }
 
 #[derive(Default)]
@@ -125,11 +127,18 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     if bar.deleted {
         facts.push(t.deleted_mark.to_owned());
     }
+    if bar.raw_preview {
+        facts.push(t.raw_preview_fact.to_owned());
+    }
     if bar.auto_advance {
         facts.push(t.auto_advance_on.to_owned());
     }
     if let Some(zoom) = bar.zoom {
-        facts.push((t.zoom)(zoom));
+        facts.push(if bar.raw_preview {
+            (t.zoom_preview)(zoom)
+        } else {
+            (t.zoom)(zoom)
+        });
     }
     if let Some(overlay) = bar.overlay {
         facts.push(overlay.to_owned());
@@ -603,6 +612,7 @@ mod tests {
             zoom: Some(100.0),
             overlay: None,
             deleted: false,
+            raw_preview: false,
             similarity: None,
         }
     }

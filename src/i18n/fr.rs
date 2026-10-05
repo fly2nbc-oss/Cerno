@@ -141,6 +141,7 @@ pub static TEXTS: Texts = Texts {
         )
     },
     zoom: |percent| format!("Zoom {percent:.0} %"),
+    zoom_preview: |percent| format!("Zoom {percent:.0} % de l'aperçu"),
     digital_zoom: |ratio| format!("Zoom numérique {ratio:.1}×"),
     button_toolbar: "Barre de filtres",
     button_details: "Panneau de détails",
@@ -295,6 +296,7 @@ pub static TEXTS: Texts = Texts {
     row_file_size: "Taille du fichier",
     row_jpeg_quality: "Qualité JPEG",
     explain_jpeg_quality: "Estimée d'après les tables de quantification du fichier – la qualité elle-même n'y est pas enregistrée. 4:2:0 : couleur en demi-résolution (courant pour les appareils), 4:4:4 : en pleine résolution.",
+    explain_raw_preview: "Pour les fichiers RAW, Cerno montre le JPEG intégré par l'appareil – aucun développement RAW. Couleurs et exposition sont celles de l'appareil, et 100 % correspond à la taille de cet aperçu, pas à celle du capteur. L'histogramme et l'exposition mesurent l'aperçu.",
     row_container: "Conteneur",
     row_duration: "Durée",
     row_video: "Vidéo",
@@ -437,6 +439,8 @@ pub static TEXTS: Texts = Texts {
         format!("Impossible de remettre en place {n} photo(s) – {name} : {err}")
     },
     deleted_mark: "Supprimée",
+    raw_preview_fact: "Aperçu RAW",
+    preview_word: "aperçu",
     edit_failed: |detail| format!("Pas enregistré : {detail}"),
     edit_hint_straighten: "Molette ou ←/→ pour tourner, Maj plus fin · Entrée applique, Échap annule",
     edit_hint_crop: "Flèches : déplacer · +/− : taille, Maj plus fin · A : format · X : paysage/portrait · Entrée applique, Échap annule",

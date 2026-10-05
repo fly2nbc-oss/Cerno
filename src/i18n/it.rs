@@ -119,6 +119,7 @@ pub static TEXTS: Texts = Texts {
         )
     },
     zoom: |percent| format!("Zoom {percent:.0} %"),
+    zoom_preview: |percent| format!("Zoom {percent:.0} % dell'anteprima"),
     digital_zoom: |ratio| format!("Zoom digitale {ratio:.1}×"),
     button_toolbar: "Barra dei filtri",
     button_details: "Pannello dettagli",
@@ -264,6 +265,7 @@ pub static TEXTS: Texts = Texts {
     row_file_size: "Dimensione file",
     row_jpeg_quality: "Qualità JPEG",
     explain_jpeg_quality: "Stimata dalle tabelle di quantizzazione del file: la qualità in sé non vi è salvata. 4:2:0 significa colore a metà risoluzione (comune nelle fotocamere), 4:4:4 a risoluzione piena.",
+    explain_raw_preview: "Per i file RAW Cerno mostra il JPEG incorporato dalla fotocamera, senza sviluppo RAW. Colore ed esposizione sono quelli della fotocamera e il 100 % è la dimensione di questa anteprima, non del sensore. Istogramma ed esposizione misurano l'anteprima.",
     row_container: "Contenitore",
     row_duration: "Durata",
     row_video: "Video",
@@ -406,6 +408,8 @@ pub static TEXTS: Texts = Texts {
         format!("Impossibile rimettere a posto {n} foto – {name}: {err}")
     },
     deleted_mark: "Eliminata",
+    raw_preview_fact: "Anteprima RAW",
+    preview_word: "anteprima",
     edit_failed: |detail| format!("Non scritto: {detail}"),
     edit_hint_straighten: "Rotella o ←/→ ruota, Maiusc più fine · Invio applica, Esc annulla",
     edit_hint_crop: "Frecce spostano · +/− dimensione, Maiusc più fine · A: proporzioni · X: orizzontale/verticale · Invio applica, Esc annulla",

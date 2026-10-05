@@ -108,6 +108,8 @@ pub struct Details<'a> {
     pub file_bytes: Option<u64>,
     /// A JPEG's estimated quality and chroma subsampling.
     pub jpeg: Option<crate::jpeg_info::JpegInfo>,
+    /// A RAW file: the pixels, the histogram and the exposure are its embedded JPEG preview's.
+    pub raw_preview: bool,
     /// GPS position (latitude, longitude) from the EXIF data.
     pub position: Option<(f64, f64)>,
     /// A video's streams (`playback::probe`): shown instead of the size and load time.
@@ -171,7 +173,7 @@ pub fn draw(
             ui.add_space(PAD);
             ui.spacing_mut().item_spacing.y = 4.0;
             if let Some(hist) = d.histogram {
-                histogram(ui, hist);
+                histogram(ui, hist, d.raw_preview);
                 ui.add_space(8.0);
             }
             let overlay = content(ui, d, attributes_open);
@@ -284,7 +286,11 @@ fn analysis(ui: &mut Ui, d: &Details<'_>, attributes_open: &mut bool) -> Option<
         t.explain_eyes,
     );
 
-    eye(ui, t.section_exposure, overlay::Mode::Exposure);
+    eye(
+        ui,
+        &of_preview(t.section_exposure, d.raw_preview),
+        overlay::Mode::Exposure,
+    );
     let clipped = |share: Option<f32>, limit: f32| match share {
         Some(s) => Value {
             text: format!("{:.1} %", s * 100.0),
@@ -318,6 +324,15 @@ fn file(ui: &mut Ui, d: &Details<'_>) {
                 for (label, value) in media_rows(media) {
                     plain_row(ui, label, value);
                 }
+            }
+            (None, Some(([w, h], load_ms))) if d.raw_preview => {
+                explained_row(
+                    ui,
+                    t.row_size,
+                    format!("{w} × {h} ({})", t.preview_word),
+                    t.explain_raw_preview,
+                );
+                plain_row(ui, t.row_load_time, format!("{load_ms} ms"));
             }
             (None, Some(([w, h], load_ms))) => {
                 plain_row(ui, t.row_size, format!("{w} × {h}"));
@@ -408,9 +423,18 @@ fn frame_rate(fps: f64) -> String {
     }
 }
 
-fn histogram(ui: &mut Ui, hist: &RgbHistogram) {
+/// A section title, with "(preview)" when it is about a RAW file's embedded JPEG.
+fn of_preview(title: &str, raw_preview: bool) -> String {
+    if raw_preview {
+        format!("{title} ({})", i18n::t().preview_word)
+    } else {
+        title.to_owned()
+    }
+}
+
+fn histogram(ui: &mut Ui, hist: &RgbHistogram, raw_preview: bool) {
     let t = i18n::t();
-    section(ui, t.section_histogram);
+    section(ui, &of_preview(t.section_histogram, raw_preview));
     let width = ui.available_width() - 2.0 * PAD;
     let (rect, _) = ui.allocate_exact_size(vec2(width, HIST_HEIGHT), Sense::hover());
     let rect = rect.translate(vec2(PAD, 0.0));
@@ -786,6 +810,7 @@ mod tests {
             file: None,
             file_bytes: None,
             jpeg: None,
+            raw_preview: false,
             position: None,
             media: None,
             video: false,
@@ -936,6 +961,7 @@ mod tests {
             file: Some(([6000, 4000], 120)),
             file_bytes: None,
             jpeg: None,
+            raw_preview: false,
             position: Some(position),
             media: None,
             video: false,
@@ -1021,6 +1047,7 @@ mod tests {
                 file: None,
                 file_bytes: None,
                 jpeg: None,
+                raw_preview: false,
                 position: None,
                 media: None,
                 video: false,
@@ -1158,6 +1185,7 @@ mod tests {
             file: Some(([1920, 1080], 40)),
             file_bytes: None,
             jpeg: None,
+            raw_preview: false,
             position: None,
             media: Some(&media),
             video: true,
