@@ -101,7 +101,7 @@ fn content(ui: &mut Ui, status: &Status, exiftool: &ExifToolRow) -> ModelsOutput
     ] {
         row(ui, label, &value);
     }
-    // The count above is more than the photos with stars: rejected and deleted ones count too.
+    // The count above is more than the photos with stars: rejected ones count too (as 0 ★).
     let sources = status.taste.sources;
     if status.taste.examples > 0 {
         ui.add_space(4.0);
@@ -110,7 +110,6 @@ fn content(ui: &mut Ui, status: &Status, exiftool: &ExifToolRow) -> ModelsOutput
                 RichText::new(i18n::keep_together(&(t.taste_sources)(
                     sources.stars,
                     sources.rejected,
-                    sources.deleted,
                 )))
                 .font(FontId::proportional(text::BODY))
                 .color(tokens::MUTED),
@@ -383,16 +382,15 @@ mod tests {
         let t = crate::i18n::Lang::En.texts();
         let mut learning = status(ModelState::Available, ModelState::Available);
         let (_, untrained) = run(&learning, Vec::new());
-        let breakdown = (t.taste_sources)(167, 2, 542);
+        let breakdown = (t.taste_sources)(167, 2);
         assert!(!untrained.iter().any(|text| text.contains("Learned from")));
         learning.taste = TasteStatus {
-            examples: 711,
+            examples: 169,
             sources: crate::db::TasteSources {
                 stars: 167,
                 rejected: 2,
-                deleted: 542,
             },
-            model: Some((711, 0.8)),
+            model: Some((169, 0.8)),
         };
         let (_, trained) = run(&learning, Vec::new());
         assert!(

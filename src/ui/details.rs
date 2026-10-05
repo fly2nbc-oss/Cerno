@@ -47,8 +47,8 @@ impl DetailsMode {
     }
 }
 
-/// What the panel shows: the analysis values, the photo's comment and keywords (`B`) or its
-/// faces (`G`).
+/// What the panel shows: the analysis values, the photo's comment and keywords or its
+/// faces (`Ctrl+Tab` steps through them).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DetailsTab {
     Values,
@@ -57,6 +57,20 @@ pub enum DetailsTab {
 }
 
 impl DetailsTab {
+    pub const ALL: [Self; 3] = [Self::Values, Self::Description, Self::Faces];
+
+    /// The tab to the right (`Ctrl+Tab`), from the last one round to the first.
+    pub fn next(self) -> Self {
+        let at = Self::ALL.iter().position(|tab| *tab == self).unwrap_or(0);
+        Self::ALL[(at + 1) % Self::ALL.len()]
+    }
+
+    /// The tab to the left (`Ctrl+Shift+Tab`).
+    pub fn prev(self) -> Self {
+        let at = Self::ALL.iter().position(|tab| *tab == self).unwrap_or(0);
+        Self::ALL[(at + Self::ALL.len() - 1) % Self::ALL.len()]
+    }
+
     pub fn id(self) -> &'static str {
         match self {
             Self::Values => "values",
@@ -66,9 +80,7 @@ impl DetailsTab {
     }
 
     pub fn from_id(id: &str) -> Option<Self> {
-        [Self::Values, Self::Description, Self::Faces]
-            .into_iter()
-            .find(|tab| tab.id() == id)
+        Self::ALL.into_iter().find(|tab| tab.id() == id)
     }
 }
 
@@ -770,6 +782,20 @@ pub fn model_note(state: &ModelState) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `Ctrl+Tab` goes round the tabs, `Ctrl+Shift+Tab` back.
+    #[test]
+    fn the_tabs_go_round() {
+        use DetailsTab::*;
+        assert_eq!(Values.next(), Description);
+        assert_eq!(Description.next(), Faces);
+        assert_eq!(Faces.next(), Values);
+        assert_eq!(Values.prev(), Faces);
+        for tab in DetailsTab::ALL {
+            assert_eq!(tab.next().prev(), tab);
+            assert_eq!(DetailsTab::from_id(tab.id()), Some(tab));
+        }
+    }
     use crate::analysis::TasteStatus;
     use eframe::egui::{
         Context, Event, Modifiers, OutputCommand, PointerButton, RawInput, Shape, pos2, vec2,

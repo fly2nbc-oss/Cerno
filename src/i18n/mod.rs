@@ -401,7 +401,7 @@ pub struct Texts {
     /// View ▸ (`F7`): every photo as a thumbnail.
     pub cmd_grid: &'static str,
     pub cmd_reject: &'static str,
-    /// Menu row (This photo): the Description tab of the details panel (`B`).
+    /// Menu row (This photo): the Description tab of the details panel.
     pub cmd_description: &'static str,
     pub cmd_delete_rejected: fn(usize) -> String,
     pub cmd_auto_advance: &'static str,
@@ -499,7 +499,6 @@ pub struct Texts {
     pub cmd_faces: &'static str,
     pub cmd_face_grid: &'static str,
     pub faces_small: fn(usize) -> String,
-    pub face_number: fn(usize) -> String,
     /// In the info bar while a RAW file shows: its embedded JPEG preview, not a development.
     pub raw_preview_fact: &'static str,
     /// After a size or a section title that is about a RAW file's preview.
@@ -654,7 +653,7 @@ pub struct Texts {
     pub exiftool_downloading: fn(f32) -> String,
     pub btn_exiftool: fn(&str) -> String,
     /// Models card: where the prediction's examples come from (stars, rejected, deleted).
-    pub taste_sources: fn(usize, usize, usize) -> String,
+    pub taste_sources: fn(usize, usize) -> String,
     pub btn_reset_taste: &'static str,
     pub btn_delete_models: &'static str,
     /// Hint once the model files are gone.
@@ -704,11 +703,11 @@ pub struct Texts {
     pub welcome_more: &'static str,
     pub help_sections: [&'static str; 8],
     pub help_browse: [HelpRow; 6],
-    pub help_rate: [HelpRow; 7],
+    pub help_rate: [HelpRow; 6],
     pub help_cull: [HelpRow; 6],
     pub help_video: [HelpRow; 4],
     pub help_view: [HelpRow; 7],
-    pub help_panels: [HelpRow; 5],
+    pub help_panels: [HelpRow; 6],
     pub help_edit: [HelpRow; 6],
     pub help_more: [HelpRow; 5],
 }
@@ -868,11 +867,8 @@ mod tests {
             let trained = (t.taste_trained)(30, 0.7);
             assert!(trained.contains("30") && trained.contains("0.7"), "{name}");
             assert!((t.taste_photos)(30).contains("30"), "{name}");
-            let sources = (t.taste_sources)(167, 2, 542);
-            assert!(
-                ["167", " 2 ", "542"].iter().all(|n| sources.contains(n)),
-                "{name}"
-            );
+            let sources = (t.taste_sources)(167, 2);
+            assert!(["167", " 2 "].iter().all(|n| sources.contains(n)), "{name}");
             assert!((t.edit_failed)("locked").contains("locked"), "{name}");
             assert!((t.video_play_failed)("no app").contains("no app"), "{name}");
             assert!((t.external_opened)("GIMP").contains("GIMP"), "{name}");

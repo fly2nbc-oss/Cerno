@@ -11,6 +11,7 @@ use eframe::egui::{self, ViewportCommand};
 use crate::analysis::manifest::Pack;
 use crate::i18n;
 use crate::library::{self, Library};
+use crate::ui::viewer;
 use crate::view::{self, Facts, FilterKind, Percentiles, View, ViewOptions};
 
 use super::notice::Notice;
@@ -158,7 +159,8 @@ impl CernoApp {
     }
 
     pub(super) fn set_view(&mut self, ctx: &egui::Context, view: View, keep: Option<PathBuf>) {
-        let keep = keep.or_else(|| self.view.get(self.current).cloned());
+        let before = self.view.get(self.current).cloned();
+        let keep = keep.or_else(|| before.clone());
         // Comparing needs the pinned photo plus at least one other.
         if self.pinned.as_ref().is_some_and(|p| !view.contains(p)) || view.len() < 2 {
             self.pinned = None;
@@ -172,6 +174,9 @@ impl CernoApp {
             .unwrap_or(0);
         self.current = view::skip_pinned(view.len(), current, pinned, 1).unwrap_or(current);
         self.view = view;
+        if self.view.get(self.current) != before.as_ref() {
+            self.start_whole();
+        }
         self.view_version = self.board.version();
         self.view_built = Instant::now();
         if let Some(start) = self.quad {
@@ -361,11 +366,23 @@ impl CernoApp {
         };
         if index != self.current {
             self.current = index;
+            self.start_whole();
             self.loader.set_current(index);
             self.sync_quad();
             self.sync_analyzer();
             self.update_title(ctx);
         }
+    }
+
+    /// Another photo is current: in the single view it starts whole, not at the zoom the last
+    /// one had (the user's wish of 2026-10-05). Compare mode and the four-up view keep their
+    /// shared zoom – it is what lines the photos up.
+    fn start_whole(&mut self) {
+        if self.pinned.is_none() && self.quad.is_none() {
+            self.zoom = viewer::Zoom::default();
+        }
+        // A face zoom asked for the last photo does not apply to this one.
+        self.faces.zoom_to = None;
     }
 
     /// Tells the analysis where the user is (in full-folder terms) and pauses it briefly – not

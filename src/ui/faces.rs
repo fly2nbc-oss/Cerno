@@ -1,5 +1,6 @@
-//! The faces of the current photo: the details panel's faces tab (`G`, the faces one under the
-//! other) and the grid of all of them over the photo (`Shift+G`, for group photos). A click on
+//! The faces of the current photo: the details panel's faces tab (the faces one under the
+//! other, as wide as the panel) and the grid of all of them over the photo (`G`, for group
+//! photos). A click on
 //! a face zooms to it. What is drawn comes from `app/faces.rs`.
 
 use eframe::egui::{
@@ -31,10 +32,12 @@ pub enum Shown<'a> {
 }
 
 const PAD: f32 = 14.0;
-const THUMB: f32 = 112.0;
+/// Space between two faces in the tab.
+const GAP: f32 = 10.0;
 
-/// The faces tab: each face with its number (left to right in the photo) and, when its eyes are
-/// probably blurry, a note. Returns the face clicked.
+/// The faces tab: each face as wide as the panel, left to right in the photo, one under the
+/// other – no label; a face whose eyes are probably blurry says so on its picture. Returns the
+/// face clicked.
 pub fn tab(ui: &mut Ui, rect: Rect, shown: &Shown<'_>) -> Option<usize> {
     let t = i18n::t();
     let painter = ui.painter().with_clip_rect(rect);
@@ -81,40 +84,28 @@ pub fn tab(ui: &mut Ui, rect: Rect, shown: &Shown<'_>) -> Option<usize> {
                     ui.label(eframe::egui::RichText::new(t.faces_only_small).color(tokens::MUTED));
                 });
             }
+            let width = (rect.width() - 2.0 * PAD).max(1.0);
             for (i, crop) in crops.iter().enumerate() {
+                let size = crop.texture.size_vec2();
+                let height = width * size.y / size.x.max(1.0);
                 let (row, response) =
-                    ui.allocate_exact_size(vec2(rect.width(), THUMB + 10.0), Sense::click());
+                    ui.allocate_exact_size(vec2(rect.width(), height + GAP), Sense::click());
                 let response = response
                     .on_hover_cursor(CursorIcon::PointingHand)
                     .on_hover_text(t.faces_zoom_hint);
+                let picture =
+                    Rect::from_min_size(row.left_top() + vec2(PAD, 0.0), vec2(width, height));
+                paint_crop(ui, picture, &crop.texture);
                 if response.hovered() {
-                    ui.painter().rect_filled(
-                        row.shrink2(vec2(6.0, 1.0)),
-                        6.0,
-                        tokens::SURFACE_MUTED,
+                    ui.painter().rect_stroke(
+                        picture,
+                        4.0,
+                        Stroke::new(2.0, tokens::ACCENT),
+                        StrokeKind::Outside,
                     );
                 }
-                let thumb =
-                    Rect::from_min_size(row.left_top() + vec2(PAD, 5.0), vec2(THUMB, THUMB));
-                paint_crop(ui, thumb, &crop.texture);
-                let x = thumb.right() + 12.0;
-                ui.painter().text(
-                    pos2(x, thumb.top() + 4.0),
-                    Align2::LEFT_TOP,
-                    (t.face_number)(i + 1),
-                    FontId::proportional(text::BODY),
-                    tokens::TEXT,
-                );
                 if crop.eyes_blurry {
-                    let at = pos2(x + 7.0, thumb.top() + 38.0);
-                    icons::warning(ui.painter(), at);
-                    ui.painter().text(
-                        pos2(x + 20.0, at.y),
-                        Align2::LEFT_CENTER,
-                        t.face_eyes_blurry,
-                        FontId::proportional(text::SMALL),
-                        tokens::TEXT,
-                    );
+                    blurry_note(ui, picture, t.face_eyes_blurry);
                 }
                 if response.clicked() {
                     clicked = Some(i);
@@ -134,6 +125,27 @@ pub fn tab(ui: &mut Ui, rect: Rect, shown: &Shown<'_>) -> Option<usize> {
             ui.add_space(PAD);
         });
     clicked
+}
+
+/// "Eyes probably blurry" on the face's picture, bottom left, on a dark ground.
+fn blurry_note(ui: &Ui, picture: Rect, note: &str) {
+    let painter = ui.painter().with_clip_rect(picture);
+    let galley = painter.layout_no_wrap(
+        note.to_owned(),
+        FontId::proportional(text::SMALL),
+        tokens::TEXT,
+    );
+    let pill = Rect::from_min_size(
+        pos2(picture.left() + 6.0, picture.bottom() - 6.0 - 22.0),
+        vec2(galley.size().x + 32.0, 22.0),
+    );
+    painter.rect_filled(pill, 4.0, Color32::from_black_alpha(190));
+    icons::warning(&painter, pos2(pill.left() + 12.0, pill.center().y));
+    painter.galley(
+        pos2(pill.left() + 24.0, pill.center().y - galley.size().y / 2.0),
+        galley,
+        tokens::TEXT,
+    );
 }
 
 /// A crop fitted into `area`, keeping its shape, on a muted ground.
@@ -158,11 +170,11 @@ pub struct GridOutput {
 }
 
 /// All faces large over the photo area, numbered like the tab; a click or its number (1–9)
-/// zooms to one, Esc, `Shift+G` or a click beside them closes.
+/// zooms to one, Esc, `G` or a click beside them closes.
 pub fn grid(ctx: &Context, area: Rect, shown: &Shown<'_>) -> GridOutput {
     let t = i18n::t();
     let mut out = GridOutput::default();
-    // Esc (`Shift+G` closes it in `handle_keys`; the other keys pause while it is open).
+    // Esc (`G` closes it in `handle_keys`; the other keys pause while it is open).
     if ctx.input_mut(|i| i.consume_key(eframe::egui::Modifiers::NONE, Key::Escape)) {
         out.close = true;
     }

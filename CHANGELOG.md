@@ -18,6 +18,10 @@ No more ffmpeg, ExifTool with one click, and an About page.
 
 ### Changed
 
+- **`Ctrl+Tab` steps through the details panel's tabs** – values, description, faces (`Ctrl+Shift+Tab` back) – instead of `B` and `G` for two of them. `G` now shows all faces large over the photo (it was `Shift+G`); on the description tab `Enter` puts the cursor into the keyword field.
+- **The prediction no longer learns from deleted photos** – a good photo is often deleted only because there are too many alike. Only your stars and rejected photos teach it now; what it had learned from deletions is forgotten.
+- **Another photo starts whole** – zooming in on one photo no longer carries over to the next. Compare mode and the four-up view keep their shared zoom.
+- **Faces at full width** – the details panel's Faces tab shows each face as wide as the panel, without a label.
 - **No ffmpeg needed any more** – a video's still frame and filmstrip picture now come from GStreamer, which Cerno already uses to play videos – faster than before (a filmstrip picture in about 140 instead of 230 ms). Cerno takes them in separate helper processes, so a broken video can't take Cerno down.
 - **Without ExifTool, stars and colours are greyed out** with the reason, instead of showing and then being lost. On Linux the hint names the command that installs it. An ExifTool older than 12.24 is not used: it can run code hidden in a photo.
 

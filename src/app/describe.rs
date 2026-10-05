@@ -40,7 +40,8 @@ impl CernoApp {
         self.writer.set_description(path, description);
     }
 
-    /// `B` and the menu: the description tab, with the cursor in the keyword field.
+    /// The menu's *Comment and keywords*: the description tab, with the cursor in the keyword
+    /// field.
     pub(super) fn open_description(&mut self, ctx: &egui::Context) {
         if self.details == DetailsMode::Off {
             self.set_details(DetailsMode::On);
@@ -50,6 +51,22 @@ impl CernoApp {
         self.drafts.focus_keyword = true;
         // The `b` itself must not land in the field.
         ctx.input_mut(|i| i.events.retain(|e| !matches!(e, egui::Event::Text(_))));
+    }
+
+    /// `Ctrl+Tab` (`Ctrl+Shift+Tab` backwards): the details panel's next tab. A closed panel
+    /// opens on the tab it had. A comment being typed is taken first, and its field lets go.
+    pub(super) fn cycle_details_tab(&mut self, backwards: bool) {
+        if self.details == DetailsMode::Off {
+            self.set_details(DetailsMode::On);
+            self.save_panels();
+            return;
+        }
+        let tab = if backwards {
+            self.details_tab.prev()
+        } else {
+            self.details_tab.next()
+        };
+        self.set_details_tab(tab);
     }
 
     pub(super) fn set_details_tab(&mut self, tab: DetailsTab) {

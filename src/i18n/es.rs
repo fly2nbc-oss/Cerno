@@ -368,7 +368,7 @@ pub static TEXTS: Texts = Texts {
     ],
     explain_laion: "Lo bonita que le parece la foto a una IA entrenada con muchas valoraciones de personas. Le gustan sobre todo las personas, los retratos y la comida.",
     explain_v25: "Una IA más reciente para la misma pregunta, mejor con fotos del día a día. Le gustan sobre todo los paisajes, el agua y las tomas aéreas.",
-    explain_personal: "Las estrellas que Cerno cree que le darías. Aprende de tus propias estrellas y de las fotos que eliminas.",
+    explain_personal: "Las estrellas que Cerno cree que le darías. Aprende de tus propias estrellas y de las fotos que rechazas.",
     explain_aesthetics: "El valor bajo la foto: la media de las dos IA de abajo, de 0 % (poco atractiva) a 100 % (muy atractiva). La mayoría de las fotos queda entre 40 y 60 %; a partir de 80 % es muy bueno. La escala es fija – una foto tiene el mismo valor en cualquier carpeta.",
     explain_frame: "La nitidez de las zonas más nítidas, comparada con las demás fotos de esta carpeta. 80 % significa más nítida que el 80 % de ellas.",
     explain_eyes: "Nitidez justo en los ojos, si hay una cara. En los retratos cuenta esto, no el fondo.",
@@ -425,9 +425,9 @@ pub static TEXTS: Texts = Texts {
     },
     exiftool_downloading: |percent| format!("descargando … {percent:.0} %"),
     btn_exiftool: |size| format!("Descargar ExifTool ({size})"),
-    taste_sources: |stars, rejected, deleted| {
+    taste_sources: |stars, rejected| {
         format!(
-            "Aprendida de {stars} fotos con estrellas, {rejected} rechazadas y {deleted} eliminadas – las rechazadas y eliminadas cuentan como 0 ★."
+            "Aprendida de {stars} fotos con estrellas y {rejected} rechazadas – las rechazadas cuentan como 0 ★, las eliminadas no cuentan."
         )
     },
     btn_reset_taste: "Restablecer la predicción",
@@ -444,7 +444,7 @@ pub static TEXTS: Texts = Texts {
     copy_models_path: "Copiar ruta",
     models_path_copied: "Ruta copiada",
     confirm_reset_taste_title: "¿Restablecer la predicción?",
-    confirm_reset_taste_text: "Cerno olvidará lo aprendido de tus estrellas y eliminaciones. Las estrellas en los archivos de foto no cambian.",
+    confirm_reset_taste_text: "Cerno olvidará lo aprendido de tus estrellas y fotos rechazadas. Las estrellas en los archivos de foto no cambian.",
     confirm_delete_models_title: "¿Eliminar los modelos descargados?",
     confirm_delete_models_text: |size| {
         format!(
@@ -513,7 +513,6 @@ pub static TEXTS: Texts = Texts {
             }
         )
     },
-    face_number: |n| format!("Cara {n}"),
     raw_preview_fact: "Vista previa RAW",
     preview_word: "vista previa",
     edit_failed: |detail| format!("No se ha escrito: {detail}"),
@@ -590,7 +589,7 @@ pub static TEXTS: Texts = Texts {
         (
             "La predicción",
             &[
-                "Cerno aprende de tus estrellas y de tus fotos rechazadas y eliminadas lo que te gusta.",
+                "Cerno aprende de tus estrellas y de tus fotos rechazadas lo que te gusta; las eliminadas no cuentan: a menudo solo sobraba una entre muchas parecidas.",
                 "En las fotos sin estrellas muestra su estimación como estrellas ligeramente rellenas; ponerlas sigue siendo cosa tuya.",
                 "Ordenadas por predicción, primero aparecen las fotos que probablemente te gustarán.",
             ],
@@ -645,10 +644,6 @@ pub static TEXTS: Texts = Texts {
             "Color: rojo, amarillo, verde, azul – otra vez lo quita",
         ),
         ("Mayús+6 – 9", "Poner ese color y pasar a la foto siguiente"),
-        (
-            "B",
-            "Descripción: editar el comentario y las palabras clave",
-        ),
     ],
     help_cull: [
         (
@@ -712,8 +707,12 @@ pub static TEXTS: Texts = Texts {
             "Barra de filtros, detalles y tira de miniaturas a la vez",
         ),
         (
-            "G, Mayús+G",
-            "Caras: en el panel de detalles (G) o todas en grande (Mayús+G); un clic acerca",
+            "Ctrl+Tab",
+            "Pestañas del panel de detalles: valores → descripción → caras (Mayús para volver); en la descripción, Intro lleva el cursor al campo de palabras clave",
+        ),
+        (
+            "G",
+            "Todas las caras en grande sobre la foto; un clic o 1–9 acerca",
         ),
     ],
     help_edit: [

@@ -397,7 +397,7 @@ pub static TEXTS: Texts = Texts {
     ],
     explain_laion: "La beauté de la photo aux yeux d'une IA qui a appris de nombreuses notes données par des personnes. Elle aime surtout les personnes, les portraits et les plats.",
     explain_v25: "Une IA plus récente pour la même question, meilleure avec les photos du quotidien. Elle aime surtout les paysages, l'eau et les vues aériennes.",
-    explain_personal: "Les étoiles que vous donneriez selon Cerno. Elle apprend de vos propres étoiles et des photos que vous rejetez ou supprimez.",
+    explain_personal: "Les étoiles que vous donneriez selon Cerno. Elle apprend de vos propres étoiles et des photos que vous rejetez.",
     explain_aesthetics: "La valeur sous la photo : la moyenne des deux IA ci-dessous, de 0 % (peu attrayante) à 100 % (très attrayante). La plupart des photos se situent entre 40 et 60 %, à partir de 80 % c'est très bon. L'échelle est fixe – une photo a la même valeur dans chaque dossier.",
     explain_frame: "La netteté des zones les plus nettes, comparée aux autres photos de ce dossier. 80 % signifie plus nette que 80 % d'entre elles.",
     explain_eyes: "La netteté au niveau des yeux, s'il y a un visage. Pour un portrait, c'est elle qui compte, pas l'arrière-plan.",
@@ -452,9 +452,9 @@ pub static TEXTS: Texts = Texts {
     exiftool_old_state: |version| format!("{version} – trop ancien (12.24 ou plus récent requis)"),
     exiftool_downloading: |percent| format!("téléchargement … {percent:.0} %"),
     btn_exiftool: |size| format!("Télécharger ExifTool ({size})"),
-    taste_sources: |stars, rejected, deleted| {
+    taste_sources: |stars, rejected| {
         format!(
-            "Apprise de {stars} photos avec étoiles, {rejected} rejetées et {deleted} supprimées – les photos rejetées et supprimées comptent pour 0 ★."
+            "Apprise de {stars} photos avec étoiles et {rejected} rejetées – les photos rejetées comptent pour 0 ★, les supprimées pas du tout."
         )
     },
     btn_reset_taste: "Réinitialiser la prédiction",
@@ -471,7 +471,7 @@ pub static TEXTS: Texts = Texts {
     copy_models_path: "Copier le chemin",
     models_path_copied: "Chemin copié",
     confirm_reset_taste_title: "Réinitialiser la prédiction ?",
-    confirm_reset_taste_text: "Cerno oubliera ce qu'il a appris de vos étoiles et suppressions. Les étoiles dans les fichiers photo restent inchangées.",
+    confirm_reset_taste_text: "Cerno oubliera ce qu'il a appris de vos étoiles et de vos photos rejetées. Les étoiles dans les fichiers photo restent inchangées.",
     confirm_delete_models_title: "Supprimer les modèles téléchargés ?",
     confirm_delete_models_text: |size| {
         format!(
@@ -542,7 +542,6 @@ pub static TEXTS: Texts = Texts {
             }
         )
     },
-    face_number: |n| format!("Visage {n}"),
     raw_preview_fact: "Aperçu RAW",
     preview_word: "aperçu",
     edit_failed: |detail| format!("Pas enregistré : {detail}"),
@@ -619,7 +618,7 @@ pub static TEXTS: Texts = Texts {
         (
             "La prédiction",
             &[
-                "Cerno apprend de vos étoiles et de vos photos rejetées et supprimées ce qui vous plaît.",
+                "Cerno apprend de vos étoiles et de vos photos rejetées ce qui vous plaît – les photos supprimées ne comptent pas : souvent, c'était juste une de trop parmi des photos semblables.",
                 "Sur les photos sans étoiles, il montre son estimation en étoiles légèrement remplies – c'est toujours à vous de les donner.",
                 "Triées par prédiction, les photos qui vous plairont probablement viennent en premier.",
             ],
@@ -676,10 +675,6 @@ pub static TEXTS: Texts = Texts {
         (
             "Maj+6 – 9",
             "Poser cette couleur et passer à la photo suivante",
-        ),
-        (
-            "B",
-            "Description : modifier le commentaire et les mots-clés",
         ),
     ],
     help_cull: [
@@ -741,8 +736,12 @@ pub static TEXTS: Texts = Texts {
         ("F6", "Pellicule"),
         ("Maj+Tab", "Barre de filtres, détails et pellicule ensemble"),
         (
-            "G, Maj+G",
-            "Visages : dans le panneau de détails (G) ou tous en grand (Maj+G) – un clic zoome dessus",
+            "Ctrl+Tab",
+            "Onglets du panneau de détails : valeurs → description → visages (Maj pour revenir) ; dans la description, Entrée place le curseur dans le champ des mots-clés",
+        ),
+        (
+            "G",
+            "Tous les visages en grand sur la photo – un clic ou 1–9 zoome dessus",
         ),
     ],
     help_edit: [
