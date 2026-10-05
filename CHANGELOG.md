@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+## [1.6.0] – 2026-10-05
+
+Deleted photos come back, the keyboard crops, and the help explains how to work with Cerno.
+
 ### Added
 
 - **Deleted photos can come back** – a bin box beside ✕ in the filter bar (and *Filter ▸ Deleted*) shows the photos deleted in this folder; they still lie in the hidden `.originals` folder. `Ctrl+Z` puts the photo shown back into its folder, *Put back (n photos)* in the action menu every one the filter shows. When its name is taken, a photo comes back as `name (2).jpg` – nothing is overwritten. Deleted photos only look: no stars, labels or edits until they are back. With ✕ the box shows everything sorted out; it is greyed out in a folder without deleted photos and never saved.
