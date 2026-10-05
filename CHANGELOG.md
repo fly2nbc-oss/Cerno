@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+## [1.8.1] – 2026-10-05
+
+No more ffmpeg, ExifTool with one click, and an About page.
+
 ### Added
 
 - **About Cerno** – the help (`H`) has a third tab with the version, the licence and the source code, and links to report a problem or suggest an idea on GitHub (version and system filled in) and to open the data folder with `crash.log`.
