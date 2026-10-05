@@ -17,7 +17,7 @@ use anyhow::{Context as _, Result, anyhow, bail};
 use crate::decode::DecodedImage;
 use crate::frames::Seek;
 
-/// Exactly the frame at one second, like ffmpeg's before 1.8.1: the frame at the keyframe
+/// Exactly the frame at one second, like ffmpeg's up to 1.8.0: the frame at the keyframe
 /// before it was faster but often visibly another one (measured 2026-10-05 on 162 phone and
 /// drone videos: a mean difference of 7.6 against ffmpeg's frame, 19.2 for the keyframe).
 const SEEK: Seek = Seek::Accurate;

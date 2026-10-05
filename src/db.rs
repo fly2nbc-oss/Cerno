@@ -3,7 +3,7 @@
 //! `files` maps a path (valid while size and mtime match) to a content fingerprint; `images`
 //! holds everything computed from the pixels, keyed by that fingerprint, so a renamed or
 //! re-rated file keeps its scores. `feedback` held deleted photos as negative examples for the
-//! personal taste model until 1.8.1; it stays empty now (`migrate` clears it).
+//! personal taste model up to 1.8.0; it stays empty now (`migrate` clears it).
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -58,7 +58,7 @@ const SCHEMA: &str = "
         original TEXT NOT NULL,
         at_ms    INTEGER NOT NULL
     );
-    -- Until 1.8.1: photos put back before their fingerprint was known. Unused, cleared.
+    -- Up to 1.8.0: photos put back before their fingerprint was known. Unused, cleared.
     CREATE TABLE IF NOT EXISTS restored (
         path TEXT PRIMARY KEY
     );
@@ -209,7 +209,7 @@ pub struct FaceRow {
 pub type TasteExample = (Vec<f32>, f32);
 
 /// Where the taste model's examples come from (the models card names them). Deleted photos are
-/// none since 1.8.1: a good photo is often deleted only because there are too many alike.
+/// none since 1.9.0: a good photo is often deleted only because there are too many alike.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct TasteSources {
     /// Photos with 1–5 stars.
@@ -443,7 +443,7 @@ impl Db {
     /// A photo was deleted: its `files` row follows it to `aside` in `.originals` (a rename
     /// keeps size and dates, so its scores and thumbnail are found there at once) and
     /// `set_aside` remembers where it came from; without `aside` the row goes. It teaches the
-    /// taste model nothing (since 1.8.1).
+    /// taste model nothing (since 1.9.0).
     pub fn record_deletion(&self, path: &str, aside: Option<&str>) -> Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
