@@ -48,17 +48,31 @@ impl CernoApp {
                 self.offer_models();
             }
         }
-        self.all_index = index_of(&library.paths);
-        // A photo that was opened directly stays selected; a folder starts at the top of the
-        // (possibly sorted) view.
+        // RAW + JPG of one name: the RAW rides along with the JPEG (`pairs`).
+        let (paths, pairs) = if self.pair_mode {
+            crate::pairs::pair_up(library.paths.to_vec(), Path::to_path_buf)
+        } else {
+            (library.paths.to_vec(), crate::pairs::Pairs::default())
+        };
+        // A photo that was opened directly stays selected (a RAW by its JPEG); a folder starts
+        // at the top of the (possibly sorted) view.
         let start = path
             .is_file()
             .then(|| library.paths.get(index).cloned())
-            .flatten();
-        self.all = Arc::clone(&library.paths);
+            .flatten()
+            .map(|opened| {
+                pairs
+                    .primary_of(&opened)
+                    .map_or(opened.clone(), Path::to_path_buf)
+            });
+        let paths = Arc::new(paths);
+        self.all_index = index_of(&paths);
+        self.pairs = pairs;
+        self.all = paths;
         self.library = Arc::clone(&self.all);
         self.dir = Some(library.dir);
         self.load_camera_offsets();
+        self.scan_raw_marks();
         // Found in the background; the 🗑 box shows them once they are known.
         self.scan_deleted();
         self.pinned = None;

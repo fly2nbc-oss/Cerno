@@ -57,6 +57,8 @@ pub struct InfoBar<'a> {
     pub raw_preview: bool,
     /// The camera's clock was set right by this much (*Camera time …*): the date shows moved.
     pub time_offset: Option<i64>,
+    /// A RAW + JPG pair: `RAW+JPG`, and the RAW's marks where they differ.
+    pub pair: Option<String>,
 }
 
 #[derive(Default)]
@@ -131,6 +133,9 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     }
     if bar.raw_preview {
         facts.push(t.raw_preview_fact.to_owned());
+    }
+    if let Some(pair) = &bar.pair {
+        facts.push(pair.clone());
     }
     if bar.auto_advance {
         facts.push(t.auto_advance_on.to_owned());
@@ -633,6 +638,7 @@ mod tests {
             raw_preview: false,
             similarity: None,
             time_offset: None,
+            pair: None,
         }
     }
 

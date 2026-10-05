@@ -61,6 +61,13 @@ pub static TEXTS: Texts = Texts {
         }
     },
     camera_time_tooltip: |taken, offset| format!("Camera time {taken} – adjusted by {offset}"),
+    cmd_pairs: "RAW+JPG as one photo",
+    pairs_hint: "A RAW and a JPG of the same name appear as one photo – the JPG is shown. Stars, colour and description go into both files, copy, move and delete take both; edits change the JPG only.",
+    pairs_on: "RAW+JPG appear as one photo",
+    pairs_off: "RAW and JPG appear separately",
+    pair_badge: "RAW+JPG",
+    pair_edit_jpeg_only: "Changes the JPG only – the RAW stays untouched.",
+    pair_raw_marks: |marks| format!("RAW: {marks}"),
     filter_clear: "Show all",
     media_all: "Photos and videos",
     media_photos: "Photos only",

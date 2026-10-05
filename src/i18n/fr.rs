@@ -65,6 +65,13 @@ pub static TEXTS: Texts = Texts {
     camera_time_tooltip: |taken, offset| {
         format!("Heure de l'appareil {taken} – décalée de {offset}")
     },
+    cmd_pairs: "RAW+JPG comme une seule photo",
+    pairs_hint: "Un RAW et un JPG du même nom apparaissent comme une seule photo – le JPG est affiché. Étoiles, couleur et description vont dans les deux fichiers, copier, déplacer et supprimer les prennent tous les deux ; les retouches ne modifient que le JPG.",
+    pairs_on: "RAW+JPG apparaissent comme une seule photo",
+    pairs_off: "RAW et JPG apparaissent séparément",
+    pair_badge: "RAW+JPG",
+    pair_edit_jpeg_only: "Ne modifie que le JPG – le RAW reste intact.",
+    pair_raw_marks: |marks| format!("RAW : {marks}"),
     filter_clear: "Tout afficher",
     media_all: "Photos et vidéos",
     media_photos: "Photos seulement",

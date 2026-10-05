@@ -32,6 +32,8 @@ pub struct Finished {
 pub struct DeleteQueue {
     remove: Remover,
     pending: Vec<PathBuf>,
+    /// The RAWs riding along with pending JPEGs (`pairs`): set aside with them, never counted.
+    riders: Vec<PathBuf>,
     deadline: Option<Instant>,
     /// Handed to a worker, still hidden until its result arrives.
     in_progress: HashSet<PathBuf>,
@@ -46,6 +48,7 @@ impl DeleteQueue {
         Self {
             remove,
             pending: Vec::new(),
+            riders: Vec::new(),
             deadline: None,
             in_progress: HashSet::new(),
             tx,
@@ -62,14 +65,24 @@ impl DeleteQueue {
         self.deadline = Some(now + DELAY);
     }
 
+    /// Queues the RAW riding along with a queued JPEG.
+    pub fn push_rider(&mut self, path: PathBuf) {
+        if !self.is_hidden(&path) {
+            self.riders.push(path);
+        }
+    }
+
     /// Brings every waiting photo back. Returns how many.
     pub fn cancel(&mut self) -> usize {
         self.deadline = None;
+        self.riders.clear();
         std::mem::take(&mut self.pending).len()
     }
 
     pub fn is_hidden(&self, path: &Path) -> bool {
-        self.in_progress.contains(path) || self.pending.iter().any(|p| p == path)
+        self.in_progress.contains(path)
+            || self.pending.iter().any(|p| p == path)
+            || self.riders.iter().any(|p| p == path)
     }
 
     /// Waiting photos and the share of the countdown still left (1.0 → 0.0).
@@ -86,7 +99,8 @@ impl DeleteQueue {
             return false;
         }
         self.deadline = None;
-        let batch = std::mem::take(&mut self.pending);
+        let mut batch = std::mem::take(&mut self.pending);
+        batch.append(&mut self.riders);
         self.in_progress.extend(batch.iter().cloned());
         let (remove, tx) = (self.remove, self.tx.clone());
         self.workers.push(
@@ -129,7 +143,9 @@ impl DeleteQueue {
         let mut all = if self.pending.is_empty() {
             Finished::default()
         } else {
-            run(self.remove, std::mem::take(&mut self.pending))
+            let mut batch = std::mem::take(&mut self.pending);
+            batch.append(&mut self.riders);
+            run(self.remove, batch)
         };
         self.deadline = None;
         for worker in self.workers.drain(..) {
@@ -225,6 +241,28 @@ mod tests {
         );
         assert!(!queue.is_hidden(Path::new("a.jpg")));
         assert!(queue.countdown(t0 + Duration::from_secs(9)).is_none());
+    }
+
+    /// The RAW of a pair goes with its JPEG and is never counted; Esc keeps both.
+    #[test]
+    fn a_rider_goes_along_uncounted() {
+        let now = Instant::now();
+        let mut queue = DeleteQueue::new(ok);
+        queue.push(PathBuf::from("IMG_1.jpg"), now);
+        queue.push_rider(PathBuf::from("IMG_1.CR3"));
+        assert_eq!(queue.countdown(now).map(|(n, _)| n), Some(1));
+        assert!(queue.is_hidden(Path::new("IMG_1.CR3")));
+        queue.cancel();
+        assert!(!queue.is_hidden(Path::new("IMG_1.CR3")), "Esc keeps both");
+
+        queue.push(PathBuf::from("IMG_1.jpg"), now);
+        queue.push_rider(PathBuf::from("IMG_1.CR3"));
+        assert!(queue.tick(now + DELAY, || {}));
+        let done = wait_for(&mut queue);
+        assert_eq!(
+            sources(&done),
+            [PathBuf::from("IMG_1.jpg"), PathBuf::from("IMG_1.CR3")]
+        );
     }
 
     #[test]

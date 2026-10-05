@@ -4,8 +4,9 @@
 //! delete when the destination is on another volume. An existing file of the same name is
 //! left alone. Each file is held in [`FileLocks`] while it is copied or moved, so a rating
 //! written meanwhile never meets a half-copied file. [`Progress`] tells the UI how far it is.
+//! The RAW of a RAW + JPG pair rides along with its JPEG (`pairs`): both go, or neither.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -28,6 +29,8 @@ pub struct Outcome {
     pub done: Vec<(PathBuf, PathBuf)>,
     pub skipped: Vec<PathBuf>,
     pub failed: Vec<(PathBuf, String)>,
+    /// The RAWs that went along with a JPEG of `done` – not counted as photos of their own.
+    pub riders: Vec<(PathBuf, PathBuf)>,
 }
 
 /// How far a copy or move is. The worker counts, the UI reads a [`Snapshot`]. Files count
@@ -107,6 +110,8 @@ impl Progress {
 struct Job {
     mode: Mode,
     sources: Vec<PathBuf>,
+    /// The RAW riding along with a source JPEG.
+    riders: HashMap<PathBuf, PathBuf>,
     dest: PathBuf,
 }
 
@@ -159,15 +164,23 @@ impl Queue {
     }
 
     /// Remembers the job until [`Self::kick`] sees that rating writes have finished.
-    pub fn push(&mut self, mode: Mode, sources: Vec<PathBuf>, dest: PathBuf) -> bool {
+    pub fn push(
+        &mut self,
+        mode: Mode,
+        sources: Vec<PathBuf>,
+        riders: HashMap<PathBuf, PathBuf>,
+        dest: PathBuf,
+    ) -> bool {
         if self.is_busy() {
             return false;
         }
         self.progress = Arc::new(Progress::new(sources.len()));
-        self.involved = Some((mode, sources.iter().cloned().collect()));
+        let involved = sources.iter().chain(riders.values()).cloned().collect();
+        self.involved = Some((mode, involved));
         self.pending = Some(Job {
             mode,
             sources,
+            riders,
             dest,
         });
         true
@@ -189,7 +202,15 @@ impl Queue {
             std::thread::Builder::new()
                 .name("cerno-transfer".into())
                 .spawn(move || {
-                    let _ = tx.send(run(job.mode, &job.sources, &job.dest, &files, &progress));
+                    let outcome = run(
+                        job.mode,
+                        &job.sources,
+                        &job.riders,
+                        &job.dest,
+                        &files,
+                        &progress,
+                    );
+                    let _ = tx.send(outcome);
                     on_done();
                 })
                 .expect("failed to spawn transfer worker"),
@@ -217,6 +238,7 @@ impl Queue {
             outcomes.push(run(
                 job.mode,
                 &job.sources,
+                &job.riders,
                 &job.dest,
                 &self.files,
                 &self.progress,
@@ -237,6 +259,7 @@ impl Queue {
 pub fn run(
     mode: Mode,
     sources: &[PathBuf],
+    riders: &HashMap<PathBuf, PathBuf>,
     dest_dir: &Path,
     files: &FileLocks,
     progress: &Progress,
@@ -246,31 +269,61 @@ pub fn run(
         done: Vec::new(),
         skipped: Vec::new(),
         failed: Vec::new(),
+        riders: Vec::new(),
     };
+    let size_of = |path: &Path| fs::metadata(path).map_or(0, |meta| meta.len());
+    // A pair counts as one photo with the bytes of both.
     let sizes: Vec<u64> = sources
         .iter()
-        .map(|src| fs::metadata(src).map_or(0, |meta| meta.len()))
+        .map(|src| size_of(src) + riders.get(src).map_or(0, |raw| size_of(raw)))
         .collect();
     progress.start(sources.len(), sizes.iter().sum());
     for (src, &size) in sources.iter().zip(&sizes) {
         progress.begin(src, size);
-        transfer_one(mode, src, dest_dir, files, &mut outcome);
+        let rider = riders.get(src);
+        // No half pairs: a RAW whose name is taken there keeps its JPEG here too.
+        let rider_blocked = rider
+            .and_then(|raw| raw.file_name())
+            .is_some_and(|name| dest_dir.join(name).exists());
+        if rider_blocked {
+            outcome.skipped.push(src.to_owned());
+        } else if transfer_one(mode, src, dest_dir, files, &mut outcome).is_some()
+            && let Some(raw) = rider
+        {
+            let mut along = Outcome {
+                mode,
+                done: Vec::new(),
+                skipped: Vec::new(),
+                failed: Vec::new(),
+                riders: Vec::new(),
+            };
+            transfer_one(mode, raw, dest_dir, files, &mut along);
+            outcome.riders.extend(along.done);
+            outcome.failed.extend(along.failed);
+        }
         progress.finish(size);
     }
     outcome
 }
 
-fn transfer_one(mode: Mode, src: &Path, dest_dir: &Path, files: &FileLocks, outcome: &mut Outcome) {
+/// Copies or moves one file; where it went, when it did.
+fn transfer_one(
+    mode: Mode,
+    src: &Path,
+    dest_dir: &Path,
+    files: &FileLocks,
+    outcome: &mut Outcome,
+) -> Option<PathBuf> {
     let Some(name) = src.file_name() else {
         outcome
             .failed
             .push((src.to_owned(), "missing file name".to_owned()));
-        return;
+        return None;
     };
     let dest = dest_dir.join(name);
     if dest.exists() {
         outcome.skipped.push(src.to_owned());
-        return;
+        return None;
     }
     // A move makes the file disappear, which counts as a write for everyone else.
     let held = match mode {
@@ -283,11 +336,13 @@ fn transfer_one(mode: Mode, src: &Path, dest_dir: &Path, files: &FileLocks, outc
         Ok(()) => {
             log::info!("{} {} → {}", verb(mode), src.display(), dest.display());
             carry_sidecar(mode, src, &dest);
-            outcome.done.push((src.to_owned(), dest));
+            outcome.done.push((src.to_owned(), dest.clone()));
+            Some(dest)
         }
         Err(err) => {
             log::warn!("could not {} {}: {err}", verb(mode), src.display());
             outcome.failed.push((src.to_owned(), err));
+            None
         }
     }
 }
@@ -387,6 +442,7 @@ mod tests {
         let outcome = run(
             Mode::Copy,
             std::slice::from_ref(&src),
+            &HashMap::new(),
             &dest_dir,
             &FileLocks::default(),
             &Progress::default(),
@@ -411,6 +467,7 @@ mod tests {
         let outcome = run(
             Mode::Move,
             std::slice::from_ref(&src),
+            &HashMap::new(),
             &dest_dir,
             &FileLocks::default(),
             &Progress::default(),
@@ -418,6 +475,45 @@ mod tests {
         assert_eq!(outcome.done.len(), 1);
         assert!(!src.exists());
         assert_eq!(fs::read(&outcome.done[0].1).unwrap(), b"moved");
+
+        fs::remove_dir_all(&src_dir).unwrap();
+        fs::remove_dir_all(&dest_dir).unwrap();
+    }
+
+    /// A RAW + JPG pair moves as one photo, the RAW's sidecar with it; when the RAW's name is
+    /// taken at the destination, neither moves.
+    #[test]
+    fn a_pair_moves_whole_or_not_at_all() {
+        let src_dir = temp_dir("pair-src");
+        let dest_dir = temp_dir("pair-dest");
+        let jpeg = write_old(&src_dir, "IMG_1.JPG", b"jpeg");
+        let raw = write_old(&src_dir, "IMG_1.CR3", b"raw");
+        write_old(&src_dir, "IMG_1.xmp", b"marks");
+        let blocked_jpeg = write_old(&src_dir, "IMG_2.JPG", b"jpeg");
+        let blocked_raw = write_old(&src_dir, "IMG_2.CR3", b"raw");
+        write_old(&dest_dir, "IMG_2.CR3", b"someone else's");
+        let riders = HashMap::from([
+            (jpeg.clone(), raw.clone()),
+            (blocked_jpeg.clone(), blocked_raw.clone()),
+        ]);
+
+        let outcome = run(
+            Mode::Move,
+            &[jpeg, blocked_jpeg.clone()],
+            &riders,
+            &dest_dir,
+            &FileLocks::default(),
+            &Progress::default(),
+        );
+        assert_eq!(outcome.done.len(), 1, "a pair is one photo");
+        assert_eq!(outcome.riders.len(), 1);
+        assert!(dest_dir.join("IMG_1.CR3").exists() && dest_dir.join("IMG_1.xmp").exists());
+        assert!(!raw.exists());
+        assert_eq!(outcome.skipped, std::slice::from_ref(&blocked_jpeg));
+        assert!(
+            blocked_jpeg.exists() && blocked_raw.exists(),
+            "neither moved"
+        );
 
         fs::remove_dir_all(&src_dir).unwrap();
         fs::remove_dir_all(&dest_dir).unwrap();
@@ -437,6 +533,7 @@ mod tests {
         let outcome = run(
             Mode::Move,
             &[raw, jpeg],
+            &HashMap::new(),
             &dest_dir,
             &FileLocks::default(),
             &Progress::default(),
@@ -460,7 +557,12 @@ mod tests {
         let dest_dir = temp_dir("involved-dest");
         let src = write_old(&src_dir, "d.jpg", b"photo");
         let mut queue = Queue::new(Arc::new(FileLocks::default()));
-        assert!(queue.push(Mode::Move, vec![src.clone()], dest_dir.clone()));
+        assert!(queue.push(
+            Mode::Move,
+            vec![src.clone()],
+            HashMap::new(),
+            dest_dir.clone()
+        ));
         assert_eq!(queue.involves(&src), Some(Mode::Move));
         let (mode, waiting) = queue.progress().unwrap();
         assert_eq!(
@@ -502,6 +604,7 @@ mod tests {
         let outcome = run(
             Mode::Copy,
             &[a, b],
+            &HashMap::new(),
             &dest_dir,
             &FileLocks::default(),
             &progress,
@@ -539,6 +642,7 @@ mod tests {
         let outcome = run(
             Mode::Copy,
             std::slice::from_ref(&src),
+            &HashMap::new(),
             &dest_dir,
             &FileLocks::default(),
             &Progress::default(),

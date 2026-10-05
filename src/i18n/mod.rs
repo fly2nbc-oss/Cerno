@@ -261,6 +261,13 @@ pub struct Texts {
     pub camera_aligned: fn(&str, &str) -> String,
     pub camera_time_photos: fn(usize) -> String,
     pub camera_time_tooltip: fn(&str, &str) -> String,
+    pub cmd_pairs: &'static str,
+    pub pairs_hint: &'static str,
+    pub pairs_on: &'static str,
+    pub pairs_off: &'static str,
+    pub pair_badge: &'static str,
+    pub pair_edit_jpeg_only: &'static str,
+    pub pair_raw_marks: fn(&str) -> String,
     pub filter_clear: &'static str,
     /// The filter bar's photos / videos box and the same rows in Filter ▸.
     pub media_all: &'static str,
@@ -745,6 +752,7 @@ mod tests {
                 "{name}"
             );
             assert!((t.camera_time_photos)(312).contains("312"), "{name}");
+            assert!((t.pair_raw_marks)("5 ★").contains("5 ★"), "{name}");
             let back = (t.restored)(6, 2, "IMG_1 (2).jpg");
             assert!(back.contains('6') && back.contains('2'), "{name}");
             assert!(

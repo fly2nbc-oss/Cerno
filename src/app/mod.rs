@@ -31,6 +31,7 @@ mod marks;
 mod menu;
 mod name_list;
 mod notice;
+mod pairs;
 mod panels;
 mod photos;
 mod video;
@@ -151,6 +152,12 @@ pub struct CernoApp {
     auto_advance: bool,
     /// The open folder includes nested folders.
     subfolders: bool,
+    /// RAW + JPG of one name are one photo (*RAW+JPG as one photo*, on by default).
+    pair_mode: bool,
+    /// The RAWs riding along with the open folder's JPEGs.
+    pairs: crate::pairs::Pairs,
+    /// What the pairs' RAW sidecars say, for the note where they differ.
+    raw_marks: pairs::RawMarks,
     target: Option<[u32; 2]>,
     /// A new decode size and since when the photo area has had it (see `TARGET_SETTLE`).
     pending_target: Option<([u32; 2], Instant)>,
@@ -304,6 +311,7 @@ impl CernoApp {
         };
         let auto_advance = db.setting("auto_advance").as_deref() == Some("1");
         let subfolders = db.setting("subfolders").as_deref() == Some("1");
+        let pair_mode = db.setting(pairs::SETTING).as_deref() != Some("0");
         // Only the photo, the filmstrip and the info bar by default.
         let show_toolbar = db.setting("top_bar").as_deref() == Some("1");
         let show_filmstrip = db.setting("filmstrip").as_deref() != Some("0");
@@ -367,6 +375,9 @@ impl CernoApp {
             drafts: description::Drafts::default(),
             auto_advance,
             subfolders,
+            pair_mode,
+            pairs: crate::pairs::Pairs::default(),
+            raw_marks: pairs::RawMarks::default(),
             target: None,
             pending_target: None,
             zoom: viewer::Zoom::default(),
@@ -461,6 +472,7 @@ impl CernoApp {
     fn poll_background(&mut self, ctx: &egui::Context) {
         self.process_deletions(ctx);
         self.poll_deleted(ctx);
+        self.poll_raw_marks();
         self.poll_faces();
         self.poll_transfer(ctx);
         self.poll_external(ctx);

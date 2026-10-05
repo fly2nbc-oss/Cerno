@@ -1120,6 +1120,90 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
+    /// A sidecar another program wrote – Lightroom's development settings, a mask, a namespace
+    /// Cerno doesn't know, keywords – keeps all of it when Cerno sets stars, a colour and a
+    /// comment: only those tags change. ExifTool writes the packet anew (attributes may become
+    /// elements), so the test looks for names and values, not bytes. Skipped without ExifTool.
+    #[test]
+    fn a_lightroom_sidecar_keeps_its_development() {
+        if crate::exiftool::locate().is_none() {
+            eprintln!("ExifTool not found – skipped");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("cerno-lr-xmp-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let raw = dir.join("IMG_3.CR3");
+        let untouched = b"proprietary raw data".to_vec();
+        std::fs::write(&raw, &untouched).unwrap();
+        let lightroom = r#"<?xpacket begin='' id='W5M0MpCehiHzreSzNTczkc9d'?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Adobe XMP Core 7.0">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+    xmlns:crs="http://ns.adobe.com/camera-raw-settings/1.0/"
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:foo="http://example.com/foo/1.0/"
+    xmp:Rating="2"
+    crs:Version="16.0"
+    crs:ProcessVersion="15.4"
+    crs:Exposure2012="+0.50"
+    crs:Contrast2012="+12"
+    crs:HasSettings="True"
+    foo:Kept="keep me">
+   <crs:MaskGroupBasedCorrections>
+    <rdf:Seq>
+     <rdf:li crs:What="Correction" crs:LocalExposure2012="-0.35"/>
+    </rdf:Seq>
+   </crs:MaskGroupBasedCorrections>
+   <dc:subject>
+    <rdf:Bag>
+     <rdf:li>Berg</rdf:li>
+    </rdf:Bag>
+   </dc:subject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>
+<?xpacket end='w'?>
+"#;
+        let sidecar = crate::sidecar::path_of(&raw);
+        std::fs::write(&sidecar, lightroom).unwrap();
+        let mut exiftool = None;
+        let comment = Description {
+            comment: "Gipfel".into(),
+            keywords: vec!["Berg".into()],
+        };
+        write_marks(
+            &mut exiftool,
+            &raw,
+            Some(Rating::Stars(5)),
+            Some(Some(Label::Red)),
+            Some(&comment),
+        )
+        .unwrap();
+        drop(exiftool);
+        let written = std::fs::read_to_string(&sidecar).unwrap();
+        for kept in [
+            "Exposure2012",
+            "+0.50",
+            "Contrast2012",
+            "ProcessVersion",
+            "MaskGroupBasedCorrections",
+            "LocalExposure2012",
+            "-0.35",
+            "keep me",
+            "Berg",
+        ] {
+            assert!(written.contains(kept), "{kept} lost:\n{written}");
+        }
+        let meta = metadata::read_sidecar(&raw);
+        assert_eq!(meta.rating.value, Rating::Stars(5));
+        assert_eq!(meta.label, LabelInfo::Known(Label::Red));
+        assert_eq!(meta.description.comment, "Gipfel");
+        assert_eq!(std::fs::read(&raw).unwrap(), untouched, "RAW untouched");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[test]
     fn a_description_comes_back_only_when_the_save_dropped_it() {
         let known = Description {

@@ -55,6 +55,8 @@ enum Action {
     NameList,
     /// `Shift+C`: four photos at once.
     Quad,
+    /// Settings: RAW + JPG as one photo.
+    Pairs,
     /// Compare mode: the right photo's camera takes the left one's time.
     AlignCamera,
     /// *Visible photos ▸ Camera time …*: the card with every camera's offset.
@@ -363,6 +365,11 @@ impl CernoApp {
                 )
                 .toggle(self.subfolders),
             ),
+            Entry::Row(
+                Row::new(Action::Pairs, t.cmd_pairs, None)
+                    .toggle(self.pair_mode)
+                    .hint(t.pairs_hint),
+            ),
             Entry::Group(Group::new(
                 t.menu_language,
                 Some(i18n::with_ctrl("L")),
@@ -397,6 +404,15 @@ impl CernoApp {
             self.rating_of(path, image.as_deref())
         });
         let colour = current.and_then(|path| self.label_of(path, image.as_deref()));
+        // A pair's edits change the JPEG alone; the rows say so.
+        let paired = current.is_some_and(|path| self.pairs.companion(path).is_some());
+        let jpeg_only = |row: Row<Action>| {
+            if paired {
+                row.hint(t.pair_edit_jpeg_only)
+            } else {
+                row
+            }
+        };
 
         // Each row shows what it sets, as the filmstrip does: ☆, then 1–5 stars.
         let stars = [Rating::Unrated]
@@ -453,20 +469,24 @@ impl CernoApp {
                 .hint(t.align_camera_hint)
                 .disabled(self.align_block()),
             Row::new(Action::Similar, t.cmd_similar, key("M")).toggle(self.options.similar),
-            Row::new(Action::Straighten, t.cmd_straighten, key("S")).disabled(edit),
-            Row::new(Action::Crop, t.cmd_crop, key("R")).disabled(edit),
-            Row::new(
-                Action::RotateCcw,
-                t.cmd_rotate_ccw,
-                Some(format!("{}+←", t.key_ctrl)),
-            )
-            .disabled(rewrite),
-            Row::new(
-                Action::RotateCw,
-                t.cmd_rotate_cw,
-                Some(format!("{}+→", t.key_ctrl)),
-            )
-            .disabled(rewrite),
+            jpeg_only(Row::new(Action::Straighten, t.cmd_straighten, key("S")).disabled(edit)),
+            jpeg_only(Row::new(Action::Crop, t.cmd_crop, key("R")).disabled(edit)),
+            jpeg_only(
+                Row::new(
+                    Action::RotateCcw,
+                    t.cmd_rotate_ccw,
+                    Some(format!("{}+←", t.key_ctrl)),
+                )
+                .disabled(rewrite),
+            ),
+            jpeg_only(
+                Row::new(
+                    Action::RotateCw,
+                    t.cmd_rotate_cw,
+                    Some(format!("{}+→", t.key_ctrl)),
+                )
+                .disabled(rewrite),
+            ),
             // On a deleted photo `Ctrl+Z` undoes the deletion; the row says so in its place.
             if current.is_some_and(|path| self.is_deleted(path)) {
                 Row::new(Action::Restore, t.cmd_restore, Some(i18n::with_ctrl("Z")))
@@ -688,6 +708,7 @@ impl CernoApp {
             Action::Faces => self.open_faces(),
             Action::NameList => self.open_name_list(),
             Action::Quad => self.toggle_quad(),
+            Action::Pairs => self.toggle_pairs(ctx),
             Action::AlignCamera => self.align_right_camera(ctx),
             Action::CameraTime => self.open_camera_time(),
             Action::FaceGrid => self.toggle_face_grid(),

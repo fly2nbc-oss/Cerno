@@ -255,6 +255,7 @@ mod tests {
             duplicate_of: None,
             video: false,
             deleted: false,
+            pair: None,
         }
     }
 
