@@ -29,6 +29,8 @@ pub(super) enum ConfirmAction {
     DownloadExifTool,
     ResetTaste,
     DeleteModels,
+    /// The first start's question: may Cerno check for updates once a day?
+    UpdateCheck,
 }
 
 /// What a palette entry does.
@@ -126,6 +128,7 @@ impl CernoApp {
                         &size,
                     ),
                     confirm: t.btn_download,
+                    cancel: t.btn_cancel,
                     danger: false,
                 }
             }
@@ -133,19 +136,29 @@ impl CernoApp {
                 title: t.exiftool_title,
                 text: (t.exiftool_text)(&i18n::size(crate::tools::EXIFTOOL.bytes)),
                 confirm: t.btn_download,
+                cancel: t.btn_cancel,
                 danger: false,
             },
             ConfirmAction::ResetTaste => confirm::Confirm {
                 title: t.confirm_reset_taste_title,
                 text: t.confirm_reset_taste_text.to_owned(),
                 confirm: t.btn_reset_taste,
+                cancel: t.btn_cancel,
                 danger: true,
             },
             ConfirmAction::DeleteModels => confirm::Confirm {
                 title: t.confirm_delete_models_title,
                 text: (t.confirm_delete_models_text)(&i18n::size(status.installed_bytes())),
                 confirm: t.btn_delete_models,
+                cancel: t.btn_cancel,
                 danger: true,
+            },
+            ConfirmAction::UpdateCheck => confirm::Confirm {
+                title: t.update_ask_title,
+                text: t.update_ask_text.to_owned(),
+                confirm: t.btn_update_yes,
+                cancel: t.btn_update_no,
+                danger: false,
             },
         }
     }
@@ -160,6 +173,7 @@ impl CernoApp {
             }
             ConfirmAction::ResetTaste => self.analyzer.reset_taste_learning(),
             ConfirmAction::DeleteModels => self.analyzer.delete_installed_models(),
+            ConfirmAction::UpdateCheck => self.answer_update_question(true),
         }
     }
 
@@ -290,6 +304,9 @@ impl CernoApp {
             self.models_open = back_to_models;
             if yes {
                 self.carry_out(ctx, action);
+            } else if action == ConfirmAction::UpdateCheck {
+                // *No* is an answer too: the question doesn't come again.
+                self.answer_update_question(false);
             }
         }
     }

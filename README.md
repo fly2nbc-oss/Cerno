@@ -87,7 +87,7 @@ Backup tools that only compare size and date (e.g. `rsync` without `-c`) may mis
 
 Cerno works on your computer. Your photos, their names and your ratings never leave it, and there is no telemetry.
 
-- **Update check:** once a day Cerno asks GitHub which release is the latest – one request to `github.com/fly2nbc-oss/Cerno/releases/latest`, whose redirect names the version. Nothing about you, your computer or your photos is sent; the request says only that it comes from "Cerno". GitHub sees your IP address, as with any website. A newer version is only named; nothing is downloaded or installed. Turn it off under *Settings ▸ Check for updates*. The installer says so on its first page, and Cerno once before the first check.
+- **Update check, only if you agree:** at the first start Cerno asks whether it may look for a new version; until you say yes it never does. Then it asks GitHub once a day which release is the latest – one request to `github.com/fly2nbc-oss/Cerno/releases/latest`, whose redirect names the version. Nothing about you, your computer or your photos is sent; the request says only that it comes from "Cerno". GitHub sees your IP address, as with any website. A newer version is only named; nothing is downloaded or installed. *Settings ▸ Check for updates* turns it on or off.
 - **Downloads you ask for:** the aesthetics models (from Hugging Face and this repository's releases) and, on Windows, ExifTool (from SourceForge) – only after you click, each checked by size and SHA-256.
 - **Links you click:** *About Cerno* opens GitHub issues with the version and system filled in, and Details › File opens a photo's GPS position in Google Maps or OpenStreetMap – only on a click, in your browser.
 
@@ -98,7 +98,7 @@ Free code signing provided by [SignPath.io](https://about.signpath.io/), certifi
 - **What is signed:** only what this repository builds – `cerno.exe` and the installer `cerno_<version>_x64-setup.exe`, in the CI run of the release's tag, from the source at that tag. The libraries of others in the package (GStreamer, libheif, ONNX Runtime, the VC++ runtime) keep their own signatures or have none, and the uninstaller, which the installer writes on your computer, is not signed.
 - **Committers and reviewers:** [fly2nbc-oss](https://github.com/fly2nbc-oss), the author.
 - **Approvers:** fly2nbc-oss – every signing request is approved by hand.
-- **Privacy:** see [Privacy](#privacy). Cerno sends nothing but the update check, which the installer names on its first page and which can be turned off.
+- **Privacy:** see [Privacy](#privacy). Cerno sends nothing but the update check, which runs only once you have agreed to it at the first start and can be turned off again.
 
 ## More
 
