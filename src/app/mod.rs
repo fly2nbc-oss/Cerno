@@ -258,17 +258,8 @@ pub struct CernoApp {
     edit_thread: Option<JoinHandle<()>>,
     /// A quarter turn or a re-encode is still in the writer.
     edit_busy: bool,
-    /// The video playing (or paused) in the single view (`video`).
-    video: Option<video::Session>,
-    /// Stopped players, until their files are closed.
-    video_releases: Vec<crate::playback::Release>,
-    /// Volume 0..=1 and sound off, saved.
-    video_volume: f32,
-    video_muted: bool,
-    /// "Plays without sound" (no sound device) was shown in this run.
-    video_silent_told: bool,
-    /// The streams of the video the details panel shows, read in the background.
-    media_probe: Option<video::Probe>,
+    /// The video playing in the single view, its volume, the details panel's probe.
+    videos: video::Videos,
 }
 
 /// What `assemble` takes from outside: the index and the parts that write or delete files or
@@ -373,7 +364,7 @@ impl CernoApp {
             .setting("details_tab")
             .and_then(|id| DetailsTab::from_id(&id))
             .unwrap_or(DetailsTab::Values);
-        let (video_volume, video_muted) = video::saved_volume(&db);
+        let videos = video::Videos::restore(&db);
         let start_target = db
             .setting(AREA_SETTING)
             .and_then(|text| parse_area(&text))
@@ -477,12 +468,7 @@ impl CernoApp {
             edit: None,
             edit_thread: None,
             edit_busy: false,
-            video: None,
-            video_releases: Vec::new(),
-            video_volume,
-            video_muted,
-            video_silent_told: false,
-            media_probe: None,
+            videos,
         }
     }
 

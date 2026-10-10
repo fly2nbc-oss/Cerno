@@ -33,6 +33,36 @@ const SCRUB_EVERY: Duration = Duration::from_millis(120);
 pub(super) const VOLUME_KEY: &str = "video_volume";
 pub(super) const MUTED_KEY: &str = "video_muted";
 
+/// The video of the single view and what goes with it.
+pub(super) struct Videos {
+    /// The video playing (or paused) in the single view.
+    pub(super) session: Option<Session>,
+    /// Stopped players, until their files are closed.
+    pub(super) releases: Vec<playback::Release>,
+    /// Volume 0..=1 and sound off, saved.
+    pub(super) volume: f32,
+    pub(super) muted: bool,
+    /// "Plays without sound" (no sound device) was shown in this run.
+    pub(super) silent_told: bool,
+    /// The streams of the video the details panel shows, read in the background.
+    pub(super) probe: Option<Probe>,
+}
+
+impl Videos {
+    /// Nothing playing, the saved volume.
+    pub(super) fn restore(db: &crate::db::Db) -> Self {
+        let (volume, muted) = saved_volume(db);
+        Self {
+            session: None,
+            releases: Vec::new(),
+            volume,
+            muted,
+            silent_told: false,
+            probe: None,
+        }
+    }
+}
+
 pub(super) struct Session {
     player: Player,
     /// The pointer last moved over the photo area: the bar shows for a while after it.
@@ -79,7 +109,7 @@ impl CernoApp {
         let Some(path) = self.current_video().map(Path::to_path_buf) else {
             return;
         };
-        if let Some(session) = &self.video
+        if let Some(session) = &self.videos.session
             && session.player.path() == path
         {
             session.player.toggle();
@@ -91,12 +121,12 @@ impl CernoApp {
             ctx,
             &path,
             target,
-            self.video_volume,
-            self.video_muted,
+            self.videos.volume,
+            self.videos.muted,
             Audio::Device,
         ) {
             Ok(player) => {
-                self.video = Some(Session {
+                self.videos.session = Some(Session {
                     player,
                     pointer_moved: Instant::now(),
                     scrubbed: None,
@@ -111,7 +141,8 @@ impl CernoApp {
     /// `None` while it is read, or when it can't be.
     pub(super) fn media_info(&mut self, ctx: &egui::Context, path: &Path) -> Option<MediaInfo> {
         if self
-            .media_probe
+            .videos
+            .probe
             .as_ref()
             .is_none_or(|probe| probe.path != path)
         {
@@ -126,13 +157,13 @@ impl CernoApp {
                     let _ = tx.send(info);
                     ctx.request_repaint();
                 });
-            self.media_probe = Some(Probe {
+            self.videos.probe = Some(Probe {
                 path: path.to_path_buf(),
                 result: spawned.is_err().then_some(None),
                 rx: spawned.is_ok().then_some(rx),
             });
         }
-        let probe = self.media_probe.as_mut()?;
+        let probe = self.videos.probe.as_mut()?;
         if let Some(rx) = &probe.rx
             && let Ok(info) = rx.try_recv()
         {
@@ -144,15 +175,15 @@ impl CernoApp {
 
     /// Stops the video (in the background); its file counts as open until it is closed.
     pub(super) fn stop_video(&mut self) {
-        if let Some(session) = self.video.take() {
-            self.video_releases.push(session.player.stop());
+        if let Some(session) = self.videos.session.take() {
+            self.videos.releases.push(session.player.stop());
         }
     }
 
     /// Every stopped player has closed its file: copy, move and delete may touch it.
     pub(super) fn videos_released(&mut self) -> bool {
-        self.video_releases.retain(|release| !release.done());
-        self.video_releases.is_empty()
+        self.videos.releases.retain(|release| !release.done());
+        self.videos.releases.is_empty()
     }
 
     /// Waits up to `limit` for the stopped players (on exit, before deletions are carried out).
@@ -172,13 +203,14 @@ impl CernoApp {
             playback::warm_up();
         }
         let keep = self
-            .video
+            .videos
+            .session
             .as_ref()
             .is_some_and(|session| Some(session.player.path()) == current.as_deref());
         if !keep {
             self.stop_video();
         }
-        let Some(session) = &self.video else {
+        let Some(session) = &self.videos.session else {
             return;
         };
         if let Some(target) = self.target {
@@ -191,15 +223,15 @@ impl CernoApp {
             return;
         }
         // No sound device: it plays without sound – said once per run, not for every video.
-        if status.silent && !self.video_silent_told {
-            self.video_silent_told = true;
+        if status.silent && !self.videos.silent_told {
+            self.videos.silent_told = true;
             self.notice = Some(Notice::hint(i18n::t().video_no_sound));
         }
         // The time and the timeline move between frames that arrive on their own.
         if status.playing || status.starting {
             ctx.request_repaint_after(Duration::from_millis(250));
         }
-        if !self.video_releases.is_empty() {
+        if !self.videos.releases.is_empty() {
             ctx.request_repaint_after(Duration::from_millis(50));
         }
     }
@@ -210,10 +242,11 @@ impl CernoApp {
             self.toggle_video(ctx);
         }
         if keys.volume != 0 {
-            let volume = (self.video_volume + VOLUME_STEP * f32::from(keys.volume)).clamp(0.0, 1.0);
+            let volume =
+                (self.videos.volume + VOLUME_STEP * f32::from(keys.volume)).clamp(0.0, 1.0);
             self.set_video_volume(Some(volume), Some(false));
         }
-        let Some(session) = &mut self.video else {
+        let Some(session) = &mut self.videos.session else {
             return;
         };
         session.pointer_moved = Instant::now();
@@ -237,26 +270,26 @@ impl CernoApp {
         if let Some(volume) = volume {
             // Only a value that changes what is saved: the slider reports every frame of a drag.
             let saved = format!("{volume:.2}");
-            if saved != format!("{:.2}", self.video_volume) {
+            if saved != format!("{:.2}", self.videos.volume) {
                 self.db.put_setting(VOLUME_KEY, &saved);
             }
-            self.video_volume = volume;
+            self.videos.volume = volume;
         }
         if let Some(muted) = muted {
-            self.video_muted = muted;
+            self.videos.muted = muted;
             self.db.put_flag(MUTED_KEY, muted);
         }
-        if let Some(session) = &self.video {
+        if let Some(session) = &self.videos.session {
             session
                 .player
-                .set_volume(self.video_volume, self.video_muted);
+                .set_volume(self.videos.volume, self.videos.muted);
         }
     }
 
     /// The playing video's frame over the photo slot `area`, and its bar. `false` when this
     /// slot shows no playing video (the poster and the play pill stay).
     pub(super) fn draw_video(&mut self, ui: &egui::Ui, area: Rect, path: &Path) -> bool {
-        let Some(session) = &mut self.video else {
+        let Some(session) = &mut self.videos.session else {
             return false;
         };
         if session.player.path() != path {
@@ -310,13 +343,13 @@ impl CernoApp {
                 playing: status.playing,
                 position: status.position,
                 duration: status.duration,
-                volume: self.video_volume,
-                muted: self.video_muted,
+                volume: self.videos.volume,
+                muted: self.videos.muted,
                 opacity,
             },
             Id::new("video-controls"),
         );
-        let Some(session) = &mut self.video else {
+        let Some(session) = &mut self.videos.session else {
             return true;
         };
         if out.hovered {
@@ -335,7 +368,7 @@ impl CernoApp {
             }
         }
         if out.mute {
-            let muted = !self.video_muted;
+            let muted = !self.videos.muted;
             self.set_video_volume(None, Some(muted));
         }
         if let Some(volume) = out.volume {
@@ -346,7 +379,7 @@ impl CernoApp {
 }
 
 /// The volume saved last time (0..=1), and whether the sound was off.
-pub(super) fn saved_volume(db: &crate::db::Db) -> (f32, bool) {
+fn saved_volume(db: &crate::db::Db) -> (f32, bool) {
     let volume = db
         .setting(VOLUME_KEY)
         .and_then(|v| v.parse::<f32>().ok())
