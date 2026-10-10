@@ -445,19 +445,19 @@ impl CernoApp {
             self.go_to(ctx, usize::MAX, -1);
         }
         if let Some(stars) = keys.rating {
-            self.set_rating(ctx, stars, self.auto_advance);
+            self.set_rating(ctx, stars, self.marks.auto_advance);
         }
         if let Some(stars) = keys.rate_and_next {
             self.set_rating(ctx, stars, true);
         }
         if keys.reject {
-            self.toggle_reject(ctx, self.auto_advance);
+            self.toggle_reject(ctx, self.marks.auto_advance);
         }
         if keys.reject_and_next {
             self.set_rating(ctx, Rating::Rejected, true);
         }
         if let Some(label) = keys.label {
-            self.toggle_label(ctx, label, self.auto_advance);
+            self.toggle_label(ctx, label, self.marks.auto_advance);
         }
         if let Some(label) = keys.label_and_next {
             self.set_label(ctx, Some(label), true);

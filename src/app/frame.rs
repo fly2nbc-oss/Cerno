@@ -132,7 +132,7 @@ impl CernoApp {
             .filter(|k| percentiles.is_blurry(&k.scores))
             .and_then(|k| percentiles.subject(&k.scores))
             .map(|(p, eyes)| (i18n::t().blurry_tooltip)(eyes, p * 100.0));
-        let rating = match self.session_ratings.get(path) {
+        let rating = match self.marks.ratings.get(path) {
             Some(rating) => *rating,
             None => known.map(|k| k.rating).unwrap_or_default(),
         };
@@ -284,7 +284,7 @@ impl CernoApp {
             label: self.label_of(&path, image.as_deref()),
             series,
             duplicate_of,
-            auto_advance: self.auto_advance,
+            auto_advance: self.marks.auto_advance,
             analysed: scores.is_some(),
             aesthetics: if comparing {
                 None

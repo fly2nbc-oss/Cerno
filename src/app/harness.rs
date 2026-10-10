@@ -132,7 +132,7 @@ impl Harness {
     /// The current photo's mark as the app shows it (the session's, before the writer).
     pub(super) fn rating_of(&self, index: usize) -> Option<Rating> {
         let path = self.app.view.get(index)?;
-        self.app.session_ratings.get(path).copied()
+        self.app.marks.ratings.get(path).copied()
     }
 
     /// What lies over the window and takes the keyboard.

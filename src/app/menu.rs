@@ -588,7 +588,8 @@ impl CernoApp {
         let t = i18n::t();
         let mut items = vec![
             Item::Row(
-                Row::new(Action::AutoAdvance, t.cmd_auto_advance, None).toggle(self.auto_advance),
+                Row::new(Action::AutoAdvance, t.cmd_auto_advance, None)
+                    .toggle(self.marks.auto_advance),
             ),
             Item::Row(
                 Row::new(
@@ -870,8 +871,8 @@ impl CernoApp {
                 None => self.set_label(ctx, None, false),
             },
             Action::AutoAdvance => {
-                self.auto_advance = !self.auto_advance;
-                self.db.put_flag("auto_advance", self.auto_advance);
+                self.marks.auto_advance = !self.marks.auto_advance;
+                self.db.put_flag("auto_advance", self.marks.auto_advance);
             }
             Action::Subfolders => self.toggle_subfolders(ctx),
             Action::Language(lang) => self.set_language(ctx, lang),

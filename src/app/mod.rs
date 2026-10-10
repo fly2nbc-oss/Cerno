@@ -59,7 +59,6 @@ use crate::deletion::{self, DeleteQueue};
 use crate::filelock::FileLocks;
 use crate::i18n::{self, Lang};
 use crate::loader::Loader;
-use crate::metadata::{Description, Label, Rating};
 use crate::paths;
 use crate::rating::RatingWriter;
 use crate::theme::tokens;
@@ -131,19 +130,12 @@ pub struct CernoApp {
     /// `has_videos` for this list of the folder.
     videos_in: (std::sync::Weak<Vec<PathBuf>>, bool),
 
-    /// Ratings given in this session; they win over the value read from the file, whose
-    /// write may still be pending.
-    session_ratings: HashMap<PathBuf, Rating>,
-    /// Colour labels given in this session (`None` clears). They win over the file the same way.
-    session_labels: HashMap<PathBuf, Option<Label>>,
-    /// Comments and keywords given in this session; they win over the file the same way.
-    session_descriptions: HashMap<PathBuf, Description>,
+    /// The session's marks, what `Ctrl+Z` takes back, auto-advance.
+    marks: marks::Marks,
     /// The current photo's faces (`G`).
     faces: faces::Faces,
     /// The comment and keyword being typed in the description tab.
     drafts: description::Drafts,
-    /// `0`–`5`, `X` and `6`–`9` also move to the next photo.
-    auto_advance: bool,
     /// The open folder includes nested folders.
     subfolders: bool,
     /// RAW + JPG of one name are one photo (*RAW+JPG as one photo*, on by default).
@@ -152,8 +144,6 @@ pub struct CernoApp {
     pairs: crate::pairs::Pairs,
     /// What the pairs' RAW sidecars say, for the note where they differ.
     raw_marks: pairs::RawMarks,
-    /// What Ctrl+Z takes back: the session's marks and edits.
-    journal: undo::Journal,
     /// The update check: its switch and what it found.
     updates: update::Updates,
     /// The decode size: the photo area, once it has kept its size.
@@ -292,7 +282,7 @@ impl CernoApp {
             hide_rejected: db.setting("hide_rejected").as_deref() == Some("1"),
             name_list: false,
         };
-        let auto_advance = db.setting("auto_advance").as_deref() == Some("1");
+        let marks = marks::Marks::restore(&db);
         let subfolders = db.setting("subfolders").as_deref() == Some("1");
         let pair_mode = db.setting(pairs::SETTING).as_deref() != Some("0");
         let bars = panels::Bars::restore(&db);
@@ -341,17 +331,13 @@ impl CernoApp {
             view_built: Instant::now(),
             percentiles: (u64::MAX, Arc::default()),
             videos_in: (std::sync::Weak::new(), false),
-            session_ratings: HashMap::new(),
-            session_labels: HashMap::new(),
-            session_descriptions: HashMap::new(),
+            marks,
             faces: faces::Faces::default(),
             drafts: description::Drafts::default(),
-            auto_advance,
             subfolders,
             pair_mode,
             pairs: crate::pairs::Pairs::default(),
             raw_marks: pairs::RawMarks::default(),
-            journal: undo::Journal::default(),
             updates,
             target,
             zoom: viewer::Zoom::default(),

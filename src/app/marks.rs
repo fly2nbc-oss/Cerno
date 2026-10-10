@@ -1,17 +1,47 @@
 //! Stars, rejection and colour labels – shown at once, written by the rating writer.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use eframe::egui;
 
+use crate::db::Db;
 use crate::loader::{LoadedImage, Lookup};
-use crate::metadata::{Label, Rating};
+use crate::metadata::{Description, Label, Rating};
 use crate::view::SortKey;
 
 use super::CernoApp;
 use super::gate::Change;
-use super::undo::Entry;
+use super::undo::{Entry, Journal};
+
+/// The marks of this session: until the writer has flushed, they win over what the file says.
+pub(super) struct Marks {
+    /// Ratings given in this session; they win over the value read from the file, whose
+    /// write may still be pending.
+    pub(super) ratings: HashMap<PathBuf, Rating>,
+    /// Colour labels given in this session (`None` clears). They win over the file the same way.
+    pub(super) labels: HashMap<PathBuf, Option<Label>>,
+    /// Comments and keywords given in this session; they win over the file the same way.
+    pub(super) descriptions: HashMap<PathBuf, Description>,
+    /// What Ctrl+Z takes back: the session's marks and edits.
+    pub(super) journal: Journal,
+    /// `0`–`5`, `X` and `6`–`9` also move to the next photo.
+    pub(super) auto_advance: bool,
+}
+
+impl Marks {
+    /// Nothing marked yet; auto-advance as saved.
+    pub(super) fn restore(db: &Db) -> Self {
+        Self {
+            ratings: HashMap::new(),
+            labels: HashMap::new(),
+            descriptions: HashMap::new(),
+            journal: Journal::default(),
+            auto_advance: db.setting("auto_advance").as_deref() == Some("1"),
+        }
+    }
+}
 
 impl CernoApp {
     /// Rates the current photo. `advance` moves on afterwards, unless the photo itself
@@ -33,7 +63,7 @@ impl CernoApp {
         let before = self.rating_of(&path, self.loaded(&path).as_deref());
         let raw = self.companion_marks(&path).map(|(raw, _)| raw);
         if self.apply_rating(ctx, path.clone(), rating, advance) && before != rating {
-            self.journal.push(Entry::Rating {
+            self.marks.journal.push(Entry::Rating {
                 path,
                 before,
                 after: rating,
@@ -55,7 +85,7 @@ impl CernoApp {
             return false;
         }
         let next = self.next_path();
-        self.session_ratings.insert(path.clone(), rating);
+        self.marks.ratings.insert(path.clone(), rating);
         self.writer.set(path.clone(), rating);
         self.rate_companion(&path, rating);
         self.analyzer.taste_changed();
@@ -107,7 +137,7 @@ impl CernoApp {
         let before = self.label_of(&path, self.loaded(&path).as_deref());
         let raw = self.companion_marks(&path).map(|(_, raw)| raw);
         if self.apply_label(ctx, path.clone(), label, advance) && before != label {
-            self.journal.push(Entry::Label { path, before, raw });
+            self.marks.journal.push(Entry::Label { path, before, raw });
         }
     }
 
@@ -124,7 +154,7 @@ impl CernoApp {
             return false;
         }
         let next = self.next_path();
-        self.session_labels.insert(path.clone(), label);
+        self.marks.labels.insert(path.clone(), label);
         self.writer.set_label(path.clone(), label);
         self.label_companion(&path, label);
         self.finish_mark(ctx, &path, next, advance, self.options.filter.has_colour());
@@ -185,7 +215,7 @@ impl CernoApp {
     }
 
     pub(super) fn rating_of(&self, path: &Path, image: Option<&LoadedImage>) -> Rating {
-        if let Some(rating) = self.session_ratings.get(path) {
+        if let Some(rating) = self.marks.ratings.get(path) {
             return *rating;
         }
         image
@@ -200,7 +230,7 @@ impl CernoApp {
             .iter()
             .filter(|p| !self.deletions.is_hidden(p))
             .filter(|p| {
-                let rating = match self.session_ratings.get(*p) {
+                let rating = match self.marks.ratings.get(*p) {
                     Some(rating) => *rating,
                     None => self.board.get(p).map(|k| k.rating).unwrap_or_default(),
                 };
@@ -211,7 +241,7 @@ impl CernoApp {
     }
 
     pub(super) fn label_of(&self, path: &Path, image: Option<&LoadedImage>) -> Option<Label> {
-        if let Some(label) = self.session_labels.get(path) {
+        if let Some(label) = self.marks.labels.get(path) {
             return *label;
         }
         if let Some(known) = self.board.get(path) {

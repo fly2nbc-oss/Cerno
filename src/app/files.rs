@@ -126,9 +126,9 @@ impl CernoApp {
             self.retarget_moved(&outcome);
             let gone: HashSet<&PathBuf> = outcome.done.iter().map(|(src, _)| src).collect();
             for (src, _) in &outcome.done {
-                self.session_ratings.remove(src);
-                self.session_labels.remove(src);
-                self.session_descriptions.remove(src);
+                self.marks.ratings.remove(src);
+                self.marks.labels.remove(src);
+                self.marks.descriptions.remove(src);
                 self.pairs.forget(src);
             }
             if self.pinned.as_ref().is_some_and(|path| gone.contains(path)) {
@@ -270,9 +270,9 @@ impl CernoApp {
                     .collect();
                 for (path, aside) in &done.deleted {
                     self.pairs.forget(path);
-                    self.session_ratings.remove(path);
-                    self.session_labels.remove(path);
-                    self.session_descriptions.remove(path);
+                    self.marks.ratings.remove(path);
+                    self.marks.labels.remove(path);
+                    self.marks.descriptions.remove(path);
                     self.forget_deleted(path, aside);
                     self.add_deleted(path.clone(), aside.clone());
                 }

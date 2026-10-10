@@ -393,7 +393,11 @@ impl CernoApp {
             .view
             .get(self.current)
             .is_some_and(|path| self.is_deleted(path));
-        match undo_target(counting_down, deleted, self.journal.newest().is_some()) {
+        match undo_target(
+            counting_down,
+            deleted,
+            self.marks.journal.newest().is_some(),
+        ) {
             Undo::Deletion => self.undo_deletions(ctx),
             Undo::Restore => self.restore_current(),
             Undo::Journal => self.undo_newest(ctx),
@@ -443,11 +447,11 @@ impl CernoApp {
                     self.refresh_edited(&outcome.path);
                     if outcome.restored {
                         // The first original is back: every edit of the session went with it.
-                        self.journal.drop_edits(&outcome.path);
+                        self.marks.journal.drop_edits(&outcome.path);
                         self.notice = Some(Notice::hint(i18n::t().undo_done));
                         continue;
                     }
-                    self.journal.push(Entry::Edit {
+                    self.marks.journal.push(Entry::Edit {
                         path: outcome.path.clone(),
                     });
                     if outcome.reencoded {

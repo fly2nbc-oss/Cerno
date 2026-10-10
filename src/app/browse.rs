@@ -91,7 +91,7 @@ impl CernoApp {
         self.top_pick.clear();
         self.top_pick_for = None;
         // `Ctrl+Z` takes back what was done since the folder opened.
-        self.journal.clear();
+        self.marks.journal.clear();
         self.cancel_edit();
         self.thumbs.clear();
         // Only needed when the view depends on scores; the analysis fills the board anyway,
@@ -150,8 +150,8 @@ impl CernoApp {
             &self.library,
             self.options,
             |p| self.facts(p),
-            &self.session_ratings,
-            &self.session_labels,
+            &self.marks.ratings,
+            &self.marks.labels,
             |p| self.deletions.is_hidden(p),
         )
     }
@@ -292,8 +292,8 @@ impl CernoApp {
                 &self.all,
                 self.options,
                 |p| self.facts(p),
-                &self.session_ratings,
-                &self.session_labels,
+                &self.marks.ratings,
+                &self.marks.labels,
                 |p| self.deletions.is_hidden(p),
                 usize::from(n),
             ),
