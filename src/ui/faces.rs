@@ -55,7 +55,8 @@ pub struct GridOutput {
 pub fn grid(ctx: &Context, area: Rect, shown: &Shown<'_>) -> GridOutput {
     let t = i18n::t();
     let mut out = GridOutput::default();
-    // Esc (`G` closes it in `handle_keys`; the other keys pause while it is open).
+    // Esc (`G` closes it in `handle_keys`, where the arrows still move to another photo; the
+    // other keys pause while it is open).
     if ctx.input_mut(|i| i.consume_key(eframe::egui::Modifiers::NONE, Key::Escape)) {
         out.close = true;
     }

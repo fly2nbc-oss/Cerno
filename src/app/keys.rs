@@ -251,6 +251,20 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
 }
 
 impl KeyInput {
+    /// What still works over the faces grid: moving to another photo, whose faces it then
+    /// shows. Plain `Space` moves on too – there is no video to play under the grid.
+    fn browsing(&self) -> Vec<Command> {
+        [
+            (self.next || self.space, Command::Next),
+            (self.prev, Command::Prev),
+            (self.first, Command::First),
+            (self.last, Command::Last),
+        ]
+        .into_iter()
+        .filter_map(|(on, command)| on.then_some(command))
+        .collect()
+    }
+
     /// The commands of one frame's keys, in the order they are carried out: the grid and the
     /// edits, the video keys, moving, marks, compare mode, the bars, the overlay, the zoom,
     /// full screen and `Esc` last. `tabs` are the `Tab` presses (`true` with Shift).
@@ -366,9 +380,18 @@ impl CernoApp {
             self.viewer.faces.grid_open = false;
             return;
         }
-        // The models card, a confirmation and the faces grid read their own keys.
+        // The models card, a confirmation and the faces grid read their own keys – over the
+        // faces grid alone the arrows, `Space`/`Backspace` and `Home`/`End` still move to
+        // another photo, and the grid shows its faces.
         if self.modal_open() {
             self.pressed.details_cycles.clear();
+            if self.viewer.faces.grid_open
+                && !self.layer.is_open()
+                && !ctx.egui_wants_keyboard_input()
+            {
+                let browsing = ctx.input(read_keys).browsing();
+                self.execute_all(ctx, &browsing, Source::Keys, frames);
+            }
             return;
         }
         // `Ctrl+Tab` also leaves a field of the description tab for the next tab.

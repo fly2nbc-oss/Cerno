@@ -520,7 +520,7 @@ pub static TEXTS: Texts = Texts {
     faces_none: "Nessun volto rilevato",
     faces_only_small: "Solo volti piccoli: troppo piccoli per giudicare",
     faces_zoom_hint: "Clic per ingrandire questo volto",
-    faces_grid_hint: "Un clic o il suo numero (1–9) ingrandisce un volto · Esc chiude",
+    faces_grid_hint: "Un clic o il suo numero (1–9) ingrandisce un volto · ← → cambia foto · Esc chiude",
     cmd_face_grid: "Tutti i volti in grande",
     raw_preview_fact: "Anteprima RAW",
     preview_word: "anteprima",

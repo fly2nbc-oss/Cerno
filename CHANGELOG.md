@@ -26,6 +26,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ### Fixed
 
+- **Browsing with all faces shown** – while `G` shows every face large, `←`/`→`, `Space`/`Backspace` and `Home`/`End` move to another photo, and the faces of that photo show. Until now every key but `G`, `Esc` and the digits paused there.
 - **The bar under a playing video fades again** – since 1.5 it stayed as long as the video played.
 - *Straighten* and *Crop* from the menu bar end the four-up view first, like `S` and `R`; before, the session opened unseen behind the four photos.
 - The first-start question about updates waits until a straighten or crop session ends, so `Enter` can't answer it by accident.

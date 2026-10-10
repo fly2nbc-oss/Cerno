@@ -538,7 +538,7 @@ pub static TEXTS: Texts = Texts {
     faces_none: "Keine Gesichter erkannt",
     faces_only_small: "Nur kleine Gesichter – zu klein zum Beurteilen",
     faces_zoom_hint: "Klick zoomt auf dieses Gesicht",
-    faces_grid_hint: "Klick oder Nummer (1–9) zoomt auf ein Gesicht · Esc schließt",
+    faces_grid_hint: "Klick oder Nummer (1–9) zoomt auf ein Gesicht · ← → blättert · Esc schließt",
     cmd_face_grid: "Alle Gesichter groß",
     raw_preview_fact: "RAW-Vorschau",
     preview_word: "Vorschau",

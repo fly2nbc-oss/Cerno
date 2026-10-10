@@ -237,6 +237,39 @@ mod tests {
         assert_eq!(h.rating_of(0), None);
     }
 
+    /// Over the faces grid the arrows, `Space` and `End` move to another photo and the grid
+    /// stays open for its faces; marks still pause.
+    #[test]
+    fn the_faces_grid_browses_and_stays_open() {
+        let mut h = Harness::new(4);
+        h.settle();
+        h.app.viewer.faces.grid_open = true;
+        h.press(Key::ArrowRight, NONE);
+        assert_eq!(h.app.current, 1);
+        h.press(Key::Space, NONE);
+        assert_eq!(h.app.current, 2);
+        h.press(Key::ArrowLeft, NONE);
+        assert_eq!(h.app.current, 1);
+        h.press(Key::End, NONE);
+        assert_eq!(h.app.current, 3);
+        h.press(Key::X, NONE);
+        assert_eq!(h.rating_of(3), None);
+        assert!(h.app.viewer.faces.grid_open);
+    }
+
+    /// Help over the faces grid keeps its arrows for its tabs.
+    #[test]
+    fn help_over_the_faces_grid_keeps_the_arrows() {
+        let mut h = Harness::new(3);
+        h.settle();
+        h.app.viewer.faces.grid_open = true;
+        h.app.open_help();
+        h.settle();
+        h.press(Key::ArrowRight, NONE);
+        assert_eq!(h.app.current, 0);
+        assert_eq!(h.layer(), "help");
+    }
+
     #[test]
     fn help_takes_its_keys_and_ignores_marks() {
         let mut h = Harness::new(3);

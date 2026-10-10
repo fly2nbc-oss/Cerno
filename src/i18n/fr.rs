@@ -559,7 +559,7 @@ pub static TEXTS: Texts = Texts {
     faces_none: "Aucun visage détecté",
     faces_only_small: "Seulement de petits visages – trop petits pour juger",
     faces_zoom_hint: "Cliquer pour zoomer sur ce visage",
-    faces_grid_hint: "Un clic ou son numéro (1–9) zoome sur un visage · Échap ferme",
+    faces_grid_hint: "Un clic ou son numéro (1–9) zoome sur un visage · ← → change de photo · Échap ferme",
     cmd_face_grid: "Tous les visages en grand",
     raw_preview_fact: "Aperçu RAW",
     preview_word: "aperçu",

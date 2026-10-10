@@ -534,7 +534,7 @@ pub static TEXTS: Texts = Texts {
     faces_none: "No se detectaron caras",
     faces_only_small: "Solo caras pequeñas: demasiado pequeñas para juzgar",
     faces_zoom_hint: "Haz clic para acercar esta cara",
-    faces_grid_hint: "Un clic o su número (1–9) acerca una cara · Esc cierra",
+    faces_grid_hint: "Un clic o su número (1–9) acerca una cara · ← → cambia de foto · Esc cierra",
     cmd_face_grid: "Todas las caras en grande",
     raw_preview_fact: "Vista previa RAW",
     preview_word: "vista previa",

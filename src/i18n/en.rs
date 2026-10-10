@@ -531,7 +531,7 @@ pub static TEXTS: Texts = Texts {
     faces_none: "No faces found",
     faces_only_small: "Only small faces – too small to judge",
     faces_zoom_hint: "Click to zoom to this face",
-    faces_grid_hint: "A click or its number (1–9) zooms to a face · Esc closes",
+    faces_grid_hint: "A click or its number (1–9) zooms to a face · ← → browses · Esc closes",
     cmd_face_grid: "All faces large",
     raw_preview_fact: "RAW preview",
     preview_word: "preview",
