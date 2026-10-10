@@ -27,6 +27,8 @@ pub(super) const SETTING: &str = "external_editor";
 const WATCH_FOR: Duration = Duration::from_secs(2 * 60 * 60);
 /// How often it is looked at.
 const CHECK_EVERY: Duration = Duration::from_secs(1);
+/// The system's programs are asked this long after the first photo shows (`poll_editors`).
+const EDITORS_AFTER: Duration = Duration::from_secs(2);
 
 /// A photo opened in another program, and how it looked then.
 pub(super) struct Watched {
@@ -58,6 +60,49 @@ impl CernoApp {
                 self.prepare_editors();
                 self.palette = Some(self.menu_at_editors());
             }
+        }
+    }
+
+    /// Asks the system for the current photo's programs on a thread, a moment after the first
+    /// photo shows: the shell can take a while, and the first menu or `E` would wait for it.
+    pub(super) fn poll_editors(&mut self, ctx: &egui::Context) {
+        if let Some(coming) = &self.editors_coming {
+            match coming.try_recv() {
+                Ok((extension, editors)) => {
+                    self.editors.entry(extension).or_insert(editors);
+                    self.editors_coming = None;
+                }
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => self.editors_coming = None,
+            }
+            return;
+        }
+        let Some(shown) = self.first_photo.filter(|_| !self.editors_asked) else {
+            return;
+        };
+        let waited = shown.elapsed();
+        if waited < EDITORS_AFTER {
+            ctx.request_repaint_after(EDITORS_AFTER - waited);
+            return;
+        }
+        self.editors_asked = true;
+        let Some(path) = self.view.get(self.current).cloned() else {
+            return;
+        };
+        let wanted = extension(&path);
+        if self.editors.contains_key(&wanted) {
+            return;
+        }
+        let (tx, rx) = mpsc::channel();
+        let ctx = ctx.clone();
+        let spawned = std::thread::Builder::new()
+            .name("cerno-editors".into())
+            .spawn(move || {
+                let _ = tx.send((wanted, external::editors_for(&path)));
+                ctx.request_repaint();
+            });
+        if spawned.is_ok() {
+            self.editors_coming = Some(rx);
         }
     }
 

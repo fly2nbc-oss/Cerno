@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 
 use eframe::egui;
 
-use crate::db::FileStamp;
 use crate::loader::{LoadedImage, Lookup};
 use crate::metadata::{Label, Rating};
 use crate::view::SortKey;
@@ -32,12 +31,6 @@ impl CernoApp {
             return;
         }
         let next = self.next_path();
-        if let Ok(stamp) = FileStamp::of(&path)
-            && let Ok(Some(record)) = self.db.lookup(&path.to_string_lossy(), stamp)
-            && let Err(err) = self.db.allow_taste_for(record.fingerprint)
-        {
-            log::warn!("taste allow: {err:#}");
-        }
         self.session_ratings.insert(path.clone(), rating);
         self.writer.set(path.clone(), rating);
         self.rate_companion(&path, rating);

@@ -118,11 +118,14 @@ impl Library {
 }
 
 /// The library's order: natural, by the path below `dir` (a photo put back joins its place).
-pub fn sort(dir: &Path, paths: &mut [PathBuf]) {
-    paths.sort_by(|a, b| {
-        let (a, b) = (relative_key(dir, a), relative_key(dir, b));
-        natural_cmp(&a, &b).then_with(|| a.cmp(&b))
-    });
+pub fn sort(dir: &Path, paths: &mut Vec<PathBuf>) {
+    // Each key once, not twice per comparison (a year folder has tens of thousands of files).
+    let mut keyed: Vec<(String, PathBuf)> = paths
+        .drain(..)
+        .map(|path| (relative_key(dir, &path), path))
+        .collect();
+    keyed.sort_by(|(a, _), (b, _)| natural_cmp(a, b).then_with(|| a.cmp(b)));
+    paths.extend(keyed.into_iter().map(|(_, path)| path));
 }
 
 /// The folders `Library::open` walks: `start`, and with `subfolders` every folder below it

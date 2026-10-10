@@ -86,7 +86,7 @@ impl CernoApp {
             return;
         }
         self.stop_video();
-        let target = self.target.unwrap_or(super::START_TARGET);
+        let target = self.target.unwrap_or(self.start_target);
         match Player::start(
             ctx,
             &path,
@@ -235,8 +235,12 @@ impl CernoApp {
     /// New volume and/or sound on/off, for the player and saved.
     fn set_video_volume(&mut self, volume: Option<f32>, muted: Option<bool>) {
         if let Some(volume) = volume {
+            // Only a value that changes what is saved: the slider reports every frame of a drag.
+            let saved = format!("{volume:.2}");
+            if saved != format!("{:.2}", self.video_volume) {
+                self.db.put_setting(VOLUME_KEY, &saved);
+            }
             self.video_volume = volume;
-            self.db.put_setting(VOLUME_KEY, &format!("{volume:.2}"));
         }
         if let Some(muted) = muted {
             self.video_muted = muted;

@@ -42,8 +42,15 @@ use models::{Slot, clip_path, installed, run_model};
 const ANALYSIS_SIZE: u32 = 2048;
 /// Analysis waits this long after the last navigation.
 const NAVIGATION_PAUSE: Duration = Duration::from_millis(900);
+/// … and this long more at start-up: the first photo, its neighbours and the GPU set-up come
+/// first, and loading a model (a GB from disk, a DirectML session) waits for them.
+const START_PAUSE: Duration = Duration::from_secs(2);
 /// The taste model retrains this long after the last rating or deletion.
 const TASTE_DELAY: Duration = Duration::from_secs(2);
+/// The first training waits this long: it takes a core for about two seconds.
+const TASTE_START: Duration = Duration::from_secs(5);
+/// New results show within this long, and redraw the window at most this often.
+const RESULT_REPAINT: Duration = Duration::from_millis(100);
 const WORKERS: usize = 2;
 /// A photo that was being written is tried again after this long …
 const RETRY_DELAY: Duration = Duration::from_secs(1);
@@ -290,7 +297,7 @@ impl Analyzer {
             board,
             thumbs,
             files,
-            last_navigation: Mutex::new(Instant::now()),
+            last_navigation: Mutex::new(Instant::now() + START_PAUSE),
             clip: Mutex::new(Slot::NotLoaded),
             clip_state: Mutex::new(present(manifest::Pack::Clip)),
             v25: Mutex::new(Slot::NotLoaded),
@@ -300,8 +307,8 @@ impl Analyzer {
             embeddings: RwLock::default(),
             taste: RwLock::default(),
             taste_state: Mutex::new(TasteState {
-                // Train once at start-up.
-                dirty_since: Some(Instant::now() - TASTE_DELAY),
+                // Train once at start-up, after the first photo and its neighbours.
+                dirty_since: Some(Instant::now() + TASTE_START - TASTE_DELAY),
                 shutdown: false,
                 status: TasteStatus {
                     examples: 0,
@@ -367,7 +374,10 @@ impl Analyzer {
 
     /// `current` indexes the full folder list; also pauses the analysis for a moment.
     pub fn set_current(&self, current: usize) {
-        *lock(&self.shared.last_navigation) = Instant::now();
+        // Never earlier than the start-up pause.
+        let mut last = lock(&self.shared.last_navigation);
+        *last = (*last).max(Instant::now());
+        drop(last);
         self.set_current_quietly(current);
     }
 
@@ -547,7 +557,9 @@ fn worker(shared: &Shared) {
             finish(&mut state, job.index, outcome, Instant::now());
         }
         drop(state);
-        shared.ctx.request_repaint();
+        // At most every 100 ms: an analysed folder's fast pass finishes hundreds of photos a
+        // second, and each frame re-reads the board.
+        shared.ctx.request_repaint_after(RESULT_REPAINT);
     }
 }
 

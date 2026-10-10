@@ -369,8 +369,8 @@ impl CernoApp {
         if needs_full && full.is_none() {
             self.loader.request_full(slot.index);
         }
-        if !self.logged_first_photo {
-            self.logged_first_photo = true;
+        if self.first_photo.is_none() {
+            self.first_photo = Some(std::time::Instant::now());
             log::info!(
                 "start-up: first photo drawn after {} ms",
                 self.started.elapsed().as_millis()
@@ -421,7 +421,7 @@ impl CernoApp {
             &hint,
         );
         let scores = self.board.get(&path).map(|k| k.scores);
-        let percentiles = self.percentiles().clone();
+        let percentiles = self.percentiles();
         overlays::compare_scores(
             ui,
             slot.area,

@@ -22,6 +22,7 @@ fn main() {
 
     if target_windows() {
         embed_icon();
+        delay_load();
     }
 
     if heic_enabled() && target_windows() {
@@ -54,6 +55,36 @@ fn embed_icon() {
 /// Cross-compiling for Windows from another system: no rc.exe, the exe keeps the default icon.
 #[cfg(not(windows))]
 fn embed_icon() {}
+
+/// DLLs Windows loads only at their first call instead of before `main`: the models'
+/// DirectML (17.7 MB, needed once a model loads), libheif (the first HEIC), GStreamer and GLib
+/// (the first video, warmed up on a thread), wgpu's unused OpenGL backend and the crash log's
+/// dbghelp. A cold start reads none of them from disk any more. Only functions are imported
+/// from them – a data import can't be delay-loaded, and the linker would refuse it (LNK1194).
+fn delay_load() {
+    if std::env::var("CARGO_CFG_TARGET_ENV").ok().as_deref() != Some("msvc") {
+        return;
+    }
+    let mut dlls = vec!["directml.dll", "opengl32.dll", "dbghelp.dll"];
+    if heic_enabled() {
+        dlls.push("heif.dll");
+    }
+    if std::env::var_os("CARGO_FEATURE_VIDEO").is_some() {
+        dlls.extend([
+            "gstreamer-1.0-0.dll",
+            "gstvideo-1.0-0.dll",
+            "gstpbutils-1.0-0.dll",
+            "gstapp-1.0-0.dll",
+            "gobject-2.0-0.dll",
+            "glib-2.0-0.dll",
+            "gio-2.0-0.dll",
+        ]);
+    }
+    for dll in dlls {
+        println!("cargo:rustc-link-arg=/DELAYLOAD:{dll}");
+    }
+    println!("cargo:rustc-link-lib=delayimp");
+}
 
 fn heic_enabled() -> bool {
     std::env::var_os("CARGO_FEATURE_HEIC").is_some()

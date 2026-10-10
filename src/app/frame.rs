@@ -153,8 +153,8 @@ impl CernoApp {
         let paths = Arc::clone(&self.view.paths);
         let grouped = self.view.grouped;
         // Brought up to date first (`&mut self`), then only read while the cells are drawn.
-        self.percentiles();
-        let percentiles = &self.percentiles.1;
+        let percentiles = self.percentiles();
+        let percentiles = percentiles.as_ref();
         let around = self.around_current();
         let strip = filmstrip::draw(ui, rect, &paths, self.current, &self.thumbs, grouped, |i| {
             self.cell_info(i, percentiles, around)
@@ -178,8 +178,8 @@ impl CernoApp {
         let grouped = self.view.grouped;
         let follow = self.grid_shown != Some(self.current);
         self.grid_shown = Some(self.current);
-        self.percentiles();
-        let percentiles = &self.percentiles.1;
+        let percentiles = self.percentiles();
+        let percentiles = percentiles.as_ref();
         let around = self.around_current();
         let shown = grid::Shown {
             paths: &paths,
@@ -227,7 +227,7 @@ impl CernoApp {
             _ => None,
         };
         let scores = self.board.get(&path).map(|k| k.scores);
-        let percentiles = self.percentiles().clone();
+        let percentiles = self.percentiles();
         let personal = self.analyzer.personal(&path);
         let name = self.photo_name(&path);
         let series = self
@@ -352,6 +352,7 @@ impl CernoApp {
             .similar_to
             .as_ref()
             .map(|(path, _)| self.photo_name(path));
+        let has_videos = self.has_videos();
         let info = filter_bar::ToolbarInfo {
             stale: self.options.depends_on_scores() && self.board.version() != self.view_version,
             status: &status,
@@ -365,10 +366,7 @@ impl CernoApp {
                 .iter()
                 .filter(|p| !self.deletions.is_hidden(p))
                 .count(),
-            has_videos: self
-                .all
-                .iter()
-                .any(|p| library::format_of(p) == Some(library::Format::Video)),
+            has_videos,
             has_deleted: self.has_deleted(),
             name_list: self.name_list.counts(),
         };
