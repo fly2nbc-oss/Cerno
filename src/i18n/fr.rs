@@ -211,6 +211,7 @@ pub static TEXTS: Texts = Texts {
     button_side_bar: "Barre de menu",
     bar_rotate: "Pivoter",
     bar_colour: "Couleur",
+    bar_stars: "Étoiles",
     bar_align_camera: "Caler les appareils",
     bar_overlay_sharpness: "Netteté",
     bar_overlay_exposure: "Exposition",
@@ -597,7 +598,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "D'abord parcourir vite (Espace) et rejeter les ratés avec X – sans trop réfléchir.",
                 "Puis « sans × » dans la barre de filtres : les rejetées disparaissent, noter alors de 1 à 5.",
-                "Pour finir, barre de menu › Photos affichées › « Supprimer les rejetées » (Ctrl+M).",
+                "Pour finir, barre de menu (F10) › Photos affichées › « Supprimer les rejetées ».",
             ],
         ),
         (
@@ -650,7 +651,7 @@ pub static TEXTS: Texts = Texts {
                 "Déposez un dossier sur la fenêtre pour l'ouvrir. Maintenez → pour faire défiler les photos.",
                 "Dans la grille (F7), ↑ ↓ changent de ligne, + − la taille, Entrée ouvre la photo.",
                 "Redresser (S) : la molette et les flèches tournent, Maj plus fin. Recadrer (R) : tracez un cadre ou déplacez-le avec les flèches, +/− change sa taille, A le format, X bascule paysage/portrait.",
-                "La barre de menu (le bouton en bas à droite) réunit ce qui agit sur cette photo, les photos affichées et la vue, plus les réglages ; Ctrl+K l'atteint au clavier, Échap la quitte.",
+                "La barre de menu (F10 ou le bouton en bas à droite) réunit ce qui agit sur cette photo, les photos affichées et la vue, plus les réglages – tout à la souris.",
                 "Dans la description, Entrée place le curseur dans le champ des mots-clés.",
             ],
         ),
@@ -661,12 +662,12 @@ pub static TEXTS: Texts = Texts {
         ("1 – 5", "Donner des étoiles"),
         ("X", "Rejeter"),
         ("Suppr", "Supprimer – Échap la ramène"),
-        ("Ctrl+K", "Barre de menu (bouton en bas à droite)"),
+        ("F10", "Barre de menu (bouton en bas à droite)"),
     ],
     welcome_more: "Tous les raccourcis : H",
     setup_line: |exiftool, aesthetics| {
         format!(
-            "Configuration : ExifTool {} · esthétique {} – Ctrl+K › Réglages › Modèles et données",
+            "Configuration : ExifTool {} · esthétique {} – Barre de menu (F10) › Réglages › Modèles et données",
             if exiftool { "prêt" } else { "manquant" },
             if aesthetics { "prête" } else { "manquante" },
         )
@@ -722,10 +723,11 @@ pub static TEXTS: Texts = Texts {
         ("F, F11", "Plein écran"),
     ],
     help_panels: [
+        ("F10", "Barre de menu"),
         ("T", "Barre de filtres"),
         ("Tab", "Panneau de détails"),
         ("F6", "Pellicule"),
-        ("Maj+Tab", "Les trois panneaux"),
+        ("Maj+Tab", "Les quatre panneaux"),
         ("Ctrl+Tab", "Onglet suivant des détails"),
     ],
     help_edit: [
@@ -736,8 +738,6 @@ pub static TEXTS: Texts = Texts {
         ("E", "Modifier dans un autre programme"),
     ],
     help_more: [
-        ("Ctrl+K", "Barre de menu au clavier"),
-        ("Ctrl+M", "Copier, déplacer, supprimer"),
         ("Ctrl+L", "Langue"),
         ("H, F1, ?", "Cette aide"),
         ("Esc", "Revenir en arrière"),

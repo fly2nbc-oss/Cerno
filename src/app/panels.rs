@@ -11,7 +11,6 @@ use crate::ui::icons::Panel;
 use crate::ui::overlays;
 
 use super::CernoApp;
-use super::layer::Layer;
 
 /// How long the flag stays after switching the language, and how long it fades out.
 const LANGUAGE_FLASH: Duration = Duration::from_millis(1400);
@@ -92,30 +91,9 @@ impl CernoApp {
         self.db.put_setting("details_mode", self.bars.details.id());
     }
 
-    /// The menu bar shows: switched on, or for the keyboard (`Ctrl+K`, `Ctrl+M`, `E`).
+    /// The menu bar shows (its button, `F10`).
     pub(super) fn side_bar_shown(&self) -> bool {
-        self.bars.side_bar || self.menu_bar.temporary
-    }
-
-    /// `Ctrl+K`: the keyboard goes to the menu bar – shown for it while the bar is off.
-    pub(super) fn open_side_bar(&mut self) {
-        self.layer.close_if(Layer::is_help);
-        self.menu_bar.temporary = !self.bars.side_bar;
-        self.menu_bar.state.take_keyboard();
-    }
-
-    /// `Ctrl+M` (*Visible photos*), `E` (*Edit elsewhere*): the same, on a group or a row.
-    pub(super) fn open_side_bar_at(&mut self, section: &'static str, item: Option<usize>) {
-        self.open_side_bar();
-        self.menu_bar.state.take_keyboard_at(section, item);
-    }
-
-    /// The keyboard goes back to the photo; a bar shown only for it goes too, with its list.
-    pub(super) fn leave_side_bar(&mut self) {
-        self.menu_bar.state.release();
-        self.layer.close_if(Layer::is_list);
-        self.menu_bar.list_after_draw = None;
-        self.menu_bar.temporary = false;
+        self.bars.side_bar
     }
 
     pub(super) fn set_details(&mut self, mode: DetailsMode) {
@@ -125,20 +103,11 @@ impl CernoApp {
         }
     }
 
-    /// Buttons and `T` / `Tab` / `F6`. The details panel comes back at the stage it had. The
-    /// menu button switches the menu bar: a bar shown only for the keyboard stays, switched on.
+    /// Buttons and `F10` / `T` / `Tab` / `F6`. The details panel comes back at the stage it
+    /// had.
     pub(super) fn toggle_panel(&mut self, panel: Panel) {
         match panel {
-            Panel::Left if self.menu_bar.temporary => {
-                self.menu_bar.temporary = false;
-                self.bars.side_bar = true;
-            }
-            Panel::Left => {
-                self.bars.side_bar = !self.bars.side_bar;
-                if !self.bars.side_bar {
-                    self.leave_side_bar();
-                }
-            }
+            Panel::Left => self.bars.side_bar = !self.bars.side_bar,
             Panel::Top => self.bars.toolbar = !self.bars.toolbar,
             Panel::Bottom => self.bars.filmstrip = !self.bars.filmstrip,
             Panel::Right if self.bars.details == DetailsMode::Off => {
@@ -159,9 +128,6 @@ impl CernoApp {
             filmstrip,
         } = self.panels();
         let show = !(side_bar || toolbar || details || filmstrip);
-        if !show {
-            self.leave_side_bar();
-        }
         self.bars.side_bar = show;
         self.bars.toolbar = show;
         self.bars.filmstrip = show;

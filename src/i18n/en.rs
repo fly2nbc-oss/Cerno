@@ -195,6 +195,7 @@ pub static TEXTS: Texts = Texts {
     button_side_bar: "Menu bar",
     bar_rotate: "Rotate",
     bar_colour: "Colour",
+    bar_stars: "Stars",
     bar_align_camera: "Match cameras",
     bar_overlay_sharpness: "Sharpness",
     bar_overlay_exposure: "Exposure",
@@ -571,7 +572,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "First browse quickly (Space) and reject what failed with X – don't think twice.",
                 "Then tick “without ×” in the filter bar: the rejected ones are gone, now rate with 1–5.",
-                "Finally Menu bar › Photos on screen › “Delete rejected” (Ctrl+M).",
+                "Finally Menu bar (F10) › Photos on screen › “Delete rejected”.",
             ],
         ),
         (
@@ -624,7 +625,7 @@ pub static TEXTS: Texts = Texts {
                 "Drop a folder onto the window to open it. Hold → to run through the photos.",
                 "In the grid (F7) ↑ ↓ move a row, + − change the size, Enter opens the photo.",
                 "Straighten (S): the wheel and the arrows turn, Shift is finer. Crop (R): draw a frame or move it with the arrows, +/− size it, A changes the ratio, X turns it.",
-                "The menu bar (the button at the bottom right) holds what acts on this photo, the photos on screen and the view, and the settings; Ctrl+K reaches it from the keyboard, Esc leaves it.",
+                "The menu bar (F10 or the button at the bottom right) holds what acts on this photo, the photos on screen and the view, and the settings – all with the mouse.",
                 "On the description tab Enter puts the cursor into the keyword field.",
             ],
         ),
@@ -635,12 +636,12 @@ pub static TEXTS: Texts = Texts {
         ("1 – 5", "Give stars"),
         ("X", "Reject"),
         ("Del", "Delete – Esc brings it back"),
-        ("Ctrl+K", "Menu bar (button bottom right)"),
+        ("F10", "Menu bar (button bottom right)"),
     ],
     welcome_more: "All shortcuts: H",
     setup_line: |exiftool, aesthetics| {
         format!(
-            "Setup: ExifTool {} · aesthetics {} – Ctrl+K › Settings › Models & data",
+            "Setup: ExifTool {} · aesthetics {} – Menu bar (F10) › Settings › Models & data",
             if exiftool { "ready" } else { "missing" },
             if aesthetics { "ready" } else { "missing" },
         )
@@ -689,10 +690,11 @@ pub static TEXTS: Texts = Texts {
         ("F, F11", "Full screen"),
     ],
     help_panels: [
+        ("F10", "Menu bar"),
         ("T", "Filter bar"),
         ("Tab", "Details panel"),
         ("F6", "Filmstrip"),
-        ("Shift+Tab", "All three panels"),
+        ("Shift+Tab", "All four panels"),
         ("Ctrl+Tab", "Next tab of the details"),
     ],
     help_edit: [
@@ -703,8 +705,6 @@ pub static TEXTS: Texts = Texts {
         ("E", "Edit in another program"),
     ],
     help_more: [
-        ("Ctrl+K", "Menu bar by keyboard"),
-        ("Ctrl+M", "Copy, move, delete the view"),
         ("Ctrl+L", "Language"),
         ("H, F1, ?", "This help"),
         ("Esc", "One step back"),

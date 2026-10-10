@@ -333,15 +333,16 @@ impl CernoApp {
                 self.db.put_flag("auto_advance", self.marks.auto_advance);
             }
             Command::DeleteCurrent => self.delete_current(ctx),
-            // Straighten and crop need the photo alone: from a key the four-up view ends first.
+            // Straighten and crop need the photo alone: the four-up view ends first (from the
+            // menu bar too – up to 1.11 its rows opened the session unseen behind the four).
             Command::Straighten => {
-                if source == Source::Keys && self.viewer.quad.is_some() {
+                if self.viewer.quad.is_some() {
                     self.toggle_quad();
                 }
                 self.begin_straighten();
             }
             Command::Crop => {
-                if source == Source::Keys && self.viewer.quad.is_some() {
+                if self.viewer.quad.is_some() {
                     self.toggle_quad();
                 }
                 self.begin_crop();

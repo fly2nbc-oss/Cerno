@@ -1,5 +1,6 @@
 //! Menu rows, and the small list that opens beside a row of the menu bar (`ui/side_bar.rs`):
-//! the programs of *Edit elsewhere* and the languages. Shortcuts sit on the right. A row never
+//! the programs of *Edit elsewhere* and the languages – or, for `E` without a remembered
+//! program, over the photo. Shortcuts sit on the right. A row never
 //! takes egui's keyboard focus (`Sense::CLICK`): `Space` would click it again.
 //!
 //! The list's keyboard: ↑/↓ move, Enter runs, a letter jumps to the next row starting with it,
@@ -77,15 +78,32 @@ impl<A> Row<A> {
     }
 }
 
-/// Where the list opens: right of a row of the menu bar, its top at the row's (moved up when
-/// the window ends first).
+/// Where the list opens.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Placement(pub Rect);
+pub enum Placement {
+    /// Right of a row of the menu bar, its top at the row's (moved up when the window ends
+    /// first).
+    Beside(Rect),
+    /// Centred over this area: the photo (`E`).
+    Over(Rect),
+}
 
 /// The highlighted row (keyboard or mouse).
 #[derive(Debug, Default)]
 pub struct State {
     cursor: Option<usize>,
+    /// Opened by a key this frame: the keys of this frame are not the list's (`E` also types
+    /// an "e", which would jump to a row).
+    fresh: bool,
+}
+
+impl State {
+    pub fn opened_by_key() -> Self {
+        Self {
+            cursor: None,
+            fresh: true,
+        }
+    }
 }
 
 pub struct Output<A> {
@@ -118,15 +136,23 @@ pub fn show<A: Copy>(
         .cursor
         .filter(|&i| i < rows.len())
         .or_else(|| start_row(rows).filter(|&i| i < rows.len()));
-    keyboard(ctx, state, rows, &mut out);
+    if !std::mem::take(&mut state.fresh) {
+        keyboard(ctx, state, rows, &mut out);
+    }
 
-    let Placement(anchor) = placement;
     let height = (rows.len() as f32 * ROW_HEIGHT + 8.0).min(window.height() - 16.0);
     let width = list_width(ctx, rows);
-    let left = (anchor.right() + 4.0)
+    let (left, top) = match placement {
+        Placement::Beside(row) => (row.right() + 4.0, row.top() - 4.0),
+        Placement::Over(area) => (
+            area.center().x - width / 2.0,
+            area.center().y - height / 2.0,
+        ),
+    };
+    let left = left
         .min(window.right() - width - 8.0)
         .max(window.left() + 8.0);
-    let top = (anchor.top() - 4.0)
+    let top = top
         .min(window.bottom() - height - 8.0)
         .max(window.top() + 8.0);
     let card = Rect::from_min_size(pos2(left, top), vec2(width, height));
@@ -453,7 +479,7 @@ mod tests {
             },
             |ui| {
                 let row = Rect::from_min_size(pos2(4.0, 100.0), vec2(248.0, 28.0));
-                result = Some(show(ui.ctx(), window, state, rows, Placement(row)))
+                result = Some(show(ui.ctx(), window, state, rows, Placement::Beside(row)))
             },
         );
         output.textures_delta.clear();
@@ -501,9 +527,26 @@ mod tests {
         assert_eq!(state.cursor, Some(0));
     }
 
+    /// A list a key opened (`E`) leaves that frame's keys alone: the "e" it typed is no jump.
+    #[test]
+    fn a_list_opened_by_a_key_skips_that_frame() {
+        let rows = vec![
+            Row::new(1u8, "Paint", None),
+            Row::new(2u8, "Explorer", None),
+        ];
+        let mut state = State::opened_by_key();
+        frame(&mut state, &rows, vec![Event::Text("e".into())]);
+        assert_eq!(state.cursor, Some(0));
+        frame(&mut state, &rows, vec![Event::Text("e".into())]);
+        assert_eq!(state.cursor, Some(1));
+    }
+
     #[test]
     fn a_list_that_shrinks_while_open_does_not_panic() {
-        let mut state = State { cursor: Some(2) };
+        let mut state = State {
+            cursor: Some(2),
+            fresh: false,
+        };
         let short = vec![Row::new(1u8, "Paint", None)];
         let out = frame(&mut state, &short, vec![key(Key::Enter)]);
         assert_eq!(

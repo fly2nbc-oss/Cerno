@@ -194,6 +194,7 @@ pub static TEXTS: Texts = Texts {
     button_side_bar: "Menüleiste",
     bar_rotate: "Drehen",
     bar_colour: "Farbe",
+    bar_stars: "Sterne",
     bar_align_camera: "Kameras angleichen",
     bar_overlay_sharpness: "Schärfe",
     bar_overlay_exposure: "Belichtung",
@@ -578,7 +579,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "Erst zügig blättern (Leertaste) und Misslungenes mit X ablehnen – ohne lange zu überlegen.",
                 "Dann „ohne ×“ in der Filterleiste: Die Abgelehnten sind weg, jetzt mit 1–5 bewerten.",
-                "Zum Schluss Menüleiste › Sichtbare Fotos › „Abgelehnte löschen“ (Strg+M).",
+                "Zum Schluss Menüleiste (F10) › Sichtbare Fotos › „Abgelehnte löschen“.",
             ],
         ),
         (
@@ -631,7 +632,7 @@ pub static TEXTS: Texts = Texts {
                 "Einen Ordner aufs Fenster ziehen öffnet ihn. → gedrückt halten läuft durch die Fotos.",
                 "Im Raster (F7) rücken ↑ ↓ eine Reihe, + − ändern die Größe, Enter öffnet das Foto.",
                 "Ausrichten (S): Mausrad und Pfeile drehen, Umschalt feiner. Ausschnitt (R): Rahmen aufziehen oder mit den Pfeilen schieben, +/− ändern die Größe, A wechselt das Format, X dreht Quer/Hoch.",
-                "Die Menüleiste (Knopf unten rechts) hält, was auf dieses Foto, die sichtbaren Fotos und die Ansicht wirkt, dazu die Einstellungen; Strg+K erreicht sie mit der Tastatur, Esc verlässt sie.",
+                "Die Menüleiste (F10 oder der Knopf unten rechts) hält, was auf dieses Foto, die sichtbaren Fotos und die Ansicht wirkt, dazu die Einstellungen – alles mit der Maus.",
                 "In der Beschreibung setzt Enter den Cursor ins Stichwortfeld.",
             ],
         ),
@@ -642,12 +643,12 @@ pub static TEXTS: Texts = Texts {
         ("1 – 5", "Sterne vergeben"),
         ("X", "Ablehnen"),
         ("Entf", "Löschen – Esc holt es zurück"),
-        ("Strg+K", "Menüleiste (Knopf unten rechts)"),
+        ("F10", "Menüleiste (Knopf unten rechts)"),
     ],
     welcome_more: "Alle Tastenkürzel: H",
     setup_line: |exiftool, aesthetics| {
         format!(
-            "Einrichtung: ExifTool {} · Ästhetik {} – Strg+K › Einstellungen › Modelle & Daten",
+            "Einrichtung: ExifTool {} · Ästhetik {} – Menüleiste (F10) › Einstellungen › Modelle & Daten",
             if exiftool { "bereit" } else { "fehlt" },
             if aesthetics { "bereit" } else { "fehlt" },
         )
@@ -703,10 +704,11 @@ pub static TEXTS: Texts = Texts {
         ("F, F11", "Vollbild"),
     ],
     help_panels: [
+        ("F10", "Menüleiste"),
         ("T", "Filterleiste"),
         ("Tab", "Detailansicht"),
         ("F6", "Filmstreifen"),
-        ("Umschalt+Tab", "Alle drei Leisten"),
+        ("Umschalt+Tab", "Alle vier Leisten"),
         ("Strg+Tab", "Nächster Reiter der Details"),
     ],
     help_edit: [
@@ -717,8 +719,6 @@ pub static TEXTS: Texts = Texts {
         ("E", "In anderem Programm bearbeiten"),
     ],
     help_more: [
-        ("Strg+K", "Menüleiste mit der Tastatur"),
-        ("Strg+M", "Kopieren, verschieben, löschen"),
         ("Strg+L", "Sprache"),
         ("H, F1, ?", "Diese Hilfe"),
         ("Esc", "Einen Schritt zurück"),

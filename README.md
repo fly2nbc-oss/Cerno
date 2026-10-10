@@ -58,12 +58,10 @@ The Windows files are not signed yet: SmartScreen asks once (*More info* → *Ru
 | `Z`, double click | 100 % zoom (`Ctrl+1` 100 %, `Ctrl+0` the whole photo) |
 | `C` | Compare: this photo stays on the left, browse on the right |
 | `Shift+C` | Four photos at once – the frame is the current photo, `↑`/`↓` a row |
-| `T` / `Tab` / `F6` / `F7` | Filter bar / details / filmstrip / grid |
+| `F10` / `T` / `Tab` / `F6` / `F7` | Menu bar / filter bar / details / filmstrip / grid |
 | `Ctrl+Tab` | The details panel's tabs: values, description |
 | `G` | All faces large – a click zooms to one |
 | `Ctrl+U` | Include subfolders (on / off) |
-| `Ctrl+K` | The menu bar on the left, by keyboard (`Esc` gives the keyboard back) – the button at the bottom right shows it for good |
-| `Ctrl+M` | The menu bar at *Photos on screen*: copy, move or delete all photos the filter shows |
 | `Ctrl+Z` | Undo the last mark or edit, newest first – on a deleted photo: put it back |
 | `H` | Help: all keys, and tips on working with Cerno |
 

@@ -249,6 +249,11 @@ impl CernoApp {
         let Some(session) = &mut self.videos.session else {
             return;
         };
+        // Read every frame while a video shows: only a key that did something brings the bar
+        // back (it used to stay while the video played).
+        if keys == VideoKeys::default() {
+            return;
+        }
         session.pointer_moved = Instant::now();
         let status = session.player.status();
         if keys.jump != 0 {
