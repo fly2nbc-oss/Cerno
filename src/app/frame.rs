@@ -185,7 +185,7 @@ impl CernoApp {
         {
             self.go_to(&ctx, index, 1);
         }
-        if strip.step != 0 && !self.help_open && self.edit.is_none() {
+        if strip.step != 0 && !self.layer.is_help() && self.edit.is_none() {
             let target = self.current.saturating_add_signed(strip.step);
             self.go_to(&ctx, target, strip.step.signum());
         }
@@ -218,7 +218,7 @@ impl CernoApp {
         if out.resize != 0 {
             self.resize_grid(out.resize);
         }
-        let covered = self.help_open || self.row_list.is_some();
+        let covered = self.layer.is_help() || self.layer.is_list();
         if covered {
             return;
         }

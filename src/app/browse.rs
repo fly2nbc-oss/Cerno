@@ -14,6 +14,7 @@ use crate::library::{self, Library};
 use crate::ui::viewer;
 use crate::view::{self, Facts, FilterKind, Percentiles, View, ViewOptions};
 
+use super::layer::Layer;
 use super::notice::Notice;
 use super::{CLIP_OFFER_SHOWN, CernoApp};
 
@@ -84,6 +85,7 @@ impl CernoApp {
         self.options.filter.set(FilterKind::Deleted, false);
         self.options.name_list = false;
         self.name_list.forget();
+        self.layer.close_if(Layer::is_name_list);
         self.similar_to = None;
         self.options.top = None;
         self.top_pick.clear();

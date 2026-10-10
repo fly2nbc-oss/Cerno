@@ -12,11 +12,13 @@ use std::time::Instant;
 use eframe::App as _;
 use eframe::egui::{self, Event, Key, Modifiers, RawInput, Rect, pos2, vec2};
 
+use super::layer::Layer;
 use super::{CernoApp, Parts, exiftool, keys};
 use crate::db::Db;
 use crate::filelock::FileLocks;
 use crate::metadata::Rating;
 use crate::rating::RatingWriter;
+use crate::ui::help::Page;
 
 /// A window of this size: wide enough for every bar.
 const SCREEN: [f32; 2] = [1280.0, 860.0];
@@ -135,21 +137,22 @@ impl Harness {
 
     /// What lies over the window and takes the keyboard.
     pub(super) fn layer(&self) -> &'static str {
-        let app = &self.app;
-        if app.help_open {
-            "help"
-        } else if app.row_list.is_some() {
-            "list"
-        } else if app.models_open {
-            "models"
-        } else if app.confirm.is_some() {
-            "confirm"
-        } else if app.name_list.card_open() {
-            "name list"
-        } else if app.camera_time.card_open() {
-            "camera time"
-        } else {
-            "none"
+        match &self.app.layer {
+            Layer::None => "none",
+            Layer::Help(_) => "help",
+            Layer::List(_) => "list",
+            Layer::Models => "models",
+            Layer::Confirm { .. } => "confirm",
+            Layer::NameList(_) => "name list",
+            Layer::CameraTime(_) => "camera time",
+        }
+    }
+
+    /// The help page's tab, while it is open.
+    pub(super) fn help_page(&self) -> Option<Page> {
+        match self.app.layer {
+            Layer::Help(page) => Some(page),
+            _ => None,
         }
     }
 }
@@ -189,7 +192,6 @@ pub(super) fn presses(keys: &[(Key, Modifiers)]) -> Vec<Event> {
 mod tests {
     use super::*;
     use crate::app::menu::ConfirmAction;
-    use crate::ui::help::Page;
 
     const NONE: Modifiers = Modifiers::NONE;
 
@@ -209,7 +211,7 @@ mod tests {
     fn a_card_swallows_marks_and_tab() {
         let mut h = Harness::new(3);
         h.settle();
-        h.app.models_open = true;
+        h.app.layer = Layer::Models;
         h.settle();
         let details = h.app.details;
         h.frame(presses(&[
@@ -240,7 +242,7 @@ mod tests {
         h.press(Key::H, NONE);
         assert_eq!(h.layer(), "help");
         h.press(Key::ArrowRight, NONE);
-        assert_eq!(h.app.help_page, Page::Tips);
+        assert_eq!(h.help_page(), Some(Page::Tips));
         h.press(Key::X, NONE);
         assert_eq!(h.rating_of(0), None);
         assert_eq!(h.app.current, 0);
@@ -294,7 +296,7 @@ mod tests {
     fn a_question_from_the_models_card_returns_to_it() {
         let mut h = Harness::new(1);
         h.settle();
-        h.app.models_open = true;
+        h.app.layer = Layer::Models;
         h.app.ask(ConfirmAction::ResetTaste, true);
         assert_eq!(h.layer(), "confirm");
         h.settle();
@@ -306,14 +308,17 @@ mod tests {
     #[test]
     fn the_update_question_waits_for_the_help_page() {
         let mut h = Harness::asking_about_updates(1);
-        h.app.help_open = true;
+        h.app.layer = Layer::Help(Page::Keys);
         h.settle();
         assert_eq!(h.layer(), "help");
-        h.app.help_open = false;
+        h.app.layer = Layer::None;
         h.settle();
         assert!(matches!(
-            h.app.confirm,
-            Some((ConfirmAction::UpdateCheck, _))
+            h.app.layer,
+            Layer::Confirm {
+                action: ConfirmAction::UpdateCheck,
+                ..
+            }
         ));
     }
 

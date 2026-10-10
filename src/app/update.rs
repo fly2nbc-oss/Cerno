@@ -123,10 +123,8 @@ impl CernoApp {
     fn ask_about_updates(&mut self) {
         if self.updates.asked
             || !self.logged_first_frame
-            || self.confirm.is_some()
+            || self.layer.is_open()
             || self.modal_open()
-            || self.help_open
-            || self.row_list.is_some()
             || self.side.focus
         {
             return;

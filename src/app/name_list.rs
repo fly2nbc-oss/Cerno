@@ -10,18 +10,18 @@ use crate::name_list::{self, Matched};
 use crate::ui::name_list as card_ui;
 
 use super::CernoApp;
+use super::layer::Layer;
 
 #[derive(Default)]
 pub(super) struct NameList {
     /// The list in effect while `ViewOptions::name_list` is on.
     applied: Option<Matched>,
-    /// The card, while it is open.
-    card: Option<Card>,
     /// The last list, offered again when the card opens.
     text: String,
 }
 
-struct Card {
+/// The card, while it is open (`Layer::NameList`).
+pub(super) struct Card {
     text: String,
     /// What `text` finds, made again when it changes.
     preview: Matched,
@@ -29,10 +29,6 @@ struct Card {
 }
 
 impl NameList {
-    pub(super) fn card_open(&self) -> bool {
-        self.card.is_some()
-    }
-
     /// Found and asked for, for the filter bar's chip.
     pub(super) fn counts(&self) -> Option<(usize, usize)> {
         self.applied.as_ref().map(|m| (m.found, m.total))
@@ -47,7 +43,6 @@ impl NameList {
     /// Another folder: the list was about the last one.
     pub(super) fn forget(&mut self) {
         self.applied = None;
-        self.card = None;
     }
 
     /// The filter went off ("Show all", the chip): the list goes with it.
@@ -69,7 +64,7 @@ impl CernoApp {
     /// *Filter ▸ By file list …*: the card, with the last list in it.
     pub(super) fn open_name_list(&mut self) {
         self.leave_side_bar();
-        self.name_list.card = Some(Card {
+        self.layer = Layer::NameList(Card {
             text: self.name_list.text.clone(),
             preview: Matched::default(),
             previewed: None,
@@ -81,7 +76,7 @@ impl CernoApp {
     pub(super) fn draw_name_list_card(&mut self, ctx: &egui::Context, window: Rect) {
         let dir = self.dir.clone().unwrap_or_default();
         let all = std::sync::Arc::clone(&self.all);
-        let Some(card) = &mut self.name_list.card else {
+        let Layer::NameList(card) = &mut self.layer else {
             return;
         };
         if card.previewed.as_ref() != Some(&card.text) {
@@ -96,14 +91,14 @@ impl CernoApp {
         };
         let out = card_ui::show(ctx, window, &mut card.text, &preview);
         if out.apply {
-            let Some(card) = self.name_list.card.take() else {
+            let Layer::NameList(card) = std::mem::take(&mut self.layer) else {
                 return;
             };
             self.name_list.text = card.text;
             self.name_list.applied = Some(card.preview);
             self.change_options(ctx, |o| o.name_list = true);
         } else if out.close {
-            self.name_list.card = None;
+            self.layer = Layer::None;
         }
     }
 
