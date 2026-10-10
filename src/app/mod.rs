@@ -223,21 +223,16 @@ pub struct CernoApp {
     /// The filter bar showed on its own (a filter hid everything) and the pointer is on it: it
     /// stays until the pointer leaves.
     toolbar_held: bool,
-    /// `Tab` presses taken out of egui's input (`true` = with Shift), see `raw_input_hook`.
-    tab_presses: Vec<bool>,
-    /// `Ctrl+Tab` presses (`true` = with Shift: backwards): the details panel's tabs.
-    details_cycles: Vec<bool>,
+    /// `Tab` and `Ctrl+Tab` taken out of egui's input (`raw_input_hook`).
+    pressed: keys::Pressed,
     /// When the language was last switched (the flag shows for a moment).
     language_flash: Option<Instant>,
     /// Message over the photo; hints fade, errors wait for Esc or a click.
     notice: Option<Notice>,
     /// ExifTool: found or not, its download (Windows).
     exiftool: exiftool::ExifToolSetup,
-    /// Process start, for the start-up log lines.
-    started: Instant,
-    logged_first_frame: bool,
-    /// When the first photo was drawn; ExifTool starts a little later.
-    first_photo: Option<Instant>,
+    /// When the process started and the first frame and photo showed.
+    startup: Startup,
     /// The notice that the mark writer stopped was shown (`poll_background`).
     writer_stopped_told: bool,
     /// Edit elsewhere: the remembered program, the system's programs, the watched photos.
@@ -250,6 +245,16 @@ pub struct CernoApp {
     edit_busy: bool,
     /// The video playing in the single view, its volume, the details panel's probe.
     videos: video::Videos,
+}
+
+/// The start, for the start-up log lines; ExifTool, the system's programs and the update check
+/// wait for the first photo.
+struct Startup {
+    /// Process start.
+    started: Instant,
+    logged_first_frame: bool,
+    /// When the first photo was drawn; ExifTool starts a little later.
+    first_photo: Option<Instant>,
 }
 
 /// What `assemble` takes from outside: the index and the parts that write or delete files or
@@ -437,14 +442,15 @@ impl CernoApp {
             list_after_draw: None,
             bar_counts: menu::BarCounts::default(),
             toolbar_held: false,
-            tab_presses: Vec::new(),
-            details_cycles: Vec::new(),
+            pressed: keys::Pressed::default(),
             language_flash: None,
             notice,
             exiftool: exiftool(),
-            started,
-            logged_first_frame: false,
-            first_photo: None,
+            startup: Startup {
+                started,
+                logged_first_frame: false,
+                first_photo: None,
+            },
             writer_stopped_told: false,
             external,
             edit: None,
@@ -548,14 +554,14 @@ impl CernoApp {
     fn run_frame(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let window = ui.max_rect();
-        if !self.logged_first_frame {
-            self.logged_first_frame = true;
+        if !self.startup.logged_first_frame {
+            self.startup.logged_first_frame = true;
             // Fill the work area of the monitor the window is on. Maximized stays on one
             // screen; F11 is the separate fullscreen switch.
             ctx.send_viewport_cmd(ViewportCommand::Maximized(true));
             log::info!(
                 "start-up: first frame after {} ms",
-                self.started.elapsed().as_millis()
+                self.startup.started.elapsed().as_millis()
             );
         }
         self.poll_background(&ctx);
@@ -631,7 +637,7 @@ impl eframe::App for CernoApp {
                 ..
             } if modifiers.command && !modifiers.alt => {
                 if *pressed && !*repeat {
-                    self.details_cycles.push(modifiers.shift);
+                    self.pressed.details_cycles.push(modifiers.shift);
                 }
                 false
             }
@@ -650,7 +656,7 @@ impl eframe::App for CernoApp {
                 ..
             } => {
                 if *pressed && !*repeat && !modifiers.command && !modifiers.alt {
-                    self.tab_presses.push(modifiers.shift);
+                    self.pressed.tabs.push(modifiers.shift);
                 }
                 false
             }

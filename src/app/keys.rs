@@ -260,6 +260,16 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
     }
 }
 
+/// Keys `raw_input_hook` took out of egui's input before egui could move the focus with them;
+/// `handle_keys` reads them.
+#[derive(Default)]
+pub(super) struct Pressed {
+    /// `Tab` presses (`true` = with Shift).
+    pub(super) tabs: Vec<bool>,
+    /// `Ctrl+Tab` presses (`true` = with Shift: backwards): the details panel's tabs.
+    pub(super) details_cycles: Vec<bool>,
+}
+
 impl CernoApp {
     /// Carries out this frame's keys (see the help page for all).
     pub(super) fn handle_keys(&mut self, ctx: &egui::Context, frames: &[viewer::Frame]) {
@@ -268,7 +278,7 @@ impl CernoApp {
         {
             self.open(ctx, &path);
         }
-        let tabs = std::mem::take(&mut self.tab_presses);
+        let tabs = std::mem::take(&mut self.pressed.tabs);
         // The faces grid closes with `G` too – read here, before the grid draws: it would see
         // the press that opened it and close in the same frame.
         if self.faces.grid_open && ctx.input(|i| i.modifiers.is_none() && i.key_pressed(Key::G)) {
@@ -277,11 +287,11 @@ impl CernoApp {
         }
         // The models card, a confirmation and the faces grid read their own keys.
         if self.modal_open() {
-            self.details_cycles.clear();
+            self.pressed.details_cycles.clear();
             return;
         }
         // `Ctrl+Tab` also leaves a field of the description tab for the next tab.
-        for backwards in std::mem::take(&mut self.details_cycles) {
+        for backwards in std::mem::take(&mut self.pressed.details_cycles) {
             self.cycle_details_tab(backwards);
         }
         // A comment or keyword is being typed: the keys belong to its field (`Esc` leaves it).

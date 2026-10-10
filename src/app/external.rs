@@ -108,7 +108,7 @@ impl CernoApp {
             }
             return;
         }
-        let Some(shown) = self.first_photo.filter(|_| !self.external.asked) else {
+        let Some(shown) = self.startup.first_photo.filter(|_| !self.external.asked) else {
             return;
         };
         let waited = shown.elapsed();
