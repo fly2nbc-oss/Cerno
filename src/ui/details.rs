@@ -49,17 +49,17 @@ impl DetailsMode {
     }
 }
 
-/// What the panel shows: the analysis values, the photo's comment and keywords or its
-/// faces (`Ctrl+Tab` steps through them).
+/// What the panel shows: the analysis values or the photo's comment and keywords (`Ctrl+Tab`
+/// steps between them). Its faces are `G`'s grid over the photo – the faces tab is gone since
+/// 1.10, a saved `faces` opens the values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DetailsTab {
     Values,
     Description,
-    Faces,
 }
 
 impl DetailsTab {
-    pub const ALL: [Self; 3] = [Self::Values, Self::Description, Self::Faces];
+    pub const ALL: [Self; 2] = [Self::Values, Self::Description];
 
     /// The tab to the right (`Ctrl+Tab`), from the last one round to the first.
     pub fn next(self) -> Self {
@@ -77,7 +77,6 @@ impl DetailsTab {
         match self {
             Self::Values => "values",
             Self::Description => "description",
-            Self::Faces => "faces",
         }
     }
 
@@ -97,13 +96,11 @@ pub fn tabs(ui: &mut Ui, rect: Rect, current: DetailsTab) -> Option<DetailsTab> 
     let line = Stroke::new(1.0, tokens::LINE);
     painter.vline(rect.left() + 0.5, rect.y_range(), line);
     painter.hline(rect.x_range(), rect.bottom() - 0.5, line);
-    let all = [
-        DetailsTab::Values,
-        DetailsTab::Description,
-        DetailsTab::Faces,
-    ];
-    let labels = [t.tab_values, t.tab_description, t.tab_faces];
-    let index = all.iter().position(|tab| *tab == current).unwrap_or(0);
+    let labels = [t.tab_values, t.tab_description];
+    let index = DetailsTab::ALL
+        .iter()
+        .position(|tab| *tab == current)
+        .unwrap_or(0);
     crate::ui::tabs::strip(
         ui,
         rect,
@@ -112,7 +109,7 @@ pub fn tabs(ui: &mut Ui, rect: Rect, current: DetailsTab) -> Option<DetailsTab> 
         Id::new("details-tab"),
         crate::ui::tabs::Widths::Equal,
     )
-    .map(|i| all[i])
+    .and_then(|i| DetailsTab::ALL.get(i).copied())
 }
 
 pub struct Details<'a> {
@@ -822,18 +819,19 @@ pub fn model_note(state: &ModelState) -> String {
 mod tests {
     use super::*;
 
-    /// `Ctrl+Tab` goes round the tabs, `Ctrl+Shift+Tab` back.
+    /// `Ctrl+Tab` goes round the two tabs, `Ctrl+Shift+Tab` back; the faces tab's saved id
+    /// opens none (the values show).
     #[test]
     fn the_tabs_go_round() {
         use DetailsTab::*;
         assert_eq!(Values.next(), Description);
-        assert_eq!(Description.next(), Faces);
-        assert_eq!(Faces.next(), Values);
-        assert_eq!(Values.prev(), Faces);
+        assert_eq!(Description.next(), Values);
+        assert_eq!(Values.prev(), Description);
         for tab in DetailsTab::ALL {
             assert_eq!(tab.next().prev(), tab);
             assert_eq!(DetailsTab::from_id(tab.id()), Some(tab));
         }
+        assert_eq!(DetailsTab::from_id("faces"), None);
     }
     use crate::analysis::TasteStatus;
     use eframe::egui::{

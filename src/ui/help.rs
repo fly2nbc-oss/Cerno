@@ -10,7 +10,7 @@ use eframe::egui::{
     pos2, vec2,
 };
 
-use crate::i18n::{self, HelpRow, TipSection};
+use crate::i18n::{self, HelpRow, Texts, TipSection};
 use crate::theme::{self, text, tokens};
 use crate::ui::icons;
 use crate::ui::tabs::{self, Widths};
@@ -67,7 +67,7 @@ pub struct HelpOutput {
 }
 
 /// Modal page over the whole window; a click beside the card closes it.
-pub fn overlay(ctx: &Context, window: Rect, page: Page) -> HelpOutput {
+pub fn overlay(ctx: &Context, window: Rect, page: Page, t: &Texts) -> HelpOutput {
     Area::new(Id::new("help"))
         .order(Order::Foreground)
         .fixed_pos(window.min)
@@ -75,21 +75,43 @@ pub fn overlay(ctx: &Context, window: Rect, page: Page) -> HelpOutput {
             let backdrop = ui.allocate_rect(window, Sense::click());
             ui.painter()
                 .rect_filled(window, 0.0, Color32::from_black_alpha(170));
-            let mut out = card_with_content(ui, window, false, page);
+            let mut out = card_with_content(ui, window, false, page, t, Setup::READY);
             out.close |= backdrop.clicked();
             out
         })
         .inner
 }
 
-/// The start screen: the help content with the "Open folder" button, centred in `rect`.
-pub fn welcome(ui: &mut Ui, rect: Rect) -> HelpOutput {
-    card_with_content(ui, rect, true, Page::Keys)
+/// What is set up for writing marks and for the aesthetics, for the start screen's line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Setup {
+    pub exiftool: bool,
+    pub aesthetics: bool,
+}
+
+impl Setup {
+    pub const READY: Self = Self {
+        exiftool: true,
+        aesthetics: true,
+    };
+}
+
+/// The start screen: the help content with the "Open folder" button, centred in `rect`; a
+/// line names what is still missing and where to get it.
+pub fn welcome(ui: &mut Ui, rect: Rect, t: &Texts, setup: Setup) -> HelpOutput {
+    card_with_content(ui, rect, true, Page::Keys, t, setup)
 }
 
 /// The card, centred in `space`: as high as its content was last frame, at most the space.
 /// Each page remembers its own height, so switching does not flicker.
-fn card_with_content(ui: &mut Ui, space: Rect, welcome: bool, page: Page) -> HelpOutput {
+fn card_with_content(
+    ui: &mut Ui,
+    space: Rect,
+    welcome: bool,
+    page: Page,
+    t: &Texts,
+    setup: Setup,
+) -> HelpOutput {
     const MARGIN_Y: f32 = 20.0;
     let height_id = Id::new(("help-height", welcome, page));
     let max_height = (space.height() - 48.0).max(200.0);
@@ -123,7 +145,7 @@ fn card_with_content(ui: &mut Ui, space: Rect, welcome: bool, page: Page) -> Hel
     // Not `content_size`: without auto-shrinking it is at least the visible area.
     let (out, content_height) = ScrollArea::vertical()
         .auto_shrink(false)
-        .show(&mut inner, |ui| content(ui, welcome, page))
+        .show(&mut inner, |ui| content(ui, welcome, page, t, setup))
         .inner;
     if ui.data(|d| d.get_temp::<f32>(height_id)) != Some(content_height) {
         ui.data_mut(|d| d.insert_temp(height_id, content_height));
@@ -133,8 +155,7 @@ fn card_with_content(ui: &mut Ui, space: Rect, welcome: bool, page: Page) -> Hel
 }
 
 /// Draws the page; returns what was clicked and the height it needs.
-fn content(ui: &mut Ui, welcome: bool, page: Page) -> (HelpOutput, f32) {
-    let t = i18n::t();
+fn content(ui: &mut Ui, welcome: bool, page: Page, t: &Texts, setup: Setup) -> (HelpOutput, f32) {
     let mut out = HelpOutput::default();
     let top = ui.cursor().min;
     let width = ui.available_width();
@@ -227,7 +248,7 @@ fn content(ui: &mut Ui, welcome: bool, page: Page) -> (HelpOutput, f32) {
     }
     if page == Page::Tips && !welcome {
         y = tips(&painter, left, y, width, &t.help_tips);
-        y = footer(&painter, left, y, width);
+        y = footer(&painter, left, y, width, t);
         ui.allocate_space(vec2(width, y - top.y));
         return (out, y - top.y);
     }
@@ -238,8 +259,8 @@ fn content(ui: &mut Ui, welcome: bool, page: Page) -> (HelpOutput, f32) {
                 .max_rect(space)
                 .layout(Layout::top_down(Align::Min)),
         );
-        about(&mut column, &mut out);
-        y = footer(&painter, left, column.min_rect().bottom() + 18.0, width);
+        about(&mut column, &mut out, t);
+        y = footer(&painter, left, column.min_rect().bottom() + 18.0, width, t);
         ui.allocate_space(vec2(width, y - top.y));
         return (out, y - top.y);
     }
@@ -283,13 +304,29 @@ fn content(ui: &mut Ui, welcome: bool, page: Page) -> (HelpOutput, f32) {
             tokens::MUTED,
         );
         y += 24.0;
+        if setup != Setup::READY {
+            let line = painter.layout(
+                i18n::keep_together(&(t.setup_line)(setup.exiftool, setup.aesthetics)),
+                FontId::proportional(text::SMALL),
+                tokens::MUTED,
+                width,
+            );
+            let height = line.size().y;
+            painter.galley(
+                pos2(left + (width - line.size().x) / 2.0, y + 6.0),
+                line,
+                tokens::MUTED,
+            );
+            y += height + 10.0;
+        }
         ui.allocate_space(vec2(width, y - top.y));
         return (out, y - top.y);
     }
 
     // Shortcuts in reading order, split into columns of about the same length: three on wide
-    // windows (so the page needs no scrolling), else two – left what culling needs (browse,
-    // rate, sort out, video), right the view, the panels, editing and the rest.
+    // windows (so the page needs no scrolling: browse, rate, sort out │ video, view │ panels,
+    // edit, more), else two – left what culling needs (browse, rate, sort out, video), right
+    // the view, the panels, editing and the rest.
     let sections: [(&str, &[HelpRow]); 8] = [
         (t.help_sections[0], &t.help_browse),
         (t.help_sections[1], &t.help_rate),
@@ -301,7 +338,7 @@ fn content(ui: &mut Ui, welcome: bool, page: Page) -> (HelpOutput, f32) {
         (t.help_sections[7], &t.help_more),
     ];
     let columns: Vec<&[(&str, &[HelpRow])]> = if width >= THREE_COLUMNS {
-        vec![&sections[..2], &sections[2..5], &sections[5..]]
+        vec![&sections[..3], &sections[3..5], &sections[5..]]
     } else if width >= TWO_COLUMNS {
         vec![&sections[..4], &sections[4..]]
     } else {
@@ -318,7 +355,7 @@ fn content(ui: &mut Ui, welcome: bool, page: Page) -> (HelpOutput, f32) {
         }
         bottom = bottom.max(cy);
     }
-    y = footer(&painter, left, bottom, width);
+    y = footer(&painter, left, bottom, width, t);
     ui.allocate_space(vec2(width, y - top.y));
     (out, y - top.y)
 }
@@ -326,8 +363,7 @@ fn content(ui: &mut Ui, welcome: bool, page: Page) -> (HelpOutput, f32) {
 /// About Cerno: what it is, version, copyright, licence and source; where to report a problem
 /// or suggest an idea – a GitHub issue with version and system filled in, never a path or a
 /// photo's name – and the third parties. The links only open the browser; Cerno sends nothing.
-fn about(ui: &mut Ui, out: &mut HelpOutput) {
-    let t = i18n::t();
+fn about(ui: &mut Ui, out: &mut HelpOutput, t: &Texts) {
     let body = |text: &str, color| {
         RichText::new(i18n::keep_together(text))
             .font(FontId::proportional(text::BODY))
@@ -426,8 +462,7 @@ fn encode(text: &str) -> String {
 }
 
 /// "←/→ switches the page · Esc, H or F1 closes this page"; returns the bottom.
-fn footer(painter: &Painter, left: f32, y: f32, width: f32) -> f32 {
-    let t = i18n::t();
+fn footer(painter: &Painter, left: f32, y: f32, width: f32, t: &Texts) -> f32 {
     painter.text(
         pos2(left + width / 2.0, y + 4.0),
         Align2::CENTER_TOP,
@@ -442,9 +477,9 @@ fn footer(painter: &Painter, left: f32, y: f32, width: f32) -> f32 {
 /// front. Returns the bottom.
 fn tips(painter: &Painter, left: f32, y: f32, width: f32, sections: &[TipSection]) -> f32 {
     let columns: Vec<&[TipSection]> = if width >= THREE_COLUMNS {
-        sections.chunks(sections.len().div_ceil(3)).collect()
+        balanced(sections, 3)
     } else if width >= TWO_COLUMNS {
-        sections.chunks(sections.len().div_ceil(2)).collect()
+        balanced(sections, 2)
     } else {
         vec![sections]
     };
@@ -480,6 +515,31 @@ fn tips(painter: &Painter, left: f32, y: f32, width: f32, sections: &[TipSection
         bottom = bottom.max(cy);
     }
     bottom
+}
+
+/// The sections in reading order, cut into `columns` columns of about the same height – by
+/// their text, not their number, so one long section doesn't make a column run on.
+fn balanced(sections: &[TipSection], columns: usize) -> Vec<&[TipSection]> {
+    let weight = |(_, paragraphs): &TipSection| {
+        1.0 + paragraphs
+            .iter()
+            .map(|paragraph| 1.0 + paragraph.len() as f32 / 80.0)
+            .sum::<f32>()
+    };
+    let target = sections.iter().map(weight).sum::<f32>() / columns.max(1) as f32;
+    let mut out = Vec::new();
+    let (mut start, mut filled) = (0, 0.0);
+    for (i, section) in sections.iter().enumerate() {
+        let w = weight(section);
+        // A new column when more than half of this section would land past the target.
+        if i > start && out.len() + 1 < columns && filled + w / 2.0 > target {
+            out.push(&sections[start..i]);
+            (start, filled) = (i, 0.0);
+        }
+        filled += w;
+    }
+    out.push(&sections[start..]);
+    out
 }
 
 /// Section title and its rows; returns the bottom.
@@ -569,28 +629,34 @@ mod tests {
     /// The start screen is a small card that fits a 1280 × 720 window without scrolling.
     #[test]
     fn start_screen_fits_a_small_window() {
-        let ctx = Context::default();
         let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 720.0));
-        // The card takes the content height of the previous frame.
-        for _ in 0..2 {
-            let mut output = ctx.run_ui(
-                RawInput {
-                    screen_rect: Some(window),
-                    ..Default::default()
-                },
-                |ui| {
-                    welcome(ui, window);
-                },
+        for lang in i18n::Lang::ALL {
+            let ctx = Context::default();
+            // The card takes the content height of the previous frame.
+            for _ in 0..2 {
+                let mut output = ctx.run_ui(
+                    RawInput {
+                        screen_rect: Some(window),
+                        ..Default::default()
+                    },
+                    |ui| {
+                        let setup = Setup {
+                            exiftool: false,
+                            aesthetics: false,
+                        };
+                        welcome(ui, window, lang.texts(), setup);
+                    },
+                );
+                output.textures_delta.clear();
+            }
+            let content = ctx
+                .data(|d| d.get_temp::<f32>(Id::new(("help-height", true, Page::Keys))))
+                .expect("content height");
+            assert!(
+                content + 40.0 <= window.height() - 48.0,
+                "{lang:?}: start screen needs {content} px"
             );
-            output.textures_delta.clear();
         }
-        let content = ctx
-            .data(|d| d.get_temp::<f32>(Id::new(("help-height", true, Page::Keys))))
-            .expect("content height");
-        assert!(
-            content + 40.0 <= window.height() - 48.0,
-            "start screen needs {content} px"
-        );
     }
 
     #[test]
@@ -621,31 +687,70 @@ mod tests {
     }
 
     /// Every page – the shortcuts, the tips and About – fits a full HD window without
-    /// scrolling (in English: tests never switch the language).
+    /// scrolling, in every language (handed in: tests never switch the language).
     #[test]
-    fn both_pages_fit_a_full_hd_window() {
+    fn every_page_fits_a_full_hd_window_in_every_language() {
         let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(1920.0, 1080.0));
-        for page in Page::ALL {
-            let ctx = Context::default();
-            for _ in 0..2 {
-                let mut output = ctx.run_ui(
-                    RawInput {
-                        screen_rect: Some(window),
-                        ..Default::default()
-                    },
-                    |ui| {
-                        overlay(ui.ctx(), window, page);
-                    },
+        for lang in i18n::Lang::ALL {
+            for page in Page::ALL {
+                let ctx = Context::default();
+                for _ in 0..2 {
+                    let mut output = ctx.run_ui(
+                        RawInput {
+                            screen_rect: Some(window),
+                            ..Default::default()
+                        },
+                        |ui| {
+                            overlay(ui.ctx(), window, page, lang.texts());
+                        },
+                    );
+                    output.textures_delta.clear();
+                }
+                let content = ctx
+                    .data(|d| d.get_temp::<f32>(Id::new(("help-height", false, page))))
+                    .expect("content height");
+                assert!(
+                    content + 40.0 <= window.height() - 48.0,
+                    "{lang:?} {page:?} needs {content} px"
                 );
-                output.textures_delta.clear();
             }
-            let content = ctx
-                .data(|d| d.get_temp::<f32>(Id::new(("help-height", false, page))))
-                .expect("content height");
-            assert!(
-                content + 40.0 <= window.height() - 48.0,
-                "{page:?} needs {content} px"
-            );
+        }
+    }
+
+    /// A shortcut's description is a few words; what it means in detail is in the tips.
+    #[test]
+    fn shortcut_descriptions_stay_short() {
+        for lang in i18n::Lang::ALL {
+            let t = lang.texts();
+            let rows = [
+                &t.help_browse[..],
+                &t.help_rate,
+                &t.help_cull,
+                &t.help_video,
+                &t.help_view,
+                &t.help_panels,
+                &t.help_edit,
+                &t.help_more,
+                &t.welcome_keys,
+            ];
+            for (keys, description) in rows.into_iter().flatten() {
+                assert!(
+                    description.chars().count() <= 40,
+                    "{lang:?} {keys}: {description}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tips_columns_are_balanced_and_keep_the_order() {
+        let t = i18n::Lang::En.texts();
+        for columns in [2, 3] {
+            let split = balanced(&t.help_tips, columns);
+            assert_eq!(split.len(), columns);
+            assert!(split.iter().all(|column| !column.is_empty()));
+            let joined: Vec<_> = split.concat();
+            assert_eq!(joined, t.help_tips.to_vec());
         }
     }
 }

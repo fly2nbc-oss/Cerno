@@ -350,7 +350,6 @@ pub static TEXTS: Texts = Texts {
     row_location: "Ort",
     tab_values: "Werte",
     tab_description: "Beschreibung",
-    tab_faces: "Gesichter",
     section_comment: "Kommentar",
     section_keywords: "Stichwörter",
     comment_hint: "Kommentar schreiben …",
@@ -513,21 +512,9 @@ pub static TEXTS: Texts = Texts {
     faces_unknown: "Noch nicht analysiert – die Gesichter folgen.",
     faces_none: "Keine Gesichter erkannt",
     faces_only_small: "Nur kleine Gesichter – zu klein zum Beurteilen",
-    face_eyes_blurry: "Augen wohl unscharf",
     faces_zoom_hint: "Klick zoomt auf dieses Gesicht",
     faces_grid_hint: "Klick oder Nummer (1–9) zoomt auf ein Gesicht · Esc schließt",
-    cmd_faces: "Gesichter",
     cmd_face_grid: "Alle Gesichter groß",
-    faces_small: |n| {
-        format!(
-            "+ {n} {} – zu klein zum Beurteilen",
-            if n == 1 {
-                "kleines Gesicht"
-            } else {
-                "kleine Gesichter"
-            }
-        )
-    },
     raw_preview_fact: "RAW-Vorschau",
     preview_word: "Vorschau",
     edit_failed: |detail| format!("Nicht geschrieben: {detail}"),
@@ -575,6 +562,7 @@ pub static TEXTS: Texts = Texts {
                 "C zeigt zwei Fotos nebeneinander; A behält das linke, D das rechte, das andere wird abgelehnt.",
                 "M zeigt nur Fotos, die dem aktuellen ähneln.",
                 "Zwei Kameras mit verschiedener Uhrzeit: zwei gleichzeitige Fotos vergleichen, dann Dieses Foto › „Rechte Kamera an linke angleichen“.",
+                "Umschalt+C zeigt vier Fotos auf einmal: der Rahmen ist das aktuelle Foto, ↑ ↓ rücken ihn eine Reihe.",
             ],
         ),
         (
@@ -582,6 +570,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "Im ersten Feld der Filterleiste „Top 50 Fotos“ wählen: Cerno schlägt die besten vor, aus jeder Serie zuerst eines.",
                 "Ästhetik und Schärfe unter dem Foto helfen beim Entscheiden – die Sterne vergibst du.",
+                "Filter › Nach Dateiliste …: die Namen einfügen, die ein Kunde gewählt hat – nur diese Fotos bleiben.",
             ],
         ),
         (
@@ -609,6 +598,16 @@ pub static TEXTS: Texts = Texts {
                 "Nach Vorhersage sortiert stehen die Fotos vorn, die dir wahrscheinlich gefallen.",
             ],
         ),
+        (
+            "Gut zu wissen",
+            &[
+                "Das Mausrad über dem Filmstreifen blättert durch die Fotos, über dem Foto zoomt es.",
+                "Einen Ordner aufs Fenster ziehen öffnet ihn. → gedrückt halten läuft durch die Fotos.",
+                "Im Raster (F7) rücken ↑ ↓ eine Reihe, + − ändern die Größe, Enter öffnet das Foto.",
+                "Ausrichten (S): Mausrad und Pfeile drehen, Umschalt feiner. Ausschnitt (R): Rahmen aufziehen oder mit den Pfeilen schieben, +/− ändern die Größe, A wechselt das Format, X dreht Quer/Hoch.",
+                "In der Beschreibung setzt Enter den Cursor ins Stichwortfeld.",
+            ],
+        ),
     ],
     welcome_intro: "Fotos ohne Wartezeit ansehen, bewerten und aussortieren – Sterne landen in der Datei, das Dateidatum bleibt.",
     welcome_keys: [
@@ -619,6 +618,13 @@ pub static TEXTS: Texts = Texts {
         ("Strg+K", "Menü mit allen Funktionen"),
     ],
     welcome_more: "Alle Tastenkürzel: H",
+    setup_line: |exiftool, aesthetics| {
+        format!(
+            "Einrichtung: ExifTool {} · Ästhetik {} – Strg+K › Einstellungen › Modelle & Daten",
+            if exiftool { "bereit" } else { "fehlt" },
+            if aesthetics { "bereit" } else { "fehlt" },
+        )
+    },
     help_sections: [
         "Blättern",
         "Bewerten",
@@ -630,134 +636,64 @@ pub static TEXTS: Texts = Texts {
         "Weiteres",
     ],
     help_browse: [
-        (
-            "→, Leertaste, Bild↓",
-            "Nächstes Foto (gedrückt halten zum Durchlaufen)",
-        ),
+        ("→, Leertaste, Bild↓", "Nächstes Foto"),
         ("←, Rücktaste, Bild↑", "Vorheriges Foto"),
         ("Pos1, Ende", "Erstes / letztes Foto"),
-        ("Mausrad", "Über dem Filmstreifen: durch die Fotos blättern"),
-        ("Strg+O", "Ordner öffnen (oder aufs Fenster ziehen)"),
-        ("Strg+U", "Unterordner einlesen – an / aus"),
+        ("Strg+O", "Ordner öffnen"),
+        ("Strg+U", "Unterordner an / aus"),
     ],
     help_rate: [
-        (
-            "1 – 5",
-            "Sterne vergeben – werden in die Fotodatei geschrieben",
-        ),
-        (
-            "Umschalt+1 – 5",
-            "Sterne vergeben und weiter zum nächsten Foto",
-        ),
-        ("0", "Sterne oder Ablehnung entfernen"),
-        (
-            "X, Umschalt+X",
-            "Ablehnen – steht in der Datei, nichts wird gelöscht; mit Umschalt weiter zum nächsten Foto",
-        ),
-        (
-            "6 – 9",
-            "Farbmarke: Rot, Gelb, Grün, Blau – noch einmal entfernt sie",
-        ),
-        ("Umschalt+6 – 9", "Diese Farbe setzen und zum nächsten Foto"),
+        ("1 – 5", "Sterne"),
+        ("0", "Keine Sterne, nicht abgelehnt"),
+        ("X", "Ablehnen"),
+        ("6 – 9", "Rot, Gelb, Grün, Blau"),
+        ("Umschalt+…", "Dasselbe, dann nächstes Foto"),
+        ("Strg+Z", "Rückgängig"),
     ],
     help_cull: [
-        (
-            "C",
-            "Vergleichen: dieses Foto links festhalten, rechts blättern",
-        ),
-        (
-            "A, D",
-            "Vergleichen: links / rechts behalten – das andere wird abgelehnt, der Vergleich endet",
-        ),
-        (
-            "Umschalt+C",
-            "Viereransicht: vier Fotos auf einmal, der Rahmen ist das aktuelle – ↑ ↓ eine Reihe",
-        ),
-        ("M", "Nur ähnliche Fotos zeigen – noch einmal: wieder alle"),
-        (
-            "Entf",
-            "Löschen: nach 5 Sekunden in den versteckten Ordner .originals – nichts geht verloren",
-        ),
-        ("Esc, Strg+Z", "Fotos zurückholen, die aufs Löschen warten"),
+        ("C", "Zwei Fotos vergleichen"),
+        ("A, D", "Links / rechts behalten"),
+        ("Umschalt+C", "Vier Fotos auf einmal"),
+        ("M", "Nur ähnliche Fotos"),
+        ("Entf", "Löschen (nach .originals)"),
+        ("Esc", "Gelöschte zurückholen"),
     ],
     help_video: [
-        (
-            "Leertaste",
-            "Abspielen / anhalten (Umschalt+Leertaste: nächstes Foto)",
-        ),
+        ("Leertaste", "Abspielen / anhalten"),
+        ("Umschalt+Leertaste", "Nächstes Foto"),
         ("Alt+←, Alt+→", "5 s zurück / vor"),
-        (",, .", "Ein Bild zurück / vor (angehalten)"),
+        (",, .", "Ein Bild zurück / vor"),
         ("↑, ↓", "Lautstärke"),
     ],
     help_view: [
         ("Z, Doppelklick", "Ganzes Foto ↔ 100 %"),
         ("Strg+0, Strg+1", "Ganzes Foto / 100 %"),
-        ("+, −, Mausrad", "Hinein- / herauszoomen – auch mit Strg"),
+        ("+, −, Mausrad", "Hinein- / herauszoomen"),
         ("Ziehen", "Gezoomtes Foto verschieben"),
-        (
-            "O",
-            "Overlay: scharfe Kanten → Über- und Unterbelichtung → aus",
-        ),
-        (
-            "F7",
-            "Raster aller Fotos: ↑ ↓ eine Zeile, + − Größe, Enter öffnet das Foto",
-        ),
+        ("O", "Prüfen: Kanten, Belichtung"),
+        ("F7", "Raster aller Fotos"),
+        ("G", "Alle Gesichter groß"),
         ("F, F11", "Vollbild"),
     ],
     help_panels: [
-        (
-            "T",
-            "Filterleiste: sortieren und filtern – nach Sternen, Farben, Schärfe, Personen",
-        ),
+        ("T", "Filterleiste"),
         ("Tab", "Detailansicht"),
         ("F6", "Filmstreifen"),
-        (
-            "Umschalt+Tab",
-            "Filterleiste, Details und Filmstreifen zusammen",
-        ),
-        (
-            "Strg+Tab",
-            "Reiter im Detailbereich: Werte → Beschreibung → Gesichter (mit Umschalt zurück); in der Beschreibung setzt Enter den Cursor ins Stichwortfeld",
-        ),
-        (
-            "G",
-            "Alle Gesichter groß über dem Foto – Klick oder 1–9 zoomt hin",
-        ),
+        ("Umschalt+Tab", "Alle drei Leisten"),
+        ("Strg+Tab", "Nächster Reiter der Details"),
     ],
     help_edit: [
-        (
-            "S",
-            "Ausrichten: Raster, Mausrad und Pfeile drehen, Umschalt feiner",
-        ),
-        (
-            "R",
-            "Ausschnitt: Rahmen aufziehen oder mit Pfeilen und +/− setzen, A wechselt das Format, X dreht Quer/Hoch",
-        ),
-        (
-            "Enter, Esc",
-            "Ausrichten oder Ausschnitt übernehmen oder verwerfen",
-        ),
-        (
-            "Strg+←, Strg+→",
-            "90° drehen – verlustfrei über die JPEG-Orientierung",
-        ),
-        (
-            "Strg+Z",
-            "Letzte Markierung oder Bearbeitung zurücknehmen; ein gelöschtes Foto zurücklegen",
-        ),
-        (
-            "E",
-            "In einem anderen Programm bearbeiten – im gemerkten, oder eins wählen",
-        ),
+        ("S", "Ausrichten"),
+        ("R", "Ausschnitt"),
+        ("Enter, Esc", "Übernehmen / verwerfen"),
+        ("Strg+←, Strg+→", "90° drehen"),
+        ("E", "In anderem Programm bearbeiten"),
     ],
     help_more: [
-        ("Strg+K", "Menü: alle Funktionen"),
-        (
-            "Strg+M",
-            "Aktion: Kopieren, Verschieben oder Löschen der angezeigten Fotos",
-        ),
-        ("Strg+L", "Sprache wechseln"),
+        ("Strg+K", "Menü mit allen Funktionen"),
+        ("Strg+M", "Kopieren, verschieben, löschen"),
+        ("Strg+L", "Sprache"),
         ("H, F1, ?", "Diese Hilfe"),
-        ("Esc", "Schritt zurück: Zoom, Vergleich, Raster, Vollbild"),
+        ("Esc", "Einen Schritt zurück"),
     ],
 };

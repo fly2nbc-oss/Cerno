@@ -1,8 +1,8 @@
-//! The faces of the current photo, for the details panel's faces tab (`Ctrl+Tab`) and the grid
-//! of all faces (`G`). Where they are comes from the index (`Db::faces_of`); a photo analysed
-//! before 1.7 has no rows yet, and its faces are looked for once more – only when one of the
-//! two shows it, then stored. The pictures are cut from the photo at full size on a thread, for
-//! the current photo only; nothing is analysed while browsing.
+//! The faces of the current photo, for the grid of all faces (`G`). Where they are comes from
+//! the index (`Db::faces_of`); a photo analysed before 1.7 has no rows yet, and its faces are
+//! looked for once more – only when the grid shows it, then stored. The pictures are cut from
+//! the photo at full size on a thread, for the current photo only; nothing is analysed while
+//! browsing.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, mpsc};
@@ -12,15 +12,14 @@ use eframe::egui::{self, ColorImage, TextureOptions, vec2};
 use crate::analysis::faces as detection;
 use crate::db::{Db, FaceRow};
 use crate::filelock::FileLocks;
-use crate::ui::details::{DetailsMode, DetailsTab};
 use crate::ui::faces::{Crop, Shown};
 use crate::ui::viewer;
 use crate::{decode, library, metadata, view};
 
 use super::CernoApp;
 
-/// The longest side of a face's picture: the details panel shows it at its full width,
-/// sharp on a 150 % display too.
+/// The longest side of a face's picture: the grid shows a single face large, sharp on a 150 %
+/// display too.
 const CROP_SIDE: u32 = 512;
 /// A face's picture shows this much more than its box, so hair and chin are in it.
 const CROP_MARGIN: f32 = 1.8;
@@ -36,8 +35,6 @@ pub(super) struct Found {
     /// In 0..1 of the photo, parallel to `crops`.
     boxes: Vec<[f32; 4]>,
     crops: Vec<Crop>,
-    /// How many were too small to judge.
-    small: usize,
 }
 
 #[derive(Default)]
@@ -68,22 +65,12 @@ impl State {
             Self::None => Shown::None,
             Self::Ready(found) => Shown::Ready {
                 crops: &found.crops,
-                small: found.small,
             },
         }
     }
 }
 
 impl CernoApp {
-    /// The menu's *Faces*: the faces tab of the details panel (`Ctrl+Tab` steps there too).
-    pub(super) fn open_faces(&mut self) {
-        if self.details == DetailsMode::Off {
-            self.set_details(DetailsMode::On);
-            self.save_panels();
-        }
-        self.set_details_tab(DetailsTab::Faces);
-    }
-
     /// `G`: every face of the photo large over it, or the photo again.
     pub(super) fn toggle_face_grid(&mut self) {
         self.faces.grid_open = !self.faces.grid_open;
@@ -140,7 +127,7 @@ impl CernoApp {
         }
     }
 
-    /// A face was clicked in the tab or the grid: zoom to it (the grid closes, the single
+    /// A face was clicked in the grid: zoom to it (the grid closes, the single
     /// photo shows).
     pub(super) fn zoom_to_face(&mut self, index: usize) {
         let Some(found) = &self.faces.found else {
@@ -248,7 +235,6 @@ fn cut_out(
         .filter(|row| detection::measurable(row.bbox[2], aw))
         .collect();
     judged.sort_by(|a, b| a.bbox[0].total_cmp(&b.bbox[0]));
-    let small = rows.len() - judged.len();
     let mut boxes = Vec::new();
     let mut crops = Vec::new();
     for row in judged {
@@ -260,11 +246,7 @@ fn cut_out(
             eyes_blurry: row.eyes.is_some_and(|eyes| eyes < view::BLURRY_EYES_MAX),
         });
     }
-    Ok(Found {
-        boxes,
-        crops,
-        small,
-    })
+    Ok(Found { boxes, crops })
 }
 
 /// A square around the face, `CROP_MARGIN` times its box, inside the photo, at most

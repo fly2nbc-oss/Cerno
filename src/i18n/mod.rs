@@ -509,12 +509,9 @@ pub struct Texts {
     pub faces_unknown: &'static str,
     pub faces_none: &'static str,
     pub faces_only_small: &'static str,
-    pub face_eyes_blurry: &'static str,
     pub faces_zoom_hint: &'static str,
     pub faces_grid_hint: &'static str,
-    pub cmd_faces: &'static str,
     pub cmd_face_grid: &'static str,
-    pub faces_small: fn(usize) -> String,
     /// In the info bar while a RAW file shows: its embedded JPEG preview, not a development.
     pub raw_preview_fact: &'static str,
     /// After a size or a section title that is about a RAW file's preview.
@@ -615,7 +612,6 @@ pub struct Texts {
     pub tab_values: &'static str,
     /// … and the photo's comment and keywords.
     pub tab_description: &'static str,
-    pub tab_faces: &'static str,
     pub section_comment: &'static str,
     pub section_keywords: &'static str,
     /// Placeholder of the empty comment field.
@@ -717,20 +713,24 @@ pub struct Texts {
     pub about_third_party: &'static str,
     pub about_third_party_text: &'static str,
     pub about_third_party_link: &'static str,
-    /// The tips page: how to work with Cerno, six short sections.
-    pub help_tips: [TipSection; 6],
+    /// The tips page: how to work with Cerno, seven short sections (the last one explains the
+    /// shortcuts' details).
+    pub help_tips: [TipSection; 7],
     /// Start screen: one sentence, the five keys to begin with, and where the rest is.
     pub welcome_intro: &'static str,
     pub welcome_keys: [HelpRow; 5],
     pub welcome_more: &'static str,
+    /// Start screen, only while something is missing: ExifTool ready, the aesthetics models
+    /// ready – and where to get them.
+    pub setup_line: fn(bool, bool) -> String,
     pub help_sections: [&'static str; 8],
-    pub help_browse: [HelpRow; 6],
+    pub help_browse: [HelpRow; 5],
     pub help_rate: [HelpRow; 6],
     pub help_cull: [HelpRow; 6],
-    pub help_video: [HelpRow; 4],
-    pub help_view: [HelpRow; 7],
-    pub help_panels: [HelpRow; 6],
-    pub help_edit: [HelpRow; 6],
+    pub help_video: [HelpRow; 5],
+    pub help_view: [HelpRow; 8],
+    pub help_panels: [HelpRow; 5],
+    pub help_edit: [HelpRow; 5],
     pub help_more: [HelpRow; 5],
 }
 

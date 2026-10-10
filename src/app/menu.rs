@@ -64,8 +64,7 @@ enum Action {
     AlignCamera,
     /// *Visible photos ▸ Camera time …*: the card with every camera's offset.
     CameraTime,
-    /// The faces tab; `G`: every face over the photo.
-    Faces,
+    /// `G`: every face over the photo.
     FaceGrid,
     Rate(Rating),
     Reject,
@@ -194,7 +193,7 @@ impl CernoApp {
             }
         }
         if self.help_open {
-            let out = help::overlay(ctx, window, self.help_page);
+            let out = help::overlay(ctx, window, self.help_page, i18n::t());
             if out.language {
                 self.switch_language(ctx);
             }
@@ -354,7 +353,6 @@ impl CernoApp {
                     row(Row::new(Action::Zoom, t.cmd_zoom, key("Z")).toggle(self.zoom.is_zoomed())),
                     Entry::Group(Group::new(t.menu_overlay, key("O"), overlays)),
                     row(Row::new(Action::Grid, t.cmd_grid, key("F7")).toggle(self.grid)),
-                    row(Row::new(Action::Faces, t.cmd_faces, None)),
                     row(Row::new(Action::FaceGrid, t.cmd_face_grid, key("G"))),
                     row(Row::new(Action::Fullscreen, t.cmd_fullscreen, key("F"))),
                 ],
@@ -730,7 +728,6 @@ impl CernoApp {
             }
             Action::Overlay(mode) => self.set_overlay(mode),
             Action::Grid => self.set_grid(!self.grid),
-            Action::Faces => self.open_faces(),
             Action::NameList => self.open_name_list(),
             Action::Quad => self.toggle_quad(),
             Action::Pairs => self.toggle_pairs(ctx),

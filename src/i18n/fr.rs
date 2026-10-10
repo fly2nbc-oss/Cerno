@@ -375,7 +375,6 @@ pub static TEXTS: Texts = Texts {
     row_location: "Lieu",
     tab_values: "Valeurs",
     tab_description: "Description",
-    tab_faces: "Visages",
     section_comment: "Commentaire",
     section_keywords: "Mots-clés",
     comment_hint: "Écrire un commentaire …",
@@ -536,21 +535,9 @@ pub static TEXTS: Texts = Texts {
     faces_unknown: "Pas encore analysée – les visages suivront.",
     faces_none: "Aucun visage détecté",
     faces_only_small: "Seulement de petits visages – trop petits pour juger",
-    face_eyes_blurry: "Yeux probablement flous",
     faces_zoom_hint: "Cliquer pour zoomer sur ce visage",
     faces_grid_hint: "Un clic ou son numéro (1–9) zoome sur un visage · Échap ferme",
-    cmd_faces: "Visages",
     cmd_face_grid: "Tous les visages en grand",
-    faces_small: |n| {
-        format!(
-            "+ {n} {} – trop petits pour juger",
-            if n == 1 {
-                "petit visage"
-            } else {
-                "petits visages"
-            }
-        )
-    },
     raw_preview_fact: "Aperçu RAW",
     preview_word: "aperçu",
     edit_failed: |detail| format!("Pas enregistré : {detail}"),
@@ -598,6 +585,7 @@ pub static TEXTS: Texts = Texts {
                 "C montre deux photos côte à côte ; A garde celle de gauche, D celle de droite, l'autre est rejetée.",
                 "M ne montre que les photos qui ressemblent à la photo actuelle.",
                 "Deux appareils à l'heure différente : comparer deux photos prises au même moment, puis Cette photo › « Caler l'appareil de droite sur celui de gauche ».",
+                "Maj+C affiche quatre photos à la fois : le cadre est la photo actuelle, ↑ ↓ le déplacent d'une rangée.",
             ],
         ),
         (
@@ -605,6 +593,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "Choisir « Top 50 photos » dans la première case de la barre de filtres : Cerno propose les meilleures, d'abord une par série.",
                 "L'esthétique et la netteté sous la photo aident à décider – les étoiles, c'est vous qui les donnez.",
+                "Filtre › Par liste de fichiers … : collez les noms choisis par un client – seules ces photos restent.",
             ],
         ),
         (
@@ -632,6 +621,16 @@ pub static TEXTS: Texts = Texts {
                 "Triées par prédiction, les photos qui vous plairont probablement viennent en premier.",
             ],
         ),
+        (
+            "Bon à savoir",
+            &[
+                "La molette sur la pellicule fait défiler les photos ; sur la photo, elle zoome.",
+                "Déposez un dossier sur la fenêtre pour l'ouvrir. Maintenez → pour faire défiler les photos.",
+                "Dans la grille (F7), ↑ ↓ changent de ligne, + − la taille, Entrée ouvre la photo.",
+                "Redresser (S) : la molette et les flèches tournent, Maj plus fin. Recadrer (R) : tracez un cadre ou déplacez-le avec les flèches, +/− change sa taille, A le format, X bascule paysage/portrait.",
+                "Dans la description, Entrée place le curseur dans le champ des mots-clés.",
+            ],
+        ),
     ],
     welcome_intro: "Voir, noter et trier vos photos sans attendre – les étoiles vont dans le fichier, sa date reste.",
     welcome_keys: [
@@ -642,6 +641,13 @@ pub static TEXTS: Texts = Texts {
         ("Ctrl+K", "Menu avec toutes les fonctions"),
     ],
     welcome_more: "Tous les raccourcis : H",
+    setup_line: |exiftool, aesthetics| {
+        format!(
+            "Configuration : ExifTool {} · esthétique {} – Ctrl+K › Réglages › Modèles et données",
+            if exiftool { "prêt" } else { "manquant" },
+            if aesthetics { "prête" } else { "manquante" },
+        )
+    },
     help_sections: [
         "Parcourir",
         "Noter",
@@ -653,143 +659,64 @@ pub static TEXTS: Texts = Texts {
         "Divers",
     ],
     help_browse: [
-        (
-            "→, Espace, Pg suiv",
-            "Photo suivante (maintenir pour faire défiler)",
-        ),
+        ("→, Espace, Pg suiv", "Photo suivante"),
         ("←, Retour arrière, Pg préc", "Photo précédente"),
         ("Début, Fin", "Première / dernière photo"),
-        ("Molette", "Sur la pellicule : faire défiler les photos"),
-        ("Ctrl+O", "Ouvrir un dossier (ou le déposer sur la fenêtre)"),
-        ("Ctrl+U", "Inclure les sous-dossiers – oui / non"),
+        ("Ctrl+O", "Ouvrir un dossier"),
+        ("Ctrl+U", "Sous-dossiers oui / non"),
     ],
     help_rate: [
-        (
-            "1 – 5",
-            "Donner des étoiles – écrites dans le fichier photo",
-        ),
-        (
-            "Maj+1 – 5",
-            "Donner des étoiles et passer à la photo suivante",
-        ),
-        ("0", "Retirer les étoiles ou le rejet"),
-        (
-            "X, Maj+X",
-            "Rejeter – noté dans le fichier, rien n'est supprimé ; avec Maj, passer à la photo suivante",
-        ),
-        (
-            "6 – 9",
-            "Couleur : rouge, jaune, vert, bleu – une seconde fois l'enlève",
-        ),
-        (
-            "Maj+6 – 9",
-            "Poser cette couleur et passer à la photo suivante",
-        ),
+        ("1 – 5", "Étoiles"),
+        ("0", "Sans étoiles, non rejetée"),
+        ("X", "Rejeter"),
+        ("6 – 9", "Rouge, jaune, vert, bleu"),
+        ("Maj+…", "Idem, puis photo suivante"),
+        ("Ctrl+Z", "Annuler"),
     ],
     help_cull: [
-        (
-            "C",
-            "Comparer : fixer cette photo à gauche, parcourir à droite",
-        ),
-        (
-            "A, D",
-            "Comparer : garder la gauche / la droite – l'autre est rejetée, la comparaison se termine",
-        ),
-        (
-            "Maj+C",
-            "Vue à quatre : quatre photos à la fois, le cadre est la photo actuelle – ↑ ↓ une rangée",
-        ),
-        (
-            "M",
-            "N'afficher que les photos semblables – encore : toutes",
-        ),
-        (
-            "Suppr",
-            "Supprimer : va dans le dossier caché .originals après 5 secondes – rien n'est perdu",
-        ),
-        (
-            "Esc, Ctrl+Z",
-            "Récupérer les photos en attente de suppression",
-        ),
+        ("C", "Comparer deux photos"),
+        ("A, D", "Garder la gauche / la droite"),
+        ("Maj+C", "Quatre photos à la fois"),
+        ("M", "Photos semblables seulement"),
+        ("Suppr", "Supprimer (vers .originals)"),
+        ("Esc", "Récupérer les supprimées"),
     ],
     help_video: [
-        (
-            "Espace",
-            "Lire / mettre en pause (Maj+Espace : photo suivante)",
-        ),
+        ("Espace", "Lire / mettre en pause"),
+        ("Maj+Espace", "Photo suivante"),
         ("Alt+←, Alt+→", "5 s en arrière / en avant"),
-        (",, .", "Une image en arrière / en avant (en pause)"),
+        (",, .", "Une image en arrière / avant"),
         ("↑, ↓", "Volume"),
     ],
     help_view: [
         ("Z, Double-clic", "Photo entière ↔ 100 %"),
         ("Ctrl+0, Ctrl+1", "Photo entière / 100 %"),
-        ("+, −, Molette", "Zoom avant / arrière – aussi avec Ctrl"),
+        ("+, −, Molette", "Zoom avant / arrière"),
         ("Glisser", "Déplacer la photo zoomée"),
-        (
-            "O",
-            "Superposition : contours nets → lumières et ombres écrêtées → désactivée",
-        ),
-        (
-            "F7",
-            "Grille de toutes les photos : ↑ ↓ une ligne, + − taille, Entrée ouvre la photo",
-        ),
+        ("O", "Contrôle : netteté, écrêtage"),
+        ("F7", "Grille de toutes les photos"),
+        ("G", "Tous les visages en grand"),
         ("F, F11", "Plein écran"),
     ],
     help_panels: [
-        (
-            "T",
-            "Barre de filtres : trier et filtrer – par étoiles, couleurs, netteté, personnes",
-        ),
+        ("T", "Barre de filtres"),
         ("Tab", "Panneau de détails"),
         ("F6", "Pellicule"),
-        ("Maj+Tab", "Barre de filtres, détails et pellicule ensemble"),
-        (
-            "Ctrl+Tab",
-            "Onglets du panneau de détails : valeurs → description → visages (Maj pour revenir) ; dans la description, Entrée place le curseur dans le champ des mots-clés",
-        ),
-        (
-            "G",
-            "Tous les visages en grand sur la photo – un clic ou 1–9 zoome dessus",
-        ),
+        ("Maj+Tab", "Les trois panneaux"),
+        ("Ctrl+Tab", "Onglet suivant des détails"),
     ],
     help_edit: [
-        (
-            "S",
-            "Redresser : grille, molette et flèches tournent, Maj plus fin",
-        ),
-        (
-            "R",
-            "Recadrer : tracer un cadre ou le placer avec les flèches et +/−, A change le format, X bascule paysage/portrait",
-        ),
-        (
-            "Entrée, Échap",
-            "Appliquer ou annuler redressement et recadrage",
-        ),
-        (
-            "Ctrl+←, Ctrl+→",
-            "Pivoter de 90° – sans perte, via l'orientation JPEG",
-        ),
-        (
-            "Ctrl+Z",
-            "Annuler la dernière marque ou retouche ; remettre en place une photo supprimée",
-        ),
-        (
-            "E",
-            "Modifier dans un autre programme – celui retenu, ou en choisir un",
-        ),
+        ("S", "Redresser"),
+        ("R", "Recadrer"),
+        ("Entrée, Échap", "Appliquer / annuler"),
+        ("Ctrl+←, Ctrl+→", "Pivoter de 90°"),
+        ("E", "Modifier dans un autre programme"),
     ],
     help_more: [
         ("Ctrl+K", "Menu : toutes les fonctions"),
-        (
-            "Ctrl+M",
-            "Action : copier, déplacer ou supprimer les photos affichées",
-        ),
-        ("Ctrl+L", "Changer de langue"),
+        ("Ctrl+M", "Copier, déplacer, supprimer"),
+        ("Ctrl+L", "Langue"),
         ("H, F1, ?", "Cette aide"),
-        (
-            "Esc",
-            "Revenir en arrière : zoom, comparaison, grille, plein écran",
-        ),
+        ("Esc", "Revenir en arrière"),
     ],
 };

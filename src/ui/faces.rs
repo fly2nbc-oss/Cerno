@@ -1,11 +1,9 @@
-//! The faces of the current photo: the details panel's faces tab (the faces one under the
-//! other, as wide as the panel) and the grid of all of them over the photo (`G`, for group
-//! photos). A click on
-//! a face zooms to it. What is drawn comes from `app/faces.rs`.
+//! The faces of the current photo as a grid over the photo (`G`, for group photos): a click on
+//! a face, or its number, zooms to it. What is drawn comes from `app/faces.rs`.
 
 use eframe::egui::{
-    Align2, Area, Color32, Context, CursorIcon, FontId, Id, Key, Order, Rect, ScrollArea, Sense,
-    Stroke, StrokeKind, TextureHandle, Ui, UiBuilder, pos2, vec2,
+    Align2, Area, Color32, Context, CursorIcon, FontId, Id, Key, Order, Rect, Sense, Stroke,
+    StrokeKind, TextureHandle, Ui, pos2, vec2,
 };
 
 use crate::i18n;
@@ -27,125 +25,8 @@ pub enum Shown<'a> {
     Unknown,
     /// It found none.
     None,
-    /// The faces large enough to judge, left to right, and how many smaller ones there are.
-    Ready { crops: &'a [Crop], small: usize },
-}
-
-const PAD: f32 = 14.0;
-/// Space between two faces in the tab.
-const GAP: f32 = 10.0;
-
-/// The faces tab: each face as wide as the panel, left to right in the photo, one under the
-/// other – no label; a face whose eyes are probably blurry says so on its picture. Returns the
-/// face clicked.
-pub fn tab(ui: &mut Ui, rect: Rect, shown: &Shown<'_>) -> Option<usize> {
-    let t = i18n::t();
-    let painter = ui.painter().with_clip_rect(rect);
-    painter.rect_filled(rect, 0.0, tokens::SURFACE);
-    painter.vline(
-        rect.left() + 0.5,
-        rect.y_range(),
-        Stroke::new(1.0, tokens::LINE),
-    );
-    let note = |text: &str| {
-        painter.text(
-            rect.left_top() + vec2(PAD, PAD),
-            Align2::LEFT_TOP,
-            text,
-            FontId::proportional(text::BODY),
-            tokens::MUTED,
-        );
-    };
-    let (crops, small) = match shown {
-        Shown::Loading => {
-            note(t.faces_loading);
-            return None;
-        }
-        Shown::Unknown => {
-            note(t.faces_unknown);
-            return None;
-        }
-        Shown::None => {
-            note(t.faces_none);
-            return None;
-        }
-        Shown::Ready { crops, small } => (*crops, *small),
-    };
-    let mut clicked = None;
-    let mut panel = ui.new_child(UiBuilder::new().max_rect(rect).id_salt("faces-tab"));
-    ScrollArea::vertical()
-        .auto_shrink(false)
-        .show(&mut panel, |ui| {
-            ui.set_width(rect.width());
-            ui.add_space(PAD);
-            if crops.is_empty() {
-                ui.horizontal(|ui| {
-                    ui.add_space(PAD);
-                    ui.label(eframe::egui::RichText::new(t.faces_only_small).color(tokens::MUTED));
-                });
-            }
-            let width = (rect.width() - 2.0 * PAD).max(1.0);
-            for (i, crop) in crops.iter().enumerate() {
-                let size = crop.texture.size_vec2();
-                let height = width * size.y / size.x.max(1.0);
-                let (row, response) =
-                    ui.allocate_exact_size(vec2(rect.width(), height + GAP), Sense::click());
-                let response = response
-                    .on_hover_cursor(CursorIcon::PointingHand)
-                    .on_hover_text(t.faces_zoom_hint);
-                let picture =
-                    Rect::from_min_size(row.left_top() + vec2(PAD, 0.0), vec2(width, height));
-                paint_crop(ui, picture, &crop.texture);
-                if response.hovered() {
-                    ui.painter().rect_stroke(
-                        picture,
-                        4.0,
-                        Stroke::new(2.0, tokens::ACCENT),
-                        StrokeKind::Outside,
-                    );
-                }
-                if crop.eyes_blurry {
-                    blurry_note(ui, picture, t.face_eyes_blurry);
-                }
-                if response.clicked() {
-                    clicked = Some(i);
-                }
-            }
-            if small > 0 && !crops.is_empty() {
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(PAD);
-                    ui.label(
-                        eframe::egui::RichText::new((t.faces_small)(small))
-                            .font(FontId::proportional(text::SMALL))
-                            .color(tokens::MUTED),
-                    );
-                });
-            }
-            ui.add_space(PAD);
-        });
-    clicked
-}
-
-/// "Eyes probably blurry" on the face's picture, bottom left, on a dark ground.
-fn blurry_note(ui: &Ui, picture: Rect, note: &str) {
-    let painter = ui.painter().with_clip_rect(picture);
-    let galley = painter.layout_no_wrap(
-        note.to_owned(),
-        FontId::proportional(text::SMALL),
-        tokens::TEXT,
-    );
-    let pill = Rect::from_min_size(
-        pos2(picture.left() + 6.0, picture.bottom() - 6.0 - 22.0),
-        vec2(galley.size().x + 32.0, 22.0),
-    );
-    painter.rect_filled(pill, 4.0, Color32::from_black_alpha(190));
-    icons::warning(&painter, pos2(pill.left() + 12.0, pill.center().y));
-    painter.galley(
-        pos2(pill.left() + 24.0, pill.center().y - galley.size().y / 2.0),
-        galley,
-        tokens::TEXT,
-    );
+    /// The faces large enough to judge, left to right (none: only smaller ones).
+    Ready { crops: &'a [Crop] },
 }
 
 /// A crop fitted into `area`, keeping its shape, on a muted ground.
@@ -169,7 +50,7 @@ pub struct GridOutput {
     pub close: bool,
 }
 
-/// All faces large over the photo area, numbered like the tab; a click or its number (1–9)
+/// All faces large over the photo area, numbered left to right; a click or its number (1–9)
 /// zooms to one, Esc, `G` or a click beside them closes.
 pub fn grid(ctx: &Context, area: Rect, shown: &Shown<'_>) -> GridOutput {
     let t = i18n::t();
@@ -190,7 +71,7 @@ pub fn grid(ctx: &Context, area: Rect, shown: &Shown<'_>) -> GridOutput {
         Key::Num9,
     ];
     let count = match shown {
-        Shown::Ready { crops, .. } => crops.len(),
+        Shown::Ready { crops } => crops.len(),
         _ => 0,
     };
     out.clicked = ctx.input_mut(|i| {
@@ -228,11 +109,11 @@ pub fn grid(ctx: &Context, area: Rect, shown: &Shown<'_>) -> GridOutput {
                     message(t.faces_none);
                     &[][..]
                 }
-                Shown::Ready { crops: [], .. } => {
+                Shown::Ready { crops: [] } => {
                     message(t.faces_only_small);
                     &[][..]
                 }
-                Shown::Ready { crops, .. } => *crops,
+                Shown::Ready { crops } => *crops,
             };
             let mut on_face = false;
             if !crops.is_empty() {

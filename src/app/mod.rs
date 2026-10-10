@@ -159,7 +159,7 @@ pub struct CernoApp {
     session_descriptions: HashMap<PathBuf, Description>,
     /// Which tab the details panel shows (`Ctrl+Tab` steps through them).
     details_tab: DetailsTab,
-    /// The current photo's faces (the faces tab, `G`).
+    /// The current photo's faces (`G`).
     faces: faces::Faces,
     /// The comment and keyword being typed in the description tab.
     drafts: description::Drafts,

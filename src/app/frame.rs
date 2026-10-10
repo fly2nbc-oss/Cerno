@@ -78,8 +78,16 @@ impl CernoApp {
     pub(super) fn draw_centre(&mut self, ui: &mut egui::Ui, window: Rect, area: Rect) {
         let ctx = ui.ctx().clone();
         if self.all.is_empty() {
-            // Start screen: one sentence, "Open folder" and the first keys (H shows all).
-            let out = help::welcome(ui, window);
+            // Start screen: one sentence, "Open folder" and the first keys (H shows all) – and
+            // what is still to set up.
+            let setup = help::Setup {
+                exiftool: matches!(
+                    self.exiftool_tool(),
+                    super::gate::Tool::Ready | super::gate::Tool::Loading
+                ),
+                aesthetics: self.analyzer.status().missing().is_empty(),
+            };
+            let out = help::welcome(ui, window, i18n::t(), setup);
             if out.language {
                 self.switch_language(&ctx);
             }
@@ -313,13 +321,6 @@ impl CernoApp {
         }
         if self.details_tab == DetailsTab::Description {
             self.draw_description(ui, body, &path, image.as_deref());
-            return;
-        }
-        if self.details_tab == DetailsTab::Faces {
-            let state = self.faces_of_current(&ctx);
-            if let Some(face) = crate::ui::faces::tab(ui, body, &state.shown()) {
-                self.zoom_to_face(face);
-            }
             return;
         }
         let status = self.analyzer.status();

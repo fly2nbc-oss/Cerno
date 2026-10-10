@@ -62,7 +62,7 @@ const SCHEMA: &str = "
     CREATE TABLE IF NOT EXISTS restored (
         path TEXT PRIMARY KEY
     );
-    -- Every face YuNet found, in 0..1 of the upright photo (the faces tab and grid, since 1.7).
+    -- Every face YuNet found, in 0..1 of the upright photo (the faces grid `G`, since 1.7).
     -- `landmarks`: ten f32 LE – eyes, nose, mouth corners as x, y.
     CREATE TABLE IF NOT EXISTS faces (
         fingerprint INTEGER NOT NULL,

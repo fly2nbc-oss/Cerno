@@ -334,7 +334,6 @@ pub static TEXTS: Texts = Texts {
     row_location: "Posizione",
     tab_values: "Valori",
     tab_description: "Descrizione",
-    tab_faces: "Volti",
     section_comment: "Commento",
     section_keywords: "Parole chiave",
     comment_hint: "Scrivi un commento …",
@@ -495,21 +494,9 @@ pub static TEXTS: Texts = Texts {
     faces_unknown: "Non ancora analizzata: i volti arriveranno.",
     faces_none: "Nessun volto rilevato",
     faces_only_small: "Solo volti piccoli: troppo piccoli per giudicare",
-    face_eyes_blurry: "Occhi probabilmente sfocati",
     faces_zoom_hint: "Clic per ingrandire questo volto",
     faces_grid_hint: "Un clic o il suo numero (1–9) ingrandisce un volto · Esc chiude",
-    cmd_faces: "Volti",
     cmd_face_grid: "Tutti i volti in grande",
-    faces_small: |n| {
-        format!(
-            "+ {n} {}: troppo piccoli per giudicare",
-            if n == 1 {
-                "volto piccolo"
-            } else {
-                "volti piccoli"
-            }
-        )
-    },
     raw_preview_fact: "Anteprima RAW",
     preview_word: "anteprima",
     edit_failed: |detail| format!("Non scritto: {detail}"),
@@ -557,6 +544,7 @@ pub static TEXTS: Texts = Texts {
                 "C mostra due foto affiancate; A tiene quella a sinistra, D quella a destra, l'altra viene rifiutata.",
                 "M mostra solo le foto simili a quella attuale.",
                 "Due fotocamere con l'ora diversa: confronta due foto scattate nello stesso momento, poi Questa foto › «Allinea la fotocamera destra alla sinistra».",
+                "Maiusc+C mostra quattro foto insieme: la cornice è la foto attuale, ↑ ↓ la spostano di una riga.",
             ],
         ),
         (
@@ -564,6 +552,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "Scegliere «Top 50 foto» nella prima casella della barra dei filtri: Cerno propone le migliori, prima una per serie.",
                 "Estetica e nitidezza sotto la foto aiutano a decidere; le stelle le dai tu.",
+                "Filtro › Per elenco di file …: incolla i nomi scelti da un cliente – restano solo quelle foto.",
             ],
         ),
         (
@@ -591,6 +580,16 @@ pub static TEXTS: Texts = Texts {
                 "Ordinate per previsione, vengono prima le foto che probabilmente ti piaceranno.",
             ],
         ),
+        (
+            "Buono a sapersi",
+            &[
+                "La rotellina sopra la striscia di miniature scorre le foto; sopra la foto ingrandisce e riduce.",
+                "Trascina una cartella sulla finestra per aprirla. Tieni premuto → per scorrere le foto.",
+                "Nella griglia (F7) ↑ ↓ cambiano riga, + − la dimensione, Invio apre la foto.",
+                "Raddrizza (S): rotellina e frecce ruotano, Maiusc più fine. Ritaglio (R): traccia una cornice o spostala con le frecce, +/− ne cambia la dimensione, A il formato, X scambia orizzontale/verticale.",
+                "Nella descrizione, Invio porta il cursore nel campo delle parole chiave.",
+            ],
+        ),
     ],
     welcome_intro: "Guarda, valuta e scarta le foto senza attese: le stelle finiscono nel file, la sua data resta.",
     welcome_keys: [
@@ -601,6 +600,13 @@ pub static TEXTS: Texts = Texts {
         ("Ctrl+K", "Menu con tutte le funzioni"),
     ],
     welcome_more: "Tutte le scorciatoie: H",
+    setup_line: |exiftool, aesthetics| {
+        format!(
+            "Configurazione: ExifTool {} · estetica {} – Ctrl+K › Impostazioni › Modelli e dati",
+            if exiftool { "pronto" } else { "manca" },
+            if aesthetics { "pronta" } else { "manca" },
+        )
+    },
     help_sections: [
         "Sfogliare",
         "Valutare",
@@ -612,140 +618,64 @@ pub static TEXTS: Texts = Texts {
         "Altro",
     ],
     help_browse: [
-        (
-            "→, Spazio, Pag giù",
-            "Foto successiva (tieni premuto per scorrere)",
-        ),
+        ("→, Spazio, Pag giù", "Foto successiva"),
         ("←, Backspace, Pag su", "Foto precedente"),
         ("Home, Fine", "Prima / ultima foto"),
-        (
-            "Rotellina",
-            "Sopra la striscia di miniature: scorri le foto",
-        ),
-        ("Ctrl+O", "Apri una cartella (o trascinala sulla finestra)"),
-        ("Ctrl+U", "Includi sottocartelle – sì / no"),
+        ("Ctrl+O", "Apri una cartella"),
+        ("Ctrl+U", "Sottocartelle sì / no"),
     ],
     help_rate: [
-        (
-            "1 – 5",
-            "Assegna le stelle – vengono scritte nel file della foto",
-        ),
-        (
-            "Maiusc+1 – 5",
-            "Assegna le stelle e passa alla foto successiva",
-        ),
-        ("0", "Rimuovi le stelle o il rifiuto"),
-        (
-            "X, Maiusc+X",
-            "Rifiuta – annotato nel file, non viene eliminato nulla; con Maiusc passa alla foto successiva",
-        ),
-        (
-            "6 – 9",
-            "Colore: rosso, giallo, verde, blu – di nuovo lo toglie",
-        ),
-        (
-            "Maiusc+6 – 9",
-            "Imposta il colore e vai alla foto successiva",
-        ),
+        ("1 – 5", "Stelle"),
+        ("0", "Senza stelle, non rifiutata"),
+        ("X", "Rifiuta"),
+        ("6 – 9", "Rosso, giallo, verde, blu"),
+        ("Maiusc+…", "Idem, poi foto successiva"),
+        ("Ctrl+Z", "Annulla"),
     ],
     help_cull: [
-        (
-            "C",
-            "Confronta: fissa questa foto a sinistra, sfoglia a destra",
-        ),
-        (
-            "A, D",
-            "Confronta: tieni la sinistra / la destra – l'altra viene rifiutata e il confronto termina",
-        ),
-        (
-            "Maiusc+C",
-            "Vista a quattro: quattro foto insieme, la cornice è quella attuale – ↑ ↓ una riga",
-        ),
-        ("M", "Mostra solo foto simili – di nuovo: tutte"),
-        (
-            "Canc",
-            "Elimina: va nella cartella nascosta .originals dopo 5 secondi – non si perde nulla",
-        ),
-        (
-            "Esc, Ctrl+Z",
-            "Recupera le foto in attesa di essere eliminate",
-        ),
+        ("C", "Confronta due foto"),
+        ("A, D", "Tieni sinistra / destra"),
+        ("Maiusc+C", "Quattro foto insieme"),
+        ("M", "Solo foto simili"),
+        ("Canc", "Elimina (in .originals)"),
+        ("Esc", "Recupera le eliminate"),
     ],
     help_video: [
-        (
-            "Spazio",
-            "Riproduci / metti in pausa (Maiusc+Spazio: foto successiva)",
-        ),
+        ("Spazio", "Riproduci / pausa"),
+        ("Maiusc+Spazio", "Foto successiva"),
         ("Alt+←, Alt+→", "5 s indietro / avanti"),
-        (",, .", "Un fotogramma indietro / avanti (in pausa)"),
+        (",, .", "Un fotogramma indietro / avanti"),
         ("↑, ↓", "Volume"),
     ],
     help_view: [
         ("Z, Doppio clic", "Foto intera ↔ 100 %"),
         ("Ctrl+0, Ctrl+1", "Foto intera / 100 %"),
-        ("+, −, Rotellina", "Ingrandisci / riduci – anche con Ctrl"),
+        ("+, −, Rotellina", "Ingrandisci / riduci"),
         ("Trascina", "Sposta la foto ingrandita"),
-        (
-            "O",
-            "Sovrapposizione: bordi nitidi → luci e ombre tagliate → disattivata",
-        ),
-        (
-            "F7",
-            "Griglia di tutte le foto: ↑ ↓ una riga, + − dimensione, Invio apre la foto",
-        ),
+        ("O", "Controllo: nitidezza, tagli"),
+        ("F7", "Griglia di tutte le foto"),
+        ("G", "Tutti i volti in grande"),
         ("F, F11", "Schermo intero"),
     ],
     help_panels: [
-        (
-            "T",
-            "Barra dei filtri: ordina e filtra – per stelle, colori, nitidezza, persone",
-        ),
+        ("T", "Barra dei filtri"),
         ("Tab", "Pannello dettagli"),
         ("F6", "Striscia di miniature"),
-        (
-            "Maiusc+Tab",
-            "Barra dei filtri, dettagli e striscia di miniature insieme",
-        ),
-        (
-            "Ctrl+Tab",
-            "Schede del pannello dettagli: valori → descrizione → volti (Maiusc per tornare); nella descrizione, Invio porta il cursore nel campo delle parole chiave",
-        ),
-        (
-            "G",
-            "Tutti i volti in grande sopra la foto; un clic o 1–9 ingrandisce",
-        ),
+        ("Maiusc+Tab", "Tutti e tre i pannelli"),
+        ("Ctrl+Tab", "Scheda successiva dei dettagli"),
     ],
     help_edit: [
-        (
-            "S",
-            "Raddrizza: griglia, rotellina e frecce ruotano, Maiusc più fine",
-        ),
-        (
-            "R",
-            "Ritaglio: traccia una cornice o regolala con le frecce e +/−, A cambia il formato, X scambia orizzontale/verticale",
-        ),
-        ("Invio, Esc", "Applica o annulla raddrizzamento e ritaglio"),
-        (
-            "Ctrl+←, Ctrl+→",
-            "Ruota di 90° – senza perdita, tramite l'orientamento JPEG",
-        ),
-        (
-            "Ctrl+Z",
-            "Annulla l'ultimo segno o modifica; rimetti a posto una foto eliminata",
-        ),
-        (
-            "E",
-            "Modifica in un altro programma – quello memorizzato o scegline uno",
-        ),
+        ("S", "Raddrizza"),
+        ("R", "Ritaglio"),
+        ("Invio, Esc", "Applica / annulla"),
+        ("Ctrl+←, Ctrl+→", "Ruota di 90°"),
+        ("E", "Modifica in un altro programma"),
     ],
     help_more: [
         ("Ctrl+K", "Menu: tutte le funzioni"),
-        ("Ctrl+M", "Azione: copia, sposta o elimina le foto in vista"),
-        ("Ctrl+L", "Cambia lingua"),
+        ("Ctrl+M", "Copia, sposta, elimina"),
+        ("Ctrl+L", "Lingua"),
         ("H, F1, ?", "Questa guida"),
-        (
-            "Esc",
-            "Torna indietro: zoom, confronto, griglia, schermo intero",
-        ),
+        ("Esc", "Torna indietro"),
     ],
 };

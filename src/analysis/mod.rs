@@ -772,8 +772,8 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
         shared
             .db
             .put_faces(fingerprint, eyes, count, faces::VERSION)?;
-        // Where each face is, for the faces tab and grid (photos analysed before 1.7 get theirs
-        // when those show them).
+        // Where each face is, for the faces grid (photos analysed before 1.7 get theirs
+        // when it shows them).
         shared
             .db
             .put_face_rows(fingerprint, &faces::rows(&found, rgb, w, h))?;
