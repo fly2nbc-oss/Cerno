@@ -226,7 +226,8 @@ impl CernoApp {
 
     /// Rejected photos of the folder (for "delete rejected photos").
     pub(super) fn rejected(&self) -> Vec<PathBuf> {
-        self.all
+        self.folder
+            .all
             .iter()
             .filter(|p| !self.deletions.is_hidden(p))
             .filter(|p| {

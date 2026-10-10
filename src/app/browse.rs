@@ -18,6 +18,42 @@ use super::layer::Layer;
 use super::notice::Notice;
 use super::{CLIP_OFFER_SHOWN, CernoApp};
 
+/// The open folder.
+pub(super) struct Folder {
+    pub(super) dir: Option<PathBuf>,
+    /// Every photo of the folder, in name order.
+    pub(super) all: Arc<Vec<PathBuf>>,
+    /// What sorting and filtering look at, and the analysis works on: `all`, plus the deleted
+    /// photos while the 🗑 box is ticked (`sync_library`).
+    pub(super) library: Arc<Vec<PathBuf>>,
+    /// Index into `library`.
+    pub(super) all_index: HashMap<PathBuf, usize>,
+    /// The open folder includes nested folders.
+    pub(super) subfolders: bool,
+    /// RAW + JPG of one name are one photo (*RAW+JPG as one photo*, on by default).
+    pub(super) pair_mode: bool,
+    /// The RAWs riding along with the open folder's JPEGs.
+    pub(super) pairs: crate::pairs::Pairs,
+    /// What the pairs' RAW sidecars say, for the note where they differ.
+    pub(super) raw_marks: super::pairs::RawMarks,
+}
+
+impl Folder {
+    /// No folder yet; the saved switches.
+    pub(super) fn restore(db: &crate::db::Db) -> Self {
+        Self {
+            dir: None,
+            all: Arc::new(Vec::new()),
+            library: Arc::new(Vec::new()),
+            all_index: HashMap::new(),
+            subfolders: db.setting("subfolders").as_deref() == Some("1"),
+            pair_mode: db.setting(super::pairs::SETTING).as_deref() != Some("0"),
+            pairs: crate::pairs::Pairs::default(),
+            raw_marks: super::pairs::RawMarks::default(),
+        }
+    }
+}
+
 /// What the view was built from and with, kept between frames.
 pub(super) struct Browse {
     /// The photo "similar photos" (`M`) is about and its CLIP embedding, while that filter is
@@ -64,7 +100,7 @@ pub(super) fn index_of(paths: &[PathBuf]) -> HashMap<PathBuf, usize> {
 
 impl CernoApp {
     pub(super) fn open(&mut self, ctx: &egui::Context, path: &Path) {
-        let (library, index) = match Library::open(path, self.subfolders) {
+        let (library, index) = match Library::open(path, self.folder.subfolders) {
             Ok(opened) => opened,
             Err(err) => {
                 let path = path.display().to_string();
@@ -87,7 +123,7 @@ impl CernoApp {
             }
         }
         // RAW + JPG of one name: the RAW rides along with the JPEG (`pairs`).
-        let (paths, pairs) = if self.pair_mode {
+        let (paths, pairs) = if self.folder.pair_mode {
             crate::pairs::pair_up(library.paths.to_vec(), Path::to_path_buf)
         } else {
             (library.paths.to_vec(), crate::pairs::Pairs::default())
@@ -104,11 +140,11 @@ impl CernoApp {
                     .map_or(opened.clone(), Path::to_path_buf)
             });
         let paths = Arc::new(paths);
-        self.all_index = index_of(&paths);
-        self.pairs = pairs;
-        self.all = paths;
-        self.library = Arc::clone(&self.all);
-        self.dir = Some(library.dir);
+        self.folder.all_index = index_of(&paths);
+        self.folder.pairs = pairs;
+        self.folder.all = paths;
+        self.folder.library = Arc::clone(&self.folder.all);
+        self.folder.dir = Some(library.dir);
         self.load_camera_offsets();
         self.scan_raw_marks();
         // Found in the background; the 🗑 box shows them once they are known.
@@ -133,24 +169,25 @@ impl CernoApp {
         // Only needed when the view depends on scores; the analysis fills the board anyway,
         // and on big folders the lookups would delay the first frame.
         if self.options.depends_on_scores() {
-            self.analyzer.preload(&self.all);
+            self.analyzer.preload(&self.folder.all);
         }
-        self.analyzer.set_library(Arc::clone(&self.all), index);
+        self.analyzer
+            .set_library(Arc::clone(&self.folder.all), index);
         self.view = View::default();
         self.rebuild_view(ctx, start);
     }
 
     /// Subfolders on or off (`Ctrl+U`, the settings menu); the current folder opens again.
     pub(super) fn toggle_subfolders(&mut self, ctx: &egui::Context) {
-        self.subfolders = !self.subfolders;
-        self.db.put_flag("subfolders", self.subfolders);
-        if let Some(dir) = self.dir.clone() {
+        self.folder.subfolders = !self.folder.subfolders;
+        self.db.put_flag("subfolders", self.folder.subfolders);
+        if let Some(dir) = self.folder.dir.clone() {
             self.open(ctx, &dir);
         }
         // An error or "no photos here" from opening says more.
         if self.notice.is_none() {
             let t = i18n::t();
-            self.notice = Some(Notice::hint(if self.subfolders {
+            self.notice = Some(Notice::hint(if self.folder.subfolders {
                 t.subfolders_on
             } else {
                 t.subfolders_off
@@ -183,7 +220,7 @@ impl CernoApp {
 
     pub(super) fn build_view(&self) -> View {
         view::build(
-            &self.library,
+            &self.folder.library,
             self.options,
             |p| self.facts(p),
             &self.marks.ratings,
@@ -279,7 +316,7 @@ impl CernoApp {
 
     pub(super) fn pick_folder(&mut self, ctx: &egui::Context) {
         let mut dialog = rfd::FileDialog::new().set_title(i18n::t().open_folder);
-        if let Some(dir) = &self.dir {
+        if let Some(dir) = &self.folder.dir {
             dialog = dialog.set_directory(dir);
         }
         if let Some(dir) = dialog.pick_folder() {
@@ -325,7 +362,7 @@ impl CernoApp {
     fn pick_top(&mut self) {
         let picked = match self.options.top {
             Some(n) => view::pick_top(
-                &self.all,
+                &self.folder.all,
                 self.options,
                 |p| self.facts(p),
                 &self.marks.ratings,
@@ -364,7 +401,7 @@ impl CernoApp {
             }));
             return;
         };
-        let any = self.all.iter().any(|other| {
+        let any = self.folder.all.iter().any(|other| {
             *other != path
                 && self
                     .analyzer
@@ -429,7 +466,7 @@ impl CernoApp {
         if let Some(&index) = self
             .view
             .get(self.current)
-            .and_then(|p| self.all_index.get(p))
+            .and_then(|p| self.folder.all_index.get(p))
         {
             if self.grid {
                 self.analyzer.set_current_quietly(index);
@@ -481,7 +518,8 @@ impl CernoApp {
     /// deleted photo the one it had there.
     pub(super) fn photo_name(&self, path: &Path) -> String {
         let path = self.deleted.original_of(path).unwrap_or(path);
-        self.dir
+        self.folder
+            .dir
             .as_ref()
             .map(|dir| library::display_name(dir, path))
             .unwrap_or_else(|| library::file_name_lossy(path))
@@ -491,12 +529,13 @@ impl CernoApp {
     /// list – `format_of` allocates, and the bar asks in every frame. The `Weak` keeps the
     /// list's address from being reused by the next one.
     pub(super) fn has_videos(&mut self) -> bool {
-        if !std::sync::Weak::ptr_eq(&self.browse.videos_in.0, &Arc::downgrade(&self.all)) {
+        if !std::sync::Weak::ptr_eq(&self.browse.videos_in.0, &Arc::downgrade(&self.folder.all)) {
             let any = self
+                .folder
                 .all
                 .iter()
                 .any(|p| library::format_of(p) == Some(library::Format::Video));
-            self.browse.videos_in = (Arc::downgrade(&self.all), any);
+            self.browse.videos_in = (Arc::downgrade(&self.folder.all), any);
         }
         self.browse.videos_in.1
     }
@@ -508,6 +547,7 @@ impl CernoApp {
         if self.browse.percentiles.0 != version {
             let board = &self.board;
             let scores: Vec<_> = self
+                .folder
                 .all
                 .iter()
                 .filter_map(|p| board.get(p).map(|k| k.scores))

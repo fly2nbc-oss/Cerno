@@ -35,7 +35,7 @@ impl CernoApp {
     /// so it doesn't vanish under the click that resets the filter.
     pub(super) fn layout(&self, window: Rect) -> Layout {
         let mut area = window;
-        let toolbar = (!self.all.is_empty()
+        let toolbar = (!self.folder.all.is_empty()
             && (self.bars.toolbar || self.view.is_empty() || self.bars.toolbar_held))
             .then(|| {
                 let r = Rect::from_min_size(
@@ -86,7 +86,7 @@ impl CernoApp {
     /// The start screen, "nothing matches the filter", or the photo(s).
     pub(super) fn draw_centre(&mut self, ui: &mut egui::Ui, area: Rect) {
         let ctx = ui.ctx().clone();
-        if self.all.is_empty() {
+        if self.folder.all.is_empty() {
             // Start screen: one sentence, "Open folder" and the first keys (H shows all) – and
             // what is still to set up.
             let setup = help::Setup {
@@ -405,6 +405,7 @@ impl CernoApp {
             // Photos waiting to be deleted have left the view already; they don't count. The
             // deleted ones do while the 🗑 box shows them.
             total: self
+                .folder
                 .library
                 .iter()
                 .filter(|p| !self.deletions.is_hidden(p))

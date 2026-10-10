@@ -374,7 +374,7 @@ impl CernoApp {
             Some(i18n::with_ctrl("O")),
         ))];
         let mut sections = Vec::new();
-        if !self.all.is_empty() {
+        if !self.folder.all.is_empty() {
             sections.push(Section {
                 id: PHOTO,
                 title: t.menu_this_photo.to_owned(),
@@ -418,7 +418,7 @@ impl CernoApp {
         });
         let colour = current.and_then(|path| self.label_of(path, image.as_deref()));
         // A pair's edits change the JPEG alone; the rows say so.
-        let paired = current.is_some_and(|path| self.pairs.companion(path).is_some());
+        let paired = current.is_some_and(|path| self.folder.pairs.companion(path).is_some());
         let jpeg_only = |row: Row<Action>| {
             if paired {
                 row.hint(t.pair_edit_jpeg_only)
@@ -597,11 +597,11 @@ impl CernoApp {
                     t.cmd_subfolders,
                     Some(i18n::with_ctrl("U")),
                 )
-                .toggle(self.subfolders),
+                .toggle(self.folder.subfolders),
             ),
             Item::Row(
                 Row::new(Action::Pairs, t.cmd_pairs, None)
-                    .toggle(self.pair_mode)
+                    .toggle(self.folder.pair_mode)
                     .hint(t.pairs_hint),
             ),
             Item::Row(

@@ -45,13 +45,14 @@ impl CernoApp {
             TransferMode::Move => t.transfer_move_cmd,
         };
         let mut dialog = rfd::FileDialog::new().set_title(title);
-        if let Some(dir) = &self.dir {
+        if let Some(dir) = &self.folder.dir {
             dialog = dialog.set_directory(dir);
         }
         let Some(dest) = dialog.pick_folder() else {
             return;
         };
         if self
+            .folder
             .dir
             .as_deref()
             .is_some_and(|dir| same_folder(dir, &dest))
@@ -74,7 +75,12 @@ impl CernoApp {
         // A pair's RAW rides along with its JPEG.
         let riders = sources
             .iter()
-            .filter_map(|jpeg| Some((jpeg.clone(), self.pairs.companion(jpeg)?.to_path_buf())))
+            .filter_map(|jpeg| {
+                Some((
+                    jpeg.clone(),
+                    self.folder.pairs.companion(jpeg)?.to_path_buf(),
+                ))
+            })
             .collect();
         // A playing video keeps its file open; the job waits until it is closed.
         self.stop_video();
@@ -130,18 +136,19 @@ impl CernoApp {
                 self.marks.ratings.remove(src);
                 self.marks.labels.remove(src);
                 self.marks.descriptions.remove(src);
-                self.pairs.forget(src);
+                self.folder.pairs.forget(src);
             }
             if self.pinned.as_ref().is_some_and(|path| gone.contains(path)) {
                 self.pinned = None;
             }
             let all: Vec<PathBuf> = self
+                .folder
                 .all
                 .iter()
                 .filter(|path| !gone.contains(*path))
                 .cloned()
                 .collect();
-            self.all = Arc::new(all);
+            self.folder.all = Arc::new(all);
             self.sync_library();
             self.rebuild_view(ctx, None);
         }
@@ -195,7 +202,7 @@ impl CernoApp {
 
     /// Queues a photo for the countdown – a pair's RAW rides along, uncounted.
     fn queue_deletion(&mut self, path: PathBuf, now: Instant) {
-        if let Some(raw) = self.pairs.companion(&path) {
+        if let Some(raw) = self.folder.pairs.companion(&path) {
             self.deletions.push_rider(raw.to_path_buf());
         }
         self.deletions.push(path, now);
@@ -264,13 +271,14 @@ impl CernoApp {
             if !done.deleted.is_empty() {
                 let gone: HashSet<&PathBuf> = done.deleted.iter().map(|(from, _)| from).collect();
                 let all: Vec<PathBuf> = self
+                    .folder
                     .all
                     .iter()
                     .filter(|p| !gone.contains(p))
                     .cloned()
                     .collect();
                 for (path, aside) in &done.deleted {
-                    self.pairs.forget(path);
+                    self.folder.pairs.forget(path);
                     self.marks.ratings.remove(path);
                     self.marks.labels.remove(path);
                     self.marks.descriptions.remove(path);
@@ -278,7 +286,7 @@ impl CernoApp {
                     self.add_deleted(path.clone(), aside.clone());
                 }
                 self.analyzer.taste_changed();
-                self.all = Arc::new(all);
+                self.folder.all = Arc::new(all);
                 self.sync_library();
             }
             if let Some((path, err)) = done.failed.first() {

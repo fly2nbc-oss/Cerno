@@ -45,7 +45,6 @@ mod video;
 #[cfg(test)]
 mod harness;
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -87,14 +86,8 @@ pub struct CernoApp {
     /// Copy or move of the photos the filter currently shows.
     transfers: TransferQueue,
 
-    dir: Option<PathBuf>,
-    /// Every photo of the folder, in name order.
-    all: Arc<Vec<PathBuf>>,
-    /// What sorting and filtering look at, and the analysis works on: `all`, plus the deleted
-    /// photos while the 🗑 box is ticked (`sync_library`).
-    library: Arc<Vec<PathBuf>>,
-    /// Index into `library`.
-    all_index: HashMap<PathBuf, usize>,
+    /// The open folder: its photos, subfolders, RAW + JPG pairs.
+    folder: browse::Folder,
     /// The deleted photos of the folder, lying in `.originals`.
     deleted: deleted::Deleted,
     /// The pasted file-name list (*Filter ▸ By file list …*).
@@ -118,14 +111,6 @@ pub struct CernoApp {
     faces: faces::Faces,
     /// The comment and keyword being typed in the description tab.
     drafts: description::Drafts,
-    /// The open folder includes nested folders.
-    subfolders: bool,
-    /// RAW + JPG of one name are one photo (*RAW+JPG as one photo*, on by default).
-    pair_mode: bool,
-    /// The RAWs riding along with the open folder's JPEGs.
-    pairs: crate::pairs::Pairs,
-    /// What the pairs' RAW sidecars say, for the note where they differ.
-    raw_marks: pairs::RawMarks,
     /// The update check: its switch and what it found.
     updates: update::Updates,
     /// The decode size: the photo area, once it has kept its size.
@@ -261,8 +246,7 @@ impl CernoApp {
             name_list: false,
         };
         let marks = marks::Marks::restore(&db);
-        let subfolders = db.setting("subfolders").as_deref() == Some("1");
-        let pair_mode = db.setting(pairs::SETTING).as_deref() != Some("0");
+        let folder = browse::Folder::restore(&db);
         let bars = panels::Bars::restore(&db);
         let menu_bar = menu::MenuBar::restore(&db);
         let external = external::External::restore(&db);
@@ -290,10 +274,7 @@ impl CernoApp {
             files,
             thumbs,
             board,
-            dir: None,
-            all: Arc::new(Vec::new()),
-            library: Arc::new(Vec::new()),
-            all_index: HashMap::new(),
+            folder,
             deleted: deleted::Deleted::default(),
             name_list: name_list::NameList::default(),
             camera_time: camera_time::CameraTime::default(),
@@ -306,10 +287,6 @@ impl CernoApp {
             marks,
             faces: faces::Faces::default(),
             drafts: description::Drafts::default(),
-            subfolders,
-            pair_mode,
-            pairs: crate::pairs::Pairs::default(),
-            raw_marks: pairs::RawMarks::default(),
             updates,
             target,
             zoom: viewer::Zoom::default(),
@@ -444,7 +421,7 @@ impl CernoApp {
         }
         self.draw_messages(ui, layout.area);
         self.draw_overlays(&ctx, window, &frames);
-        let flash = if self.all.is_empty() {
+        let flash = if self.folder.all.is_empty() {
             window
         } else {
             layout.area

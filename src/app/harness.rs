@@ -83,14 +83,14 @@ impl Harness {
         // What `open` does for the view, without `Library::open` and the analysis (it would
         // load the models).
         let paths = Arc::new(paths);
-        app.all_index = paths
+        app.folder.all_index = paths
             .iter()
             .enumerate()
             .map(|(index, path)| (path.clone(), index))
             .collect();
-        app.all = Arc::clone(&paths);
-        app.library = paths;
-        app.dir = Some(dir.clone());
+        app.folder.all = Arc::clone(&paths);
+        app.folder.library = paths;
+        app.folder.dir = Some(dir.clone());
         app.rebuild_view(&ctx, None);
         Self {
             app,
