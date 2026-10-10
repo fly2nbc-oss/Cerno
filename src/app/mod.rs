@@ -45,7 +45,7 @@ mod video;
 #[cfg(test)]
 mod harness;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -65,7 +65,7 @@ use crate::thumbs::Thumbs;
 use crate::transfer::Queue as TransferQueue;
 use crate::ui::overlays;
 use crate::ui::{description, viewer};
-use crate::view::{Media, Percentiles, PhotoFilter, SortKey, View, ViewOptions};
+use crate::view::{Media, PhotoFilter, SortKey, View, ViewOptions};
 
 use notice::Notice;
 
@@ -109,24 +109,8 @@ pub struct CernoApp {
     /// The four-up view (`Shift+C`): the view index of the first of its four photos.
     quad: Option<usize>,
     options: ViewOptions,
-    /// The photo "similar photos" (`M`) is about and its CLIP embedding, while that filter is
-    /// on. The embedding stays even if the photo is deleted meanwhile.
-    similar_to: Option<(PathBuf, Arc<[f32]>)>,
-    /// The photos Top N picked (`view::pick_top`), kept until a filter changes or "Refresh
-    /// order": picking again after every mark would slip the next photo into a rejected one's
-    /// place unnoticed. Empty while Top N is off.
-    top_pick: HashSet<PathBuf>,
-    /// The options `top_pick` was made for, sort aside (`ViewOptions::top_key`): another sort
-    /// keeps it.
-    top_pick_for: Option<ViewOptions>,
-    /// Score board version the view was built from.
-    view_version: u64,
-    /// When the view was last built (quiet refreshes are spaced out).
-    view_built: Instant,
-    /// Sorted sharpness values of the folder, for percentiles (board version, values).
-    percentiles: (u64, Arc<Percentiles>),
-    /// `has_videos` for this list of the folder.
-    videos_in: (std::sync::Weak<Vec<PathBuf>>, bool),
+    /// What the view was built from and with: the similar photo, Top N's pick, versions.
+    browse: browse::Browse,
 
     /// The session's marks, what `Ctrl+Z` takes back, auto-advance.
     marks: marks::Marks,
@@ -318,13 +302,7 @@ impl CernoApp {
             pinned: None,
             quad: None,
             options,
-            similar_to: None,
-            top_pick: HashSet::new(),
-            top_pick_for: None,
-            view_version: 0,
-            view_built: Instant::now(),
-            percentiles: (u64::MAX, Arc::default()),
-            videos_in: (std::sync::Weak::new(), false),
+            browse: browse::Browse::default(),
             marks,
             faces: faces::Faces::default(),
             drafts: description::Drafts::default(),

@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, ViewportCommand};
@@ -17,6 +17,42 @@ use crate::view::{self, Facts, FilterKind, Percentiles, View, ViewOptions};
 use super::layer::Layer;
 use super::notice::Notice;
 use super::{CLIP_OFFER_SHOWN, CernoApp};
+
+/// What the view was built from and with, kept between frames.
+pub(super) struct Browse {
+    /// The photo "similar photos" (`M`) is about and its CLIP embedding, while that filter is
+    /// on. The embedding stays even if the photo is deleted meanwhile.
+    pub(super) similar_to: Option<(PathBuf, Arc<[f32]>)>,
+    /// The photos Top N picked (`view::pick_top`), kept until a filter changes or "Refresh
+    /// order": picking again after every mark would slip the next photo into a rejected one's
+    /// place unnoticed. Empty while Top N is off.
+    pub(super) top_pick: HashSet<PathBuf>,
+    /// The options `top_pick` was made for, sort aside (`ViewOptions::top_key`): another sort
+    /// keeps it.
+    pub(super) top_pick_for: Option<ViewOptions>,
+    /// Score board version the view was built from.
+    pub(super) view_version: u64,
+    /// When the view was last built (quiet refreshes are spaced out).
+    pub(super) view_built: Instant,
+    /// Sorted sharpness values of the folder, for percentiles (board version, values).
+    pub(super) percentiles: (u64, Arc<Percentiles>),
+    /// `has_videos` for this list of the folder.
+    pub(super) videos_in: (Weak<Vec<PathBuf>>, bool),
+}
+
+impl Default for Browse {
+    fn default() -> Self {
+        Self {
+            similar_to: None,
+            top_pick: HashSet::new(),
+            top_pick_for: None,
+            view_version: 0,
+            view_built: Instant::now(),
+            percentiles: (u64::MAX, Arc::default()),
+            videos_in: (Weak::new(), false),
+        }
+    }
+}
 
 pub(super) fn index_of(paths: &[PathBuf]) -> HashMap<PathBuf, usize> {
     paths
@@ -86,10 +122,10 @@ impl CernoApp {
         self.options.name_list = false;
         self.name_list.forget();
         self.layer.close_if(Layer::is_name_list);
-        self.similar_to = None;
+        self.browse.similar_to = None;
         self.options.top = None;
-        self.top_pick.clear();
-        self.top_pick_for = None;
+        self.browse.top_pick.clear();
+        self.browse.top_pick_for = None;
         // `Ctrl+Z` takes back what was done since the folder opened.
         self.marks.journal.clear();
         self.cancel_edit();
@@ -175,8 +211,8 @@ impl CernoApp {
         if self.view.get(self.current) != before.as_ref() {
             self.start_whole();
         }
-        self.view_version = self.board.version();
-        self.view_built = Instant::now();
+        self.browse.view_version = self.board.version();
+        self.browse.view_built = Instant::now();
         if let Some(start) = self.quad {
             self.quad = (self.view.len() >= 2)
                 .then(|| view::quad_start(start, self.current, self.view.len()));
@@ -206,10 +242,10 @@ impl CernoApp {
     /// would restart the loader (discarding decodes in flight) and pause the analysis.
     pub(super) fn refresh_marks(&mut self, ctx: &egui::Context) {
         const EVERY: Duration = Duration::from_secs(2);
-        if self.options.depends_on_scores() || self.board.version() == self.view_version {
+        if self.options.depends_on_scores() || self.board.version() == self.browse.view_version {
             return;
         }
-        let since = self.view_built.elapsed();
+        let since = self.browse.view_built.elapsed();
         if since < EVERY {
             ctx.request_repaint_after(EVERY - since);
             return;
@@ -218,8 +254,8 @@ impl CernoApp {
         let view = self.build_view();
         if *view.paths == *self.view.paths {
             self.view = view;
-            self.view_version = version;
-            self.view_built = Instant::now();
+            self.browse.view_version = version;
+            self.browse.view_built = Instant::now();
         } else {
             self.set_view(ctx, view, None);
         }
@@ -265,13 +301,13 @@ impl CernoApp {
     /// changed – another sort only shows the same photos in another order.
     pub(super) fn options_changed(&mut self, ctx: &egui::Context) {
         if !self.options.similar {
-            self.similar_to = None;
+            self.browse.similar_to = None;
         }
         if !self.options.name_list {
             self.name_list.drop_applied();
         }
         self.save_options();
-        if self.top_pick_for != self.options.top_key() {
+        if self.browse.top_pick_for != self.options.top_key() {
             self.pick_top();
         }
         // The 🗑 box adds the deleted photos to what is looked at, or takes them away.
@@ -299,8 +335,8 @@ impl CernoApp {
             ),
             None => HashSet::new(),
         };
-        self.top_pick = picked;
-        self.top_pick_for = self.options.top_key();
+        self.browse.top_pick = picked;
+        self.browse.top_pick_for = self.options.top_key();
     }
 
     /// `M`: only the photos like the current one – in compare mode like the pinned one – or
@@ -339,13 +375,17 @@ impl CernoApp {
             self.notice = Some(Notice::hint((t.similar_none)(view::SIMILAR_MIN * 100.0)));
             return;
         }
-        self.similar_to = Some((path, reference));
+        self.browse.similar_to = Some((path, reference));
         self.change_options(ctx, |o| o.similar = true);
     }
 
     /// The photo "similar photos" is about, while that filter is on, and how alike `path` is.
     pub(super) fn similarity_to_reference(&self, path: &Path) -> Option<f32> {
-        let (_, reference) = self.similar_to.as_ref().filter(|_| self.options.similar)?;
+        let (_, reference) = self
+            .browse
+            .similar_to
+            .as_ref()
+            .filter(|_| self.options.similar)?;
         self.analyzer.similarity(path, reference)
     }
 
@@ -431,7 +471,7 @@ impl CernoApp {
             scores: known.scores,
             personal: self.analyzer.personal(path),
             similarity: self.similarity_to_reference(path),
-            top: self.top_pick.contains(path),
+            top: self.browse.top_pick.contains(path),
             deleted,
             listed,
         })
@@ -451,30 +491,30 @@ impl CernoApp {
     /// list – `format_of` allocates, and the bar asks in every frame. The `Weak` keeps the
     /// list's address from being reused by the next one.
     pub(super) fn has_videos(&mut self) -> bool {
-        if !std::sync::Weak::ptr_eq(&self.videos_in.0, &Arc::downgrade(&self.all)) {
+        if !std::sync::Weak::ptr_eq(&self.browse.videos_in.0, &Arc::downgrade(&self.all)) {
             let any = self
                 .all
                 .iter()
                 .any(|p| library::format_of(p) == Some(library::Format::Video));
-            self.videos_in = (Arc::downgrade(&self.all), any);
+            self.browse.videos_in = (Arc::downgrade(&self.all), any);
         }
-        self.videos_in.1
+        self.browse.videos_in.1
     }
 
     /// Sharpness percentiles of the folder, recomputed when scores changed – shared, not
     /// copied for every frame.
     pub(super) fn percentiles(&mut self) -> Arc<Percentiles> {
         let version = self.board.version();
-        if self.percentiles.0 != version {
+        if self.browse.percentiles.0 != version {
             let board = &self.board;
             let scores: Vec<_> = self
                 .all
                 .iter()
                 .filter_map(|p| board.get(p).map(|k| k.scores))
                 .collect();
-            self.percentiles = (version, Arc::new(Percentiles::from_scores(scores.iter())));
+            self.browse.percentiles = (version, Arc::new(Percentiles::from_scores(scores.iter())));
         }
-        Arc::clone(&self.percentiles.1)
+        Arc::clone(&self.browse.percentiles.1)
     }
 
     /// The photo to show after the one at `index` disappears: the next one, otherwise the

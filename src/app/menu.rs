@@ -752,12 +752,12 @@ impl CernoApp {
     /// *Visible photos*' counts, again when the view changed and at most every 300 ms.
     fn refresh_bar_counts(&mut self) {
         let now = Instant::now();
-        if self.menu_bar.counts.fresh(self.view_built, now) {
+        if self.menu_bar.counts.fresh(self.browse.view_built, now) {
             return;
         }
         self.menu_bar.counts.rejected = self.rejected().len();
         self.menu_bar.counts.deleted_shown = self.deleted_shown();
-        self.menu_bar.counts.counted = Some((self.view_built, now));
+        self.menu_bar.counts.counted = Some((self.browse.view_built, now));
     }
 
     /// What acts on many photos at once: copy, move and delete what the filter shows, delete

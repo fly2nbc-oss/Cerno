@@ -391,12 +391,14 @@ impl CernoApp {
         let ctx = ui.ctx().clone();
         let status = self.analyzer.status();
         let similar_to = self
+            .browse
             .similar_to
             .as_ref()
             .map(|(path, _)| self.photo_name(path));
         let has_videos = self.has_videos();
         let info = filter_bar::ToolbarInfo {
-            stale: self.options.depends_on_scores() && self.board.version() != self.view_version,
+            stale: self.options.depends_on_scores()
+                && self.board.version() != self.browse.view_version,
             status: &status,
             similar_to: similar_to.as_deref(),
             shown: self.view.len(),

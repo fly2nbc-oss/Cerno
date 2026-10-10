@@ -164,8 +164,8 @@ impl CernoApp {
                 log::warn!("index: {err:#}");
             }
             // Moved into a folder that is shown too (subfolders): still among the best.
-            if self.top_pick.remove(src) {
-                self.top_pick.insert(dest.clone());
+            if self.browse.top_pick.remove(src) {
+                self.browse.top_pick.insert(dest.clone());
             }
         }
     }
