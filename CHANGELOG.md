@@ -17,7 +17,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ### Fixed
 
-- **A missing video, HEIC or GPU library no longer ends Cerno.** Since 1.10 they load only when first needed; when one was missing – a development build started without GStreamer, a damaged installation – Cerno ended at that moment without a word. Now that part is switched off with a message: videos show their placeholder and say why they don't play, HEIC photos an error, the aesthetics models run on the CPU.
+- **A missing video, HEIC or GPU library no longer ends Cerno.** Since 1.10 they load only when first needed; when one was missing – a development build started without GStreamer, a damaged installation – Cerno ended at that moment without a word. Now that part is switched off with a message: videos show their placeholder and say why they don't play, HEIC photos an error, the aesthetics models run on the CPU. A development build without GStreamer beside it uses the one `install-gstreamer.ps1` installed for the user, also when started from Explorer.
 
 ## [1.10.0] – 2026-10-10
 

@@ -9,7 +9,7 @@
 Cerno (Latin *cerno* – "I sift, see clearly") helps you go through a folder of photos quickly and keep the good ones. Stars, colour labels, comments and keywords go straight into the file, where Lightroom, Bridge, digiKam and Windows Explorer find them – the file's dates stay exactly as they were. Everything runs on your computer.
 
 <p align="center">
-  <img src="./screenshots/cerno-main.jpg" alt="Cerno showing a photo with the filter bar, the details panel, the filmstrip and the info bar" width="720" />
+  <img src="./screenshots/cerno-main.jpg" alt="Cerno showing a photo with the menu bar, the filter bar, the details panel, the filmstrip and the info bar" width="720" />
 </p>
 
 <sub>Sample photo: CC0 (public domain), [Images from Unsplash](https://commons.wikimedia.org/wiki/Category:Images_from_Unsplash) on Wikimedia Commons.</sub>
