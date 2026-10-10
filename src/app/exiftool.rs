@@ -9,7 +9,7 @@ use eframe::egui;
 
 use crate::exiftool::{self as tool, Origin, ToolError};
 use crate::i18n;
-use crate::tools::EXIFTOOL;
+use crate::tools::{EXIFTOOL, EXIFTOOL_VERSION};
 use crate::ui::models::ExifToolRow;
 
 use super::CernoApp;
@@ -21,12 +21,18 @@ use crate::sync::lock;
 /// Set once the hint about ExifTool has been shown (Windows, ExifTool missing).
 const OFFER_SHOWN: &str = "exiftool_offer_shown";
 
+/// The newer pinned version the update hint was shown for (once per version).
+const UPDATE_TOLD: &str = "exiftool_update_told";
+
 /// A missing ExifTool is looked for again at most this often when a mark wants it – one
 /// installed meanwhile (`apt install`) works without a restart.
 const RECHECK: Duration = Duration::from_secs(1);
 
 /// ExifTool starts this long after the first photo shows (`poll_exiftool`).
 const PREPARE_AFTER: Duration = Duration::from_millis(1500);
+
+/// How long the download waits for the writer to finish a write and end ExifTool.
+const PAUSE_WAIT: Duration = Duration::from_secs(30);
 
 /// Windows downloads ExifTool; Linux installs it from the system's packages.
 const CAN_DOWNLOAD: bool = cfg!(windows);
@@ -42,16 +48,22 @@ pub(super) struct ExifToolSetup {
     download: Option<Download>,
     /// Linux: the command that installs ExifTool on this distribution.
     install_command: Option<&'static str>,
+    /// Whether the update hint is due was looked at once, when the version was known.
+    update_looked: bool,
 }
 
 struct Download {
     progress: Arc<Mutex<Progress>>,
     cancel: Arc<AtomicBool>,
+    /// The ExifTool there still writes until the new one takes its place.
+    update: bool,
 }
 
 #[derive(Default)]
 struct Progress {
     received: u64,
+    /// The new one takes the old one's place: the writer pauses, marks wait.
+    swapping: bool,
     result: Option<Result<(), String>>,
 }
 
@@ -68,6 +80,7 @@ impl ExifToolSetup {
             } else {
                 crate::system::exiftool_install_command(&crate::system::os_release())
             },
+            update_looked: false,
         }
     }
 
@@ -81,6 +94,7 @@ impl ExifToolSetup {
             prepared: true,
             download: None,
             install_command: None,
+            update_looked: true,
         }
     }
 
@@ -95,7 +109,10 @@ impl ExifToolSetup {
 impl CernoApp {
     /// Whether ExifTool can write now (`gate`).
     pub(super) fn exiftool_tool(&self) -> Tool {
-        if self.exiftool.download.is_some() {
+        // A new ExifTool on its way: an update leaves the old one writing until the swap.
+        if let Some(download) = &self.exiftool.download
+            && (!download.update || lock(&download.progress).swapping)
+        {
             return Tool::Loading;
         }
         if self.exiftool.found.is_none() {
@@ -142,7 +159,10 @@ impl CernoApp {
         self.notice = Some(Notice::hint(text));
     }
 
-    /// Downloads ExifTool into the data folder, in the background (Windows).
+    /// Downloads ExifTool into the data folder, in the background (Windows) – also over an
+    /// older one Cerno downloaded before (`exiftool_outdated`): that one keeps writing until
+    /// the new one is unpacked; then the writer pauses (Windows keeps a running program's
+    /// folder), the folders change places, and it goes on with the new one.
     pub(super) fn download_exiftool(&mut self, ctx: &egui::Context) {
         if self.exiftool.download.is_some() {
             return;
@@ -150,6 +170,8 @@ impl CernoApp {
         let Some(dest) = tool::download_dir() else {
             return;
         };
+        let update = self.exiftool_outdated().is_some();
+        let pauser = self.writer.pauser();
         let progress = Arc::new(Mutex::new(Progress::default()));
         let cancel = Arc::new(AtomicBool::new(false));
         let (shared, stop, ctx) = (Arc::clone(&progress), Arc::clone(&cancel), ctx.clone());
@@ -164,8 +186,18 @@ impl CernoApp {
                         last = Instant::now();
                     }
                 };
-                let result = crate::tools::install_exiftool(&dest, &mut report, &|| {
+                let fetched = crate::tools::fetch_exiftool(&dest, &mut report, &|| {
                     stop.load(Ordering::Relaxed)
+                });
+                let result = fetched.and_then(|unpacked| {
+                    lock(&shared).swapping = true;
+                    ctx.request_repaint();
+                    if !pauser.pause(PAUSE_WAIT) {
+                        log::warn!("the mark writer did not pause; ExifTool is replaced anyway");
+                    }
+                    let placed = crate::tools::place_exiftool(&unpacked, &dest);
+                    pauser.resume();
+                    placed
                 });
                 if let Err(err) = &result {
                     log::error!("ExifTool download: {err:#}");
@@ -174,7 +206,13 @@ impl CernoApp {
                 ctx.request_repaint();
             });
         match spawned {
-            Ok(_) => self.exiftool.download = Some(Download { progress, cancel }),
+            Ok(_) => {
+                self.exiftool.download = Some(Download {
+                    progress,
+                    cancel,
+                    update,
+                });
+            }
             Err(err) => {
                 self.notice = Some(Notice::error((i18n::t().exiftool_failed)(&err.to_string())));
             }
@@ -198,6 +236,7 @@ impl CernoApp {
                 ctx.request_repaint_after(PREPARE_AFTER - waited);
             }
         }
+        self.tell_about_update();
         let Some(download) = &self.exiftool.download else {
             return;
         };
@@ -227,6 +266,37 @@ impl CernoApp {
         }
     }
 
+    /// The ExifTool Cerno downloaded runs in a version older than the one Cerno pins now: its
+    /// version – an update is offered (Windows). One installed elsewhere is the user's.
+    pub(super) fn exiftool_outdated(&self) -> Option<String> {
+        if !CAN_DOWNLOAD || self.exiftool.found != Some(Origin::Downloaded) {
+            return None;
+        }
+        let version = self.writer.status().exiftool?;
+        tool::older_than(&version, EXIFTOOL_VERSION).then_some(version)
+    }
+
+    /// Once its version is known: a downloaded ExifTool older than the pinned one gets one hint
+    /// per newer version, when no other notice shows.
+    fn tell_about_update(&mut self) {
+        if self.exiftool.update_looked
+            || self.notice.is_some()
+            || self.writer.status().exiftool.is_none()
+        {
+            return;
+        }
+        self.exiftool.update_looked = true;
+        let Some(version) = self.exiftool_outdated() else {
+            return;
+        };
+        if self.db.setting(UPDATE_TOLD).as_deref() == Some(EXIFTOOL_VERSION) {
+            return;
+        }
+        self.db.put_setting(UPDATE_TOLD, EXIFTOOL_VERSION);
+        let hint = (i18n::t().exiftool_update_hint)(&version, EXIFTOOL_VERSION);
+        self.notice = Some(Notice::hint(hint));
+    }
+
     /// The ExifTool row in Models & data.
     pub(super) fn exiftool_row(&self) -> ExifToolRow {
         if let Some(download) = &self.exiftool.download {
@@ -234,6 +304,9 @@ impl CernoApp {
             return ExifToolRow::Downloading {
                 percent: received as f32 * 100.0 / EXIFTOOL.bytes as f32,
             };
+        }
+        if let Some(version) = self.exiftool_outdated() {
+            return ExifToolRow::Outdated { version };
         }
         let status = self.writer.status();
         match (self.exiftool.found, status.tool_problem) {
@@ -266,5 +339,67 @@ impl CernoApp {
         let size = i18n::size(EXIFTOOL.bytes);
         self.notice = Some(Notice::hint((i18n::t().exiftool_offer)(&size)));
         true
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+    use crate::app::harness::Harness;
+    use crate::rating::WriterStatus;
+
+    /// The app with an ExifTool from `origin` in `version`, the update not looked at yet.
+    fn running(origin: Origin, version: &str) -> Harness {
+        let mut h = Harness::new(1);
+        h.app.exiftool.found = Some(origin);
+        h.app.exiftool.update_looked = false;
+        h.app.writer.report(WriterStatus {
+            exiftool: Some(version.to_owned()),
+            ..WriterStatus::default()
+        });
+        h
+    }
+
+    /// A downloaded ExifTool older than the pin: the row offers the newer one, marks still
+    /// work, and a hint says so once per newer version.
+    #[test]
+    fn a_downloaded_older_exiftool_is_offered_once() {
+        let mut h = running(Origin::Downloaded, "13.50");
+        assert!(matches!(
+            h.app.exiftool_row(),
+            ExifToolRow::Outdated { version } if version == "13.50"
+        ));
+        assert_eq!(
+            h.app.exiftool_tool(),
+            Tool::Ready,
+            "the old one still writes"
+        );
+        h.settle();
+        assert!(h.app.notice.is_some(), "the hint");
+        assert_eq!(
+            h.app.db.setting(UPDATE_TOLD).as_deref(),
+            Some(EXIFTOOL_VERSION)
+        );
+        h.app.notice = None;
+        h.app.exiftool.update_looked = false;
+        h.settle();
+        assert!(h.app.notice.is_none(), "once per version");
+    }
+
+    /// One installed elsewhere is the user's, and one as new as the pin needs nothing.
+    #[test]
+    fn only_an_older_downloaded_one_is_offered() {
+        for (origin, version) in [
+            (Origin::Path, "13.50"),
+            (Origin::Downloaded, EXIFTOOL_VERSION),
+        ] {
+            let mut h = running(origin, version);
+            assert!(
+                matches!(h.app.exiftool_row(), ExifToolRow::Ready { .. }),
+                "{origin:?} {version}"
+            );
+            h.settle();
+            assert!(h.app.notice.is_none(), "{origin:?} {version}");
+        }
     }
 }

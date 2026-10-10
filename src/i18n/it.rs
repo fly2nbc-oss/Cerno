@@ -429,6 +429,15 @@ pub static TEXTS: Texts = Texts {
     exiftool_old_state: |version| format!("{version}: troppo vecchio (serve 12.24 o successivo)"),
     exiftool_downloading: |percent| format!("download in corso … {percent:.0} %"),
     btn_exiftool: |size| format!("Scarica ExifTool ({size})"),
+    exiftool_outdated: |version, newer| {
+        format!("{version} · scaricato da Cerno – disponibile la {newer}")
+    },
+    btn_exiftool_update: |newer, size| format!("Scarica ExifTool {newer} ({size})"),
+    exiftool_update_hint: |version, newer| {
+        format!(
+            "È disponibile ExifTool {newer} (Cerno usa la {version}): Barra dei menu (F10) › Impostazioni › Modelli e dati."
+        )
+    },
     taste_sources: |stars, rejected| {
         format!(
             "Appresa da {stars} foto con stelle e {rejected} rifiutate – le foto rifiutate contano come 0 ★, quelle eliminate per niente."

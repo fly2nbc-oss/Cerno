@@ -444,6 +444,13 @@ pub static TEXTS: Texts = Texts {
     exiftool_old_state: |version| format!("{version} – too old (12.24 or newer needed)"),
     exiftool_downloading: |percent| format!("downloading … {percent:.0} %"),
     btn_exiftool: |size| format!("Download ExifTool ({size})"),
+    exiftool_outdated: |version, newer| format!("{version} · downloaded by Cerno – {newer} is out"),
+    btn_exiftool_update: |newer, size| format!("Download ExifTool {newer} ({size})"),
+    exiftool_update_hint: |version, newer| {
+        format!(
+            "ExifTool {newer} is out (Cerno uses {version}): Menu bar (F10) › Settings › Models & data."
+        )
+    },
     taste_sources: |stars, rejected| {
         format!(
             "Learned from {stars} photos with stars and {rejected} rejected ones – rejected photos count as 0 ★, deleted ones not at all."
