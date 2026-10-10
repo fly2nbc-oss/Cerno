@@ -18,6 +18,7 @@ pub mod models;
 pub mod name_list;
 pub mod overlays;
 pub mod palette;
+pub mod side_bar;
 pub mod stars;
 pub mod tabs;
 pub mod video_controls;

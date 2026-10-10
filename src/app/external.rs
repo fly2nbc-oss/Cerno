@@ -56,10 +56,7 @@ impl CernoApp {
         }
         match self.external_editor.clone() {
             Some(editor) => self.open_in(editor),
-            None => {
-                self.prepare_editors();
-                self.palette = Some(self.menu_at_editors());
-            }
+            None => self.open_editors_list(),
         }
     }
 

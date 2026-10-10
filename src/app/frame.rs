@@ -11,7 +11,7 @@ use crate::library;
 use crate::loader::Lookup;
 use crate::theme::tokens;
 use crate::ui::details::{self, DetailsMode, DetailsTab};
-use crate::ui::{cells, filmstrip, filter_bar, grid, help, info_bar, overlays, palette};
+use crate::ui::{cells, filmstrip, filter_bar, grid, help, info_bar, overlays, side_bar};
 use crate::view;
 
 use super::CernoApp;
@@ -25,6 +25,8 @@ pub(super) struct Layout {
     pub(super) info: Option<Rect>,
     pub(super) filmstrip: Option<Rect>,
     pub(super) details: Option<Rect>,
+    /// The menu bar on the left, between the filter bar and the filmstrip.
+    pub(super) side_bar: Option<Rect>,
 }
 
 impl CernoApp {
@@ -60,6 +62,12 @@ impl CernoApp {
             area.max.y = r.min.y;
             r
         });
+        // Also on the start screen, so its settings, languages and models can be reached.
+        let side_bar = self.side_bar_shown().then(|| {
+            let r = Rect::from_min_max(area.min, pos2(area.min.x + side_bar::WIDTH, area.max.y));
+            area.min.x = r.max.x;
+            r
+        });
         let details = (info.is_some() && self.details != DetailsMode::Off).then(|| {
             let r = Rect::from_min_max(pos2(area.max.x - details::WIDTH, area.min.y), area.max);
             area.max.x = r.min.x;
@@ -71,11 +79,12 @@ impl CernoApp {
             info,
             filmstrip,
             details,
+            side_bar,
         }
     }
 
     /// The start screen, "nothing matches the filter", or the photo(s).
-    pub(super) fn draw_centre(&mut self, ui: &mut egui::Ui, window: Rect, area: Rect) {
+    pub(super) fn draw_centre(&mut self, ui: &mut egui::Ui, area: Rect) {
         let ctx = ui.ctx().clone();
         if self.all.is_empty() {
             // Start screen: one sentence, "Open folder" and the first keys (H shows all) – and
@@ -87,7 +96,7 @@ impl CernoApp {
                 ),
                 aesthetics: self.analyzer.status().missing().is_empty(),
             };
-            let out = help::welcome(ui, window, i18n::t(), setup);
+            let out = help::welcome(ui, area, i18n::t(), setup);
             if out.language {
                 self.switch_language(&ctx);
             }
@@ -209,7 +218,7 @@ impl CernoApp {
         if out.resize != 0 {
             self.resize_grid(out.resize);
         }
-        let covered = self.help_open || self.palette.is_some() || self.action_menu.is_some();
+        let covered = self.help_open || self.row_list.is_some();
         if covered {
             return;
         }
@@ -224,6 +233,17 @@ impl CernoApp {
     }
 
     /// The info bar and, when it is open, the details panel – both about the current photo.
+    /// No photo, no info bar: the menu bar's button and help still sit bottom right.
+    pub(super) fn draw_corner_buttons(&mut self, ui: &mut egui::Ui, window: Rect) {
+        let out = info_bar::corner_buttons(ui, window, self.side_bar_shown());
+        if out.help {
+            self.open_help();
+        }
+        if let Some(panel) = out.panel {
+            self.toggle_panel(panel);
+        }
+    }
+
     pub(super) fn draw_info_bar(
         &mut self,
         ui: &mut egui::Ui,
@@ -255,6 +275,7 @@ impl CernoApp {
             .and_then(|p| p.as_ref())
             .map(|original| self.photo_name(original));
         let comparing = self.pinned.is_some();
+        let faces = self.face_button(&ctx);
         let bar = info_bar::InfoBar {
             name: &name,
             position: (self.current + 1, self.view.len()),
@@ -294,6 +315,17 @@ impl CernoApp {
             raw_preview: library::format_of(&path).is_some_and(library::Format::is_raw),
             time_offset: self.time_offset_of(&path),
             pair: self.pair_note(&path).map(|(note, _)| note),
+            panels: info_bar::Panels {
+                side_bar: self.side_bar_shown(),
+                toolbar: self.show_toolbar,
+                details: self.details != DetailsMode::Off,
+                filmstrip: self.show_filmstrip,
+            },
+            views: info_bar::Views {
+                grid: self.grid,
+                faces_open: self.faces.grid_open,
+                faces,
+            },
         };
         let out = info_bar::info_bar(ui, rect, &bar);
         if let Some(stars) = out.rating {
@@ -302,13 +334,13 @@ impl CernoApp {
         if out.help {
             self.open_help();
         }
-        if out.menu {
-            self.help_open = false;
-            self.palette = if self.palette.is_some() {
-                None
-            } else {
-                Some(palette::State::default())
-            };
+        // The bars' buttons, the menu bar's among them (the user's decisions F3 and option A
+        // of 2026-10-10).
+        if let Some(panel) = out.panel {
+            self.toggle_panel(panel);
+        }
+        if let Some(view) = out.view {
+            self.show_view(view);
         }
         let Some(rect) = details_rect else {
             // The panel is closed: a comment still being typed is written now.
@@ -366,7 +398,6 @@ impl CernoApp {
         let info = filter_bar::ToolbarInfo {
             stale: self.options.depends_on_scores() && self.board.version() != self.view_version,
             status: &status,
-            actions_open: self.action_menu.is_some(),
             similar_to: similar_to.as_deref(),
             shown: self.view.len(),
             // Photos waiting to be deleted have left the view already; they don't count. The
@@ -383,14 +414,6 @@ impl CernoApp {
         let mut options = self.options;
         let out = filter_bar::toolbar(ui, rect, &mut options, &info);
         self.toolbar_held = !self.show_toolbar && ui.rect_contains_pointer(rect);
-        self.action_anchor = out.actions_anchor;
-        if out.toggle_actions {
-            if self.action_menu.is_some() {
-                self.close_action_menu();
-            } else {
-                self.open_action_menu();
-            }
-        }
         if out.options_changed {
             self.options = options;
             self.options_changed(&ctx);

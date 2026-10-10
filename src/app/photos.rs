@@ -168,6 +168,25 @@ impl CernoApp {
         }
     }
 
+    /// The info bar's view switcher: the photo, the grid or the faces of the photo – what
+    /// `Esc`, `F7` and `G` do.
+    pub(super) fn show_view(&mut self, view: crate::ui::info_bar::View) {
+        use crate::ui::info_bar::View;
+        match view {
+            View::Photo => {
+                self.faces.grid_open = false;
+                if self.grid {
+                    self.set_grid(false);
+                }
+            }
+            View::Grid => {
+                self.faces.grid_open = false;
+                self.set_grid(true);
+            }
+            View::Faces => self.faces.grid_open = true,
+        }
+    }
+
     /// `+`/`−` or Ctrl + wheel in the grid: the cell size, a step at a time.
     pub(super) fn resize_grid(&mut self, steps: i32) {
         let last = crate::ui::grid::STEPS.len() as i32 - 1;
@@ -316,10 +335,7 @@ impl CernoApp {
         // The browse arrows: the single photo only – also while it loads or is zoomed – never
         // over a straighten or crop session, a menu or a card. Drawn after the photo, so they
         // take the click.
-        let covered = self.help_open
-            || self.palette.is_some()
-            || self.action_menu.is_some()
-            || self.modal_open();
+        let covered = self.help_open || self.row_list.is_some() || self.modal_open();
         if let [slot] = slots
             && slot.side == Side::Single
             && self.edit.is_none()
@@ -337,10 +353,7 @@ impl CernoApp {
     /// pixels, then the edit overlay or the compare labels.
     fn draw_photo(&mut self, ui: &egui::Ui, slot: &Slot, image: &LoadedImage) {
         let frame = frame_for(slot.area, image, ui.ctx().pixels_per_point());
-        let covered = self.help_open
-            || self.palette.is_some()
-            || self.action_menu.is_some()
-            || self.modal_open();
+        let covered = self.help_open || self.row_list.is_some() || self.modal_open();
         let editing = self.edit.is_some();
         let is_video = self.slot_is_video(slot);
         if !covered {

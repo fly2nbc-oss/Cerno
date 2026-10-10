@@ -153,8 +153,7 @@ impl CernoApp {
     /// *Visible photos ▸ Camera time …*: every camera of the folder whose photos have a
     /// capture time, the most photos first, with its offset.
     pub(super) fn open_camera_time(&mut self) {
-        self.palette = None;
-        self.close_action_menu();
+        self.leave_side_bar();
         let mut counts: HashMap<u64, usize> = HashMap::new();
         for path in self.all.iter() {
             if let Some(known) = self.board.get(path)

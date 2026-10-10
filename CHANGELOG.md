@@ -7,6 +7,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Changed
+
+- **A menu bar on the left instead of the menu popup** – the button at the bottom right shows or hides it (off at first, remembered), and `Shift+Tab` takes it along with the other panels. It holds only what has no other place: this photo (colour, reject, compare, the edits, undo, edit elsewhere, delete), the photos on screen (file list, camera time, copy, move, delete, delete rejected, put back), the view and the settings – stars, sorting, filters and the panels stay in the info bar and the filter bar. Its groups fold and stay as you left them. `Ctrl+K` gives it the keyboard – shown for the moment if it is off –: `↑`/`↓`, `Enter`, `→` unfolds, `←` folds, a letter jumps, `Esc` gives the keyboard back to the photo. Without the keyboard it takes no key, so `X`, the digits and `Space` always reach the photo.
+- **"Action" moved into the menu bar** – the filter bar has no *Action* button any more; `Ctrl+M` opens the menu bar at *Photos on screen*. Rows that can't do anything now (*Delete rejected* without rejected photos) are greyed out instead of missing.
+- **Buttons for the bars and the views, bottom right** – one block in the info bar: photo · grid · faces, then a button for each bar in the order of the window's edges (menu bar, filter bar, details, filmstrip), then help. The faces button shows how many faces the photo has that are large enough to judge, and is greyed out without any. In the grid the filmstrip's button rests, since the grid shows every photo. Grid and faces moved out of the menu bar.
+- **`E` without a remembered program** opens the list of programs beside *Edit elsewhere* in the menu bar.
+- Filters, sorting and *Top N* are now in the filter bar only, no longer in a keyboard menu; `M` (similar photos) and `Ctrl+U` (subfolders) stay keys.
+
+### Fixed
+
+- **A missing video, HEIC or GPU library no longer ends Cerno.** Since 1.10 they load only when first needed; when one was missing – a development build started without GStreamer, a damaged installation – Cerno ended at that moment without a word. Now that part is switched off with a message: videos show their placeholder and say why they don't play, HEIC photos an error, the aesthetics models run on the CPU. A development build without GStreamer beside it uses the one `install-gstreamer.ps1` installed for the user, also when started from Explorer.
+
 ## [1.10.0] – 2026-10-10
 
 A faster start, `Ctrl+Z` for marks, a warning for cut-off JPEGs, a shorter help, arrows to browse with the mouse and an update check.

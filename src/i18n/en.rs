@@ -41,7 +41,6 @@ pub static TEXTS: Texts = Texts {
     name_list_chip_tooltip: "Only the photos of the pasted list – a click shows all again",
     name_list_found: |found, total| format!("{found} of {total} found"),
     name_list_chip: |found, total| format!("List {found}/{total}  ×"),
-    cmd_align_camera: "Match right camera to left",
     align_camera_hint: "Moves the capture time of every photo from the right camera in this folder, so the right photo was taken at the same moment as the left one. Only in the index – the files keep their time.",
     align_needs_compare: "Compare two photos from different cameras first (C)",
     align_no_time: "One of the two photos has no camera or capture time",
@@ -92,12 +91,9 @@ pub static TEXTS: Texts = Texts {
         "Gallery",
     ],
     top_tooltip: "Photos, videos or both – or only the best photos, by your stars (else the prediction), aesthetics and sharpness, the best of each series first. Rejected and blurry photos and duplicates don't count. The choice stays until a filter changes or you choose Refresh order. Nothing in the photos changes.",
-    menu_top: "Best photos",
     bulk_delete_top: "Not with Top – these are the best photos",
-    filter_none_active: "No filter is on",
     filter_similar: "≈ Similar",
     filter_similar_to: |name| format!("≈ like {name}"),
-    menu_similar: "Similar photos",
     menu_similar_to: |name| format!("Similar to {name}"),
     similar_tooltip: |percent| {
         format!("Only photos that look like the current one (from {percent:.0} %) – key M")
@@ -132,8 +128,6 @@ pub static TEXTS: Texts = Texts {
     filter_unrated: "Unrated",
 
     filter_rejected: "Rejected",
-    actions: "Action",
-    actions_tooltip: "Copy, move or delete the photos on screen",
     selection_delete: "Delete",
     bulk_copy: |n| {
         format!(
@@ -154,7 +148,7 @@ pub static TEXTS: Texts = Texts {
     bulk_restore_hint: "Every deleted photo the filter shows goes back into its folder. When its name is taken there it gets a number – nothing is overwritten.",
     photos_shown: |shown, total| format!("{shown} of {total} photos"),
     photos_count: |n| format!("{n} {}", if n == 1 { "photo" } else { "photos" }),
-    photos_badge_tooltip: "How many photos the filter shows now – Action works on exactly these.",
+    photos_badge_tooltip: "How many photos the filter shows now – the menu bar's “Photos on screen” works on exactly these.",
     label_red: "Red",
     label_yellow: "Yellow",
     label_green: "Green",
@@ -186,14 +180,31 @@ pub static TEXTS: Texts = Texts {
     button_details: "Details panel",
     button_filmstrip: "Filmstrip",
     button_help: "Help",
-    button_menu: "Menu",
+    view_photo: "Photo",
+    view_grid: "Grid",
+    view_faces: "Faces",
+    faces_video: "Videos are not searched for faces",
+    filmstrip_in_grid: "Not needed in the grid – F7 back to the photo",
+    faces_button: |n| {
+        if n == 1 {
+            "Show 1 face large (G)".to_owned()
+        } else {
+            format!("Show {n} faces large (G)")
+        }
+    },
+    button_side_bar: "Menu bar",
+    bar_rotate: "Rotate",
+    bar_colour: "Colour",
+    bar_align_camera: "Match cameras",
+    bar_overlay_sharpness: "Sharpness",
+    bar_overlay_exposure: "Exposure",
+    bar_none_rejected: "No photo in the folder is rejected.",
+    bar_none_deleted: "No deleted photos shown: the filter bar's bin box shows them.",
     button_language: |name| format!("Language: {name}"),
 
-    cmd_all_panels: "Filter bar, details and filmstrip",
     cmd_fullscreen: "Full screen",
     cmd_compare: "Compare",
     cmd_quad: "Four-up view",
-    cmd_similar: "Show only similar photos",
     cmd_zoom: "Whole photo ↔ 100 %",
     menu_overlay: "Overlay",
     overlay_off: "Off",
@@ -205,9 +216,7 @@ pub static TEXTS: Texts = Texts {
     overlay_hint_exposure: "Exposure: red = blown out, blue = crushed black",
     overlay_hint_off: "Overlay off",
     overlay_show_on_photo: "Show on the photo (O)",
-    cmd_grid: "Grid",
     cmd_reject: "Reject",
-    cmd_description: "Comment and keywords",
     cmd_delete_rejected: |n| {
         format!(
             "Delete rejected ({n} {})",
@@ -218,10 +227,7 @@ pub static TEXTS: Texts = Texts {
     cmd_subfolders: "Include subfolders",
     subfolders_on: "Subfolders included",
     subfolders_off: "This folder only, without subfolders",
-    menu_sort: "Sort",
-    menu_filter: "Filter",
     menu_view: "View",
-    menu_labels: "Colour labels",
     menu_external: "Edit elsewhere",
     external_other: "Other program …",
     external_chooser: "System “Open with” …",
@@ -239,7 +245,6 @@ pub static TEXTS: Texts = Texts {
     menu_this_photo: "This photo",
     menu_visible: "Photos on screen",
     menu_settings: "Settings",
-    menu_stars: "Stars",
     label_none: "No colour",
     loading: "Loading…",
     cannot_show: "Cannot show this image",
@@ -308,10 +313,14 @@ pub static TEXTS: Texts = Texts {
     btn_cancel: "Cancel",
     btn_close: "Close (Esc)",
     aesthetics_offer: |size| {
-        format!("Aesthetics scoring needs image models ({size}): Menu → Models & data.")
+        format!(
+            "Aesthetics scoring needs image models ({size}): Menu bar › Settings › Models & data."
+        )
     },
     exiftool_offer: |size| {
-        format!("Cerno saves stars and colours with ExifTool ({size}): Menu → Models & data.")
+        format!(
+            "Cerno saves stars and colours with ExifTool ({size}): Menu bar › Settings › Models & data."
+        )
     },
     exiftool_title: "Download ExifTool",
     exiftool_text: |size| {
@@ -482,8 +491,8 @@ pub static TEXTS: Texts = Texts {
     busy_moving: "This photo is being moved",
     busy_deleted: "Deleted photo – put it back first (Ctrl+Z)",
     edit_needs_index: "Editing needs the index, which could not be opened",
-    exiftool_missing: "Stars, colours and editing need ExifTool – Menu → Models & data",
-    exiftool_too_old: "The installed ExifTool is too old (12.24 or newer needed) – Menu → Models & data",
+    exiftool_missing: "Stars, colours and editing need ExifTool – Menu bar › Settings › Models & data",
+    exiftool_too_old: "The installed ExifTool is too old (12.24 or newer needed) – Menu bar › Settings › Models & data",
     exiftool_loading: "ExifTool is downloading – stars and colours work in a moment",
     exiftool_install: |command| {
         match command {
@@ -562,7 +571,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "First browse quickly (Space) and reject what failed with X – don't think twice.",
                 "Then tick “without ×” in the filter bar: the rejected ones are gone, now rate with 1–5.",
-                "Finally Action › “Delete rejected” (Ctrl+M).",
+                "Finally Menu bar › Photos on screen › “Delete rejected” (Ctrl+M).",
             ],
         ),
         (
@@ -615,6 +624,7 @@ pub static TEXTS: Texts = Texts {
                 "Drop a folder onto the window to open it. Hold → to run through the photos.",
                 "In the grid (F7) ↑ ↓ move a row, + − change the size, Enter opens the photo.",
                 "Straighten (S): the wheel and the arrows turn, Shift is finer. Crop (R): draw a frame or move it with the arrows, +/− size it, A changes the ratio, X turns it.",
+                "The menu bar (the button at the bottom right) holds what acts on this photo, the photos on screen and the view, and the settings; Ctrl+K reaches it from the keyboard, Esc leaves it.",
                 "On the description tab Enter puts the cursor into the keyword field.",
             ],
         ),
@@ -625,7 +635,7 @@ pub static TEXTS: Texts = Texts {
         ("1 – 5", "Give stars"),
         ("X", "Reject"),
         ("Del", "Delete – Esc brings it back"),
-        ("Ctrl+K", "Menu with every function"),
+        ("Ctrl+K", "Menu bar (button bottom right)"),
     ],
     welcome_more: "All shortcuts: H",
     setup_line: |exiftool, aesthetics| {
@@ -693,7 +703,7 @@ pub static TEXTS: Texts = Texts {
         ("E", "Edit in another program"),
     ],
     help_more: [
-        ("Ctrl+K", "Menu: every function"),
+        ("Ctrl+K", "Menu bar by keyboard"),
         ("Ctrl+M", "Copy, move, delete the view"),
         ("Ctrl+L", "Language"),
         ("H, F1, ?", "This help"),

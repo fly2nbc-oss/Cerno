@@ -2,7 +2,8 @@
 //! the index (`Db::faces_of`); a photo analysed before 1.7 has no rows yet, and its faces are
 //! looked for once more – only when the grid shows it, then stored. The pictures are cut from
 //! the photo at full size on a thread, for the current photo only; nothing is analysed while
-//! browsing.
+//! browsing. The info bar's faces button says how many faces the grid would show: counted from
+//! the index's rows on a thread, by the grid's own rules.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, mpsc};
@@ -12,7 +13,9 @@ use eframe::egui::{self, ColorImage, TextureOptions, vec2};
 use crate::analysis::faces as detection;
 use crate::db::{Db, FaceRow};
 use crate::filelock::FileLocks;
+use crate::loader::Lookup;
 use crate::ui::faces::{Crop, Shown};
+use crate::ui::info_bar::FaceButton;
 use crate::ui::viewer;
 use crate::{decode, library, metadata, view};
 
@@ -47,6 +50,11 @@ pub(super) struct Faces {
     pub(super) grid_open: bool,
     /// A face to zoom to (0..1 box), once the photo's frame is known.
     pub(super) zoom_to: Option<[f32; 4]>,
+    /// The faces button's number: the photo being counted, and the last count – `None` when
+    /// the index has no rows for it yet (analysed before 1.7).
+    counting: Option<PathBuf>,
+    count_rx: Option<mpsc::Receiver<(PathBuf, Option<usize>)>>,
+    counted: Option<(PathBuf, Option<usize>)>,
 }
 
 /// What is known about the current photo's faces right now.
@@ -74,6 +82,58 @@ impl CernoApp {
     /// `G`: every face of the photo large over it, or the photo again.
     pub(super) fn toggle_face_grid(&mut self) {
         self.faces.grid_open = !self.faces.grid_open;
+    }
+
+    /// The faces part of the info bar's view switcher: what the faces grid would show for the
+    /// current photo. The number is the grid's own once it has cut the faces out, else counted
+    /// from the index's rows on a thread – started once the photo is decoded, since the
+    /// grid's rules (large enough, no box between two heads) are measured at its size.
+    pub(super) fn face_button(&mut self, ctx: &egui::Context) -> FaceButton {
+        let Some(path) = self.view.get(self.current).cloned() else {
+            return FaceButton::Unknown;
+        };
+        if library::format_of(&path) == Some(library::Format::Video) {
+            return FaceButton::Video;
+        }
+        let known = self.board.get(&path);
+        match known.and_then(|k| k.scores.faces) {
+            None => return FaceButton::Unknown,
+            Some(0) => return FaceButton::None,
+            Some(_) => {}
+        }
+        let shown = |count: Option<usize>| match count {
+            Some(0) => FaceButton::OnlySmall,
+            count => FaceButton::Found(count),
+        };
+        if self.faces.path.as_ref() == Some(&path)
+            && let Some(found) = &self.faces.found
+        {
+            return shown(Some(found.crops.len()));
+        }
+        if let Some(rx) = &self.faces.count_rx
+            && let Ok(counted) = rx.try_recv()
+        {
+            self.faces.count_rx = None;
+            self.faces.counted = Some(counted);
+        }
+        if let Some((counted, count)) = &self.faces.counted
+            && *counted == path
+        {
+            return shown(*count);
+        }
+        if self.faces.counting.as_ref() != Some(&path)
+            && let Lookup::Ready(image) = self.loader.get(self.current)
+        {
+            self.faces.counting = Some(path.clone());
+            self.faces.count_rx = Some(count_faces(
+                ctx.clone(),
+                Arc::clone(&self.db),
+                path,
+                known.and_then(|k| k.fingerprint),
+                image.original_size,
+            ));
+        }
+        FaceButton::Found(None)
     }
 
     /// The current photo's faces: from what the analysis knows, the cut-out pictures once
@@ -172,6 +232,49 @@ impl CernoApp {
     }
 }
 
+/// How many faces the grid would show for `path` (upright, `size` at full size), from the
+/// index's rows on a thread: the grid's rules without decoding the photo. `None` without rows.
+fn count_faces(
+    ctx: egui::Context,
+    db: Arc<Db>,
+    path: PathBuf,
+    fingerprint: Option<u64>,
+    size: [u32; 2],
+) -> mpsc::Receiver<(PathBuf, Option<usize>)> {
+    let (tx, rx) = mpsc::channel();
+    let spawned = std::thread::Builder::new()
+        .name("cerno-face-count".into())
+        .spawn(move || {
+            let rows = fingerprint.and_then(|fp| match db.faces_of(fp) {
+                Ok(rows) => rows,
+                Err(err) => {
+                    log::warn!("faces: counting {}: {err:#}", path.display());
+                    None
+                }
+            });
+            let count = rows.map(|rows| judged(rows, size).len());
+            let _ = tx.send((path, count));
+            ctx.request_repaint();
+        });
+    if let Err(err) = spawned {
+        log::warn!("faces: {err}");
+    }
+    rx
+}
+
+/// The rows the grid shows, left to right: without a box between two heads, large enough to
+/// judge at the analysis size (`size` is the upright photo's full size).
+fn judged(rows: Vec<FaceRow>, size: [u32; 2]) -> Vec<FaceRow> {
+    let [aw, ah] = decode::fit_within(size, [ANALYSIS_SIZE, ANALYSIS_SIZE]);
+    // Stored before 1.9.0, a box between two neighbours would show both people twice.
+    let mut rows: Vec<FaceRow> = detection::rows_without_bridges(rows, aw, ah)
+        .into_iter()
+        .filter(|row| detection::measurable(row.bbox[2], aw))
+        .collect();
+    rows.sort_by(|a, b| a.bbox[0].total_cmp(&b.bbox[0]));
+    rows
+}
+
 /// Looks for the faces of `path` on a thread and cuts them out.
 fn search(
     ctx: egui::Context,
@@ -228,16 +331,9 @@ fn cut_out(
             rows
         }
     };
-    // Stored before 1.9.0, a box between two neighbours would show both people twice.
-    let rows = detection::rows_without_bridges(rows, aw, ah);
-    let mut judged: Vec<&FaceRow> = rows
-        .iter()
-        .filter(|row| detection::measurable(row.bbox[2], aw))
-        .collect();
-    judged.sort_by(|a, b| a.bbox[0].total_cmp(&b.bbox[0]));
     let mut boxes = Vec::new();
     let mut crops = Vec::new();
-    for row in judged {
+    for row in judged(rows, [full.width, full.height]) {
         let picture = crop(&full, row.bbox)?;
         let texture = ctx.load_texture("face", picture, TextureOptions::LINEAR);
         boxes.push(row.bbox);
@@ -274,6 +370,38 @@ fn crop(full: &decode::DecodedImage, bbox: [f32; 4]) -> anyhow::Result<ColorImag
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The faces button counts what the grid shows: no box between two heads, none too small
+    /// at the analysis size, left to right – and the photo's size decides what is too small.
+    #[test]
+    fn the_count_follows_the_grids_rules() {
+        // Pixels of the analysis image of a 4000 × 2000 photo (2048 × 1024) → 0..1.
+        let (w, h) = (2048.0, 1024.0);
+        let row = |score, x: f32, side: f32, eyes: [[f32; 2]; 2]| FaceRow {
+            score,
+            bbox: [x / w, 100.0 / h, side / w, side / h],
+            landmarks: [
+                eyes[0],
+                eyes[1],
+                [x + side / 2.0, 125.0],
+                [x + side * 0.3, 132.0],
+                [x + side * 0.7, 132.0],
+            ]
+            .map(|[px, py]| [px / w, py / h]),
+            eyes: None,
+        };
+        let mother = row(0.85, 100.0, 40.0, [[110.0, 115.0], [128.0, 115.0]]);
+        let child = row(0.80, 150.0, 40.0, [[160.0, 115.0], [178.0, 115.0]]);
+        // One eye of each: the box between the two heads.
+        let bridge = row(0.65, 125.0, 40.0, [[128.0, 115.0], [153.0, 115.0]]);
+        let tiny = row(0.90, 600.0, 20.0, [[605.0, 108.0], [615.0, 108.0]]);
+        assert_eq!(
+            judged(vec![tiny, child, bridge, mother], [4000, 2000]),
+            vec![mother, child]
+        );
+        // Upright, the same boxes are half as wide at the analysis size: 20 px, too small.
+        assert!(judged(vec![mother, child], [2000, 4000]).is_empty());
+    }
 
     fn image(width: u32, height: u32) -> decode::DecodedImage {
         let rgb = (0..width * height)

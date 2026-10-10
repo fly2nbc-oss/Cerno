@@ -21,8 +21,6 @@ pub enum Mode {
 }
 
 impl Mode {
-    pub const ALL: [Mode; 3] = [Mode::Off, Mode::Sharpness, Mode::Exposure];
-
     /// `O` steps through the modes.
     pub fn next(self) -> Self {
         match self {

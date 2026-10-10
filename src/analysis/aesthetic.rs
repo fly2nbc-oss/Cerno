@@ -83,13 +83,18 @@ struct Encoder {
 impl Encoder {
     /// GPU first (reported, not silently skipped), CPU as fallback.
     fn load(path: &Path, dim: usize) -> Result<Self> {
+        // Without DirectML.dll beside the exe, its first call would end Cerno: looked for first.
         #[cfg(windows)]
-        match Self::build(
-            path,
-            dim,
-            Some(ort::ep::DirectML::default().build().error_on_failure()),
-            "DirectML",
-        ) {
+        match crate::dlls::load(crate::dlls::DIRECTML)
+            .map_err(|err| anyhow!(err))
+            .and_then(|()| {
+                Self::build(
+                    path,
+                    dim,
+                    Some(ort::ep::DirectML::default().build().error_on_failure()),
+                    "DirectML",
+                )
+            }) {
             Ok(encoder) => return Ok(encoder),
             Err(err) => log::warn!("DirectML unavailable, using the CPU: {err:#}"),
         }

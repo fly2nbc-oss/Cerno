@@ -62,7 +62,7 @@ use crate::thumbs::Thumbs;
 use crate::transfer::Queue as TransferQueue;
 use crate::ui::details::{DetailsMode, DetailsTab};
 use crate::ui::overlays;
-use crate::ui::{description, palette, viewer};
+use crate::ui::{description, side_bar, viewer};
 use crate::view::{Media, Percentiles, PhotoFilter, SortKey, View, ViewOptions};
 
 use editing::EditSession;
@@ -211,15 +211,20 @@ pub struct CernoApp {
     models_open: bool,
     /// A confirmation waiting for Enter or Esc; `true` reopens the models card afterwards.
     confirm: Option<(ConfirmAction, bool)>,
-    /// Burger menu (`Ctrl+K` and the button) while open.
-    palette: Option<palette::State>,
-    /// Action menu under the filter bar's button (`Ctrl+M`): copy, move or delete the photos
-    /// on screen.
-    action_menu: Option<palette::State>,
-    /// Where the "Action" button was last drawn; the menu opens under it.
-    action_anchor: Option<Rect>,
-    /// `Ctrl+M` showed the hidden filter bar; closing the menu hides it again.
-    toolbar_before_actions: Option<bool>,
+    /// The menu bar on the left is switched on (the menu button, saved as `side_bar`).
+    show_side_bar: bool,
+    /// `Ctrl+K`, `Ctrl+M` or `E` showed the bar while it is off: it goes again with the
+    /// keyboard.
+    side_bar_temporary: bool,
+    /// Its open groups (saved as `side_bar_open`) and whether it has the keyboard.
+    side: side_bar::State,
+    /// The list open beside a row of the bar: *Edit elsewhere*'s programs or the languages.
+    row_list: Option<menu::RowList>,
+    /// `E` asked for the programs' list: it opens beside its row once the bar is drawn.
+    list_after_draw: Option<menu::ListKind>,
+    /// The counts of *Visible photos* (rejected in the folder, deleted on screen), refreshed
+    /// with the view and at most every 300 ms – the bar shows them every frame.
+    bar_counts: menu::BarCounts,
     /// The filter bar showed on its own (a filter hid everything) and the pointer is on it: it
     /// stays until the pointer leaves.
     toolbar_held: bool,
@@ -324,6 +329,9 @@ impl CernoApp {
         // Only the photo, the filmstrip and the info bar by default.
         let show_toolbar = db.setting("top_bar").as_deref() == Some("1");
         let show_filmstrip = db.setting("filmstrip").as_deref() != Some("0");
+        // Off until the menu button switches it on (the user's decision F3 of 2026-10-10).
+        let show_side_bar = db.setting("side_bar").as_deref() == Some("1");
+        let side = side_bar::State::restore(db.setting(menu::SIDE_BAR_OPEN).as_deref());
         let external_editor = db
             .setting(external::SETTING)
             .and_then(|text| crate::external::Editor::from_setting(&text));
@@ -417,10 +425,12 @@ impl CernoApp {
             help_page: crate::ui::help::Page::Keys,
             models_open: false,
             confirm: None,
-            palette: None,
-            action_menu: None,
-            action_anchor: None,
-            toolbar_before_actions: None,
+            show_side_bar,
+            side_bar_temporary: false,
+            side,
+            row_list: None,
+            list_after_draw: None,
+            bar_counts: menu::BarCounts::default(),
             toolbar_held: false,
             tab_presses: Vec::new(),
             details_cycles: Vec::new(),
@@ -584,15 +594,20 @@ impl eframe::App for CernoApp {
         let layout = self.layout(window);
 
         ui.painter().rect_filled(window, 0.0, tokens::CANVAS);
-        self.draw_centre(ui, window, layout.area);
+        self.draw_centre(ui, layout.area);
         if let Some(rect) = layout.filmstrip {
             self.draw_filmstrip(ui, rect);
         }
         if let Some(rect) = layout.info {
             self.draw_info_bar(ui, rect, layout.details);
+        } else {
+            self.draw_corner_buttons(ui, window);
         }
         if let Some(rect) = layout.toolbar {
             self.draw_toolbar(ui, rect);
+        }
+        if let Some(rect) = layout.side_bar {
+            self.draw_side_bar(ui, rect, &frames);
         }
         self.draw_messages(ui, layout.area);
         self.draw_overlays(&ctx, window, &frames);

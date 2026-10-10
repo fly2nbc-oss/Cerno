@@ -99,20 +99,23 @@ fn union_jack(painter: &Painter, rect: Rect) {
     }
 }
 
-/// Which part of the window a panel button toggles.
+/// Which part of the window a panel button toggles: the menu bar (left), the filter bar
+/// (top), the details panel (right), the filmstrip (bottom).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
+    Left,
     Top,
     Right,
     Bottom,
 }
 
-/// Window outline with the panel's strip. Kept for the view commands; the info bar no longer
-/// paints these buttons.
-#[allow(dead_code)]
+/// Window outline with the panel's strip, filled while the panel shows: the info bar's panel
+/// buttons. The left strip is the menu bar and carries three menu lines, so the one button
+/// reads as both "left panel" and "menu".
 pub fn panel(painter: &Painter, center: Pos2, panel: Panel, shown: bool, color: Color32) {
     let frame = Rect::from_center_size(center, vec2(16.0, 13.0));
     let strip = match panel {
+        Panel::Left => Rect::from_min_max(frame.min, pos2(frame.min.x + 5.5, frame.max.y)),
         Panel::Top => Rect::from_min_max(frame.min, pos2(frame.max.x, frame.min.y + 4.5)),
         Panel::Right => Rect::from_min_max(pos2(frame.max.x - 5.5, frame.min.y), frame.max),
         Panel::Bottom => Rect::from_min_max(pos2(frame.min.x, frame.max.y - 4.5), frame.max),
@@ -121,6 +124,10 @@ pub fn panel(painter: &Painter, center: Pos2, panel: Panel, shown: bool, color: 
         painter.rect_filled(strip, 1.5, color);
     } else {
         let line = match panel {
+            Panel::Left => [
+                pos2(strip.max.x, frame.min.y),
+                pos2(strip.max.x, frame.max.y),
+            ],
             Panel::Top => [
                 pos2(frame.min.x, strip.max.y),
                 pos2(frame.max.x, strip.max.y),
@@ -136,7 +143,63 @@ pub fn panel(painter: &Painter, center: Pos2, panel: Panel, shown: bool, color: 
         };
         painter.line_segment(line, Stroke::new(1.3, color));
     }
+    if panel == Panel::Left {
+        // Cut out of the filled strip, drawn into the empty one.
+        let ink = if shown { tokens::SURFACE } else { color };
+        for dy in [-3.0, 0.0, 3.0] {
+            let y = strip.center().y + dy;
+            painter.line_segment(
+                [pos2(strip.min.x + 1.4, y), pos2(strip.max.x - 1.3, y)],
+                Stroke::new(1.1, ink),
+            );
+        }
+    }
     painter.rect_stroke(frame, 2.0, Stroke::new(1.3, color), StrokeKind::Inside);
+}
+
+/// A landscape in a frame: the view switcher's single photo.
+pub fn photo(painter: &Painter, center: Pos2, color: Color32) {
+    let frame = Rect::from_center_size(center, vec2(16.0, 13.0));
+    let stroke = Stroke::new(1.3, color);
+    painter.rect_stroke(frame, 2.0, stroke, StrokeKind::Inside);
+    let points = vec![
+        pos2(frame.min.x + 1.5, frame.max.y - 2.0),
+        pos2(frame.min.x + 6.0, frame.min.y + 6.5),
+        pos2(frame.min.x + 9.5, frame.min.y + 9.5),
+        pos2(frame.min.x + 12.0, frame.min.y + 7.5),
+        pos2(frame.max.x - 1.5, frame.max.y - 2.0),
+    ];
+    painter.add(Shape::line(points, stroke));
+    painter.circle_filled(pos2(frame.max.x - 4.5, frame.min.y + 3.8), 1.4, color);
+}
+
+/// Four squares: the view switcher's grid.
+pub fn grid(painter: &Painter, center: Pos2, color: Color32) {
+    let stroke = Stroke::new(1.3, color);
+    for (dx, dy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+        let cell = Rect::from_center_size(center + vec2(dx * 4.0, dy * 4.0), vec2(6.4, 6.4));
+        painter.rect_stroke(cell, 1.3, stroke, StrokeKind::Inside);
+    }
+}
+
+/// A face in the corners of a viewfinder: the view switcher's faces.
+pub fn face_frame(painter: &Painter, center: Pos2, color: Color32) {
+    let stroke = Stroke::new(1.3, color);
+    let (d, arm) = (7.5, 3.2);
+    for (sx, sy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+        let corner = center + vec2(sx * d, sy * d);
+        painter.line_segment([corner, corner - vec2(sx * arm, 0.0)], stroke);
+        painter.line_segment([corner, corner - vec2(0.0, sy * arm)], stroke);
+    }
+    painter.circle_stroke(center + vec2(0.0, -1.6), 2.4, stroke);
+    let shoulders = center + vec2(0.0, 5.6);
+    let points = (0..=10)
+        .map(|i| {
+            let angle = std::f32::consts::PI * (1.0 + i as f32 / 10.0);
+            shoulders + vec2(angle.cos() * 4.2, angle.sin() * 3.0)
+        })
+        .collect();
+    painter.add(Shape::line(points, stroke));
 }
 
 /// The "rejected" cross.
@@ -248,14 +311,6 @@ pub fn copy(painter: &Painter, center: Pos2, color: Color32) {
     painter.rect_stroke(front, 1.0, stroke, StrokeKind::Inside);
 }
 
-/// Three bars, the menu button at the bottom right.
-pub fn menu(painter: &Painter, center: Pos2, color: Color32) {
-    let stroke = Stroke::new(1.6, color);
-    for dy in [-5.0, 0.0, 5.0] {
-        painter.line_segment([center + vec2(-6.0, dy), center + vec2(6.0, dy)], stroke);
-    }
-}
-
 /// Circled question mark.
 pub fn help(painter: &Painter, center: Pos2, color: Color32) {
     painter.circle_stroke(center, 7.5, Stroke::new(1.3, color));
@@ -279,6 +334,38 @@ pub fn side_chevron(painter: &Painter, center: Pos2, right: bool, size: f32, col
         center + vec2(-s * d * 0.4, d),
     ];
     painter.add(Shape::line(points, Stroke::new(size / 7.0, color)));
+}
+
+/// A quarter turn (`↺` / `↻`): three quarters of a circle with an arrow head at its end, about
+/// 13 px wide – the menu bar's turn buttons (Segoe UI's arrows are not sure to be there).
+pub fn turn(painter: &Painter, center: Pos2, clockwise: bool, color: Color32) {
+    let r = 5.0;
+    let s = if clockwise { 1.0 } else { -1.0 };
+    // From the top, the long way round, ending just right (left) of the top.
+    let start = -std::f32::consts::FRAC_PI_2 + s * 0.35;
+    let sweep = s * 1.5 * std::f32::consts::PI;
+    let points: Vec<Pos2> = (0..=16)
+        .map(|k| {
+            let a = start + sweep * k as f32 / 16.0;
+            center + vec2(r * a.cos(), r * a.sin())
+        })
+        .collect();
+    let end = points[points.len() - 1];
+    let before = points[points.len() - 2];
+    painter.add(Shape::line(points, Stroke::new(1.4, color)));
+    // The arrow head along the direction the arc runs at its end.
+    let dir = (end - before).normalized();
+    let side = vec2(-dir.y, dir.x);
+    let tip = end + dir * 2.6;
+    painter.add(Shape::convex_polygon(
+        vec![
+            tip,
+            end - dir * 0.6 + side * 2.6,
+            end - dir * 0.6 - side * 2.6,
+        ],
+        color,
+        Stroke::NONE,
+    ));
 }
 
 /// Small triangle for fold rows in the details panel (`open` = expanded).

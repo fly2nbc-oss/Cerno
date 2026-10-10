@@ -1,11 +1,11 @@
-//! The info bar at the bottom: name and facts, stars and scores, exposure and camera, the
-//! help and menu buttons.
+//! The info bar at the bottom: name and facts, stars and scores, exposure and camera, then
+//! one block of buttons – what the photo area shows, which bars show, help.
 
 use std::sync::Arc;
 
 use eframe::egui::{
-    Align2, Color32, CursorIcon, FontId, Galley, Painter, Pos2, Rect, Sense, Stroke, Ui, Vec2,
-    pos2, vec2,
+    Align2, Color32, CursorIcon, FontId, Galley, Painter, Pos2, Rect, Sense, Stroke, StrokeKind,
+    Ui, Vec2, pos2, vec2,
 };
 
 use crate::analysis::aesthetic;
@@ -13,13 +13,24 @@ use crate::i18n;
 use crate::loader::LoadedImage;
 use crate::metadata::{Label, Rating};
 use crate::theme::{text, tokens};
-use crate::ui::{icons, stars};
+use crate::ui::icons::{self, Panel};
+use crate::ui::stars;
 
 pub const INFO_HEIGHT: f32 = 60.0;
 const STAR_SIZE: f32 = 16.0;
 const STAR_GAP: f32 = 6.0;
 /// Click area of the info bar buttons (design system: at least 32 px).
 const BUTTON: f32 = 32.0;
+/// The panel buttons beside help are smaller: they are switched less often.
+const PANEL_BUTTON: f32 = 26.0;
+/// One part of the view switcher (photo, grid, faces): as wide as a button, it is used at
+/// every pass.
+const SEGMENT: f32 = 32.0;
+const SEGMENT_HEIGHT: f32 = 30.0;
+/// Room around and between the switcher's parts.
+const SEGMENT_PAD: f32 = 2.0;
+/// Between the groups – views, bars, help – with a thin line in the middle.
+const GROUP_GAP: f32 = 19.0;
 /// The incomplete-file note ends this far left of the stars – past the colour dot – and its
 /// torn-page icon takes this much room before the text.
 const NOTE_OFFSET: f32 = 28.0;
@@ -65,6 +76,51 @@ pub struct InfoBar<'a> {
     pub time_offset: Option<i64>,
     /// A RAW + JPG pair: `RAW+JPG`, and the RAW's marks where they differ.
     pub pair: Option<String>,
+    /// Which bars show: their buttons at the right end are lit.
+    pub panels: Panels,
+    /// What the photo area shows: the view switcher.
+    pub views: Views,
+}
+
+/// What the photo area shows – the photo, the grid or the faces of the photo – for the view
+/// switcher (the user's choice of option A on 2026-10-10).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Views {
+    pub grid: bool,
+    pub faces_open: bool,
+    pub faces: FaceButton,
+}
+
+/// What the faces part of the switcher can say about the current photo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FaceButton {
+    /// Not analysed yet.
+    #[default]
+    Unknown,
+    Video,
+    /// No face found.
+    None,
+    /// Faces, but all too small to judge: the faces grid would show none.
+    OnlySmall,
+    /// Faces the grid shows – how many, once counted.
+    Found(Option<usize>),
+}
+
+/// One part of the view switcher.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum View {
+    Photo,
+    Grid,
+    Faces,
+}
+
+/// The bars that can be switched on and off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Panels {
+    pub side_bar: bool,
+    pub toolbar: bool,
+    pub details: bool,
+    pub filmstrip: bool,
 }
 
 #[derive(Default)]
@@ -72,7 +128,11 @@ pub struct InfoBarOutput {
     /// The star the user clicked (`Some(None)` clears the rating).
     pub rating: Option<Rating>,
     pub help: bool,
-    pub menu: bool,
+    /// A panel button: the menu bar, the filter bar, the details panel or the filmstrip on or
+    /// off.
+    pub panel: Option<Panel>,
+    /// A part of the view switcher that isn't the current view.
+    pub view: Option<View>,
 }
 
 /// Two rows: name / position · date · size (left), stars / scores (centre), exposure / camera
@@ -89,7 +149,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     let mut out = InfoBarOutput::default();
     let (row1, row2) = (rect.top() + 19.0, rect.top() + 42.0);
 
-    let buttons_left = buttons(ui, rect, &mut out);
+    let buttons_left = buttons(ui, rect, bar.panels, bar.views, &mut out);
 
     // Centre: scores as value (+ bar) below the stars; its width decides the side columns.
     let meters = if bar.analysed {
@@ -441,53 +501,267 @@ fn widest_centre(painter: &Painter) -> f32 {
         .fold(0.0, f32::max)
 }
 
-/// Buttons at the right end, laid out from the right edge: the menu, then help. Returns their
-/// left edge.
-fn buttons(ui: &Ui, rect: Rect, out: &mut InfoBarOutput) -> f32 {
+/// Without a photo – the start screen, a filter that hides every photo – there is no info
+/// bar, but the menu bar's button and help stay bottom right: the start screen names the
+/// button.
+pub fn corner_buttons(ui: &Ui, window: Rect, side_bar: bool) -> InfoBarOutput {
     let t = i18n::t();
-    let y = rect.center().y;
-    let mut x = rect.right() - 8.0;
-    let next = |x: &mut f32| {
-        *x -= BUTTON;
-        let area = Rect::from_min_size(pos2(*x, y - BUTTON / 2.0), Vec2::splat(BUTTON));
-        *x -= 2.0;
-        area
-    };
-
-    let area = next(&mut x);
-    let tooltip = format!("{} ({})", t.button_menu, i18n::with_ctrl("K"));
-    out.menu = icon_button(ui, area, &tooltip, false, |p, c, color| {
-        icons::menu(p, c, color);
-    });
-    x -= 8.0;
-    let area = next(&mut x);
-    let tooltip = format!("{} (H)", t.button_help);
-    out.help = icon_button(ui, area, &tooltip, false, |p, c, color| {
-        icons::help(p, c, color);
-    });
-    x
+    let rect = Rect::from_min_max(pos2(window.min.x, window.max.y - INFO_HEIGHT), window.max);
+    let places = block(rect);
+    let mut out = InfoBarOutput::default();
+    help_button(ui, places.help, &mut out);
+    separator(ui.painter(), rect, places.separators[0]);
+    // The menu bar's button takes the first bar's place: right of the line, next to help.
+    let tooltip = format!("{} ({})", t.button_side_bar, i18n::with_ctrl("K"));
+    if icon_button(
+        ui,
+        places.panels[0],
+        &tooltip,
+        side_bar,
+        false,
+        |p, c, color| {
+            icons::panel(p, c, Panel::Left, side_bar, color);
+        },
+    ) {
+        out.panel = Some(Panel::Left);
+    }
+    out
 }
 
-/// A square icon button with tooltip; returns whether it was clicked.
+/// Where the parts of the block at the bar's right end are.
+struct Block {
+    help: Rect,
+    /// The x of the thin lines between the groups: right of the bars, right of the switcher.
+    separators: [f32; 2],
+    /// The bars' buttons, right to left: filmstrip, details, filter bar, menu bar.
+    panels: [Rect; 4],
+    /// The view switcher's frame and its parts: photo, grid, faces.
+    switcher: Rect,
+    views: [Rect; 3],
+}
+
+/// The bars right to left as their buttons stand, so on screen they read left, top, right,
+/// bottom – the window's edges.
+const PANEL_ORDER: [Panel; 4] = [Panel::Bottom, Panel::Right, Panel::Top, Panel::Left];
+
+/// Right to left from the bar's end: help, a line, the four bars, a line, the view switcher.
+fn block(rect: Rect) -> Block {
+    let y = rect.center().y;
+    let square = |right: f32, size: f32| {
+        Rect::from_min_size(pos2(right - size, y - size / 2.0), Vec2::splat(size))
+    };
+    let help = square(rect.right() - 8.0, BUTTON);
+    let first_line = help.left() - GROUP_GAP / 2.0;
+    let mut right = help.left() - GROUP_GAP;
+    let panels = [0, 1, 2, 3].map(|_| {
+        let area = square(right, PANEL_BUTTON);
+        right = area.left() - 2.0;
+        area
+    });
+    let second_line = panels[3].left() - GROUP_GAP / 2.0;
+    let width = 3.0 * SEGMENT + 4.0 * SEGMENT_PAD;
+    let height = SEGMENT_HEIGHT + 2.0 * SEGMENT_PAD;
+    let switcher = Rect::from_min_size(
+        pos2(panels[3].left() - GROUP_GAP - width, y - height / 2.0),
+        vec2(width, height),
+    );
+    let views = [0, 1, 2].map(|k| {
+        Rect::from_min_size(
+            switcher.min
+                + vec2(
+                    SEGMENT_PAD + k as f32 * (SEGMENT + SEGMENT_PAD),
+                    SEGMENT_PAD,
+                ),
+            vec2(SEGMENT, SEGMENT_HEIGHT),
+        )
+    });
+    Block {
+        help,
+        separators: [first_line, second_line],
+        panels,
+        switcher,
+        views,
+    }
+}
+
+fn help_button(ui: &Ui, area: Rect, out: &mut InfoBarOutput) {
+    let t = i18n::t();
+    let tooltip = format!("{} (H)", t.button_help);
+    out.help = icon_button(ui, area, &tooltip, false, false, |p, c, color| {
+        icons::help(p, c, color);
+    });
+}
+
+/// A thin line between two groups of buttons.
+fn separator(painter: &Painter, rect: Rect, x: f32) {
+    painter.vline(
+        x.round() + 0.5,
+        (rect.center().y - 12.0)..=(rect.center().y + 12.0),
+        Stroke::new(1.0, tokens::LINE),
+    );
+}
+
+/// One block at the right end, right to left: help; the bars in the order of the window's
+/// edges – menu bar (left), filter bar (top), details (right), filmstrip (bottom) – smaller,
+/// since they are switched less often; then the view switcher, as large as a button, since
+/// photo and grid change at every pass. Returns the block's left edge.
+fn buttons(ui: &Ui, rect: Rect, panels: Panels, views: Views, out: &mut InfoBarOutput) -> f32 {
+    let t = i18n::t();
+    let places = block(rect);
+    help_button(ui, places.help, out);
+    for x in places.separators {
+        separator(ui.painter(), rect, x);
+    }
+    for (panel, area) in PANEL_ORDER.into_iter().zip(places.panels) {
+        let (shown, tooltip, disabled) = match panel {
+            Panel::Bottom if views.grid => (
+                false,
+                format!("{} – {}", t.button_filmstrip, t.filmstrip_in_grid),
+                true,
+            ),
+            Panel::Bottom => (
+                panels.filmstrip,
+                format!("{} (F6)", t.button_filmstrip),
+                false,
+            ),
+            Panel::Right => (panels.details, format!("{} (Tab)", t.button_details), false),
+            Panel::Top => (panels.toolbar, format!("{} (T)", t.button_toolbar), false),
+            Panel::Left => (
+                panels.side_bar,
+                format!("{} ({})", t.button_side_bar, i18n::with_ctrl("K")),
+                false,
+            ),
+        };
+        if icon_button(ui, area, &tooltip, shown, disabled, |p, c, color| {
+            icons::panel(p, c, panel, shown, color);
+        }) {
+            out.panel = Some(panel);
+        }
+    }
+    view_switcher(ui, &places, views, out);
+    places.switcher.left() - 2.0
+}
+
+/// Photo · grid · faces: one of them is always the current one, lit on the accent's subtle
+/// fill. The faces part carries how many faces the grid would show, and is greyed out – with
+/// the reason – when it would show none.
+fn view_switcher(ui: &Ui, places: &Block, views: Views, out: &mut InfoBarOutput) {
+    let t = i18n::t();
+    let painter = ui.painter();
+    painter.rect_filled(places.switcher, 7.0, tokens::CANVAS);
+    painter.rect_stroke(
+        places.switcher,
+        7.0,
+        Stroke::new(1.0, tokens::LINE),
+        StrokeKind::Inside,
+    );
+    let current = current_view(views);
+    let faces_tip = |reason: &str| format!("{} – {reason}", t.view_faces);
+    for (k, (view, cell)) in [View::Photo, View::Grid, View::Faces]
+        .into_iter()
+        .zip(places.views)
+        .enumerate()
+    {
+        let (tooltip, disabled) = match view {
+            View::Photo if current != View::Photo => (format!("{} (Esc)", t.view_photo), false),
+            View::Photo => (t.view_photo.to_owned(), false),
+            View::Grid => (format!("{} (F7)", t.view_grid), false),
+            View::Faces => match views.faces {
+                FaceButton::Unknown => (faces_tip(t.faces_unknown), true),
+                FaceButton::Video => (faces_tip(t.faces_video), true),
+                FaceButton::None => (faces_tip(t.faces_none), true),
+                FaceButton::OnlySmall => (faces_tip(t.faces_only_small), true),
+                FaceButton::Found(Some(n)) => ((t.faces_button)(n), false),
+                FaceButton::Found(None) => (format!("{} (G)", t.cmd_face_grid), false),
+            },
+        };
+        let active = view == current;
+        let response = ui.interact(cell, ui.id().with(("view", k)), Sense::CLICK);
+        let hovered = response.hovered() && !disabled;
+        let painter = ui.painter();
+        if active {
+            painter.rect_filled(cell, 5.0, tokens::ACCENT_SUBTLE);
+        } else if hovered {
+            painter.rect_filled(cell, 5.0, tokens::SURFACE_MUTED);
+        }
+        let color = if disabled && !active {
+            DISABLED
+        } else if active || hovered {
+            tokens::ACCENT_STRONG
+        } else {
+            tokens::MUTED
+        };
+        match view {
+            View::Photo => icons::photo(painter, cell.center(), color),
+            View::Grid => icons::grid(painter, cell.center(), color),
+            View::Faces => icons::face_frame(painter, cell.center(), color),
+        }
+        if let (View::Faces, FaceButton::Found(Some(n))) = (view, views.faces) {
+            count_badge(painter, cell, n);
+        }
+        let response = if disabled {
+            response
+        } else {
+            response.on_hover_cursor(CursorIcon::PointingHand)
+        };
+        if response.on_hover_text(tooltip).clicked() && !disabled && !active {
+            out.view = Some(view);
+        }
+    }
+}
+
+/// The faces grid lies over everything, the grid replaces the photo.
+fn current_view(views: Views) -> View {
+    if views.faces_open {
+        View::Faces
+    } else if views.grid {
+        View::Grid
+    } else {
+        View::Photo
+    }
+}
+
+/// How many faces, on the accent at the top right of the faces part.
+fn count_badge(painter: &Painter, cell: Rect, n: usize) {
+    let galley =
+        painter.layout_no_wrap(n.to_string(), FontId::proportional(text::LABEL), tokens::BG);
+    let size = vec2((galley.size().x + 6.0).max(14.0), 14.0);
+    let badge = Rect::from_min_size(pos2(cell.right() - size.x + 3.0, cell.top() - 4.0), size);
+    painter.rect_filled(badge, 7.0, tokens::ACCENT);
+    painter.galley(badge.center() - galley.size() / 2.0, galley, tokens::BG);
+}
+
+/// An icon that can't be used right now.
+const DISABLED: Color32 = Color32::from_rgb(0x5A, 0x5A, 0x5A);
+
+/// A square icon button with tooltip; returns whether it was clicked. It takes no keyboard
+/// focus (`Sense::CLICK`), so `Space` – the next photo – never clicks it again.
 fn icon_button(
     ui: &Ui,
     area: Rect,
     tooltip: &str,
     active: bool,
+    disabled: bool,
     paint: impl FnOnce(&Painter, Pos2, Color32),
 ) -> bool {
-    let response = ui
-        .interact(area, ui.id().with(("icon", tooltip)), Sense::click())
-        .on_hover_cursor(CursorIcon::PointingHand);
+    let response = ui.interact(area, ui.id().with(("icon", tooltip)), Sense::CLICK);
+    let hovered = response.hovered() && !disabled;
     let painter = ui.painter();
-    icons::button_background(painter, area, response.hovered(), false);
-    let color = if active || response.hovered() {
+    icons::button_background(painter, area, hovered, false);
+    let color = if disabled {
+        DISABLED
+    } else if active || hovered {
         tokens::ACCENT_STRONG
     } else {
         tokens::MUTED
     };
     paint(painter, area.center(), color);
-    response.on_hover_text(tooltip).clicked()
+    let response = if disabled {
+        response
+    } else {
+        response.on_hover_cursor(CursorIcon::PointingHand)
+    };
+    response.on_hover_text(tooltip).clicked() && !disabled
 }
 
 #[derive(Clone)]
@@ -671,7 +945,150 @@ mod tests {
             similarity: None,
             time_offset: None,
             pair: None,
+            panels: Panels::default(),
+            views: Views::default(),
         }
+    }
+
+    /// What each frame reported – the bar a button switched, the view a switcher part asked
+    /// for – while the pointer moves to `at`, presses and lets go, and then `Space` is pressed
+    /// and let go; and whether egui gave anything the keyboard focus.
+    /// One frame's report: the bar a button switched, the view the switcher asked for.
+    type Reported = (Option<Panel>, Option<View>);
+
+    fn click(bar: &InfoBar<'_>, at: Pos2) -> (Vec<Reported>, bool) {
+        use eframe::egui::{Event, Key, Modifiers, PointerButton};
+        let ctx = Context::default();
+        let press = |pressed| Event::PointerButton {
+            pos: at,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        };
+        let space = |pressed| Event::Key {
+            key: Key::Space,
+            physical_key: None,
+            pressed,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        };
+        let mut seen = Vec::new();
+        for events in [
+            vec![Event::PointerMoved(at)],
+            vec![press(true)],
+            vec![press(false)],
+            vec![space(true)],
+            vec![space(false)],
+        ] {
+            let mut output = ctx.run_ui(
+                RawInput {
+                    screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1400.0, 400.0))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    let out = info_bar(ui, bar_rect(), bar);
+                    seen.push((out.panel, out.view));
+                },
+            );
+            output.textures_delta.clear();
+        }
+        (seen, ctx.memory(|m| m.focused().is_some()))
+    }
+
+    fn bar_rect() -> Rect {
+        Rect::from_min_size(pos2(0.0, 0.0), vec2(1400.0, INFO_HEIGHT))
+    }
+
+    /// A click on the menu bar's button switches it once: the button takes no keyboard focus,
+    /// or the next `Space` (next photo) would click it again.
+    #[test]
+    fn a_clicked_button_keeps_no_focus() {
+        let menu_bar = block(bar_rect()).panels[3].center();
+        let (seen, focused) = click(&bar(false), menu_bar);
+        let panels: Vec<_> = seen.iter().map(|(panel, _)| *panel).collect();
+        assert_eq!(panels, [None, None, Some(Panel::Left), None, None]);
+        assert!(!focused);
+    }
+
+    /// The block reads, left to right: the view switcher, the four bars in the order of the
+    /// window's edges, help – with a gap between the groups and none overlapping.
+    #[test]
+    fn the_block_reads_views_bars_help() {
+        let places = block(bar_rect());
+        let order: Vec<Panel> = PANEL_ORDER.into_iter().rev().collect();
+        assert_eq!(
+            order,
+            [Panel::Left, Panel::Top, Panel::Right, Panel::Bottom]
+        );
+        for pair in places.panels.windows(2) {
+            assert!(pair[1].right() < pair[0].left(), "right to left, apart");
+        }
+        assert!(places.switcher.right() + GROUP_GAP <= places.panels[3].left() + 0.01);
+        assert!(places.panels[0].right() + GROUP_GAP <= places.help.left() + 0.01);
+        assert!(places.views[2].right() <= places.switcher.right());
+        assert!(places.views[0].left() >= places.switcher.left());
+        assert!(places.help.right() <= bar_rect().right());
+        // The parts people use at every pass are larger than the bars' buttons.
+        assert!(places.views[1].width() > places.panels[0].width());
+    }
+
+    /// A click on another part of the switcher asks for that view; the current one and a
+    /// greyed-out one ask for nothing.
+    #[test]
+    fn the_view_switcher_names_another_view_only() {
+        let places = block(bar_rect());
+        let asked = |views: Views, part: usize| {
+            let bar = InfoBar {
+                views,
+                ..bar(false)
+            };
+            click(&bar, places.views[part].center())
+                .0
+                .iter()
+                .find_map(|(_, view)| *view)
+        };
+        let photo = Views::default();
+        assert_eq!(asked(photo, 1), Some(View::Grid));
+        assert_eq!(asked(photo, 0), None, "already the photo");
+        assert_eq!(asked(photo, 2), None, "not analysed: greyed out");
+        let faces = Views {
+            faces: FaceButton::Found(Some(3)),
+            ..photo
+        };
+        assert_eq!(asked(faces, 2), Some(View::Faces));
+        let grid = Views {
+            grid: true,
+            ..faces
+        };
+        assert_eq!(asked(grid, 0), Some(View::Photo));
+        assert_eq!(asked(grid, 1), None, "already the grid");
+        let small = Views {
+            faces: FaceButton::OnlySmall,
+            ..photo
+        };
+        assert_eq!(asked(small, 2), None, "the grid would show no face");
+    }
+
+    /// In the grid the filmstrip has no place: its button is greyed out and does nothing.
+    #[test]
+    fn the_filmstrip_button_rests_in_the_grid() {
+        let filmstrip = block(bar_rect()).panels[0].center();
+        let in_grid = InfoBar {
+            views: Views {
+                grid: true,
+                ..Views::default()
+            },
+            ..bar(false)
+        };
+        assert!(
+            click(&in_grid, filmstrip)
+                .0
+                .iter()
+                .all(|(panel, _)| panel.is_none())
+        );
+        let (seen, _) = click(&bar(false), filmstrip);
+        assert!(seen.iter().any(|(panel, _)| *panel == Some(Panel::Bottom)));
     }
 
     /// The facts line leaves out whole parts instead of running under the scores.

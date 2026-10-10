@@ -126,8 +126,8 @@ impl CernoApp {
             || self.confirm.is_some()
             || self.modal_open()
             || self.help_open
-            || self.palette.is_some()
-            || self.action_menu.is_some()
+            || self.row_list.is_some()
+            || self.side.focus
         {
             return;
         }
