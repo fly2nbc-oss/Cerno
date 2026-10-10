@@ -15,6 +15,7 @@ use crate::ui::{edit as edit_ui, viewer};
 use super::CernoApp;
 use super::gate::{Blocked, Change};
 use super::notice::Notice;
+use super::undo::Entry;
 
 /// What `Ctrl+Z` undoes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,18 +24,23 @@ enum Undo {
     Deletion,
     /// The deleted photo shown goes back into its folder.
     Restore,
-    /// The kept original replaces the edited photo.
+    /// The session's newest mark or edit (`undo::Journal`), on whichever photo it was.
+    Journal,
+    /// The kept original replaces the edited photo – an edit of an earlier session.
     Original,
 }
 
 /// A deletion that still counts down comes first: the photo just deleted is hidden already, so
 /// the one on screen is its neighbour – `Ctrl+Z` must bring the deleted one back, never put the
-/// neighbour's original over its edit.
-fn undo_target(counting_down: bool, current_deleted: bool) -> Undo {
+/// neighbour's original over its edit. A deleted photo on screen comes back next, then the
+/// session's marks and edits go back newest first, then an original kept in an earlier one.
+fn undo_target(counting_down: bool, current_deleted: bool, journal: bool) -> Undo {
     if counting_down {
         Undo::Deletion
     } else if current_deleted {
         Undo::Restore
+    } else if journal {
+        Undo::Journal
     } else {
         Undo::Original
     }
@@ -387,9 +393,10 @@ impl CernoApp {
             .view
             .get(self.current)
             .is_some_and(|path| self.is_deleted(path));
-        match undo_target(counting_down, deleted) {
+        match undo_target(counting_down, deleted, self.journal.newest().is_some()) {
             Undo::Deletion => self.undo_deletions(ctx),
             Undo::Restore => self.restore_current(),
+            Undo::Journal => self.undo_newest(ctx),
             Undo::Original => self.undo_edit(),
         }
     }
@@ -404,6 +411,11 @@ impl CernoApp {
         if !self.allowed(Change::Rewrite, Some(&path)) {
             return;
         }
+        self.restore_original(path);
+    }
+
+    /// The first original of `path` goes back into the file, when one is kept.
+    pub(super) fn restore_original(&mut self, path: PathBuf) {
         match crate::originals::original(&self.db, &path) {
             Ok(Some(_)) => {
                 self.edit_busy = true;
@@ -430,8 +442,15 @@ impl CernoApp {
                 None => {
                     self.refresh_edited(&outcome.path);
                     if outcome.restored {
+                        // The first original is back: every edit of the session went with it.
+                        self.journal.drop_edits(&outcome.path);
                         self.notice = Some(Notice::hint(i18n::t().undo_done));
-                    } else if outcome.reencoded {
+                        continue;
+                    }
+                    self.journal.push(Entry::Edit {
+                        path: outcome.path.clone(),
+                    });
+                    if outcome.reencoded {
                         self.notice = Some(Notice::hint(i18n::t().edit_reencoded));
                     } else if self.notice.as_ref().is_some_and(|n| n.text == writing) {
                         self.notice = None;
@@ -731,10 +750,11 @@ mod tests {
 
     #[test]
     fn ctrl_z_brings_a_pending_deletion_back_first() {
-        assert_eq!(undo_target(true, false), Undo::Deletion);
-        assert_eq!(undo_target(true, true), Undo::Deletion);
-        assert_eq!(undo_target(false, true), Undo::Restore);
-        assert_eq!(undo_target(false, false), Undo::Original);
+        assert_eq!(undo_target(true, false, true), Undo::Deletion);
+        assert_eq!(undo_target(true, true, true), Undo::Deletion);
+        assert_eq!(undo_target(false, true, true), Undo::Restore);
+        assert_eq!(undo_target(false, false, true), Undo::Journal);
+        assert_eq!(undo_target(false, false, false), Undo::Original);
     }
 
     /// `+` and `−` by the key typed, or by the key itself where Shift types another sign;

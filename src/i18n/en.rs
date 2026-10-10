@@ -481,6 +481,12 @@ pub static TEXTS: Texts = Texts {
     edit_reencoded: "JPEG re-encoded – Ctrl+Z brings the original back.",
     undo_done: "Original restored",
     undo_nothing: "No original kept for this photo",
+    undo_mark_row: |what, name| format!("Undo {what} – {name}"),
+    undo_what_stars: "stars",
+    undo_what_reject: "rejection",
+    undo_what_colour: "colour",
+    undo_what_edit: "edit",
+    undo_mark_done: |name, value| format!("Undone – {name}: {value}"),
     cmd_restore: "Put back",
     restored: |n, renamed, name| match (n, renamed) {
         (1, 0) => format!("Put back: {name}"),
@@ -701,7 +707,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "Ctrl+Z",
-            "Bring back the original – it stays in .originals beside the photo; put a deleted photo back",
+            "Undo the last mark or edit; put a deleted photo back",
         ),
         (
             "E",

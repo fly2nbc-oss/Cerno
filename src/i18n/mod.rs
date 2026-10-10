@@ -482,6 +482,16 @@ pub struct Texts {
     pub edit_reencoded: &'static str,
     pub undo_done: &'static str,
     pub undo_nothing: &'static str,
+    /// The menu's *Undo* row while the session's newest mark or edit is what `Ctrl+Z` takes
+    /// back: what (`undo_what_*`), the photo's name.
+    pub undo_mark_row: fn(&str, &str) -> String,
+    pub undo_what_stars: &'static str,
+    pub undo_what_reject: &'static str,
+    pub undo_what_colour: &'static str,
+    pub undo_what_edit: &'static str,
+    /// After `Ctrl+Z` took a mark back: the photo's name, what it has now (`3 stars`,
+    /// `Unrated`, `No colour`, a colour).
+    pub undo_mark_done: fn(&str, &str) -> String,
     /// Puts the deleted photo shown back into its folder (`Ctrl+Z`).
     pub cmd_restore: &'static str,
     /// Photos put back, how many of them under a new name, and the (new) name of the first.
@@ -743,6 +753,13 @@ mod tests {
             let progress = (t.analyzing_progress)(4, 9);
             assert!(progress.contains('4') && progress.contains('9'), "{name}");
             assert!((t.downloading_model)(42.0).contains("42"), "{name}");
+            let row = (t.undo_mark_row)(t.undo_what_stars, "IMG_7.jpg");
+            assert!(
+                row.contains(t.undo_what_stars) && row.contains("IMG_7"),
+                "{name}"
+            );
+            let done = (t.undo_mark_done)("IMG_7.jpg", "3");
+            assert!(done.contains("IMG_7") && done.contains('3'), "{name}");
             let moved = (t.transfer_done)(true, 4, 2, "a.jpg", "busy");
             assert!(
                 moved.contains('4')

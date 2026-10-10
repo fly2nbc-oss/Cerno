@@ -36,6 +36,7 @@ mod notice;
 mod pairs;
 mod panels;
 mod photos;
+mod undo;
 mod video;
 
 use std::collections::{HashMap, HashSet};
@@ -172,6 +173,8 @@ pub struct CernoApp {
     pairs: crate::pairs::Pairs,
     /// What the pairs' RAW sidecars say, for the note where they differ.
     raw_marks: pairs::RawMarks,
+    /// What Ctrl+Z takes back: the session's marks and edits.
+    journal: undo::Journal,
     target: Option<[u32; 2]>,
     /// What the loader decodes for before `target` is known: the saved area, else 4K.
     start_target: [u32; 2],
@@ -385,6 +388,7 @@ impl CernoApp {
             pair_mode,
             pairs: crate::pairs::Pairs::default(),
             raw_marks: pairs::RawMarks::default(),
+            journal: undo::Journal::default(),
             target: None,
             start_target,
             pending_target: None,
