@@ -7,6 +7,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Changed
+
+- **A menu bar on the left instead of the menu popup** – the button at the bottom right shows or hides it (off at first, remembered), and `Shift+Tab` takes it along with the other panels. It holds only what has no other place: this photo (colour, reject, compare, the edits, undo, edit elsewhere, delete), the photos on screen (file list, camera time, copy, move, delete, delete rejected, put back), the view and the settings – stars, sorting, filters and the panels stay in the info bar and the filter bar. Its groups fold and stay as you left them. `Ctrl+K` gives it the keyboard – shown for the moment if it is off –: `↑`/`↓`, `Enter`, `→` unfolds, `←` folds, a letter jumps, `Esc` gives the keyboard back to the photo. Without the keyboard it takes no key, so `X`, the digits and `Space` always reach the photo.
+- **"Action" moved into the menu bar** – the filter bar has no *Action* button any more; `Ctrl+M` opens the menu bar at *Photos on screen*. Rows that can't do anything now (*Delete rejected* without rejected photos) are greyed out instead of missing.
+- **Three small panel buttons** beside help in the info bar show or hide the filter bar, the details panel and the filmstrip.
+- **`E` without a remembered program** opens the list of programs beside *Edit elsewhere* in the menu bar.
+- Filters, sorting and *Top N* are now in the filter bar only, no longer in a keyboard menu; `M` (similar photos) and `Ctrl+U` (subfolders) stay keys.
+
 ## [1.10.0] – 2026-10-10
 
 A faster start, `Ctrl+Z` for marks, a warning for cut-off JPEGs, a shorter help, arrows to browse with the mouse and an update check.

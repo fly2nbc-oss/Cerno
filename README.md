@@ -62,14 +62,14 @@ The Windows files are not signed yet: SmartScreen asks once (*More info* → *Ru
 | `Ctrl+Tab` | The details panel's tabs: values, description |
 | `G` | All faces large – a click zooms to one |
 | `Ctrl+U` | Include subfolders (on / off) |
-| `Ctrl+K` | Menu with every function |
-| `Ctrl+M` | Copy, move or delete all photos the filter shows |
+| `Ctrl+K` | The menu bar on the left, by keyboard (`Esc` gives the keyboard back) – the button at the bottom right shows it for good |
+| `Ctrl+M` | The menu bar at *Photos on screen*: copy, move or delete all photos the filter shows |
 | `Ctrl+Z` | Undo the last mark or edit, newest first – on a deleted photo: put it back |
 | `H` | Help: all keys, and tips on working with Cerno |
 
 ## The values
 
-- **Aesthetics** – how appealing two AIs find the photo (LAION and V2.5, averaged). 0 % is unappealing, 100 % very appealing; most photos land at 40–60 %. A fixed scale: a photo has the same value in every folder. Needs two image models (CLIP 1.2 GB and V2.5 1.7 GB). Cerno offers to download them once (*Menu → Models & data*), and an interrupted download continues where it stopped.
+- **Aesthetics** – how appealing two AIs find the photo (LAION and V2.5, averaged). 0 % is unappealing, 100 % very appealing; most photos land at 40–60 %. A fixed scale: a photo has the same value in every folder. Needs two image models (CLIP 1.2 GB and V2.5 1.7 GB). Cerno offers to download them once (*Menu bar › Settings › Models & data*), and an interrupted download continues where it stopped.
 - **Sharpness** – how sharp the photo is compared with the other photos in the folder, measured at the eyes when there is a face. "Probably blurry" marks the blurriest ones.
 - **Prediction** – the stars Cerno thinks you would give, learnt from your own ratings (and from the photos you reject, as 0 stars – deleted ones don't count) once there are 15 of them. It shows as lightly filled stars and never sets a rating.
 
