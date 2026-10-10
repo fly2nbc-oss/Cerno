@@ -268,6 +268,19 @@ pub fn help(painter: &Painter, center: Pos2, color: Color32) {
     );
 }
 
+/// A stroked chevron pointing left or right (`‹` / `›`), `size` high: the photo's browse
+/// arrows.
+pub fn side_chevron(painter: &Painter, center: Pos2, right: bool, size: f32, color: Color32) {
+    let s = if right { 1.0 } else { -1.0 };
+    let d = size / 2.0;
+    let points = vec![
+        center + vec2(-s * d * 0.4, -d),
+        center + vec2(s * d * 0.4, 0.0),
+        center + vec2(-s * d * 0.4, d),
+    ];
+    painter.add(Shape::line(points, Stroke::new(size / 7.0, color)));
+}
+
 /// Small triangle for fold rows in the details panel (`open` = expanded).
 pub fn chevron(painter: &Painter, center: Pos2, open: bool, color: Color32) {
     let d = 4.0;

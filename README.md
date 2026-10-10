@@ -16,7 +16,7 @@ Cerno (Latin *cerno* – "I sift, see clearly") helps you go through a folder of
 
 ## What it does
 
-- **Instant switching** – the photos around the current one are loaded in advance.
+- **Instant switching** – the photos around the current one are loaded in advance; with the keyboard, or the arrows that show when the mouse moves over the photo.
 - **Rate from the keyboard** – stars, reject, colour labels, comment and keywords; `Ctrl+Z` takes the last marks back, newest first.
 - **Two helpers under every photo** – *Aesthetics* and *Sharpness*, both in percent (see [the values](#the-values)). Empty stars fill lightly with Cerno's guess of your rating.
 - **Sort and filter** – by capture time, rating, aesthetics, sharpness; photos or videos only; blurry shots, duplicates, files cut off while copying, similar photos, photos with or without people; *without ✕* hides the rejected ones; a pasted list of file names shows the photos a client chose; a camera whose clock was off is set right without touching its files. Filters of different kinds work together: *4★* and *Blurry* are the blurry 4-star photos.
