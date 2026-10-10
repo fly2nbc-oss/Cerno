@@ -65,7 +65,6 @@ use crate::rating::RatingWriter;
 use crate::theme::tokens;
 use crate::thumbs::Thumbs;
 use crate::transfer::Queue as TransferQueue;
-use crate::ui::details::{DetailsMode, DetailsTab};
 use crate::ui::overlays;
 use crate::ui::{description, viewer};
 use crate::view::{Media, Percentiles, PhotoFilter, SortKey, View, ViewOptions};
@@ -139,8 +138,6 @@ pub struct CernoApp {
     session_labels: HashMap<PathBuf, Option<Label>>,
     /// Comments and keywords given in this session; they win over the file the same way.
     session_descriptions: HashMap<PathBuf, Description>,
-    /// Which tab the details panel shows (`Ctrl+Tab` steps through them).
-    details_tab: DetailsTab,
     /// The current photo's faces (`G`).
     faces: faces::Faces,
     /// The comment and keyword being typed in the description tab.
@@ -173,23 +170,12 @@ pub struct CernoApp {
     /// Columns and cells per page of the last drawn grid, for `↑`/`↓` and Page Up / Down.
     grid_columns: usize,
     grid_page: usize,
-    /// Top bar (`F`), filmstrip (`F6`) and details panel (`Tab`); the info bar always shows.
-    show_toolbar: bool,
-    show_filmstrip: bool,
-    details: DetailsMode,
-    /// The stage `Tab` brings back.
-    details_last: DetailsMode,
-    /// The CLIP attributes are folded out in the details panel (session-wide).
-    attributes_open: bool,
+    /// Which bars show, and the details panel's stage and tab.
+    bars: panels::Bars,
     /// What lies over the window: the help page, the list beside a menu bar row or a card.
     layer: layer::Layer,
-    /// The menu bar on the left is switched on (the menu button, saved as `side_bar`).
-    show_side_bar: bool,
     /// The menu bar's groups, its keyboard and its counts.
     menu_bar: menu::MenuBar,
-    /// The filter bar showed on its own (a filter hid everything) and the pointer is on it: it
-    /// stays until the pointer leaves.
-    toolbar_held: bool,
     /// `Tab` and `Ctrl+Tab` taken out of egui's input (`raw_input_hook`).
     pressed: keys::Pressed,
     /// When the language was last switched (the flag shows for a moment).
@@ -309,21 +295,9 @@ impl CernoApp {
         let auto_advance = db.setting("auto_advance").as_deref() == Some("1");
         let subfolders = db.setting("subfolders").as_deref() == Some("1");
         let pair_mode = db.setting(pairs::SETTING).as_deref() != Some("0");
-        // Only the photo, the filmstrip and the info bar by default.
-        let show_toolbar = db.setting("top_bar").as_deref() == Some("1");
-        let show_filmstrip = db.setting("filmstrip").as_deref() != Some("0");
-        // Off until the menu button switches it on (the user's decision F3 of 2026-10-10).
-        let show_side_bar = db.setting("side_bar").as_deref() == Some("1");
+        let bars = panels::Bars::restore(&db);
         let menu_bar = menu::MenuBar::restore(&db);
         let external = external::External::restore(&db);
-        let details = db
-            .setting("details_mode")
-            .and_then(|m| DetailsMode::from_id(&m))
-            .unwrap_or(DetailsMode::Off);
-        let details_tab = db
-            .setting("details_tab")
-            .and_then(|id| DetailsTab::from_id(&id))
-            .unwrap_or(DetailsTab::Values);
         let videos = video::Videos::restore(&db);
         let target = target::Target::restore(&db);
 
@@ -370,7 +344,6 @@ impl CernoApp {
             session_ratings: HashMap::new(),
             session_labels: HashMap::new(),
             session_descriptions: HashMap::new(),
-            details_tab,
             faces: faces::Faces::default(),
             drafts: description::Drafts::default(),
             auto_advance,
@@ -388,19 +361,9 @@ impl CernoApp {
             grid_shown: None,
             grid_columns: 1,
             grid_page: 1,
-            show_toolbar,
-            show_filmstrip,
-            details,
-            details_last: if details == DetailsMode::Off {
-                DetailsMode::On
-            } else {
-                details
-            },
-            attributes_open: false,
+            bars,
             layer: layer::Layer::None,
-            show_side_bar,
             menu_bar,
-            toolbar_held: false,
             pressed: keys::Pressed::default(),
             language_flash: None,
             notice,

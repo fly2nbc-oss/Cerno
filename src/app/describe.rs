@@ -43,25 +43,25 @@ impl CernoApp {
     /// `Ctrl+Tab` (`Ctrl+Shift+Tab` backwards): the details panel's next tab. A closed panel
     /// opens on the tab it had. A comment being typed is taken first, and its field lets go.
     pub(super) fn cycle_details_tab(&mut self, backwards: bool) {
-        if self.details == DetailsMode::Off {
+        if self.bars.details == DetailsMode::Off {
             self.set_details(DetailsMode::On);
             self.save_panels();
             return;
         }
         let tab = if backwards {
-            self.details_tab.prev()
+            self.bars.details_tab.prev()
         } else {
-            self.details_tab.next()
+            self.bars.details_tab.next()
         };
         self.set_details_tab(tab);
     }
 
     pub(super) fn set_details_tab(&mut self, tab: DetailsTab) {
-        if self.details_tab == tab {
+        if self.bars.details_tab == tab {
             return;
         }
         self.commit_comment();
-        self.details_tab = tab;
+        self.bars.details_tab = tab;
         self.db.put_setting("details_tab", tab.id());
     }
 

@@ -487,8 +487,8 @@ impl CernoApp {
         // On the description tab `Enter` puts the cursor into the keyword field.
         if keys.play
             && !self.grid
-            && self.details != crate::ui::details::DetailsMode::Off
-            && self.details_tab == crate::ui::details::DetailsTab::Description
+            && self.bars.details != crate::ui::details::DetailsMode::Off
+            && self.bars.details_tab == crate::ui::details::DetailsTab::Description
         {
             self.drafts.focus_keyword = true;
         }

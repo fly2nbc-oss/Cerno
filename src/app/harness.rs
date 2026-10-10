@@ -213,14 +213,14 @@ mod tests {
         h.settle();
         h.app.layer = Layer::Models;
         h.settle();
-        let details = h.app.details;
+        let details = h.app.bars.details;
         h.frame(presses(&[
             (Key::X, NONE),
             (Key::Num3, NONE),
             (Key::Tab, NONE),
         ]));
         assert_eq!(h.rating_of(0), None);
-        assert_eq!(h.app.details, details);
+        assert_eq!(h.app.bars.details, details);
         assert_eq!(h.layer(), "models");
     }
 
@@ -371,7 +371,7 @@ mod tests {
     fn ctrl_m_shows_the_menu_bar_for_the_moment() {
         let mut h = Harness::new(3);
         h.settle();
-        assert!(!h.app.show_side_bar);
+        assert!(!h.app.bars.side_bar);
         h.press(Key::M, Modifiers::COMMAND);
         h.settle();
         assert!(h.app.menu_bar.state.focus);

@@ -36,7 +36,7 @@ impl CernoApp {
     pub(super) fn layout(&self, window: Rect) -> Layout {
         let mut area = window;
         let toolbar = (!self.all.is_empty()
-            && (self.show_toolbar || self.view.is_empty() || self.toolbar_held))
+            && (self.bars.toolbar || self.view.is_empty() || self.bars.toolbar_held))
             .then(|| {
                 let r = Rect::from_min_size(
                     window.min,
@@ -54,7 +54,7 @@ impl CernoApp {
             r
         });
         // The grid shows every photo already: its space goes to the grid.
-        let filmstrip = (info.is_some() && self.show_filmstrip && !self.grid).then(|| {
+        let filmstrip = (info.is_some() && self.bars.filmstrip && !self.grid).then(|| {
             let r = Rect::from_min_max(
                 pos2(window.min.x, area.max.y - filmstrip::HEIGHT),
                 pos2(window.max.x, area.max.y),
@@ -68,7 +68,7 @@ impl CernoApp {
             area.min.x = r.max.x;
             r
         });
-        let details = (info.is_some() && self.details != DetailsMode::Off).then(|| {
+        let details = (info.is_some() && self.bars.details != DetailsMode::Off).then(|| {
             let r = Rect::from_min_max(pos2(area.max.x - details::WIDTH, area.min.y), area.max);
             area.max.x = r.min.x;
             r
@@ -317,9 +317,9 @@ impl CernoApp {
             pair: self.pair_note(&path).map(|(note, _)| note),
             panels: info_bar::Panels {
                 side_bar: self.side_bar_shown(),
-                toolbar: self.show_toolbar,
-                details: self.details != DetailsMode::Off,
-                filmstrip: self.show_filmstrip,
+                toolbar: self.bars.toolbar,
+                details: self.bars.details != DetailsMode::Off,
+                filmstrip: self.bars.filmstrip,
             },
             views: info_bar::Views {
                 grid: self.grid,
@@ -348,10 +348,10 @@ impl CernoApp {
             return;
         };
         let (tabs, body) = rect.split_top_bottom_at_y(rect.top() + details::TABS_HEIGHT);
-        if let Some(tab) = details::tabs(ui, tabs, self.details_tab) {
+        if let Some(tab) = details::tabs(ui, tabs, self.bars.details_tab) {
             self.set_details_tab(tab);
         }
-        if self.details_tab == DetailsTab::Description {
+        if self.bars.details_tab == DetailsTab::Description {
             self.draw_description(ui, body, &path, image.as_deref());
             return;
         }
@@ -379,7 +379,7 @@ impl CernoApp {
                 video,
                 overlay: self.overlay,
             },
-            &mut self.attributes_open,
+            &mut self.bars.attributes_open,
         );
         if let Some(mode) = overlay {
             self.set_overlay(mode);
@@ -413,7 +413,7 @@ impl CernoApp {
         };
         let mut options = self.options;
         let out = filter_bar::toolbar(ui, rect, &mut options, &info);
-        self.toolbar_held = !self.show_toolbar && ui.rect_contains_pointer(rect);
+        self.bars.toolbar_held = !self.bars.toolbar && ui.rect_contains_pointer(rect);
         if out.options_changed {
             self.options = options;
             self.options_changed(&ctx);
