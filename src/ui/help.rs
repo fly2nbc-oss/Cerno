@@ -64,10 +64,19 @@ pub struct HelpOutput {
     pub page: Option<Page>,
     /// About Cerno: "Open data folder" (where `crash.log` is).
     pub open_data_folder: bool,
+    /// About Cerno: "Check now".
+    pub check_updates: bool,
 }
 
-/// Modal page over the whole window; a click beside the card closes it.
-pub fn overlay(ctx: &Context, window: Rect, page: Page, t: &Texts) -> HelpOutput {
+/// Modal page over the whole window; a click beside the card closes it. `update`: what About
+/// Cerno says about updates.
+pub fn overlay(
+    ctx: &Context,
+    window: Rect,
+    page: Page,
+    t: &Texts,
+    update: &UpdateLine,
+) -> HelpOutput {
     Area::new(Id::new("help"))
         .order(Order::Foreground)
         .fixed_pos(window.min)
@@ -75,7 +84,11 @@ pub fn overlay(ctx: &Context, window: Rect, page: Page, t: &Texts) -> HelpOutput
             let backdrop = ui.allocate_rect(window, Sense::click());
             ui.painter()
                 .rect_filled(window, 0.0, Color32::from_black_alpha(170));
-            let mut out = card_with_content(ui, window, false, page, t, Setup::READY);
+            let extra = Extra {
+                setup: Setup::READY,
+                update: Some(update),
+            };
+            let mut out = card_with_content(ui, window, false, page, t, extra);
             out.close |= backdrop.clicked();
             out
         })
@@ -96,10 +109,31 @@ impl Setup {
     };
 }
 
+/// About Cerno's update section: the state of the check, and a newer version's link (its
+/// label, its page).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpdateLine {
+    pub status: String,
+    pub release: Option<(String, String)>,
+    /// A check runs: *Check now* waits.
+    pub checking: bool,
+}
+
+/// What a page says besides the fixed texts.
+#[derive(Clone, Copy)]
+struct Extra<'a> {
+    setup: Setup,
+    update: Option<&'a UpdateLine>,
+}
+
 /// The start screen: the help content with the "Open folder" button, centred in `rect`; a
 /// line names what is still missing and where to get it.
 pub fn welcome(ui: &mut Ui, rect: Rect, t: &Texts, setup: Setup) -> HelpOutput {
-    card_with_content(ui, rect, true, Page::Keys, t, setup)
+    let extra = Extra {
+        setup,
+        update: None,
+    };
+    card_with_content(ui, rect, true, Page::Keys, t, extra)
 }
 
 /// The card, centred in `space`: as high as its content was last frame, at most the space.
@@ -110,7 +144,7 @@ fn card_with_content(
     welcome: bool,
     page: Page,
     t: &Texts,
-    setup: Setup,
+    extra: Extra<'_>,
 ) -> HelpOutput {
     const MARGIN_Y: f32 = 20.0;
     let height_id = Id::new(("help-height", welcome, page));
@@ -145,7 +179,7 @@ fn card_with_content(
     // Not `content_size`: without auto-shrinking it is at least the visible area.
     let (out, content_height) = ScrollArea::vertical()
         .auto_shrink(false)
-        .show(&mut inner, |ui| content(ui, welcome, page, t, setup))
+        .show(&mut inner, |ui| content(ui, welcome, page, t, extra))
         .inner;
     if ui.data(|d| d.get_temp::<f32>(height_id)) != Some(content_height) {
         ui.data_mut(|d| d.insert_temp(height_id, content_height));
@@ -155,7 +189,14 @@ fn card_with_content(
 }
 
 /// Draws the page; returns what was clicked and the height it needs.
-fn content(ui: &mut Ui, welcome: bool, page: Page, t: &Texts, setup: Setup) -> (HelpOutput, f32) {
+fn content(
+    ui: &mut Ui,
+    welcome: bool,
+    page: Page,
+    t: &Texts,
+    extra: Extra<'_>,
+) -> (HelpOutput, f32) {
+    let setup = extra.setup;
     let mut out = HelpOutput::default();
     let top = ui.cursor().min;
     let width = ui.available_width();
@@ -259,7 +300,7 @@ fn content(ui: &mut Ui, welcome: bool, page: Page, t: &Texts, setup: Setup) -> (
                 .max_rect(space)
                 .layout(Layout::top_down(Align::Min)),
         );
-        about(&mut column, &mut out, t);
+        about(&mut column, &mut out, t, extra.update);
         y = footer(&painter, left, column.min_rect().bottom() + 18.0, width, t);
         ui.allocate_space(vec2(width, y - top.y));
         return (out, y - top.y);
@@ -363,7 +404,7 @@ fn content(ui: &mut Ui, welcome: bool, page: Page, t: &Texts, setup: Setup) -> (
 /// About Cerno: what it is, version, copyright, licence and source; where to report a problem
 /// or suggest an idea – a GitHub issue with version and system filled in, never a path or a
 /// photo's name – and the third parties. The links only open the browser; Cerno sends nothing.
-fn about(ui: &mut Ui, out: &mut HelpOutput, t: &Texts) {
+fn about(ui: &mut Ui, out: &mut HelpOutput, t: &Texts, update: Option<&UpdateLine>) {
     let body = |text: &str, color| {
         RichText::new(i18n::keep_together(text))
             .font(FontId::proportional(text::BODY))
@@ -398,6 +439,24 @@ fn about(ui: &mut Ui, out: &mut HelpOutput, t: &Texts) {
             ui.add(link(REPOSITORY.trim_start_matches("https://"), REPOSITORY));
             ui.end_row();
         });
+
+    // Updates: what is asked, that it can be turned off, where the check stands.
+    if let Some(update) = update {
+        heading(ui, t.about_updates);
+        paragraph(ui, t.about_updates_text);
+        ui.horizontal(|ui| {
+            ui.label(body(&update.status, tokens::TEXT));
+            ui.add_space(18.0);
+            let button = eframe::egui::Button::new(t.update_check_now);
+            if ui.add_enabled(!update.checking, button).clicked() {
+                out.check_updates = true;
+            }
+            if let Some((label, url)) = &update.release {
+                ui.add_space(18.0);
+                ui.add(link(label, url));
+            }
+        });
+    }
 
     heading(ui, t.about_bugs);
     paragraph(ui, t.about_bugs_text);
@@ -701,7 +760,16 @@ mod tests {
                             ..Default::default()
                         },
                         |ui| {
-                            overlay(ui.ctx(), window, page, lang.texts());
+                            // The longest the update section gets: a newer version's link.
+                            let update = UpdateLine {
+                                status: (lang.texts().update_newer)("10.10.10"),
+                                release: Some((
+                                    (lang.texts().cmd_update_download)("10.10.10"),
+                                    "https://example.org".to_owned(),
+                                )),
+                                checking: false,
+                            };
+                            overlay(ui.ctx(), window, page, lang.texts(), &update);
                         },
                     );
                     output.textures_delta.clear();

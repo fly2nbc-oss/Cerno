@@ -41,6 +41,7 @@ mod thumbs;
 mod tools;
 mod transfer;
 mod ui;
+mod update;
 mod video;
 mod view;
 
