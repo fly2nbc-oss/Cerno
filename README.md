@@ -91,6 +91,15 @@ Cerno works on your computer. Your photos, their names and your ratings never le
 - **Downloads you ask for:** the aesthetics models (from Hugging Face and this repository's releases) and, on Windows, ExifTool (from SourceForge) – only after you click, each checked by size and SHA-256.
 - **Links you click:** *About Cerno* opens GitHub issues with the version and system filled in, and Details › File opens a photo's GPS position in Google Maps or OpenStreetMap – only on a click, in your browser.
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/) – for the Windows releases from the one in which the SignPath Foundation has accepted the project; earlier ones are unsigned.
+
+- **What is signed:** only what this repository builds – `cerno.exe` and the installer `cerno_<version>_x64-setup.exe`, in the CI run of the release's tag, from the source at that tag. The libraries of others in the package (GStreamer, libheif, ONNX Runtime, the VC++ runtime) keep their own signatures or have none, and the uninstaller, which the installer writes on your computer, is not signed.
+- **Committers and reviewers:** [fly2nbc-oss](https://github.com/fly2nbc-oss), the author.
+- **Approvers:** fly2nbc-oss – every signing request is approved by hand.
+- **Privacy:** see [Privacy](#privacy). Cerno sends nothing but the update check, which the installer names on its first page and which can be turned off.
+
 ## More
 
 - Building from source and checks: [`CONTRIBUTING.md`](./CONTRIBUTING.md)

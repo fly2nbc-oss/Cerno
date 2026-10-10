@@ -19,6 +19,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 ### Changed
 
 - **A shorter, clearer help** – every shortcut is still there, each with a few words; one *Shift+…* row replaces the Shift row of every key. What the rows used to explain in detail – the grid, straighten and crop, the mouse wheel, the four-up view, the file list – is in the tips, under *Good to know* and where it belongs.
+- **Signed Windows packages, prepared** – once the SignPath Foundation has accepted Cerno, `cerno.exe` and the installer of each release are signed (free code signing by SignPath.io), and Windows stops calling the publisher unknown. Until then they stay unsigned. The README has the code signing policy.
 - **No faces tab in the details panel any more** – `G` still shows all faces of a photo large; `Ctrl+Tab` steps between the values and the description.
 - **Faster start** – the first photo appears at once in the size of the last session's photo area, instead of being decoded twice. The aesthetics models, the video and HEIC libraries and ExifTool load only when they are needed, and the analysis and the prediction start a moment after the first photo, so they never compete with it. The screen redraws less often while the analysis runs.
 
