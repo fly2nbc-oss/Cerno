@@ -99,20 +99,22 @@ fn union_jack(painter: &Painter, rect: Rect) {
     }
 }
 
-/// Which part of the window a panel button toggles.
+/// Which part of the window a panel button toggles: the menu bar (left), the filter bar
+/// (top), the details panel (right), the filmstrip (bottom).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
+    Left,
     Top,
     Right,
     Bottom,
 }
 
-/// Window outline with the panel's strip. Kept for the view commands; the info bar no longer
-/// paints these buttons.
-#[allow(dead_code)]
+/// Window outline with the panel's strip, filled while the panel shows: the info bar's panel
+/// buttons.
 pub fn panel(painter: &Painter, center: Pos2, panel: Panel, shown: bool, color: Color32) {
     let frame = Rect::from_center_size(center, vec2(16.0, 13.0));
     let strip = match panel {
+        Panel::Left => Rect::from_min_max(frame.min, pos2(frame.min.x + 5.5, frame.max.y)),
         Panel::Top => Rect::from_min_max(frame.min, pos2(frame.max.x, frame.min.y + 4.5)),
         Panel::Right => Rect::from_min_max(pos2(frame.max.x - 5.5, frame.min.y), frame.max),
         Panel::Bottom => Rect::from_min_max(pos2(frame.min.x, frame.max.y - 4.5), frame.max),
@@ -121,6 +123,10 @@ pub fn panel(painter: &Painter, center: Pos2, panel: Panel, shown: bool, color: 
         painter.rect_filled(strip, 1.5, color);
     } else {
         let line = match panel {
+            Panel::Left => [
+                pos2(strip.max.x, frame.min.y),
+                pos2(strip.max.x, frame.max.y),
+            ],
             Panel::Top => [
                 pos2(frame.min.x, strip.max.y),
                 pos2(frame.max.x, strip.max.y),
@@ -279,6 +285,38 @@ pub fn side_chevron(painter: &Painter, center: Pos2, right: bool, size: f32, col
         center + vec2(-s * d * 0.4, d),
     ];
     painter.add(Shape::line(points, Stroke::new(size / 7.0, color)));
+}
+
+/// A quarter turn (`↺` / `↻`): three quarters of a circle with an arrow head at its end, about
+/// 13 px wide – the menu bar's turn buttons (Segoe UI's arrows are not sure to be there).
+pub fn turn(painter: &Painter, center: Pos2, clockwise: bool, color: Color32) {
+    let r = 5.0;
+    let s = if clockwise { 1.0 } else { -1.0 };
+    // From the top, the long way round, ending just right (left) of the top.
+    let start = -std::f32::consts::FRAC_PI_2 + s * 0.35;
+    let sweep = s * 1.5 * std::f32::consts::PI;
+    let points: Vec<Pos2> = (0..=16)
+        .map(|k| {
+            let a = start + sweep * k as f32 / 16.0;
+            center + vec2(r * a.cos(), r * a.sin())
+        })
+        .collect();
+    let end = points[points.len() - 1];
+    let before = points[points.len() - 2];
+    painter.add(Shape::line(points, Stroke::new(1.4, color)));
+    // The arrow head along the direction the arc runs at its end.
+    let dir = (end - before).normalized();
+    let side = vec2(-dir.y, dir.x);
+    let tip = end + dir * 2.6;
+    painter.add(Shape::convex_polygon(
+        vec![
+            tip,
+            end - dir * 0.6 + side * 2.6,
+            end - dir * 0.6 - side * 2.6,
+        ],
+        color,
+        Stroke::NONE,
+    ));
 }
 
 /// Small triangle for fold rows in the details panel (`open` = expanded).

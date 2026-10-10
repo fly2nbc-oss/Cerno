@@ -1,10 +1,9 @@
-//! Menus: the burger menu (`Ctrl+K` and the button at the bottom right) and the action menu
-//! under the filter bar's "Action" button (`Ctrl+M`). Groups open a submenu – a group inside a
-//! group opens another one beside it – everything else is a row; shortcuts sit on the right.
+//! Menu rows, and the small list that opens beside a row of the menu bar (`ui/side_bar.rs`):
+//! the programs of *Edit elsewhere* and the languages. Shortcuts sit on the right. A row never
+//! takes egui's keyboard focus (`Sense::CLICK`): `Space` would click it again.
 //!
-//! Keyboard, always in the deepest open list: ↑/↓ move, Enter runs (or opens a submenu), →
-//! opens and ← closes a submenu, a letter jumps to the next row starting with it, Esc closes
-//! the deepest submenu first, then the menu.
+//! The list's keyboard: ↑/↓ move, Enter runs, a letter jumps to the next row starting with it,
+//! Esc (or ←) closes the list.
 
 use eframe::egui::{
     Align2, Area, Color32, Context, CursorIcon, Event, FontId, Id, Key, Order, Rect, Sense, Stroke,
@@ -16,72 +15,22 @@ use eframe::egui::text::{LayoutJob, TextWrapping};
 use crate::theme::{text, tokens};
 use crate::ui::icons;
 
-const WIDTH: f32 = 340.0;
-/// The action menu under its button is narrower – unless a row needs more (its labels name a
-/// count, and French or Italian ones are long).
-const ANCHORED_WIDTH: f32 = 240.0;
+/// A list beside a row is as wide as its longest row needs, between these two (a program's
+/// name, French or Italian ones are long).
+const MIN_WIDTH: f32 = 240.0;
+const MAX_WIDTH: f32 = 340.0;
 const ROW_HEIGHT: f32 = 32.0;
 
 /// How a row shows its state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mark {
-    /// A plain action; running it closes the menu.
+    /// A plain action; running it closes the list (and gives the keyboard back).
     None,
-    /// A switch: a box, ticked when on. Clicking keeps the menu open.
+    /// A switch: a box, ticked when on. Running it keeps the list or bar.
     Toggle(bool),
-    /// One of several values: a tick on the current one only. Clicking keeps the menu open.
+    /// One of several values: a tick on the current one only. Running it keeps the list or
+    /// bar.
     Choice(bool),
-}
-
-/// A small picture in front of a row's label, the way the filter bar and the filmstrip show
-/// the same thing: stars, a colour, the reject cross, the bin.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum RowIcon {
-    /// A colour label's dot.
-    Swatch(Color32),
-    /// An empty ring: no colour label.
-    NoColour,
-    /// 1–5 filled stars.
-    Stars(u8),
-    /// An empty star: no stars.
-    NoStars,
-    /// The reject cross.
-    Reject,
-    /// The bin: deleted photos.
-    Trash,
-}
-
-/// Radius of a row's stars and the distance between them.
-const ICON_STAR: f32 = 4.5;
-const ICON_STAR_GAP: f32 = 10.8;
-
-impl RowIcon {
-    /// How much room it takes before the label.
-    fn width(self) -> f32 {
-        match self {
-            Self::Stars(n) => ICON_STAR_GAP * f32::from(n.max(1) - 1) + 2.0 * ICON_STAR,
-            _ => 12.0,
-        }
-    }
-
-    /// Painted left-aligned from `x`, centred on `y`.
-    fn paint(self, painter: &eframe::egui::Painter, x: f32, y: f32, colour: Color32) {
-        let centre = pos2(x + self.width() / 2.0, y);
-        match self {
-            Self::Swatch(swatch) => {
-                painter.circle_filled(centre, 5.0, swatch);
-            }
-            Self::NoColour => {
-                painter.circle_stroke(centre, 4.5, Stroke::new(1.2, tokens::MUTED));
-            }
-            Self::Stars(n) => {
-                crate::ui::stars::paint_mini_rating(painter, centre, n, ICON_STAR, colour);
-            }
-            Self::NoStars => crate::ui::stars::paint_star(painter, centre, 5.5, false, colour),
-            Self::Reject => icons::reject_mark(painter, centre, 9.0, tokens::STATUS_ERROR),
-            Self::Trash => icons::trash(painter, centre, 0.85, colour),
-        }
-    }
 }
 
 pub struct Row<A> {
@@ -89,8 +38,6 @@ pub struct Row<A> {
     pub label: String,
     pub shortcut: Option<String>,
     pub mark: Mark,
-    /// A picture in front of the label; the rows of one list keep their labels in line.
-    pub icon: Option<RowIcon>,
     /// Why the row can't run right now (greyed out, the reason as its tooltip).
     pub disabled: Option<&'static str>,
     /// What the row does, in more words than its label (its tooltip while it can run).
@@ -104,7 +51,6 @@ impl<A> Row<A> {
             label: label.into(),
             shortcut,
             mark: Mark::None,
-            icon: None,
             disabled: None,
             hint: None,
         }
@@ -129,160 +75,17 @@ impl<A> Row<A> {
         self.mark = Mark::Choice(current);
         self
     }
-
-    pub fn swatch(mut self, colour: Color32) -> Self {
-        self.icon = Some(RowIcon::Swatch(colour));
-        self
-    }
-
-    pub fn icon(mut self, icon: RowIcon) -> Self {
-        self.icon = Some(icon);
-        self
-    }
 }
 
-/// The room the icons of one list take: its widest icon, so every label starts in one line.
-fn icon_column<A>(list: &[Entry<A>]) -> f32 {
-    list.iter()
-        .filter_map(|entry| match entry {
-            Entry::Row(row) => row.icon.map(RowIcon::width),
-            Entry::Group(_) => None,
-        })
-        .fold(0.0, f32::max)
-}
-
-pub struct Group<A> {
-    pub label: String,
-    pub shortcut: Option<String>,
-    pub entries: Vec<Entry<A>>,
-}
-
-impl<A> Group<A> {
-    /// A submenu of rows.
-    pub fn new(label: impl Into<String>, shortcut: Option<String>, rows: Vec<Row<A>>) -> Self {
-        Self::nested(label, shortcut, rows.into_iter().map(Entry::Row).collect())
-    }
-
-    /// A submenu that holds further submenus too.
-    pub fn nested(
-        label: impl Into<String>,
-        shortcut: Option<String>,
-        entries: Vec<Entry<A>>,
-    ) -> Self {
-        Self {
-            label: label.into(),
-            shortcut,
-            entries,
-        }
-    }
-}
-
-pub enum Entry<A> {
-    Row(Row<A>),
-    Group(Group<A>),
-}
-
-impl<A> Entry<A> {
-    fn label(&self) -> &str {
-        match self {
-            Self::Row(row) => &row.label,
-            Self::Group(group) => &group.label,
-        }
-    }
-
-    /// A submenu with this label.
-    pub fn is_group(&self, label: &str) -> bool {
-        matches!(self, Self::Group(group) if group.label == label)
-    }
-}
-
-/// The list reached by opening the groups on `path` (one index per level), or `None` when the
-/// path no longer leads through groups.
-fn level<'a, A>(entries: &'a [Entry<A>], path: &[usize]) -> Option<&'a [Entry<A>]> {
-    let mut list = entries;
-    for &index in path {
-        match list.get(index)? {
-            Entry::Group(group) => list = &group.entries,
-            Entry::Row(_) => return None,
-        }
-    }
-    Some(list)
-}
-
-/// Where the keyboard lands in a list it opens: on the ticked choice, else on the first row
-/// that can run (a greyed-out "Show all" heads the filters while nothing is filtered).
-fn start_row<A>(entries: &[Entry<A>]) -> Option<usize> {
-    entries
-        .iter()
-        .position(|entry| matches!(entry, Entry::Row(row) if row.mark == Mark::Choice(true)))
-        .or_else(|| {
-            entries
-                .iter()
-                .position(|entry| !matches!(entry, Entry::Row(row) if row.disabled.is_some()))
-        })
-        .or(Some(0))
-}
-
-/// Where the menu opens.
+/// Where the list opens: right of a row of the menu bar, its top at the row's (moved up when
+/// the window ends first).
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Placement {
-    /// Above the menu button at the bottom right of the window.
-    BottomRight,
-    /// Under a button, right-aligned with it.
-    Below(Rect),
-}
+pub struct Placement(pub Rect);
 
-/// Open submenus and the highlighted row on each level (keyboard or mouse).
+/// The highlighted row (keyboard or mouse).
 #[derive(Debug, Default)]
 pub struct State {
-    /// The open group on each level, from the menu down: `[2, 0]` is the first entry of the
-    /// third one's submenu, opened.
-    open: Vec<usize>,
-    /// The highlighted row per level – one more than `open`, the deepest list has one too.
-    cursors: Vec<Option<usize>>,
-}
-
-impl State {
-    /// The menu opened down to a submenu: `path` holds the group's index on each level, the
-    /// cursor starts on the submenu's first row. A path that does not fit is cut on the first
-    /// frame (`fit`).
-    pub fn opened(path: Vec<usize>) -> Self {
-        let mut cursors: Vec<Option<usize>> = path.iter().map(|&index| Some(index)).collect();
-        cursors.push(Some(0));
-        Self {
-            open: path,
-            cursors,
-        }
-    }
-
-    /// The menu is rebuilt every frame and can shrink while it is open (a deletion ran out,
-    /// "Refresh order" went away). The open path is cut where it no longer leads through a
-    /// group, and cursors that no longer point at a row are dropped.
-    fn fit<A>(&mut self, entries: &[Entry<A>]) {
-        let depth = (0..self.open.len())
-            .find(|&k| level(entries, &self.open[..=k]).is_none())
-            .unwrap_or(self.open.len());
-        self.open.truncate(depth);
-        self.cursors.resize(depth + 1, None);
-        for k in 0..=depth {
-            let len = level(entries, &self.open[..k]).map_or(0, <[_]>::len);
-            self.cursors[k] = self.cursors[k].filter(|&i| i < len);
-        }
-    }
-
-    /// Opens the group at `index` on level `k`, closing whatever was open below it.
-    fn open_group(&mut self, k: usize, index: usize, start: Option<usize>) {
-        self.close_below(k);
-        self.cursors[k] = Some(index);
-        self.open.push(index);
-        self.cursors.push(start);
-    }
-
-    /// Closes the submenus below level `k`; the cursor on level `k` stays.
-    fn close_below(&mut self, k: usize) {
-        self.open.truncate(k);
-        self.cursors.truncate(k + 1);
-    }
+    cursor: Option<usize>,
 }
 
 pub struct Output<A> {
@@ -290,42 +93,44 @@ pub struct Output<A> {
     pub close: bool,
 }
 
+/// Where the keyboard lands in a list it opens: on the ticked choice, else on the first row
+/// that can run.
+fn start_row<A>(rows: &[Row<A>]) -> Option<usize> {
+    rows.iter()
+        .position(|row| row.mark == Mark::Choice(true))
+        .or_else(|| rows.iter().position(|row| row.disabled.is_none()))
+        .or(Some(0))
+}
+
 pub fn show<A: Copy>(
     ctx: &Context,
     window: Rect,
     state: &mut State,
-    entries: &[Entry<A>],
+    rows: &[Row<A>],
     placement: Placement,
 ) -> Output<A> {
     let mut out = Output {
         run: None,
         close: false,
     };
-    state.fit(entries);
-    keyboard(ctx, state, entries, &mut out);
+    // The list is rebuilt every frame and can shrink while it is open.
+    state.cursor = state
+        .cursor
+        .filter(|&i| i < rows.len())
+        .or_else(|| start_row(rows).filter(|&i| i < rows.len()));
+    keyboard(ctx, state, rows, &mut out);
 
-    let (menu, id) = match placement {
-        Placement::BottomRight => {
-            let height = entries.len() as f32 * ROW_HEIGHT + 8.0;
-            let menu = Rect::from_min_size(
-                pos2(
-                    window.right() - WIDTH - 12.0,
-                    (window.bottom() - height - 12.0).max(window.top() + 8.0),
-                ),
-                vec2(WIDTH, height.min(window.height() - 24.0)),
-            );
-            (menu, Id::new("burger"))
-        }
-        Placement::Below(anchor) => {
-            let height = entries.len() as f32 * ROW_HEIGHT + 8.0;
-            let width = anchored_width(ctx, entries);
-            let left = (anchor.right() - width)
-                .min(window.right() - width - 8.0)
-                .max(window.left() + 8.0);
-            let menu = Rect::from_min_size(pos2(left, anchor.bottom() + 4.0), vec2(width, height));
-            (menu, Id::new("action-menu"))
-        }
-    };
+    let Placement(anchor) = placement;
+    let height = (rows.len() as f32 * ROW_HEIGHT + 8.0).min(window.height() - 16.0);
+    let width = list_width(ctx, rows);
+    let left = (anchor.right() + 4.0)
+        .min(window.right() - width - 8.0)
+        .max(window.left() + 8.0);
+    let top = (anchor.top() - 4.0)
+        .min(window.bottom() - height - 8.0)
+        .max(window.top() + 8.0);
+    let card = Rect::from_min_size(pos2(left, top), vec2(width, height));
+    let id = Id::new("row-list");
 
     Area::new(id)
         .order(Order::Foreground)
@@ -334,89 +139,30 @@ pub fn show<A: Copy>(
             let backdrop = ui.allocate_rect(window, Sense::click());
             ui.painter()
                 .rect_filled(window, 0.0, Color32::from_black_alpha(80));
-
-            // The menu, then each open submenu beside the one it opened from.
-            let mut cards = vec![menu];
-            let mut list = entries;
-            let mut k = 0;
-            loop {
-                let card = cards[k];
-                paint_card(ui.painter(), card);
-                let icons = icon_column(list);
-                let mut next = None;
-                for (index, entry) in list.iter().enumerate() {
-                    let row = Rect::from_min_size(
-                        pos2(
-                            card.left() + 4.0,
-                            card.top() + 4.0 + index as f32 * ROW_HEIGHT,
-                        ),
-                        vec2(card.width() - 8.0, ROW_HEIGHT),
-                    );
-                    if row.bottom() > card.bottom() {
-                        break;
-                    }
-                    let deepest = k == state.open.len();
-                    let lit = state.cursors[k] == Some(index)
-                        && state.open.get(k).is_none_or(|&o| o == index);
-                    match entry {
-                        Entry::Row(item) => {
-                            let response = row_button(
-                                ui,
-                                row,
-                                id.with(("row", k, index)),
-                                RowLook::of(item, icons),
-                                lit,
-                            );
-                            if response.hovered {
-                                state.cursors[k] = Some(index);
-                            }
-                            if response.clicked {
-                                run_row(item, &mut out);
-                            }
-                        }
-                        Entry::Group(group) => {
-                            let look = RowLook {
-                                label: &group.label,
-                                shortcut: group.shortcut.as_deref(),
-                                mark: Mark::None,
-                                icon: None,
-                                icon_column: icons,
-                                submenu: true,
-                                disabled: None,
-                                hint: None,
-                            };
-                            let response =
-                                row_button(ui, row, id.with(("group", k, index)), look, lit);
-                            if response.hovered && deepest {
-                                state.cursors[k] = Some(index);
-                            }
-                            if response.clicked {
-                                if state.open.get(k) == Some(&index) {
-                                    state.close_below(k);
-                                    state.cursors[k] = Some(index);
-                                } else {
-                                    state.open_group(k, index, None);
-                                }
-                            }
-                            if state.open.get(k) == Some(&index) {
-                                let sub = submenu_rect(window, card, row, group.entries.len());
-                                next = Some((sub, group.entries.as_slice()));
-                            }
-                        }
-                    }
-                }
-                let Some((sub, sub_list)) = next else {
+            paint_card(ui.painter(), card);
+            for (index, item) in rows.iter().enumerate() {
+                let row = Rect::from_min_size(
+                    pos2(
+                        card.left() + 4.0,
+                        card.top() + 4.0 + index as f32 * ROW_HEIGHT,
+                    ),
+                    vec2(card.width() - 8.0, ROW_HEIGHT),
+                );
+                if row.bottom() > card.bottom() {
                     break;
-                };
-                cards.push(sub);
-                list = sub_list;
-                k += 1;
+                }
+                let lit = state.cursor == Some(index);
+                let response = row_button(ui, row, id.with(("row", index)), item, false, lit);
+                if response.hovered {
+                    state.cursor = Some(index);
+                }
+                if response.clicked {
+                    run_row(item, &mut out);
+                }
             }
-
             if backdrop.clicked() {
                 let pos = ui.input(|i| i.pointer.interact_pos());
-                let on_card = pos.is_some_and(|p| cards.iter().any(|card| card.contains(p)));
-                if !on_card {
+                if !pos.is_some_and(|p| card.contains(p)) {
                     out.close = true;
                 }
             }
@@ -424,7 +170,7 @@ pub fn show<A: Copy>(
     out
 }
 
-/// Runs a row: a plain action closes the menu, a switch or a choice keeps it open. A disabled
+/// Runs a row: a plain action closes the list, a switch or a choice keeps it open. A disabled
 /// row does nothing; its tooltip says why.
 fn run_row<A: Copy>(row: &Row<A>, out: &mut Output<A>) {
     if row.disabled.is_some() {
@@ -437,8 +183,8 @@ fn run_row<A: Copy>(row: &Row<A>, out: &mut Output<A>) {
 }
 
 /// Keys without modifiers, in the order they were pressed, taken out of the input so nothing
-/// below the menu sees them. They act on the deepest open list. Typed letters jump.
-fn keyboard<A: Copy>(ctx: &Context, state: &mut State, entries: &[Entry<A>], out: &mut Output<A>) {
+/// below the list sees them. Typed letters jump.
+fn keyboard<A: Copy>(ctx: &Context, state: &mut State, rows: &[Row<A>], out: &mut Output<A>) {
     let (keys, letters) = ctx.input_mut(|i| {
         let mut keys = Vec::new();
         let mut letters = Vec::new();
@@ -451,12 +197,7 @@ fn keyboard<A: Copy>(ctx: &Context, state: &mut State, entries: &[Entry<A>], out
             } if modifiers.is_none()
                 && matches!(
                     key,
-                    Key::ArrowUp
-                        | Key::ArrowDown
-                        | Key::ArrowLeft
-                        | Key::ArrowRight
-                        | Key::Enter
-                        | Key::Escape
+                    Key::ArrowUp | Key::ArrowDown | Key::ArrowLeft | Key::Enter | Key::Escape
                 ) =>
             {
                 keys.push(*key);
@@ -470,41 +211,24 @@ fn keyboard<A: Copy>(ctx: &Context, state: &mut State, entries: &[Entry<A>], out
         });
         (keys, letters)
     });
-
     for key in keys {
-        let depth = state.open.len();
-        let Some(list) = level(entries, &state.open) else {
-            continue;
-        };
-        let cursor = state.cursors[depth];
         match key {
-            Key::Escape | Key::ArrowLeft if depth > 0 => {
-                let parent = state.open[depth - 1];
-                state.close_below(depth - 1);
-                state.cursors[depth - 1] = Some(parent);
-            }
-            Key::Escape => out.close = true,
+            Key::Escape | Key::ArrowLeft => out.close = true,
             Key::ArrowDown | Key::ArrowUp => {
-                state.cursors[depth] = step(cursor, list.len(), key == Key::ArrowDown);
+                state.cursor = step(state.cursor, rows.len(), key == Key::ArrowDown);
             }
-            Key::Enter | Key::ArrowRight => match cursor.and_then(|i| Some((i, list.get(i)?))) {
-                Some((index, Entry::Group(group))) => {
-                    state.open_group(depth, index, start_row(&group.entries));
+            Key::Enter => {
+                if let Some(row) = state.cursor.and_then(|i| rows.get(i)) {
+                    run_row(row, out);
                 }
-                Some((_, Entry::Row(row))) if key == Key::Enter => run_row(row, out),
-                _ => {}
-            },
+            }
             _ => {}
         }
     }
-
     for letter in letters {
-        let depth = state.open.len();
-        if let Some(list) = level(entries, &state.open) {
-            let labels: Vec<&str> = list.iter().map(Entry::label).collect();
-            if let Some(i) = jump(&labels, state.cursors[depth], letter) {
-                state.cursors[depth] = Some(i);
-            }
+        let labels: Vec<&str> = rows.iter().map(|row| row.label.as_str()).collect();
+        if let Some(i) = jump(&labels, state.cursor, letter) {
+            state.cursor = Some(i);
         }
     }
 }
@@ -523,7 +247,7 @@ fn step(cursor: Option<usize>, len: usize, down: bool) -> Option<usize> {
 }
 
 /// The next label after `cursor` that starts with `letter` (case- and accent-insensitive).
-fn jump(labels: &[&str], cursor: Option<usize>, letter: char) -> Option<usize> {
+pub(crate) fn jump(labels: &[&str], cursor: Option<usize>, letter: char) -> Option<usize> {
     let wanted = crate::library::sort_key(letter);
     let start = cursor.map_or(0, |c| c + 1);
     (0..labels.len())
@@ -536,26 +260,6 @@ fn jump(labels: &[&str], cursor: Option<usize>, letter: char) -> Option<usize> {
         })
 }
 
-/// A submenu to the left of the list it opens from – or to its right when the window has no
-/// room on the left (a third level on a narrow window) – shifted so a long list stays inside.
-fn submenu_rect(window: Rect, parent: Rect, row: Rect, rows: usize) -> Rect {
-    let sub_h = rows as f32 * ROW_HEIGHT + 8.0;
-    let max_h = (window.height() - 16.0).max(ROW_HEIGHT + 8.0);
-    let h = sub_h.min(max_h);
-    let y = (row.top() - 4.0)
-        .min(window.bottom() - 8.0 - h)
-        .max(window.top() + 8.0);
-    let left = parent.left() - WIDTH - 4.0;
-    let x = if left >= window.left() + 8.0 {
-        left
-    } else {
-        (parent.right() + 4.0)
-            .min(window.right() - WIDTH - 8.0)
-            .max(window.left() + 8.0)
-    };
-    Rect::from_min_size(pos2(x, y), vec2(WIDTH, h))
-}
-
 fn paint_card(painter: &eframe::egui::Painter, rect: Rect) {
     painter.rect_filled(rect, 8.0, tokens::SURFACE);
     painter.rect_stroke(
@@ -566,44 +270,16 @@ fn paint_card(painter: &eframe::egui::Painter, rect: Rect) {
     );
 }
 
-struct RowLook<'a> {
-    label: &'a str,
-    shortcut: Option<&'a str>,
-    mark: Mark,
-    icon: Option<RowIcon>,
-    /// The room the list's icons take ([`icon_column`]); 0 without any.
-    icon_column: f32,
-    submenu: bool,
-    disabled: Option<&'static str>,
-    hint: Option<&'static str>,
-}
-
-impl<'a> RowLook<'a> {
-    fn of<A>(row: &'a Row<A>, icon_column: f32) -> Self {
-        Self {
-            label: &row.label,
-            shortcut: row.shortcut.as_deref(),
-            mark: row.mark,
-            icon: row.icon,
-            icon_column,
-            submenu: false,
-            disabled: row.disabled,
-            hint: row.hint,
-        }
-    }
-}
-
-/// The action menu is as wide as its longest row needs – at least `ANCHORED_WIDTH`, at most
-/// the burger menu's width. The row's label starts 30 pt in and keeps 10 pt free on the right,
-/// inside a card with 4 pt on each side.
-fn anchored_width<A>(ctx: &Context, entries: &[Entry<A>]) -> f32 {
-    let widest = entries
+/// As wide as the longest row needs, between `MIN_WIDTH` and `MAX_WIDTH`. The row's label
+/// starts 30 pt in and keeps 10 pt free on the right, inside a card with 4 pt on each side.
+fn list_width<A>(ctx: &Context, rows: &[Row<A>]) -> f32 {
+    let widest = rows
         .iter()
-        .map(|entry| {
+        .map(|row| {
             ctx.fonts_mut(|fonts| {
                 fonts
                     .layout_no_wrap(
-                        entry.label().to_owned(),
+                        row.label.clone(),
                         FontId::proportional(text::BODY),
                         tokens::TEXT,
                     )
@@ -612,46 +288,59 @@ fn anchored_width<A>(ctx: &Context, entries: &[Entry<A>]) -> f32 {
             })
         })
         .fold(0.0, f32::max);
-    (widest + 30.0 + 10.0 + 8.0 + 4.0).clamp(ANCHORED_WIDTH, WIDTH)
+    (widest + 30.0 + 10.0 + 8.0 + 4.0).clamp(MIN_WIDTH, MAX_WIDTH)
 }
 
-struct RowResponse {
-    clicked: bool,
-    hovered: bool,
+pub(crate) struct RowResponse {
+    pub(crate) clicked: bool,
+    pub(crate) hovered: bool,
 }
 
-fn row_button(
+/// A row of the menu bar, drawn like a row of a list: its box or tick, label and shortcut,
+/// and `›` when it opens a list beside it.
+pub(crate) fn bar_row<A>(
     ui: &mut eframe::egui::Ui,
-    row: Rect,
+    rect: Rect,
     id: Id,
-    look: RowLook<'_>,
+    row: &Row<A>,
+    opens_list: bool,
     lit: bool,
 ) -> RowResponse {
-    let mut response = ui.interact(row, id, Sense::click());
-    response = match (look.disabled, look.hint) {
-        (Some(reason), _) => response.on_hover_text(reason),
-        (None, Some(hint)) => response
-            .on_hover_cursor(CursorIcon::PointingHand)
-            .on_hover_text(hint),
-        (None, None) => response.on_hover_cursor(CursorIcon::PointingHand),
+    row_button(ui, rect, id, row, opens_list, lit)
+}
+
+fn row_button<A>(
+    ui: &mut eframe::egui::Ui,
+    rect: Rect,
+    id: Id,
+    row: &Row<A>,
+    opens_list: bool,
+    lit: bool,
+) -> RowResponse {
+    // Never focusable: a focused row would be clicked again by `Space` ("next photo").
+    let response = ui.interact(rect, id, Sense::CLICK);
+    let response = if row.disabled.is_some() {
+        response
+    } else {
+        response.on_hover_cursor(CursorIcon::PointingHand)
     };
-    let text_colour = if look.disabled.is_some() {
+    let text_colour = if row.disabled.is_some() {
         tokens::MUTED
     } else {
         tokens::TEXT
     };
     let painter = ui.painter();
     if response.hovered() || lit {
-        painter.rect_filled(row, 5.0, tokens::ACCENT_SUBTLE);
+        painter.rect_filled(rect, 5.0, tokens::ACCENT_SUBTLE);
     }
-    let y = row.center().y;
-    let c = pos2(row.left() + 16.0, y);
+    let y = rect.center().y;
+    let c = pos2(rect.left() + 16.0, y);
     let tick = |colour: Color32| {
         let stroke = Stroke::new(1.6, colour);
         painter.line_segment([c + vec2(-4.5, 0.0), c + vec2(-1.5, 3.5)], stroke);
         painter.line_segment([c + vec2(-1.5, 3.5), c + vec2(4.5, -4.0)], stroke);
     };
-    match look.mark {
+    match row.mark {
         Mark::Toggle(on) => {
             let square = Rect::from_center_size(c, vec2(13.0, 13.0));
             painter.rect_stroke(
@@ -667,37 +356,42 @@ fn row_button(
         Mark::Choice(true) => tick(tokens::ACCENT_STRONG),
         Mark::Choice(false) | Mark::None => {}
     }
-    let mut x = row.left() + 30.0;
-    if let Some(icon) = look.icon {
-        icon.paint(painter, x, y, text_colour);
-    }
-    if look.icon_column > 0.0 {
-        x += look.icon_column + 6.0;
-    }
-    let right_reserve = if look.submenu { 22.0 } else { 10.0 };
-    let mut label_right = row.right() - right_reserve;
-    if let Some(shortcut) = look.shortcut {
-        let rect = painter.text(
-            pos2(row.right() - right_reserve, y),
+    let x = rect.left() + 30.0;
+    let right_reserve = if opens_list { 22.0 } else { 10.0 };
+    let mut label_right = rect.right() - right_reserve;
+    if let Some(shortcut) = &row.shortcut {
+        let shown = painter.text(
+            pos2(rect.right() - right_reserve, y),
             Align2::RIGHT_CENTER,
             shortcut,
             FontId::proportional(text::SMALL),
             tokens::MUTED,
         );
-        label_right = rect.left() - 12.0;
+        label_right = shown.left() - 12.0;
     }
     let mut job = LayoutJob::simple_singleline(
-        look.label.to_owned(),
+        row.label.clone(),
         FontId::proportional(text::BODY),
         text_colour,
     );
     job.wrap = TextWrapping::truncate_at_width((label_right - x).max(20.0));
     let galley = painter.layout_job(job);
     let size = galley.size();
+    let elided = galley.elided;
     painter.galley(pos2(x, y - size.y / 2.0), galley, text_colour);
-    if look.submenu {
-        icons::chevron(painter, pos2(row.right() - 12.0, y), false, tokens::MUTED);
+    if opens_list {
+        icons::chevron(painter, pos2(rect.right() - 12.0, y), false, tokens::MUTED);
     }
+    // Why it can't run, else what it does, else – cut short – the whole label.
+    let tooltip = row
+        .disabled
+        .or(row.hint)
+        .map(str::to_owned)
+        .or_else(|| elided.then(|| row.label.clone()));
+    let response = match tooltip {
+        Some(text) => response.on_hover_text(text),
+        None => response,
+    };
     RowResponse {
         clicked: response.clicked(),
         hovered: response.hovered(),
@@ -709,24 +403,24 @@ mod tests {
     use super::*;
     use eframe::egui::{Modifiers, RawInput};
 
-    /// A short action menu keeps its width; a long row (a count, French) widens it, up to the
-    /// burger menu's width.
+    /// A short list keeps its width; a long row (a program's name, French) widens it, up to
+    /// `MAX_WIDTH`.
     #[test]
-    fn the_action_menu_grows_with_its_longest_row() {
+    fn a_list_grows_with_its_longest_row() {
         let ctx = Context::default();
         let mut widths = (0.0, 0.0, 0.0);
         let mut output = ctx.run_ui(RawInput::default(), |_| {
-            let row = |label: &str| vec![Entry::Row(Row::new(0u8, label, None))];
+            let row = |label: &str| vec![Row::new(0u8, label, None)];
             widths = (
-                anchored_width(&ctx, &row("Kopieren")),
-                anchored_width(&ctx, &row("Supprimer les rejetées (1234 photos)")),
-                anchored_width(&ctx, &row(&"x".repeat(200))),
+                list_width(&ctx, &row("Paint")),
+                list_width(&ctx, &row("Supprimer les rejetées (1234 photos)")),
+                list_width(&ctx, &row(&"x".repeat(200))),
             );
         });
         output.textures_delta.clear();
-        assert_eq!(widths.0, ANCHORED_WIDTH);
-        assert!(widths.1 > ANCHORED_WIDTH, "{widths:?}");
-        assert_eq!(widths.2, WIDTH);
+        assert_eq!(widths.0, MIN_WIDTH);
+        assert!(widths.1 > MIN_WIDTH, "{widths:?}");
+        assert_eq!(widths.2, MAX_WIDTH);
     }
 
     fn key(key: Key) -> Event {
@@ -739,22 +433,15 @@ mod tests {
         }
     }
 
-    fn entries() -> Vec<Entry<u8>> {
+    fn rows() -> Vec<Row<u8>> {
         vec![
-            Entry::Row(Row::new(1, "Ordner öffnen", None)),
-            Entry::Group(Group::new(
-                "Sortieren",
-                None,
-                vec![
-                    Row::new(2, "Name", None).choice(false),
-                    Row::new(3, "Sterne", None).choice(true),
-                ],
-            )),
-            Entry::Row(Row::new(4, "Hilfe", Some("H".into()))),
+            Row::new(1, "Deutsch", None).choice(false),
+            Row::new(2, "English", None).choice(true),
+            Row::new(3, "Français", None).choice(false),
         ]
     }
 
-    fn frame(state: &mut State, entries: &[Entry<u8>], events: Vec<Event>) -> Output<u8> {
+    fn frame(state: &mut State, rows: &[Row<u8>], events: Vec<Event>) -> Output<u8> {
         let ctx = Context::default();
         let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 700.0));
         let mut result = None;
@@ -765,200 +452,82 @@ mod tests {
                 ..Default::default()
             },
             |ui| {
-                result = Some(show(
-                    ui.ctx(),
-                    window,
-                    state,
-                    entries,
-                    Placement::BottomRight,
-                ))
+                let row = Rect::from_min_size(pos2(4.0, 100.0), vec2(248.0, 28.0));
+                result = Some(show(ui.ctx(), window, state, rows, Placement(row)))
             },
         );
         output.textures_delta.clear();
-        result.expect("menu shown")
+        result.expect("list shown")
     }
 
     #[test]
-    fn escape_closes() {
-        let out = frame(&mut State::default(), &entries(), vec![key(Key::Escape)]);
-        assert!(out.close);
-        assert!(out.run.is_none());
+    fn escape_and_left_close() {
+        for closing in [Key::Escape, Key::ArrowLeft] {
+            let out = frame(&mut State::default(), &rows(), vec![key(closing)]);
+            assert!(out.close);
+            assert!(out.run.is_none());
+        }
     }
 
     #[test]
-    fn arrows_and_enter_run_a_row() {
-        let entries = entries();
+    fn the_list_opens_on_the_current_choice_and_a_choice_keeps_it() {
+        let rows = rows();
         let mut state = State::default();
-        // Down to "Ordner öffnen", Up wraps to "Hilfe".
+        // On "English" (ticked); Down to "Français", Enter runs it and the list stays.
         let out = frame(
             &mut state,
-            &entries,
-            vec![key(Key::ArrowDown), key(Key::ArrowUp), key(Key::Enter)],
+            &rows,
+            vec![key(Key::ArrowDown), key(Key::Enter)],
         );
-        assert_eq!(out.run, Some(4));
-        assert!(out.close);
-    }
-
-    #[test]
-    fn right_opens_a_submenu_at_the_current_choice() {
-        let entries = entries();
-        let mut state = State::default();
-        let out = frame(
-            &mut state,
-            &entries,
-            vec![
-                key(Key::ArrowDown),
-                key(Key::ArrowDown),
-                key(Key::ArrowRight),
-            ],
-        );
-        assert!(out.run.is_none());
-        assert_eq!(state.open, [1]);
-        assert_eq!(state.cursors[1], Some(1), "starts on the ticked value");
-        // Up to "Name", Enter runs it and the menu stays open (a choice).
-        let out = frame(
-            &mut state,
-            &entries,
-            vec![key(Key::ArrowUp), key(Key::Enter)],
-        );
-        assert_eq!(out.run, Some(2));
+        assert_eq!(out.run, Some(3));
         assert!(!out.close);
-        // Esc closes the submenu only, a second Esc the menu.
-        let out = frame(&mut state, &entries, vec![key(Key::Escape)]);
-        assert!(!out.close);
-        assert!(state.open.is_empty());
-        assert_eq!(state.cursors[0], Some(1), "back on the group");
-        let out = frame(&mut state, &entries, vec![key(Key::Escape)]);
-        assert!(out.close);
-    }
-
-    /// Dieses Foto › Sterne › 3: a submenu inside a submenu.
-    #[test]
-    fn submenus_nest() {
-        let entries = vec![
-            Entry::Row(Row::new(1, "Ordner öffnen", None)),
-            Entry::Group(Group::nested(
-                "Dieses Foto",
-                None,
-                vec![
-                    Entry::Group(Group::new(
-                        "Sterne",
-                        None,
-                        vec![
-                            Row::new(10, "Ohne Sterne", Some("0".into())).choice(false),
-                            Row::new(13, "3 Sterne", Some("3".into())).choice(true),
-                        ],
-                    )),
-                    Entry::Row(Row::new(20, "Ablehnen", Some("X".into())).toggle(false)),
-                ],
-            )),
-        ];
-        let mut state = State::default();
-        // Down twice to "Dieses Foto", → opens it on its first entry, → opens "Sterne" on
-        // the ticked value.
-        frame(
+        // Down wraps to the top.
+        let out = frame(
             &mut state,
-            &entries,
-            vec![
-                key(Key::ArrowDown),
-                key(Key::ArrowDown),
-                key(Key::ArrowRight),
-                key(Key::ArrowRight),
-            ],
+            &rows,
+            vec![key(Key::ArrowDown), key(Key::Enter)],
         );
-        assert_eq!(state.open, [1, 0]);
-        assert_eq!(state.cursors, [Some(1), Some(0), Some(1)]);
-        let out = frame(&mut state, &entries, vec![key(Key::Enter)]);
-        assert_eq!(out.run, Some(13));
-        assert!(!out.close, "a choice keeps the menu open");
-        // ← closes only the deepest level; letters then jump inside "Dieses Foto".
-        frame(&mut state, &entries, vec![key(Key::ArrowLeft)]);
-        assert_eq!(state.open, [1]);
-        frame(&mut state, &entries, vec![Event::Text("a".into())]);
-        let out = frame(&mut state, &entries, vec![key(Key::Enter)]);
-        assert_eq!(out.run, Some(20));
-        // Up to "Sterne", → opens it again.
-        frame(
-            &mut state,
-            &entries,
-            vec![key(Key::ArrowUp), key(Key::ArrowRight)],
-        );
-        assert_eq!(state.open, [1, 0]);
-        // A menu that lost the nested group while open falls back instead of panicking.
-        let flat = vec![Entry::Row(Row::new(1, "Ordner öffnen", None))];
-        let out = frame(&mut state, &flat, vec![key(Key::Enter)]);
-        assert!(state.open.is_empty());
-        assert!(out.run.is_none());
+        assert_eq!(out.run, Some(1));
     }
 
     #[test]
     fn letters_jump() {
-        let entries = entries();
+        let rows = rows();
         let mut state = State::default();
-        let out = frame(&mut state, &entries, vec![Event::Text("h".into())]);
-        assert!(out.run.is_none());
-        assert_eq!(state.cursors[0], Some(2));
-        // "o" matches "Ordner öffnen" regardless of the accent on "ö" further in.
-        frame(&mut state, &entries, vec![Event::Text("O".into())]);
-        assert_eq!(state.cursors[0], Some(0));
+        frame(&mut state, &rows, vec![Event::Text("f".into())]);
+        assert_eq!(state.cursor, Some(2));
+        // "d" finds "Deutsch" from the end, round the top.
+        frame(&mut state, &rows, vec![Event::Text("D".into())]);
+        assert_eq!(state.cursor, Some(0));
     }
 
     #[test]
-    fn a_menu_that_shrinks_while_open_does_not_panic() {
-        let entries = entries();
-        let mut state = State::default();
-        // Cursor on the last row, then the submenu of the group open.
-        frame(&mut state, &entries, vec![key(Key::ArrowUp)]);
-        assert_eq!(state.cursors[0], Some(2));
-        let short = vec![Entry::Row(Row::new(1, "Ordner öffnen", None))];
-        for key_event in [Key::ArrowDown, Key::Enter, Key::ArrowRight, Key::Escape] {
-            let mut state = State {
-                open: vec![1],
-                cursors: vec![Some(2), Some(1)],
-            };
-            frame(&mut state, &short, vec![key(key_event)]);
-            frame(&mut state, &short, vec![Event::Text("x".into())]);
-        }
+    fn a_list_that_shrinks_while_open_does_not_panic() {
+        let mut state = State { cursor: Some(2) };
+        let short = vec![Row::new(1u8, "Paint", None)];
         let out = frame(&mut state, &short, vec![key(Key::Enter)]);
-        assert!(out.run.is_none(), "the old cursor points nowhere now");
-        assert_eq!(state.cursors[0], None);
-    }
-
-    #[test]
-    fn a_list_opens_on_its_first_row_that_can_run() {
-        let entries: Vec<Entry<u8>> = vec![
-            Entry::Row(Row::new(0, "Alle anzeigen", None).disabled(Some("kein Filter"))),
-            Entry::Row(Row::new(1, "1★", None).toggle(false)),
-            Entry::Row(Row::new(2, "2★", None).toggle(false)),
-        ];
-        assert_eq!(start_row(&entries), Some(1));
-        let choices: Vec<Entry<u8>> = vec![
-            Entry::Row(Row::new(0, "Name", None).choice(false)),
-            Entry::Row(Row::new(1, "Datum", None).choice(true)),
-        ];
-        assert_eq!(start_row(&choices), Some(1), "a ticked choice still wins");
+        assert_eq!(
+            out.run,
+            Some(1),
+            "the cursor falls back onto a row that is there"
+        );
     }
 
     #[test]
     fn a_disabled_row_does_not_run() {
-        let entries = vec![
-            Entry::Row(Row::new(1, "Verschieben", None).disabled(Some("läuft schon"))),
-            Entry::Row(Row::new(2, "Hilfe", None)),
+        let rows = vec![
+            Row::new(1, "Paint", None).disabled(Some("läuft schon")),
+            Row::new(2, "Fotos", None),
         ];
         let mut state = State::default();
-        let out = frame(
-            &mut state,
-            &entries,
-            vec![key(Key::ArrowDown), key(Key::Enter)],
+        assert_eq!(
+            start_row(&rows),
+            Some(1),
+            "it opens on the first row that can run"
         );
+        let out = frame(&mut state, &rows, vec![key(Key::ArrowUp), key(Key::Enter)]);
         assert!(out.run.is_none());
-        assert!(!out.close, "the menu stays open, the tooltip says why");
-        let out = frame(
-            &mut state,
-            &entries,
-            vec![key(Key::ArrowDown), key(Key::Enter)],
-        );
-        assert_eq!(out.run, Some(2));
+        assert!(!out.close, "the list stays open, the tooltip says why");
     }
 
     #[test]

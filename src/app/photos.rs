@@ -316,10 +316,7 @@ impl CernoApp {
         // The browse arrows: the single photo only – also while it loads or is zoomed – never
         // over a straighten or crop session, a menu or a card. Drawn after the photo, so they
         // take the click.
-        let covered = self.help_open
-            || self.palette.is_some()
-            || self.action_menu.is_some()
-            || self.modal_open();
+        let covered = self.help_open || self.row_list.is_some() || self.modal_open();
         if let [slot] = slots
             && slot.side == Side::Single
             && self.edit.is_none()
@@ -337,10 +334,7 @@ impl CernoApp {
     /// pixels, then the edit overlay or the compare labels.
     fn draw_photo(&mut self, ui: &egui::Ui, slot: &Slot, image: &LoadedImage) {
         let frame = frame_for(slot.area, image, ui.ctx().pixels_per_point());
-        let covered = self.help_open
-            || self.palette.is_some()
-            || self.action_menu.is_some()
-            || self.modal_open();
+        let covered = self.help_open || self.row_list.is_some() || self.modal_open();
         let editing = self.edit.is_some();
         let is_video = self.slot_is_video(slot);
         if !covered {

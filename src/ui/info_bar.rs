@@ -13,13 +13,16 @@ use crate::i18n;
 use crate::loader::LoadedImage;
 use crate::metadata::{Label, Rating};
 use crate::theme::{text, tokens};
-use crate::ui::{icons, stars};
+use crate::ui::icons::{self, Panel};
+use crate::ui::stars;
 
 pub const INFO_HEIGHT: f32 = 60.0;
 const STAR_SIZE: f32 = 16.0;
 const STAR_GAP: f32 = 6.0;
 /// Click area of the info bar buttons (design system: at least 32 px).
 const BUTTON: f32 = 32.0;
+/// The panel buttons beside help are smaller: they are switched less often.
+const PANEL_BUTTON: f32 = 26.0;
 /// The incomplete-file note ends this far left of the stars – past the colour dot – and its
 /// torn-page icon takes this much room before the text.
 const NOTE_OFFSET: f32 = 28.0;
@@ -65,6 +68,17 @@ pub struct InfoBar<'a> {
     pub time_offset: Option<i64>,
     /// A RAW + JPG pair: `RAW+JPG`, and the RAW's marks where they differ.
     pub pair: Option<String>,
+    /// Which bars show: their buttons at the right end are lit.
+    pub panels: Panels,
+}
+
+/// The bars that can be switched on and off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Panels {
+    pub side_bar: bool,
+    pub toolbar: bool,
+    pub details: bool,
+    pub filmstrip: bool,
 }
 
 #[derive(Default)]
@@ -72,7 +86,10 @@ pub struct InfoBarOutput {
     /// The star the user clicked (`Some(None)` clears the rating).
     pub rating: Option<Rating>,
     pub help: bool,
+    /// The menu button: the menu bar on or off.
     pub menu: bool,
+    /// A panel button: the filter bar, the details panel or the filmstrip on or off.
+    pub panel: Option<Panel>,
 }
 
 /// Two rows: name / position · date · size (left), stars / scores (centre), exposure / camera
@@ -89,7 +106,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     let mut out = InfoBarOutput::default();
     let (row1, row2) = (rect.top() + 19.0, rect.top() + 42.0);
 
-    let buttons_left = buttons(ui, rect, &mut out);
+    let buttons_left = buttons(ui, rect, bar.panels, &mut out);
 
     // Centre: scores as value (+ bar) below the stars; its width decides the side columns.
     let meters = if bar.analysed {
@@ -441,30 +458,61 @@ fn widest_centre(painter: &Painter) -> f32 {
         .fold(0.0, f32::max)
 }
 
-/// Buttons at the right end, laid out from the right edge: the menu, then help. Returns their
-/// left edge.
-fn buttons(ui: &Ui, rect: Rect, out: &mut InfoBarOutput) -> f32 {
-    let t = i18n::t();
-    let y = rect.center().y;
-    let mut x = rect.right() - 8.0;
-    let next = |x: &mut f32| {
-        *x -= BUTTON;
-        let area = Rect::from_min_size(pos2(*x, y - BUTTON / 2.0), Vec2::splat(BUTTON));
-        *x -= 2.0;
-        area
-    };
+/// Buttons at the right end, laid out from the right edge: the menu (it switches the menu
+/// bar, lit while it shows), help, then – smaller – the filter bar, the details panel and the
+/// filmstrip, in the order of the window's edges (top, right, bottom). Returns their left edge.
+/// Without a photo – the start screen, a filter that hides every photo – there is no info
+/// bar, but the menu bar's button and help stay where they are, bottom right: the start
+/// screen names the button.
+pub fn corner_buttons(ui: &Ui, window: Rect, side_bar: bool) -> InfoBarOutput {
+    let rect = Rect::from_min_max(pos2(window.min.x, window.max.y - INFO_HEIGHT), window.max);
+    let mut out = InfoBarOutput::default();
+    menu_and_help(ui, rect, side_bar, &mut out);
+    out
+}
 
-    let area = next(&mut x);
-    let tooltip = format!("{} ({})", t.button_menu, i18n::with_ctrl("K"));
-    out.menu = icon_button(ui, area, &tooltip, false, |p, c, color| {
+/// The menu bar's button at the right end, help beside it; where the next button goes.
+fn menu_and_help(ui: &Ui, rect: Rect, side_bar: bool, out: &mut InfoBarOutput) -> f32 {
+    let t = i18n::t();
+    let mut x = rect.right() - 8.0;
+    let area = next_button(rect, &mut x, BUTTON);
+    let tooltip = format!("{} ({})", t.button_side_bar, i18n::with_ctrl("K"));
+    out.menu = icon_button(ui, area, &tooltip, side_bar, |p, c, color| {
         icons::menu(p, c, color);
     });
     x -= 8.0;
-    let area = next(&mut x);
+    let area = next_button(rect, &mut x, BUTTON);
     let tooltip = format!("{} (H)", t.button_help);
     out.help = icon_button(ui, area, &tooltip, false, |p, c, color| {
         icons::help(p, c, color);
     });
+    x - 8.0
+}
+
+/// The next square button of `size` right to left from `x`, centred in the bar.
+fn next_button(rect: Rect, x: &mut f32, size: f32) -> Rect {
+    *x -= size;
+    let area = Rect::from_min_size(pos2(*x, rect.center().y - size / 2.0), Vec2::splat(size));
+    *x -= 2.0;
+    area
+}
+
+fn buttons(ui: &Ui, rect: Rect, panels: Panels, out: &mut InfoBarOutput) -> f32 {
+    let t = i18n::t();
+    let mut x = menu_and_help(ui, rect, panels.side_bar, out);
+    for (panel, shown, name, key) in [
+        (Panel::Bottom, panels.filmstrip, t.button_filmstrip, "F6"),
+        (Panel::Right, panels.details, t.button_details, "Tab"),
+        (Panel::Top, panels.toolbar, t.button_toolbar, "T"),
+    ] {
+        let area = next_button(rect, &mut x, PANEL_BUTTON);
+        let tooltip = format!("{name} ({key})");
+        if icon_button(ui, area, &tooltip, shown, |p, c, color| {
+            icons::panel(p, c, panel, shown, color);
+        }) {
+            out.panel = Some(panel);
+        }
+    }
     x
 }
 
@@ -671,7 +719,52 @@ mod tests {
             similarity: None,
             time_offset: None,
             pair: None,
+            panels: Panels::default(),
         }
+    }
+
+    /// A click on the menu button toggles the menu bar once: the button takes no keyboard
+    /// focus, or the next `Space` (next photo) would click it again.
+    #[test]
+    fn a_clicked_button_keeps_no_focus() {
+        use eframe::egui::{Event, Key, Modifiers, PointerButton};
+        let ctx = Context::default();
+        let width = 1400.0;
+        let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(width, INFO_HEIGHT));
+        let menu = pos2(rect.right() - 8.0 - BUTTON / 2.0, rect.center().y);
+        let press = |pressed| Event::PointerButton {
+            pos: menu,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        };
+        let space = |pressed| Event::Key {
+            key: Key::Space,
+            physical_key: None,
+            pressed,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        };
+        let mut clicks = Vec::new();
+        for events in [
+            vec![Event::PointerMoved(menu)],
+            vec![press(true)],
+            vec![press(false)],
+            vec![space(true)],
+            vec![space(false)],
+        ] {
+            let mut output = ctx.run_ui(
+                RawInput {
+                    screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(width, 400.0))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| clicks.push(info_bar(ui, rect, &bar(false)).menu),
+            );
+            output.textures_delta.clear();
+        }
+        assert_eq!(clicks, [false, false, true, false, false]);
+        assert!(ctx.memory(|m| m.focused().is_none()));
     }
 
     /// The facts line leaves out whole parts instead of running under the scores.

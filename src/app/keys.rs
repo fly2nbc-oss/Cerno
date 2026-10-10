@@ -8,7 +8,7 @@ use eframe::egui::{self, Key, ViewportCommand};
 
 use crate::metadata::{Label, Rating};
 use crate::ui::icons::Panel;
-use crate::ui::{palette, viewer};
+use crate::ui::viewer;
 
 use super::CernoApp;
 
@@ -22,7 +22,7 @@ const STAR_KEYS: [(Key, Rating); 6] = [
     (Key::Num5, Rating::Stars(5)),
 ];
 
-/// `6`–`9` set the colour label. Purple has no digit; it lives in the command palette.
+/// `6`–`9` set the colour label. Purple has no digit; it lives in the menu bar.
 const LABEL_KEYS: [(Key, Label); 4] = [
     (Key::Num6, Label::Red),
     (Key::Num7, Label::Yellow),
@@ -84,8 +84,9 @@ struct KeyInput {
     toggle_grid: bool,
     help: bool,
     language: bool,
+    /// `Ctrl+K`: the keyboard to the menu bar, or back to the photo.
     palette: bool,
-    /// `Ctrl+M`: the action menu in the filter bar.
+    /// `Ctrl+M`: the menu bar on *Visible photos*.
     actions: bool,
     toggle_zoom: bool,
     /// `+`/`−`, with or without Ctrl.
@@ -224,7 +225,7 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         edit_elsewhere: plain && i.key_pressed(Key::E),
         // Ctrl+O opens a folder.
         overlay: plain && i.key_pressed(Key::O),
-        // Ctrl+M is the action menu.
+        // Ctrl+M is the menu bar's *Visible photos*.
         similar: plain && i.key_pressed(Key::M),
         // F and F11 full screen; T (`toggle_toolbar`) is the filter bar.
         toggle_fullscreen: i.key_pressed(Key::F11) || (plain && i.key_pressed(Key::F)),
@@ -293,31 +294,23 @@ impl CernoApp {
         if keys.language {
             self.switch_language(ctx);
         }
+        // `Ctrl+M`: the menu bar on *Visible photos* (copy, move, delete what the filter shows).
         if keys.actions {
-            if self.action_menu.is_some() {
-                self.close_action_menu();
-            } else {
-                self.open_action_menu();
-            }
+            self.row_list = None;
+            self.open_visible_photos();
             return;
         }
-        // Both menus read their own arrows, Enter, letters and Esc (see `palette`).
-        if self.action_menu.is_some() {
+        // The bar with the keyboard, and the list beside one of its rows, read their own
+        // arrows, Enter, letters and Esc (`side_bar`, `palette`); `Ctrl+K` gives the keyboard
+        // back to the photo.
+        if self.row_list.is_some() || self.side.focus {
             if keys.palette {
-                self.close_action_menu();
-                self.palette = Some(palette::State::default());
-            }
-            return;
-        }
-        if self.palette.is_some() {
-            if keys.palette {
-                self.palette = None;
+                self.leave_side_bar();
             }
             return;
         }
         if keys.palette {
-            self.help_open = false;
-            self.palette = Some(palette::State::default());
+            self.open_side_bar();
             return;
         }
         // The help page is modal: only closing it, switching its page (←/→) and the language
@@ -810,7 +803,7 @@ mod tests {
     }
 
     #[test]
-    fn m_filters_similar_photos_and_ctrl_m_opens_the_action_menu() {
+    fn m_filters_similar_photos_and_ctrl_m_opens_visible_photos() {
         let plain = Modifiers::NONE;
         let keys = read(vec![key(Key::M, Key::M, plain)], plain);
         assert!(keys.similar && !keys.actions);

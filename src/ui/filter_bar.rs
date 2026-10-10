@@ -1,6 +1,7 @@
 //! The filter bar at the top. Left, what is shown: photos, videos or the best N photos, then
 //! the filter groups (rating, colour, blurry / duplicates) and "similar photos". Right, what
-//! comes of it: the analysis status, the sort, the count with its reset and "Action".
+//! comes of it: the analysis status, the sort, the count with its reset. What acts on the
+//! photos shown is the menu bar's *Visible photos* (since 1.11).
 
 use eframe::egui::containers::scroll_area::ScrollBarVisibility;
 use eframe::egui::{
@@ -23,8 +24,6 @@ pub struct ToolbarInfo<'a> {
     /// New scores arrived since the view was sorted/filtered.
     pub stale: bool,
     pub status: &'a Status,
-    /// The action menu (copy, move, delete) is open.
-    pub actions_open: bool,
     /// Name of the photo "similar photos" is about, while that filter is on.
     pub similar_to: Option<&'a str>,
     /// How many photos the view shows, and how many the folder has.
@@ -45,10 +44,9 @@ pub struct ToolbarOutput {
     pub download_model: bool,
     /// The "similar" chip was clicked; the app picks the photo it is about (like `M`).
     pub toggle_similar: bool,
-    /// The "Action" button was clicked (opens or closes the action menu).
-    pub toggle_actions: bool,
-    /// Where the "Action" button is, so the menu opens under it.
-    pub actions_anchor: Option<Rect>,
+    /// Where the count is: it holds the right end (tests).
+    #[cfg(test)]
+    pub count: Option<Rect>,
 }
 
 pub fn toolbar(
@@ -66,7 +64,7 @@ pub fn toolbar(
     );
     let before = *options;
     let mut out = ToolbarOutput::default();
-    let mut action_rect = None;
+    let mut count_rect = None;
     let mut similar_clicked = false;
     // The right side works on copies: both sides can't borrow `options` at once.
     let mut sort = options.sort;
@@ -141,22 +139,13 @@ pub fn toolbar(
                         );
                     },
                     |ui| {
-                        // Right to left: "Action" first, so it stays at the right edge; the
-                        // count sits beside it – what "Action" works on – then the sort. What
-                        // comes and goes appears left of the sort: "Refresh order", the
-                        // analysis progress, a missing, loading or failed model.
-                        let action = ui
-                            .add(Button::new(t.actions).selected(info.actions_open))
-                            .on_hover_text(format!(
-                                "{}\n{}",
-                                t.actions_tooltip,
-                                i18n::with_ctrl("M")
-                            ));
-                        action_rect = Some(action.rect);
-                        if action.clicked() {
-                            out.toggle_actions = true;
-                        }
-                        clear = count_badge(ui, info.shown, info.total, before.is_filtered());
+                        // Right to left: the count first, so it stays at the right edge, then
+                        // the sort. What comes and goes appears left of the sort: "Refresh
+                        // order", the analysis progress, a missing, loading or failed model.
+                        let (cleared, slot) =
+                            count_badge(ui, info.shown, info.total, before.is_filtered());
+                        clear = cleared;
+                        count_rect = Some(slot);
                         ComboBox::from_id_salt("sort")
                             .width(sort_width(ui))
                             .selected_text((t.sort)(sort.label()))
@@ -186,7 +175,12 @@ pub fn toolbar(
     if clear {
         options.clear_filters();
     }
-    out.actions_anchor = action_rect;
+    #[cfg(test)]
+    {
+        out.count = count_rect;
+    }
+    #[cfg(not(test))]
+    let _ = count_rect;
     out.toggle_similar = similar_clicked;
     out.options_changed = *options != before;
     out
@@ -464,11 +458,11 @@ fn sort_width(ui: &Ui) -> f32 {
     widest + spacing.icon_spacing + spacing.icon_width + 2.0 * spacing.button_padding.x
 }
 
-/// "12 of 340 photos ×" on the accent's subtle fill while a filter is on – what "Action" works
-/// on, and the × shows everything again – and a muted "340 photos" otherwise. Its slot is as
-/// wide as the longest count the folder can show, so a changing number moves nothing. Whether
-/// the × was clicked.
-fn count_badge(ui: &mut Ui, shown: usize, total: usize, filtered: bool) -> bool {
+/// "12 of 340 photos ×" on the accent's subtle fill while a filter is on – what *Visible
+/// photos* in the menu bar works on, and the × shows everything again – and a muted "340
+/// photos" otherwise. Its slot is as wide as the longest count the folder can show, so a
+/// changing number moves nothing. Whether the × was clicked, and the slot.
+fn count_badge(ui: &mut Ui, shown: usize, total: usize, filtered: bool) -> (bool, Rect) {
     const PAD: f32 = 8.0;
     const CLEAR: f32 = 16.0;
     const GAP: f32 = 6.0;
@@ -495,7 +489,7 @@ fn count_badge(ui: &mut Ui, shown: usize, total: usize, filtered: bool) -> bool 
     };
     let galley = ui.painter().layout_no_wrap(text, font, colour);
     let size = galley.size();
-    // Right-aligned, next to "Action"; the × takes the end while a filter is on.
+    // Right-aligned at the bar's end; the × takes the end while a filter is on.
     let end = if filtered {
         slot.right() - PAD - CLEAR - GAP
     } else {
@@ -528,7 +522,7 @@ fn count_badge(ui: &mut Ui, shown: usize, total: usize, filtered: bool) -> bool 
     }
     ui.painter().galley(at, galley, colour);
     response.on_hover_text(t.photos_badge_tooltip);
-    clear_clicked
+    (clear_clicked, slot)
 }
 
 /// "Analysing 12 / 340", right-aligned in the width of the longest count, so the numbers
@@ -688,7 +682,7 @@ mod tests {
         }
     }
 
-    /// The bar drawn in a wide window: where each text lands, and the Action button.
+    /// The bar drawn in a wide window: where each text lands, and the count.
     fn bar(options: ViewOptions, stale: bool, status: &Status) -> (Vec<(String, Rect)>, Rect) {
         bar_about(options, stale, status, None, (340, 340))
     }
@@ -706,7 +700,7 @@ mod tests {
         let mut last = None;
         // Twice: the side-scrolling boxes know their size from the frame before.
         for _ in 0..2 {
-            let mut action = None;
+            let mut count = None;
             let mut output = ctx.run_ui(
                 RawInput {
                     screen_rect: Some(screen),
@@ -717,7 +711,6 @@ mod tests {
                     let info = ToolbarInfo {
                         stale,
                         status,
-                        actions_open: false,
                         similar_to,
                         shown,
                         total,
@@ -725,7 +718,7 @@ mod tests {
                         has_deleted: false,
                         name_list: None,
                     };
-                    action = toolbar(ui, screen, &mut options, &info).actions_anchor;
+                    count = toolbar(ui, screen, &mut options, &info).count;
                 },
             );
             output.textures_delta.clear();
@@ -739,7 +732,7 @@ mod tests {
                     _ => None,
                 })
                 .collect();
-            last = Some((texts, action.expect("the Action button is drawn")));
+            last = Some((texts, count.expect("the count is drawn")));
         }
         last.expect("two frames")
     }
@@ -760,12 +753,12 @@ mod tests {
         let none = ViewOptions::default();
         let mut some = none;
         some.filter.set(FilterKind::Stars(3), true);
-        let (before, action) = bar(none, false, &done);
-        let (after, action_after) = bar(some, false, &done);
+        let (before, count) = bar(none, false, &done);
+        let (after, count_after) = bar(some, false, &done);
         for chip in ["1★", "5★", "Blurry", "Duplicates"] {
             assert_eq!(left_of(&before, chip), left_of(&after, chip), "{chip}");
         }
-        assert_eq!(action, action_after);
+        assert_eq!(count, count_after);
         assert!(left_of(&before, "1★") < left_of(&before, "Blurry"));
     }
 
@@ -804,7 +797,6 @@ mod tests {
                     let info = ToolbarInfo {
                         stale: false,
                         status: &done,
-                        actions_open: false,
                         similar_to: None,
                         shown: 340,
                         total: 340,
@@ -881,7 +873,6 @@ mod tests {
                     let info = ToolbarInfo {
                         stale: false,
                         status: &done,
-                        actions_open: false,
                         similar_to: Some("IMG_1.JPG"),
                         shown: 12,
                         total: 340,
@@ -890,9 +881,9 @@ mod tests {
                         name_list: None,
                     };
                     let out = toolbar(ui, screen, &mut options, &info);
-                    let action = out.actions_anchor.expect("the Action button is drawn");
-                    // The × is the last thing in the count, just left of "Action".
-                    cross = Some(pos2(action.left() - 8.0 - 8.0 - 8.0, action.center().y));
+                    let count = out.count.expect("the count is drawn");
+                    // The × is the last thing in the count, at its right end.
+                    cross = Some(pos2(count.right() - 8.0 - 8.0, count.center().y));
                 },
             );
             output.textures_delta.clear();
@@ -958,10 +949,10 @@ mod tests {
         left_of(&bar(top, false, &done).0, &Scope::Top(250).label());
     }
 
-    /// "Action" stays at the right edge while the progress and "Refresh order" come and go,
-    /// and the count ticking up moves nothing either.
+    /// The count stays at the right edge while the progress and "Refresh order" come and go,
+    /// and the analysis ticking up moves nothing either.
     #[test]
-    fn the_action_button_stays_at_the_right_edge() {
+    fn the_count_stays_at_the_right_edge() {
         let options = ViewOptions::default();
         let (_, quiet) = bar(options, false, &status(1200, 1200));
         let (early, busy) = bar(options, true, &status(5, 1200));
@@ -971,28 +962,28 @@ mod tests {
         assert_eq!(left_of(&early, refresh), left_of(&late, refresh));
     }
 
-    /// The count sits left of "Action": all photos without a filter, "shown of all" with one;
-    /// neither the number nor the filter moves the button or the progress.
+    /// The count at the right end: all photos without a filter, "shown of all" with one;
+    /// neither the number nor the filter moves it or the progress.
     #[test]
-    fn the_count_names_what_action_works_on() {
+    fn the_count_names_what_the_photos_shown_are() {
         let done = status(5, 340);
         let none = ViewOptions::default();
         let mut some = none;
         some.filter.set(FilterKind::Stars(3), true);
-        let (all, action) = bar_about(none, false, &done, None, (340, 340));
-        let (few, action_few) = bar_about(some, false, &done, None, (12, 340));
-        let (one, action_one) = bar_about(some, false, &done, None, (1, 340));
+        let (all, count) = bar_about(none, false, &done, None, (340, 340));
+        let (few, count_few) = bar_about(some, false, &done, None, (12, 340));
+        let (one, count_one) = bar_about(some, false, &done, None, (1, 340));
         let t = i18n::t();
         assert!(all.iter().any(|(text, _)| *text == (t.photos_count)(340)));
         assert!(
             few.iter()
                 .any(|(text, _)| *text == (t.photos_shown)(12, 340))
         );
-        assert_eq!(action, action_few);
-        assert_eq!(action, action_one);
+        assert_eq!(count, count_few);
+        assert_eq!(count, count_one);
         let progress = (t.analyzing_progress)(5, 340);
         assert_eq!(left_of(&few, &progress), left_of(&one, &progress));
         assert_eq!(left_of(&all, &progress), left_of(&few, &progress));
-        assert!(left_of(&few, &(t.photos_shown)(12, 340)) < action.left());
+        assert!(left_of(&few, &progress) < count.left());
     }
 }

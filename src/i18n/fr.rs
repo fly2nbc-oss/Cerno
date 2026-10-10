@@ -41,7 +41,6 @@ pub static TEXTS: Texts = Texts {
     name_list_chip_tooltip: "Seulement les photos de la liste collée – un clic les montre toutes",
     name_list_found: |found, total| format!("{found} sur {total} trouvés"),
     name_list_chip: |found, total| format!("Liste {found}/{total}  ×"),
-    cmd_align_camera: "Caler l'appareil de droite sur celui de gauche",
     align_camera_hint: "Décale l'heure de prise de vue de toutes les photos de l'appareil de droite dans ce dossier, pour que la photo de droite ait été prise au même moment que celle de gauche. Seulement dans l'index – les fichiers gardent leur heure.",
     align_needs_compare: "Comparer d'abord deux photos d'appareils différents (C)",
     align_no_time: "Il manque l'appareil ou l'heure de prise de vue à l'une des deux photos",
@@ -96,12 +95,9 @@ pub static TEXTS: Texts = Texts {
         "Galerie",
     ],
     top_tooltip: "Photos, vidéos ou les deux – ou seulement les meilleures photos, selon vos étoiles (sinon la prédiction), l'esthétique et la netteté, la meilleure de chaque série d'abord. Les photos rejetées ou floues et les doublons ne comptent pas. La sélection reste jusqu'à ce qu'un filtre change ou que vous choisissiez « Actualiser l'ordre ». Rien n'est modifié dans les photos.",
-    menu_top: "Meilleures photos",
     bulk_delete_top: "Pas avec Top – ce sont les meilleures photos",
-    filter_none_active: "Aucun filtre actif",
     filter_similar: "≈ Semblables",
     filter_similar_to: |name| format!("≈ comme {name}"),
-    menu_similar: "Photos semblables",
     menu_similar_to: |name| format!("Semblables à {name}"),
     similar_tooltip: |percent| {
         format!(
@@ -138,8 +134,6 @@ pub static TEXTS: Texts = Texts {
     filter_unrated: "Sans étoiles",
 
     filter_rejected: "Rejetées",
-    actions: "Action",
-    actions_tooltip: "Copier, déplacer ou supprimer les photos affichées",
     selection_delete: "Supprimer",
     bulk_copy: |n| {
         format!(
@@ -170,7 +164,7 @@ pub static TEXTS: Texts = Texts {
     bulk_restore_hint: "Toutes les photos supprimées que montre le filtre retournent dans leur dossier. Si le nom y est déjà pris, la photo reçoit un numéro – rien n'est écrasé.",
     photos_shown: |shown, total| format!("{shown} sur {total} photos"),
     photos_count: |n| format!("{n} {}", if n == 1 { "photo" } else { "photos" }),
-    photos_badge_tooltip: "Le nombre de photos que le filtre affiche – « Action » agit sur exactement celles-ci.",
+    photos_badge_tooltip: "Le nombre de photos que le filtre affiche – « Photos affichées » de la barre de menu agit sur exactement celles-ci.",
     label_red: "Rouge",
     label_yellow: "Jaune",
     label_green: "Vert",
@@ -202,14 +196,19 @@ pub static TEXTS: Texts = Texts {
     button_details: "Panneau de détails",
     button_filmstrip: "Pellicule",
     button_help: "Aide",
-    button_menu: "Menu",
+    button_side_bar: "Barre de menu",
+    bar_rotate: "Pivoter",
+    bar_colour: "Couleur",
+    bar_align_camera: "Caler les appareils",
+    bar_overlay_sharpness: "Netteté",
+    bar_overlay_exposure: "Exposition",
+    bar_none_rejected: "Aucune photo du dossier n'est rejetée.",
+    bar_none_deleted: "Aucune photo supprimée affichée : la case corbeille de la barre de filtres les montre.",
     button_language: |name| format!("Langue : {name}"),
 
-    cmd_all_panels: "Barre de filtres, détails et pellicule",
     cmd_fullscreen: "Plein écran",
     cmd_compare: "Comparer",
     cmd_quad: "Vue à quatre",
-    cmd_similar: "N'afficher que les photos semblables",
     cmd_zoom: "Photo entière ↔ 100 %",
     menu_overlay: "Superposition",
     overlay_off: "Désactivée",
@@ -223,7 +222,6 @@ pub static TEXTS: Texts = Texts {
     overlay_show_on_photo: "Afficher sur la photo (O)",
     cmd_grid: "Grille",
     cmd_reject: "Rejeter",
-    cmd_description: "Commentaire et mots-clés",
     cmd_delete_rejected: |n| {
         format!(
             "Supprimer les rejetées ({n} {})",
@@ -234,10 +232,7 @@ pub static TEXTS: Texts = Texts {
     cmd_subfolders: "Inclure les sous-dossiers",
     subfolders_on: "Sous-dossiers inclus",
     subfolders_off: "Ce dossier seulement, sans sous-dossiers",
-    menu_sort: "Trier",
-    menu_filter: "Filtre",
     menu_view: "Affichage",
-    menu_labels: "Couleurs",
     menu_external: "Modifier ailleurs",
     external_other: "Autre programme …",
     external_chooser: "« Ouvrir avec » du système …",
@@ -255,7 +250,6 @@ pub static TEXTS: Texts = Texts {
     menu_this_photo: "Cette photo",
     menu_visible: "Photos affichées",
     menu_settings: "Réglages",
-    menu_stars: "Étoiles",
     label_none: "Sans couleur",
     loading: "Chargement…",
     cannot_show: "Impossible d'afficher cette image",
@@ -333,12 +327,12 @@ pub static TEXTS: Texts = Texts {
     btn_close: "Fermer (Échap)",
     aesthetics_offer: |size| {
         format!(
-            "L'évaluation esthétique a besoin de modèles d'image ({size}) : Menu → Modèles et données."
+            "L'évaluation esthétique a besoin de modèles d'image ({size}) : Barre de menu › Réglages › Modèles et données."
         )
     },
     exiftool_offer: |size| {
         format!(
-            "Cerno enregistre étoiles et couleurs avec ExifTool ({size}) : Menu → Modèles et données."
+            "Cerno enregistre étoiles et couleurs avec ExifTool ({size}) : Barre de menu › Réglages › Modèles et données."
         )
     },
     exiftool_title: "Télécharger ExifTool",
@@ -510,8 +504,8 @@ pub static TEXTS: Texts = Texts {
     busy_moving: "Cette photo est en cours de déplacement",
     busy_deleted: "Photo supprimée – remettez-la d'abord en place (Ctrl+Z)",
     edit_needs_index: "La retouche a besoin de l'index, qui n'a pas pu être ouvert",
-    exiftool_missing: "Les étoiles, les couleurs et les retouches ont besoin d'ExifTool – Menu → Modèles et données",
-    exiftool_too_old: "L'ExifTool installé est trop ancien (12.24 ou plus récent requis) – Menu → Modèles et données",
+    exiftool_missing: "Les étoiles, les couleurs et les retouches ont besoin d'ExifTool – Barre de menu › Réglages › Modèles et données",
+    exiftool_too_old: "L'ExifTool installé est trop ancien (12.24 ou plus récent requis) – Barre de menu › Réglages › Modèles et données",
     exiftool_loading: "Téléchargement d'ExifTool – étoiles et couleurs fonctionnent dans un instant",
     exiftool_install: |command| {
         match command {
@@ -592,7 +586,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "D'abord parcourir vite (Espace) et rejeter les ratés avec X – sans trop réfléchir.",
                 "Puis « sans × » dans la barre de filtres : les rejetées disparaissent, noter alors de 1 à 5.",
-                "Pour finir, Action › « Supprimer les rejetées » (Ctrl+M).",
+                "Pour finir, barre de menu › Photos affichées › « Supprimer les rejetées » (Ctrl+M).",
             ],
         ),
         (
@@ -645,6 +639,7 @@ pub static TEXTS: Texts = Texts {
                 "Déposez un dossier sur la fenêtre pour l'ouvrir. Maintenez → pour faire défiler les photos.",
                 "Dans la grille (F7), ↑ ↓ changent de ligne, + − la taille, Entrée ouvre la photo.",
                 "Redresser (S) : la molette et les flèches tournent, Maj plus fin. Recadrer (R) : tracez un cadre ou déplacez-le avec les flèches, +/− change sa taille, A le format, X bascule paysage/portrait.",
+                "La barre de menu (le bouton en bas à droite) réunit ce qui agit sur cette photo, les photos affichées et la vue, plus les réglages ; Ctrl+K l'atteint au clavier, Échap la quitte.",
                 "Dans la description, Entrée place le curseur dans le champ des mots-clés.",
             ],
         ),
@@ -655,7 +650,7 @@ pub static TEXTS: Texts = Texts {
         ("1 – 5", "Donner des étoiles"),
         ("X", "Rejeter"),
         ("Suppr", "Supprimer – Échap la ramène"),
-        ("Ctrl+K", "Menu avec toutes les fonctions"),
+        ("Ctrl+K", "Barre de menu (bouton en bas à droite)"),
     ],
     welcome_more: "Tous les raccourcis : H",
     setup_line: |exiftool, aesthetics| {
@@ -730,7 +725,7 @@ pub static TEXTS: Texts = Texts {
         ("E", "Modifier dans un autre programme"),
     ],
     help_more: [
-        ("Ctrl+K", "Menu : toutes les fonctions"),
+        ("Ctrl+K", "Barre de menu au clavier"),
         ("Ctrl+M", "Copier, déplacer, supprimer"),
         ("Ctrl+L", "Langue"),
         ("H, F1, ?", "Cette aide"),

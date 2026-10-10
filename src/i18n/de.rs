@@ -41,7 +41,6 @@ pub static TEXTS: Texts = Texts {
     name_list_chip_tooltip: "Nur die Fotos der eingefügten Liste – Klick zeigt wieder alle",
     name_list_found: |found, total| format!("{found} von {total} gefunden"),
     name_list_chip: |found, total| format!("Liste {found}/{total}  ×"),
-    cmd_align_camera: "Rechte Kamera an linke angleichen",
     align_camera_hint: "Verschiebt die Aufnahmezeit aller Fotos der rechten Kamera in diesem Ordner, sodass das rechte Foto zur selben Zeit entstand wie das linke. Nur im Index – die Dateien behalten ihre Zeit.",
     align_needs_compare: "Erst zwei Fotos verschiedener Kameras vergleichen (C)",
     align_no_time: "Einem der beiden Fotos fehlt die Kamera oder die Aufnahmezeit",
@@ -86,12 +85,9 @@ pub static TEXTS: Texts = Texts {
     top_photos: |n| format!("Top {n} Fotos"),
     top_purposes: ["Highlights", "Vorschau", "Diashow", "Fotobuch", "Galerie"],
     top_tooltip: "Fotos, Videos oder beides – oder nur die besten Fotos, nach deinen Sternen (sonst die Vorhersage), Ästhetik und Schärfe, aus jeder Serie zuerst das beste. Abgelehnte und unscharfe Fotos und Dubletten zählen nicht. Die Auswahl bleibt, bis sich ein Filter ändert oder du „Reihenfolge aktualisieren“ wählst. An den Fotos wird nichts geändert.",
-    menu_top: "Beste Fotos",
     bulk_delete_top: "Nicht bei „Top“ – das wären die besten Fotos",
-    filter_none_active: "Kein Filter aktiv",
     filter_similar: "≈ Ähnliche",
     filter_similar_to: |name| format!("≈ wie {name}"),
-    menu_similar: "Ähnliche Fotos",
     menu_similar_to: |name| format!("Ähnlich zu {name}"),
     similar_tooltip: |percent| {
         format!("Nur Fotos, die dem aktuellen ähneln (ab {percent:.0} %) – Taste M")
@@ -126,8 +122,6 @@ pub static TEXTS: Texts = Texts {
     filter_unrated: "Ohne Sterne",
 
     filter_rejected: "Abgelehnte",
-    actions: "Aktion",
-    actions_tooltip: "Kopieren, Verschieben oder Löschen der angezeigten Fotos",
     selection_delete: "Löschen",
     bulk_copy: |n| {
         format!(
@@ -153,7 +147,7 @@ pub static TEXTS: Texts = Texts {
     bulk_restore_hint: "Alle gelöschten Fotos, die der Filter gerade zeigt, kommen zurück in ihren Ordner. Ist ein Name dort vergeben, bekommt das Foto eine Nummer – nichts wird überschrieben.",
     photos_shown: |shown, total| format!("{shown} von {total} Fotos"),
     photos_count: |n| format!("{n} {}", if n == 1 { "Foto" } else { "Fotos" }),
-    photos_badge_tooltip: "So viele Fotos zeigt der Filter gerade – auf genau diese wirkt „Aktion“.",
+    photos_badge_tooltip: "So viele Fotos zeigt der Filter gerade – auf genau diese wirkt „Sichtbare Fotos“ in der Menüleiste.",
     label_red: "Rot",
     label_yellow: "Gelb",
     label_green: "Grün",
@@ -185,14 +179,19 @@ pub static TEXTS: Texts = Texts {
     button_details: "Detailansicht",
     button_filmstrip: "Filmstreifen",
     button_help: "Hilfe",
-    button_menu: "Menü",
+    button_side_bar: "Menüleiste",
+    bar_rotate: "Drehen",
+    bar_colour: "Farbe",
+    bar_align_camera: "Kameras angleichen",
+    bar_overlay_sharpness: "Schärfe",
+    bar_overlay_exposure: "Belichtung",
+    bar_none_rejected: "Im Ordner ist kein Foto abgelehnt.",
+    bar_none_deleted: "Keine gelöschten Fotos angezeigt: Das Papierkorb-Kästchen der Filterleiste zeigt sie.",
     button_language: |name| format!("Sprache: {name}"),
 
-    cmd_all_panels: "Filterleiste, Details und Filmstreifen",
     cmd_fullscreen: "Vollbild",
     cmd_compare: "Vergleichen",
     cmd_quad: "Viereransicht",
-    cmd_similar: "Nur ähnliche Fotos zeigen",
     cmd_zoom: "Ganzes Foto ↔ 100 %",
     menu_overlay: "Overlay",
     overlay_off: "Aus",
@@ -206,7 +205,6 @@ pub static TEXTS: Texts = Texts {
     overlay_show_on_photo: "Auf dem Foto zeigen (O)",
     cmd_grid: "Raster",
     cmd_reject: "Ablehnen",
-    cmd_description: "Kommentar und Stichwörter",
     cmd_delete_rejected: |n| {
         format!(
             "Abgelehnte löschen ({n} {})",
@@ -217,10 +215,7 @@ pub static TEXTS: Texts = Texts {
     cmd_subfolders: "Unterordner einlesen",
     subfolders_on: "Unterordner werden mit eingelesen",
     subfolders_off: "Nur dieser Ordner, ohne Unterordner",
-    menu_sort: "Sortieren",
-    menu_filter: "Filter",
     menu_view: "Ansicht",
-    menu_labels: "Farbmarken",
     menu_external: "Extern bearbeiten",
     external_other: "Anderes Programm …",
     external_chooser: "Systemauswahl „Öffnen mit“ …",
@@ -238,7 +233,6 @@ pub static TEXTS: Texts = Texts {
     menu_this_photo: "Dieses Foto",
     menu_visible: "Sichtbare Fotos",
     menu_settings: "Einstellungen",
-    menu_stars: "Sterne",
     label_none: "Ohne Farbe",
     loading: "Wird geladen…",
     cannot_show: "Dieses Bild kann nicht angezeigt werden",
@@ -311,10 +305,14 @@ pub static TEXTS: Texts = Texts {
     btn_cancel: "Abbrechen",
     btn_close: "Schließen (Esc)",
     aesthetics_offer: |size| {
-        format!("Die Ästhetik-Bewertung braucht Bildmodelle ({size}): Menü → Modelle & Daten.")
+        format!(
+            "Die Ästhetik-Bewertung braucht Bildmodelle ({size}): Menüleiste › Einstellungen › Modelle & Daten."
+        )
     },
     exiftool_offer: |size| {
-        format!("Sterne und Farben speichert Cerno mit ExifTool ({size}): Menü → Modelle & Daten.")
+        format!(
+            "Sterne und Farben speichert Cerno mit ExifTool ({size}): Menüleiste › Einstellungen › Modelle & Daten."
+        )
     },
     exiftool_title: "ExifTool laden",
     exiftool_text: |size| {
@@ -487,8 +485,8 @@ pub static TEXTS: Texts = Texts {
     busy_moving: "Das Foto wird gerade verschoben",
     busy_deleted: "Gelöschtes Foto – erst zurücklegen (Strg+Z)",
     edit_needs_index: "Bearbeiten braucht den Index, und der ließ sich nicht öffnen",
-    exiftool_missing: "Sterne, Farben und Bearbeiten brauchen ExifTool – Menü → Modelle & Daten",
-    exiftool_too_old: "Das installierte ExifTool ist zu alt (12.24 oder neuer nötig) – Menü → Modelle & Daten",
+    exiftool_missing: "Sterne, Farben und Bearbeiten brauchen ExifTool – Menüleiste › Einstellungen › Modelle & Daten",
+    exiftool_too_old: "Das installierte ExifTool ist zu alt (12.24 oder neuer nötig) – Menüleiste › Einstellungen › Modelle & Daten",
     exiftool_loading: "ExifTool wird geladen – gleich lassen sich Sterne und Farben setzen",
     exiftool_install: |command| {
         match command {
@@ -569,7 +567,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "Erst zügig blättern (Leertaste) und Misslungenes mit X ablehnen – ohne lange zu überlegen.",
                 "Dann „ohne ×“ in der Filterleiste: Die Abgelehnten sind weg, jetzt mit 1–5 bewerten.",
-                "Zum Schluss Aktion › „Abgelehnte löschen“ (Strg+M).",
+                "Zum Schluss Menüleiste › Sichtbare Fotos › „Abgelehnte löschen“ (Strg+M).",
             ],
         ),
         (
@@ -622,6 +620,7 @@ pub static TEXTS: Texts = Texts {
                 "Einen Ordner aufs Fenster ziehen öffnet ihn. → gedrückt halten läuft durch die Fotos.",
                 "Im Raster (F7) rücken ↑ ↓ eine Reihe, + − ändern die Größe, Enter öffnet das Foto.",
                 "Ausrichten (S): Mausrad und Pfeile drehen, Umschalt feiner. Ausschnitt (R): Rahmen aufziehen oder mit den Pfeilen schieben, +/− ändern die Größe, A wechselt das Format, X dreht Quer/Hoch.",
+                "Die Menüleiste (Knopf unten rechts) hält, was auf dieses Foto, die sichtbaren Fotos und die Ansicht wirkt, dazu die Einstellungen; Strg+K erreicht sie mit der Tastatur, Esc verlässt sie.",
                 "In der Beschreibung setzt Enter den Cursor ins Stichwortfeld.",
             ],
         ),
@@ -632,7 +631,7 @@ pub static TEXTS: Texts = Texts {
         ("1 – 5", "Sterne vergeben"),
         ("X", "Ablehnen"),
         ("Entf", "Löschen – Esc holt es zurück"),
-        ("Strg+K", "Menü mit allen Funktionen"),
+        ("Strg+K", "Menüleiste (Knopf unten rechts)"),
     ],
     welcome_more: "Alle Tastenkürzel: H",
     setup_line: |exiftool, aesthetics| {
@@ -707,7 +706,7 @@ pub static TEXTS: Texts = Texts {
         ("E", "In anderem Programm bearbeiten"),
     ],
     help_more: [
-        ("Strg+K", "Menü mit allen Funktionen"),
+        ("Strg+K", "Menüleiste mit der Tastatur"),
         ("Strg+M", "Kopieren, verschieben, löschen"),
         ("Strg+L", "Sprache"),
         ("H, F1, ?", "Diese Hilfe"),

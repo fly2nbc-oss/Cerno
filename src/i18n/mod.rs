@@ -248,7 +248,6 @@ pub struct Texts {
     pub name_list_chip_tooltip: &'static str,
     pub name_list_found: fn(usize, usize) -> String,
     pub name_list_chip: fn(usize, usize) -> String,
-    pub cmd_align_camera: &'static str,
     pub align_camera_hint: &'static str,
     pub align_needs_compare: &'static str,
     pub align_no_time: &'static str,
@@ -296,18 +295,12 @@ pub struct Texts {
     pub top_purposes: [&'static str; 5],
     /// Tooltip of the first box: what it chooses, and how Top N picks.
     pub top_tooltip: &'static str,
-    /// Visible photos ▸ Filter ▸, the group of the Top levels.
-    pub menu_top: &'static str,
     /// Why the action menu's delete row is greyed out while Top N is on.
     pub bulk_delete_top: &'static str,
-    /// Why "Show all" is greyed out: nothing is filtered.
-    pub filter_none_active: &'static str,
     /// The filter bar's last box: only photos like the chosen one.
     pub filter_similar: &'static str,
     /// That box while it is on, with the (shortened) name of the photo it is about.
     pub filter_similar_to: fn(&str) -> String,
-    /// Visible photos ▸ Filter ▸, the last row.
-    pub menu_similar: &'static str,
     pub menu_similar_to: fn(&str) -> String,
     /// Tooltip of the box; the threshold in percent.
     pub similar_tooltip: fn(f32) -> String,
@@ -338,8 +331,6 @@ pub struct Texts {
     pub sort_taken: &'static str,
     pub filter_unrated: &'static str,
     pub filter_rejected: &'static str,
-    pub actions: &'static str,
-    pub actions_tooltip: &'static str,
     pub selection_delete: &'static str,
     /// The action menu's rows, with the number of photos the filter shows.
     pub bulk_copy: fn(usize) -> String,
@@ -392,16 +383,24 @@ pub struct Texts {
     pub button_details: &'static str,
     pub button_filmstrip: &'static str,
     pub button_help: &'static str,
-    pub button_menu: &'static str,
+    /// The menu button's name: it switches the menu bar on the left.
+    pub button_side_bar: &'static str,
+    /// Short labels where the menu's are too long for the bar: the quarter turns' row, the
+    /// compare row that sets a camera's clock, the overlay's two modes.
+    pub bar_rotate: &'static str,
+    pub bar_colour: &'static str,
+    pub bar_align_camera: &'static str,
+    pub bar_overlay_sharpness: &'static str,
+    pub bar_overlay_exposure: &'static str,
+    /// Why *Delete rejected* and *Put back* are greyed out: nothing to do.
+    pub bar_none_rejected: &'static str,
+    pub bar_none_deleted: &'static str,
     pub button_language: fn(&str) -> String,
 
     // Command menu (`Ctrl+K`).
-    pub cmd_all_panels: &'static str,
     pub cmd_fullscreen: &'static str,
     pub cmd_compare: &'static str,
     pub cmd_quad: &'static str,
-    /// This photo ▸ (`M`): only photos like this one.
-    pub cmd_similar: &'static str,
     pub cmd_zoom: &'static str,
     /// View ▸ Overlay ▸ (`O`): marks on the photo.
     pub menu_overlay: &'static str,
@@ -420,18 +419,13 @@ pub struct Texts {
     /// View ▸ (`F7`): every photo as a thumbnail.
     pub cmd_grid: &'static str,
     pub cmd_reject: &'static str,
-    /// Menu row (This photo): the Description tab of the details panel.
-    pub cmd_description: &'static str,
     pub cmd_delete_rejected: fn(usize) -> String,
     pub cmd_auto_advance: &'static str,
     pub cmd_subfolders: &'static str,
     /// Hint after `Ctrl+U` (or the menu) turned subfolders on.
     pub subfolders_on: &'static str,
     pub subfolders_off: &'static str,
-    pub menu_sort: &'static str,
-    pub menu_filter: &'static str,
     pub menu_view: &'static str,
-    pub menu_labels: &'static str,
     /// Submenu of This photo: open it in another program (`E`).
     pub menu_external: &'static str,
     /// Pick a program file by hand (remembered).
@@ -456,8 +450,6 @@ pub struct Texts {
     pub menu_visible: &'static str,
     /// Menu group: auto advance, subfolders, language, models.
     pub menu_settings: &'static str,
-    /// Submenu of This photo: 0–5 stars.
-    pub menu_stars: &'static str,
     /// Colour label submenu: remove the colour.
     pub label_none: &'static str,
 
