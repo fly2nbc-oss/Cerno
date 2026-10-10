@@ -37,6 +37,7 @@ mod notice;
 mod pairs;
 mod panels;
 mod photos;
+mod target;
 mod undo;
 mod update;
 mod video;
@@ -50,7 +51,7 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use eframe::egui::{self, Key, Rect, ViewportCommand};
+use eframe::egui::{self, Key, ViewportCommand};
 
 use crate::analysis::{Analyzer, ScoreBoard};
 use crate::db::Db;
@@ -71,29 +72,6 @@ use crate::view::{Media, Percentiles, PhotoFilter, SortKey, View, ViewOptions};
 
 use editing::EditSession;
 use notice::Notice;
-
-/// Decode size before the window exists, so the first photo decodes while the GPU starts up.
-/// Covers screens up to 4K; once the photo area is known, that photo is decoded again for it.
-/// Used only until the photo area has been seen once: then the last one is saved
-/// ([`AREA_SETTING`]) and the first photo decodes for it – nothing twice.
-const START_TARGET: [u32; 2] = [3840, 2160];
-
-/// The last photo area's decode size, `W×H` in physical pixels.
-const AREA_SETTING: &str = "photo_area";
-
-/// `3840x2054` → the decode size; anything else is ignored.
-fn parse_area(text: &str) -> Option<[u32; 2]> {
-    let (width, height) = text.split_once('x')?;
-    let size = [width.parse().ok()?, height.parse().ok()?];
-    size.iter()
-        .all(|&side| (64..=16384).contains(&side))
-        .then_some(size)
-}
-
-/// How long the photo area must keep its size before photos are decoded for it: a window
-/// dragged larger, or maximized after the first frame, would otherwise decode them at every
-/// step.
-const TARGET_SETTLE: Duration = Duration::from_millis(200);
 
 /// Set once the hint about the aesthetics model has been shown. Before 0.10 the same key
 /// meant "the download dialog was declined", which also ends the hint.
@@ -181,11 +159,8 @@ pub struct CernoApp {
     journal: undo::Journal,
     /// The update check: its switch and what it found.
     updates: update::Updates,
-    target: Option<[u32; 2]>,
-    /// What the loader decodes for before `target` is known: the saved area, else 4K.
-    start_target: [u32; 2],
-    /// A new decode size and since when the photo area has had it (see `TARGET_SETTLE`).
-    pending_target: Option<([u32; 2], Instant)>,
+    /// The decode size: the photo area, once it has kept its size.
+    target: target::Target,
     zoom: viewer::Zoom,
     /// The check overlay over the photos (`O`); not saved.
     overlay: crate::overlay::Mode,
@@ -358,15 +333,12 @@ impl CernoApp {
             .and_then(|id| DetailsTab::from_id(&id))
             .unwrap_or(DetailsTab::Values);
         let videos = video::Videos::restore(&db);
-        let start_target = db
-            .setting(AREA_SETTING)
-            .and_then(|text| parse_area(&text))
-            .unwrap_or(START_TARGET);
+        let target = target::Target::restore(&db);
 
         Self {
             loader: Loader::new(
                 ctx.clone(),
-                start_target,
+                target.start,
                 Arc::clone(&thumbs),
                 Arc::clone(&files),
             ),
@@ -416,9 +388,7 @@ impl CernoApp {
             raw_marks: pairs::RawMarks::default(),
             journal: undo::Journal::default(),
             updates,
-            target: None,
-            start_target,
-            pending_target: None,
+            target,
             zoom: viewer::Zoom::default(),
             overlay: crate::overlay::Mode::Off,
             grid: false,
@@ -457,48 +427,6 @@ impl CernoApp {
             edit_thread: None,
             edit_busy: false,
             videos,
-        }
-    }
-
-    /// Decode size: the photo area in physical pixels (`viewer::decode_size`), so a fitted
-    /// photo is drawn pixel for pixel. Taken once the area has kept it for [`TARGET_SETTLE`] –
-    /// at start-up at once when it is the saved one the first photo was decoded for. The first
-    /// one also starts the prefetch – after it, so the neighbours are decoded for the area and
-    /// not for the start-up guess.
-    fn update_target(&mut self, ctx: &egui::Context, areas: &[Rect]) {
-        let max_side = ctx.input(|i| i.max_texture_side) as u32;
-        let Some(wanted) = viewer::decode_size(areas, ctx.pixels_per_point(), max_side) else {
-            return;
-        };
-        if self.target == Some(wanted) {
-            self.pending_target = None;
-            return;
-        }
-        let now = Instant::now();
-        let since = match self.pending_target {
-            Some((pending, since)) if pending == wanted => since,
-            _ => {
-                self.pending_target = Some((wanted, now));
-                now
-            }
-        };
-        let waited = now - since;
-        let known = self.target.is_none() && wanted == self.start_target;
-        if waited < TARGET_SETTLE && !known {
-            ctx.request_repaint_after(TARGET_SETTLE - waited);
-            return;
-        }
-        self.pending_target = None;
-        let first = self.target.replace(wanted).is_none();
-        self.loader.set_target(wanted);
-        if first {
-            self.loader.start_prefetch();
-        }
-        // The single view's size only: Cerno starts in it.
-        if wanted != self.start_target && self.pinned.is_none() && self.quad.is_none() {
-            self.start_target = wanted;
-            self.db
-                .put_setting(AREA_SETTING, &format!("{}x{}", wanted[0], wanted[1]));
         }
     }
 

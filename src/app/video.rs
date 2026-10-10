@@ -116,7 +116,7 @@ impl CernoApp {
             return;
         }
         self.stop_video();
-        let target = self.target.unwrap_or(self.start_target);
+        let target = self.target.size.unwrap_or(self.target.start);
         match Player::start(
             ctx,
             &path,
@@ -213,7 +213,7 @@ impl CernoApp {
         let Some(session) = &self.videos.session else {
             return;
         };
-        if let Some(target) = self.target {
+        if let Some(target) = self.target.size {
             session.player.set_target(target);
         }
         let status = session.player.status();
