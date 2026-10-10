@@ -644,3 +644,53 @@ fn quarter_turn_and_reencode_keep_file_dates() {
     drop(exiftool);
     fs::remove_dir_all(&dir).unwrap();
 }
+
+/// While ExifTool's folder is replaced the writer holds the marks – past their debounce – and
+/// writes them after `Resume`; a pause is acknowledged once ExifTool has ended.
+#[test]
+fn a_pause_holds_marks_until_resume() {
+    let dir = std::env::temp_dir().join(format!("cerno-pause-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("pause.jpg");
+    std::fs::copy(
+        concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/tiny.jpg"),
+        &path,
+    )
+    .unwrap();
+    let (tx, rx) = mpsc::channel();
+    let status = Mutex::new(WriterStatus::default());
+    let outcomes = Mutex::new(Vec::new());
+    let ctx = egui::Context::default();
+    let db = Db::open_in_memory().unwrap();
+    let files = FileLocks::default();
+    let pending = || status.lock().unwrap().pending;
+    let shared = Shared {
+        status: &status,
+        outcomes: &outcomes,
+        ctx: &ctx,
+        db: &db,
+        files: &files,
+    };
+    std::thread::scope(|scope| {
+        // The receiver goes to the writer's thread; the rest is borrowed.
+        let shared = &shared;
+        scope.spawn(move || run(&rx, shared));
+        let pauser = Pauser { tx: tx.clone() };
+        assert!(pauser.pause(Duration::from_secs(10)), "paused");
+        tx.send(Message::SetRating {
+            path: path.clone(),
+            rating: Rating::Stars(3),
+        })
+        .unwrap();
+        std::thread::sleep(DEBOUNCE + Duration::from_millis(400));
+        assert_eq!(pending(), 1, "held while paused");
+        pauser.resume();
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while pending() > 0 && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert_eq!(pending(), 0, "written after the pause");
+        tx.send(Message::Shutdown).unwrap();
+    });
+    let _ = std::fs::remove_dir_all(&dir);
+}

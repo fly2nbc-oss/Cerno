@@ -1,5 +1,7 @@
 //! The writer thread: debounced marks per file, edits, what it reports to the app.
 
+use std::collections::VecDeque;
+
 use super::*;
 
 pub(super) struct Pending {
@@ -44,14 +46,33 @@ pub(super) fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
     let mut exiftool: Option<ExifTool> = None;
     let mut pending: HashMap<PathBuf, Pending> = HashMap::new();
     let mut shutting_down = false;
+    // While ExifTool's folder is replaced: marks wait in `pending`, everything else that needs
+    // ExifTool here, in order.
+    let mut paused = false;
+    let mut held: VecDeque<Message> = VecDeque::new();
 
     while !shutting_down {
-        let timeout = if pending.is_empty() {
+        let timeout = if pending.is_empty() || paused {
             Duration::from_secs(3600)
         } else {
             Duration::from_millis(50)
         };
-        match rx.recv_timeout(timeout) {
+        let message = match held.pop_front() {
+            Some(message) if !paused => Ok(message),
+            Some(message) => {
+                held.push_front(message);
+                rx.recv_timeout(timeout)
+            }
+            None => rx.recv_timeout(timeout),
+        };
+        let message = match message {
+            Ok(message) if paused && needs_exiftool(&message) => {
+                held.push_back(message);
+                continue;
+            }
+            other => other,
+        };
+        match message {
             Ok(Message::SetRating { path, rating }) => {
                 files.set_queued(&path, true);
                 allow_taste(db, &path);
@@ -135,30 +156,31 @@ pub(super) fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
                     note_tool(status, &started);
                 }
             }
-            Ok(Message::Shutdown) | Err(RecvTimeoutError::Disconnected) => shutting_down = true,
+            Ok(Message::Pause { done }) => {
+                write_due(&mut pending, &mut exiftool, true, db, status, files);
+                // Dropping it ends the stay-open process.
+                exiftool = None;
+                paused = true;
+                let _ = done.send(());
+            }
+            Ok(Message::Resume) => paused = false,
+            Ok(Message::Shutdown) | Err(RecvTimeoutError::Disconnected) => {
+                // Whatever was held is written now, with whichever ExifTool is there.
+                paused = false;
+                shutting_down = true;
+            }
             Err(RecvTimeoutError::Timeout) => {}
         }
 
-        let due: Vec<PathBuf> = pending
-            .iter()
-            .filter(|(_, pending)| shutting_down || pending.at.elapsed() >= DEBOUNCE)
-            .map(|(path, _)| path.clone())
-            .collect();
-        for path in due {
-            let Some(marks) = pending.remove(&path) else {
-                continue;
-            };
-            let held = files.hold_write(&path);
-            let result = write_marks(
+        if !paused {
+            write_due(
+                &mut pending,
                 &mut exiftool,
-                &path,
-                marks.rating,
-                marks.label,
-                marks.description.as_ref(),
+                shutting_down,
+                db,
+                status,
+                files,
             );
-            files.set_queued(&path, false);
-            drop(held);
-            note_marks(db, status, &path, result);
         }
 
         if let Ok(mut status) = status.lock() {
@@ -170,7 +192,65 @@ pub(super) fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
         }
         ctx.request_repaint();
     }
+    // Held edits of a shutdown during a pause: their files stay as they are, the log says so.
+    for message in held {
+        log::warn!("not written at exit: {}", describe(&message));
+    }
     // Dropping `exiftool` ends the stay-open process.
+}
+
+/// Messages that run ExifTool when they come; a pause holds them. Marks wait in `pending`.
+fn needs_exiftool(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::RotateQuarter { .. }
+            | Message::ReplacePixels { .. }
+            | Message::Restore { .. }
+            | Message::KeepMarks { .. }
+            | Message::Prepare
+    )
+}
+
+fn describe(message: &Message) -> String {
+    match message {
+        Message::RotateQuarter { path, .. }
+        | Message::ReplacePixels { path, .. }
+        | Message::Restore { path }
+        | Message::KeepMarks { path, .. } => path.display().to_string(),
+        _ => "ExifTool start".to_owned(),
+    }
+}
+
+/// Writes the marks whose debounce ran out – every one when `all`.
+fn write_due(
+    pending: &mut HashMap<PathBuf, Pending>,
+    exiftool: &mut Option<ExifTool>,
+    all: bool,
+    db: &Db,
+    status: &Mutex<WriterStatus>,
+    files: &FileLocks,
+) {
+    let due: Vec<PathBuf> = pending
+        .iter()
+        .filter(|(_, pending)| all || pending.at.elapsed() >= DEBOUNCE)
+        .map(|(path, _)| path.clone())
+        .collect();
+    for path in due {
+        let Some(marks) = pending.remove(&path) else {
+            continue;
+        };
+        let held = files.hold_write(&path);
+        let result = write_marks(
+            exiftool,
+            &path,
+            marks.rating,
+            marks.label,
+            marks.description.as_ref(),
+        );
+        files.set_queued(&path, false);
+        drop(held);
+        note_marks(db, status, &path, result);
+    }
 }
 
 /// After a marks write: the index follows the file, the status shows the error.

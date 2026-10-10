@@ -468,6 +468,15 @@ pub static TEXTS: Texts = Texts {
     exiftool_old_state: |version| format!("{version} – trop ancien (12.24 ou plus récent requis)"),
     exiftool_downloading: |percent| format!("téléchargement … {percent:.0} %"),
     btn_exiftool: |size| format!("Télécharger ExifTool ({size})"),
+    exiftool_outdated: |version, newer| {
+        format!("{version} · téléchargé par Cerno – {newer} est disponible")
+    },
+    btn_exiftool_update: |newer, size| format!("Télécharger ExifTool {newer} ({size})"),
+    exiftool_update_hint: |version, newer| {
+        format!(
+            "ExifTool {newer} est disponible (Cerno utilise {version}) : Barre de menu (F10) › Réglages › Modèles et données."
+        )
+    },
     taste_sources: |stars, rejected| {
         format!(
             "Apprise de {stars} photos avec étoiles et {rejected} rejetées – les photos rejetées comptent pour 0 ★, les supprimées pas du tout."

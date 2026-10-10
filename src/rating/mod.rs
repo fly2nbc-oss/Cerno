@@ -85,6 +85,13 @@ enum Message {
         label: Option<Label>,
         description: Description,
     },
+    /// Write what is pending, end ExifTool and hold every further write until `Resume`: its
+    /// folder is replaced (`tools::place_exiftool`), and Windows doesn't let a running program's
+    /// folder go. `done` says when ExifTool has ended.
+    Pause {
+        done: mpsc::Sender<()>,
+    },
+    Resume,
     Shutdown,
 }
 
@@ -99,6 +106,25 @@ pub struct EditOutcome {
     /// Another program saved the file and the marks it dropped are back (`keep_marks`) – not
     /// an edit of Cerno's; the photo is reloaded now.
     pub elsewhere: bool,
+}
+
+/// Pauses the writer while ExifTool's folder is replaced – from the download's thread.
+pub struct Pauser {
+    tx: mpsc::Sender<Message>,
+}
+
+impl Pauser {
+    /// Writes what is pending, ends ExifTool and holds further writes; `true` once that is
+    /// done within `timeout`.
+    pub fn pause(&self, timeout: Duration) -> bool {
+        let (done, ended) = mpsc::channel();
+        self.tx.send(Message::Pause { done }).is_ok() && ended.recv_timeout(timeout).is_ok()
+    }
+
+    /// Writes again – with a new ExifTool, started on the first write or `prepare`.
+    pub fn resume(&self) {
+        let _ = self.tx.send(Message::Resume);
+    }
 }
 
 /// Sends a finished pixel edit to the writer thread. Cheap to clone into a worker.
@@ -181,6 +207,14 @@ impl RatingWriter {
         }
     }
 
+    /// What the writer reports, set by a test (the detached writer has no thread to say it).
+    #[cfg(test)]
+    pub fn report(&self, status: WriterStatus) {
+        if let Ok(mut shown) = self.status.lock() {
+            *shown = status;
+        }
+    }
+
     fn send(&self, message: Message) {
         if self.tx.send(message).is_err() && !self.lost.swap(true, Ordering::Relaxed) {
             log::error!("the mark writer has stopped: marks are no longer written");
@@ -240,6 +274,13 @@ impl RatingWriter {
     /// shows in [`WriterStatus`].
     pub fn prepare(&self) {
         self.send(Message::Prepare);
+    }
+
+    /// Handle that pauses the writer while ExifTool is replaced.
+    pub fn pauser(&self) -> Pauser {
+        Pauser {
+            tx: self.tx.clone(),
+        }
     }
 
     /// Handle for a worker that encodes pixels and then hands the JPEG back here.

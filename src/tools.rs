@@ -11,9 +11,13 @@ use anyhow::{Context as _, Result, bail};
 
 use crate::download::{self, RemoteFile};
 
+/// The version `EXIFTOOL` holds. A downloaded ExifTool older than this is offered an update
+/// (`app/exiftool.rs`); one installed elsewhere is the user's.
+pub const EXIFTOOL_VERSION: &str = "13.59";
+
 /// The official Windows package (its own Perl inside), from SourceForge, where every version
 /// keeps its address – exiftool.org only has the newest. A new ExifTool comes with a new Cerno
-/// version that changes these values.
+/// version that changes these values and `EXIFTOOL_VERSION`.
 pub const EXIFTOOL: RemoteFile = RemoteFile {
     name: "exiftool-13.59_64.zip",
     url: "https://sourceforge.net/projects/exiftool/files/exiftool-13.59_64.zip/download",
@@ -39,10 +43,21 @@ const LIMITS: Limits = Limits {
     total_bytes: 200 << 20,
 };
 
-/// Downloads ExifTool, checks it and unpacks it into `dest` (`exiftool::download_dir`): first
-/// into a folder of its own beside it, renamed into place only when complete, so a half
-/// unpacked ExifTool is never found. The zip goes afterwards. Returns the program's path.
+/// Downloads ExifTool, checks it and unpacks it into `dest` (`exiftool::download_dir`):
+/// [`fetch_exiftool`], then [`place_exiftool`]. Returns the program's path.
+#[cfg(test)]
 pub fn install_exiftool(
+    dest: &Path,
+    progress: &mut dyn FnMut(u64),
+    cancelled: &dyn Fn() -> bool,
+) -> Result<PathBuf> {
+    let unpacked = fetch_exiftool(dest, progress, cancelled)?;
+    place_exiftool(&unpacked, dest)
+}
+
+/// Downloads ExifTool, checks it and unpacks it into a folder of its own beside `dest`, which
+/// it returns – an ExifTool that runs from `dest` meanwhile keeps running.
+pub fn fetch_exiftool(
     dest: &Path,
     progress: &mut dyn FnMut(u64),
     cancelled: &dyn Fn() -> bool,
@@ -68,13 +83,21 @@ pub fn install_exiftool(
         let _ = std::fs::remove_dir_all(&unpacking);
         return Err(err);
     }
-    // An older or broken one in its place goes; only this fixed folder, never a path from
-    // anywhere else.
-    if dest.exists() {
-        std::fs::remove_dir_all(dest).context("cannot remove the old ExifTool")?;
-    }
-    std::fs::rename(&unpacking, dest).context("cannot put ExifTool in place")?;
     let _ = std::fs::remove_file(&zip);
+    Ok(unpacking)
+}
+
+/// Puts the unpacked ExifTool (`fetch_exiftool`) in place of `dest`, so a half unpacked one is
+/// never found. An older or broken one there goes – only this fixed folder, never a path from
+/// anywhere else; on Windows nothing may run from it (the writer pauses, `rating::Pauser`).
+pub fn place_exiftool(unpacked: &Path, dest: &Path) -> Result<PathBuf> {
+    if dest.exists()
+        && let Err(err) = std::fs::remove_dir_all(dest)
+    {
+        let _ = std::fs::remove_dir_all(unpacked);
+        return Err(err).context("cannot remove the old ExifTool");
+    }
+    std::fs::rename(unpacked, dest).context("cannot put ExifTool in place")?;
     Ok(dest.join(crate::exiftool::NAME))
 }
 
@@ -303,6 +326,29 @@ mod tests {
         }
         assert_eq!(EXIFTOOL.sha256.len(), 64);
         assert!(EXIFTOOL.sha256.chars().all(|c| c.is_ascii_hexdigit()));
+        // The version the update offer compares with is the one in the package's name.
+        assert_eq!(
+            EXIFTOOL.name,
+            format!("exiftool-{EXIFTOOL_VERSION}_64.zip"),
+            "EXIFTOOL_VERSION follows the pin"
+        );
+    }
+
+    /// The new one takes the old one's place, the unpacked folder is gone.
+    #[test]
+    fn a_fetched_exiftool_replaces_the_old_one() {
+        let root = temp_dir("place");
+        let dest = root.join("exiftool");
+        std::fs::create_dir_all(&dest).unwrap();
+        std::fs::write(dest.join("old.txt"), b"old").unwrap();
+        let unpacked = root.join("exiftool.tmp-1");
+        std::fs::create_dir_all(&unpacked).unwrap();
+        std::fs::write(unpacked.join(crate::exiftool::NAME), b"new").unwrap();
+        let exe = place_exiftool(&unpacked, &dest).unwrap();
+        assert_eq!(std::fs::read(&exe).unwrap(), b"new");
+        assert!(!dest.join("old.txt").exists());
+        assert!(!unpacked.exists());
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     /// Against SourceForge: `CERNO_TEST_DOWNLOAD=exiftool cargo test -- --ignored
@@ -324,7 +370,7 @@ mod tests {
             crate::process::hide_window(&mut command);
             let output = command.output().unwrap();
             let version = String::from_utf8_lossy(&output.stdout);
-            assert_eq!(version.trim(), "13.59");
+            assert_eq!(version.trim(), EXIFTOOL_VERSION);
         }
         std::fs::remove_dir_all(&root).unwrap();
     }

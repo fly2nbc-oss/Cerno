@@ -172,14 +172,21 @@ fn read_until_sentinel(reader: &mut impl BufRead, sentinel: &str) -> Result<Stri
     }
 }
 
-/// `12.24` and later; anything that is no version is too old.
-fn new_enough(version: &str) -> bool {
+/// `13.59` → (13, 59); anything else is no version.
+fn version_of(version: &str) -> Option<(u32, u32)> {
     let mut parts = version.trim().split('.');
     let number = |part: Option<&str>| part.and_then(|p| p.trim().parse::<u32>().ok());
-    match (number(parts.next()), number(parts.next())) {
-        (Some(major), Some(minor)) => (major, minor) >= MIN_VERSION,
-        _ => false,
-    }
+    Some((number(parts.next())?, number(parts.next())?))
+}
+
+/// `12.24` and later; anything that is no version is too old.
+fn new_enough(version: &str) -> bool {
+    version_of(version).is_some_and(|version| version >= MIN_VERSION)
+}
+
+/// `version` is older than `than` – both versions; anything else is not older.
+pub fn older_than(version: &str, than: &str) -> bool {
+    matches!((version_of(version), version_of(than)), (Some(a), Some(b)) if a < b)
 }
 
 /// Where an ExifTool was found.
@@ -293,6 +300,15 @@ mod tests {
     fn only_a_new_enough_exiftool_runs() {
         assert!(new_enough("13.59"));
         assert!(new_enough("12.24\n"));
+        assert!(older_than("13.50", "13.59"));
+        assert!(older_than("12.99", "13.0"));
+        assert!(older_than("13.9", "13.59"), "numbers, not text");
+        assert!(!older_than("13.59", "13.59"));
+        assert!(!older_than("13.60", "13.59"));
+        assert!(
+            !older_than("", "13.59"),
+            "no version is no reason to offer one"
+        );
         assert!(new_enough("12.76"));
         assert!(!new_enough("12.23"));
         assert!(!new_enough("11.88"));

@@ -685,6 +685,12 @@ pub struct Texts {
     pub exiftool_old_state: fn(&str) -> String,
     pub exiftool_downloading: fn(f32) -> String,
     pub btn_exiftool: fn(&str) -> String,
+    /// A downloaded ExifTool older than the pinned one: its version, the newer one.
+    pub exiftool_outdated: fn(&str, &str) -> String,
+    /// The button for it: the newer version, the size.
+    pub btn_exiftool_update: fn(&str, &str) -> String,
+    /// Once per newer version: the running version, the newer one.
+    pub exiftool_update_hint: fn(&str, &str) -> String,
     /// Models card: where the prediction's examples come from (stars, rejected, deleted).
     pub taste_sources: fn(usize, usize) -> String,
     pub btn_reset_taste: &'static str,
@@ -898,6 +904,19 @@ mod tests {
             );
             assert!(!(t.exiftool_found)("", false).is_empty(), "{name}");
             assert!((t.exiftool_old_state)("12.10").contains("12.10"), "{name}");
+            let outdated = (t.exiftool_outdated)("13.50", "13.59");
+            assert!(
+                outdated.contains("13.50") && outdated.contains("13.59"),
+                "{name}"
+            );
+            let button = (t.btn_exiftool_update)("13.59", "11 MB");
+            assert!(
+                button.contains("13.59") && button.contains("11 MB"),
+                "{name}"
+            );
+            let hint = (t.exiftool_update_hint)("13.50", "13.59");
+            assert!(hint.contains("13.50") && hint.contains("13.59"), "{name}");
+            assert!(hint.contains("F10"), "{name}");
             assert!((t.exiftool_downloading)(42.0).contains("42"), "{name}");
             let both = (t.download_text)(true, true, "2.9 GB");
             assert!(

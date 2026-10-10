@@ -41,6 +41,10 @@ pub enum ExifToolRow {
         version: String,
         download: bool,
     },
+    /// Cerno downloaded it, and pins a newer one now (`tools::EXIFTOOL_VERSION`): offered.
+    Outdated {
+        version: String,
+    },
     Downloading {
         percent: f32,
     },
@@ -177,6 +181,11 @@ fn exiftool_row(ui: &mut Ui, exiftool: &ExifToolRow) -> bool {
         ExifToolRow::TooOld { version, download } => {
             ((t.exiftool_old_state)(version), *download, None)
         }
+        ExifToolRow::Outdated { version } => (
+            (t.exiftool_outdated)(version, crate::tools::EXIFTOOL_VERSION),
+            true,
+            None,
+        ),
         ExifToolRow::Downloading { percent } => ((t.exiftool_downloading)(*percent), false, None),
     };
     row(ui, "ExifTool", &value);
@@ -194,7 +203,12 @@ fn exiftool_row(ui: &mut Ui, exiftool: &ExifToolRow) -> bool {
         return false;
     }
     let size = i18n::size(crate::tools::EXIFTOOL.bytes);
-    let button = Button::new(RichText::new((t.btn_exiftool)(&size)).color(Color32::WHITE))
+    let label = if matches!(exiftool, ExifToolRow::Outdated { .. }) {
+        (t.btn_exiftool_update)(crate::tools::EXIFTOOL_VERSION, &size)
+    } else {
+        (t.btn_exiftool)(&size)
+    };
+    let button = Button::new(RichText::new(label).color(Color32::WHITE))
         .fill(tokens::ACCENT)
         .min_size(vec2(0.0, 28.0));
     ui.add_space(2.0);
@@ -437,6 +451,17 @@ mod tests {
         let loading = ExifToolRow::Downloading { percent: 42.0 };
         let (_, loading) = run_with(&models, &loading, Vec::new());
         assert!(loading.contains(&(t.exiftool_downloading)(42.0)));
+        // A downloaded one older than the pin: the newer version on the row and the button.
+        let outdated = ExifToolRow::Outdated {
+            version: "13.50".into(),
+        };
+        let newer = crate::tools::EXIFTOOL_VERSION;
+        let (_, outdated) = run_with(&models, &outdated, Vec::new());
+        assert!(
+            outdated.contains(&(t.exiftool_outdated)("13.50", newer))
+                && outdated.contains(&(t.btn_exiftool_update)(newer, &size)),
+            "{outdated:?}"
+        );
     }
 
     #[test]
