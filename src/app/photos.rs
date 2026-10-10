@@ -153,7 +153,7 @@ impl CernoApp {
     /// photo is decoded, and the thumbnail cache keeps what it shows. Not during a straighten
     /// or crop session.
     pub(super) fn set_grid(&mut self, on: bool) {
-        if on && (self.edit.is_some() || self.view.is_empty()) {
+        if on && (self.edits.session.is_some() || self.view.is_empty()) {
             return;
         }
         // The grid replaces the four-up view, like every other photo on screen.
@@ -338,7 +338,7 @@ impl CernoApp {
         let covered = self.layer.is_open() || self.modal_open();
         if let [slot] = slots
             && slot.side == Side::Single
-            && self.edit.is_none()
+            && self.edits.session.is_none()
             && !covered
         {
             let prev = slot.index > 0;
@@ -354,7 +354,7 @@ impl CernoApp {
     fn draw_photo(&mut self, ui: &egui::Ui, slot: &Slot, image: &LoadedImage) {
         let frame = frame_for(slot.area, image, ui.ctx().pixels_per_point());
         let covered = self.layer.is_open() || self.modal_open();
-        let editing = self.edit.is_some();
+        let editing = self.edits.session.is_some();
         let is_video = self.slot_is_video(slot);
         if !covered {
             if editing && slot.side == Side::Single {

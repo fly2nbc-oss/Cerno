@@ -48,7 +48,6 @@ mod harness;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Key, ViewportCommand};
@@ -68,7 +67,6 @@ use crate::ui::overlays;
 use crate::ui::{description, viewer};
 use crate::view::{Media, Percentiles, PhotoFilter, SortKey, View, ViewOptions};
 
-use editing::EditSession;
 use notice::Notice;
 
 /// Set once the hint about the aesthetics model has been shown. Before 0.10 the same key
@@ -180,12 +178,8 @@ pub struct CernoApp {
     writer_stopped_told: bool,
     /// Edit elsewhere: the remembered program, the system's programs, the watched photos.
     external: external::External,
-    /// Straighten or crop, while it is open. The saved zoom comes back on Enter or Esc.
-    edit: Option<EditSession>,
-    /// Encodes a confirmed edit. Joined on exit so the write is not lost.
-    edit_thread: Option<JoinHandle<()>>,
-    /// A quarter turn or a re-encode is still in the writer.
-    edit_busy: bool,
+    /// Straighten, crop and turns: the open session, the encoding thread, the writer's work.
+    edits: editing::Edits,
     /// The video playing in the single view, its volume, the details panel's probe.
     videos: video::Videos,
 }
@@ -361,9 +355,7 @@ impl CernoApp {
             },
             writer_stopped_told: false,
             external,
-            edit: None,
-            edit_thread: None,
-            edit_busy: false,
+            edits: editing::Edits::default(),
             videos,
         }
     }
@@ -536,7 +528,7 @@ impl eframe::App for CernoApp {
         // A rating given right before closing must still reach the file, and a deletion that
         // wasn't undone is carried out. A confirmed edit encodes first, then the writer
         // applies it.
-        if let Some(thread) = self.edit_thread.take() {
+        if let Some(thread) = self.edits.thread.take() {
             let _ = thread.join();
         }
         // A comment still in its field is written with the rest.

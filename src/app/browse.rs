@@ -189,7 +189,7 @@ impl CernoApp {
         self.sync_analyzer();
         self.update_title(ctx);
         // A copy or move finished, a filter changed …: the geometry belongs to the other photo.
-        if let Some(session) = &self.edit
+        if let Some(session) = &self.edits.session
             && self.view.get(self.current) != Some(&session.path)
         {
             self.cancel_edit();

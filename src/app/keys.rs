@@ -341,7 +341,7 @@ impl CernoApp {
             self.open_help();
             return;
         }
-        if self.edit.is_some() {
+        if self.edits.session.is_some() {
             self.handle_edit_keys(ctx);
             return;
         }

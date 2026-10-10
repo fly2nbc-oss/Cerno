@@ -181,11 +181,11 @@ impl CernoApp {
             self.cell_info(i, percentiles, around)
         });
         if let Some(index) = strip.clicked
-            && self.edit.is_none()
+            && self.edits.session.is_none()
         {
             self.go_to(&ctx, index, 1);
         }
-        if strip.step != 0 && !self.layer.is_help() && self.edit.is_none() {
+        if strip.step != 0 && !self.layer.is_help() && self.edits.session.is_none() {
             let target = self.current.saturating_add_signed(strip.step);
             self.go_to(&ctx, target, strip.step.signum());
         }

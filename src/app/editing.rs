@@ -46,6 +46,17 @@ fn undo_target(counting_down: bool, current_deleted: bool, journal: bool) -> Und
     }
 }
 
+/// Straighten, crop and quarter turns.
+#[derive(Default)]
+pub(super) struct Edits {
+    /// Straighten or crop, while it is open. The saved zoom comes back on Enter or Esc.
+    pub(super) session: Option<EditSession>,
+    /// Encodes a confirmed edit. Joined on exit so the write is not lost.
+    pub(super) thread: Option<std::thread::JoinHandle<()>>,
+    /// A quarter turn or a re-encode is still in the writer.
+    pub(super) busy: bool,
+}
+
 pub(super) struct EditSession {
     /// The photo being edited; the session ends if another one becomes current.
     pub(super) path: PathBuf,
@@ -223,7 +234,7 @@ impl CernoApp {
 
     pub(super) fn begin_straighten(&mut self) {
         if matches!(
-            self.edit,
+            self.edits.session,
             Some(EditSession {
                 kind: EditKind::Straighten { .. },
                 ..
@@ -239,12 +250,13 @@ impl CernoApp {
             return;
         };
         let zoom = self
-            .edit
+            .edits
+            .session
             .take()
             .map(|session| session.zoom)
             .unwrap_or(self.zoom);
         self.zoom = viewer::Zoom::default();
-        self.edit = Some(EditSession {
+        self.edits.session = Some(EditSession {
             path,
             zoom,
             kind: EditKind::Straighten { radians: 0.0 },
@@ -253,7 +265,7 @@ impl CernoApp {
 
     pub(super) fn begin_crop(&mut self) {
         if matches!(
-            self.edit,
+            self.edits.session,
             Some(EditSession {
                 kind: EditKind::Crop { .. },
                 ..
@@ -277,12 +289,13 @@ impl CernoApp {
             return;
         };
         let zoom = self
-            .edit
+            .edits
+            .session
             .take()
             .map(|session| session.zoom)
             .unwrap_or(self.zoom);
         self.zoom = viewer::Zoom::default();
-        self.edit = Some(EditSession {
+        self.edits.session = Some(EditSession {
             path,
             zoom,
             kind: EditKind::Crop {
@@ -296,18 +309,18 @@ impl CernoApp {
     }
 
     pub(super) fn cancel_edit(&mut self) {
-        if let Some(session) = self.edit.take() {
+        if let Some(session) = self.edits.session.take() {
             self.zoom = session.zoom;
         }
     }
 
     fn confirm_edit(&mut self) {
         // Nothing may still be in the writer for this photo: the render reads the file now.
-        if self.edit_busy {
+        if self.edits.busy {
             self.notice = Some(Notice::hint(Blocked::Writing.hint()));
             return;
         }
-        let Some(session) = self.edit.take() else {
+        let Some(session) = self.edits.session.take() else {
             return;
         };
         self.zoom = session.zoom;
@@ -341,7 +354,7 @@ impl CernoApp {
     }
 
     fn spawn_edit(&mut self, path: PathBuf, job: PixelJob) {
-        self.edit_busy = true;
+        self.edits.busy = true;
         self.notice = Some(Notice::working(i18n::t().edit_writing));
         let channel = self.writer.channel();
         let files = Arc::clone(&self.files);
@@ -359,9 +372,9 @@ impl CernoApp {
                 }
             });
         match thread {
-            Ok(thread) => self.edit_thread = Some(thread),
+            Ok(thread) => self.edits.thread = Some(thread),
             Err(err) => {
-                self.edit_busy = false;
+                self.edits.busy = false;
                 self.notice = Some(Notice::error((i18n::t().edit_failed)(&err.to_string())));
             }
         }
@@ -379,7 +392,7 @@ impl CernoApp {
         if !self.allowed(Change::Rewrite, Some(&path)) {
             return;
         }
-        self.edit_busy = true;
+        self.edits.busy = true;
         self.writer.rotate_quarter(path, clockwise);
     }
 
@@ -422,7 +435,7 @@ impl CernoApp {
     pub(super) fn restore_original(&mut self, path: PathBuf) {
         match crate::originals::original(&self.db, &path) {
             Ok(Some(_)) => {
-                self.edit_busy = true;
+                self.edits.busy = true;
                 self.writer.restore(path);
             }
             Ok(None) => self.notice = Some(Notice::hint(i18n::t().undo_nothing)),
@@ -431,7 +444,7 @@ impl CernoApp {
     }
 
     pub(super) fn poll_edits(&mut self) {
-        if let Some(thread) = self.edit_thread.take_if(|thread| thread.is_finished()) {
+        if let Some(thread) = self.edits.thread.take_if(|thread| thread.is_finished()) {
             let _ = thread.join();
         }
         let writing = i18n::t().edit_writing;
@@ -440,7 +453,7 @@ impl CernoApp {
                 self.reload_saved(&outcome.path);
                 continue;
             }
-            self.edit_busy = false;
+            self.edits.busy = false;
             match outcome.error {
                 Some(err) => self.notice = Some(Notice::error((i18n::t().edit_failed)(&err))),
                 None => {
@@ -506,7 +519,7 @@ impl CernoApp {
         if input.command && !input.shift && input.right {
             self.rotate_quarter(true);
         }
-        let Some(session) = self.edit.as_mut() else {
+        let Some(session) = self.edits.session.as_mut() else {
             return;
         };
         match &mut session.kind {
@@ -571,13 +584,13 @@ impl CernoApp {
         let Some(EditSession {
             kind: EditKind::Crop { .. },
             ..
-        }) = self.edit.as_ref()
+        }) = self.edits.session.as_ref()
         else {
             return;
         };
         let response = edit_ui::pointer_area(ui, frame.area);
         let photo = self.zoom.image_rect(frame);
-        let (image_size, crop, active) = match &self.edit {
+        let (image_size, crop, active) = match &self.edits.session {
             Some(EditSession {
                 kind:
                     EditKind::Crop {
@@ -617,7 +630,7 @@ impl CernoApp {
             if let Some(EditSession {
                 kind: EditKind::Crop { gesture: slot, .. },
                 ..
-            }) = self.edit.as_mut()
+            }) = self.edits.session.as_mut()
             {
                 *slot = Some(gesture);
             }
@@ -631,7 +644,7 @@ impl CernoApp {
             && let Some(EditSession {
                 kind: EditKind::Crop { gesture, crop, .. },
                 ..
-            }) = self.edit.as_mut()
+            }) = self.edits.session.as_mut()
         {
             if let Some(CropGesture::Draw { before, anchor }) = gesture
                 && !response
@@ -655,7 +668,7 @@ impl CernoApp {
                     ..
                 },
             ..
-        }) = self.edit.as_mut()
+        }) = self.edits.session.as_mut()
         else {
             return;
         };
@@ -692,7 +705,7 @@ impl CernoApp {
 
     /// The angle the photo is drawn at while straightening.
     pub(super) fn straighten_angle(&self) -> Option<f64> {
-        match &self.edit {
+        match &self.edits.session {
             Some(EditSession {
                 kind: EditKind::Straighten { radians },
                 ..
@@ -703,7 +716,7 @@ impl CernoApp {
 
     /// Grid or crop frame over the photo, with the banner that names the keys.
     pub(super) fn draw_edit_overlay(&self, ui: &egui::Ui, frame: &viewer::Frame) {
-        let Some(session) = &self.edit else {
+        let Some(session) = &self.edits.session else {
             return;
         };
         let photo = self.zoom.image_rect(frame);

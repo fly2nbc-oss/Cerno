@@ -87,7 +87,8 @@ impl CernoApp {
         let writes_pending = self.writer.status().pending > 0
             || videos_open
             || self
-                .edit_thread
+                .edits
+                .thread
                 .as_ref()
                 .is_some_and(|thread| !thread.is_finished());
         let repaint = ctx.clone();

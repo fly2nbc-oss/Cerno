@@ -175,8 +175,8 @@ impl CernoApp {
         blocked(
             change,
             Activity {
-                writing: self.edit_busy,
-                editing: self.edit.is_some(),
+                writing: self.edits.busy,
+                editing: self.edits.session.is_some(),
                 transfer,
                 no_index: self.db.is_in_memory(),
                 deleted: path.is_some_and(|p| self.is_deleted(p)),
