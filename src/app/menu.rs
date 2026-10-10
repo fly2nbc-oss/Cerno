@@ -658,6 +658,12 @@ impl CernoApp {
         });
     }
 
+    /// The language list, as from its row (tests: it asks the system for nothing).
+    #[cfg(test)]
+    pub(super) fn open_language_list(&mut self) {
+        self.open_row_list(ListKind::Languages, Rect::NOTHING, false);
+    }
+
     /// The menu bar, and what its rows ran.
     pub(super) fn draw_side_bar(
         &mut self,

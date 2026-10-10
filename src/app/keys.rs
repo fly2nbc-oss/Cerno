@@ -546,29 +546,118 @@ impl CernoApp {
             ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!keys.is_fullscreen));
         }
         if keys.escape {
-            if self.deletions.countdown(Instant::now()).is_some() {
-                self.undo_deletions(ctx);
-            } else if self.zoom.is_zoomed() && !self.grid {
-                // The grid hides the photo: its zoom is left for when it shows again.
-                self.zoom.scale = None;
-            } else if self.quad.is_some() {
-                self.toggle_quad();
-            } else if self.pinned.is_some() {
-                self.toggle_compare(ctx);
-            } else if self.grid {
-                self.set_grid(false);
-            } else if keys.is_fullscreen {
-                ctx.send_viewport_cmd(ViewportCommand::Fullscreen(false));
-            } else {
-                self.notice = None;
+            let target = escape_target(Escapable {
+                countdown: self.deletions.countdown(Instant::now()).is_some(),
+                zoomed: self.zoom.is_zoomed(),
+                grid: self.grid,
+                quad: self.quad.is_some(),
+                compare: self.pinned.is_some(),
+                fullscreen: keys.is_fullscreen,
+            });
+            match target {
+                Escape::Deletions => self.undo_deletions(ctx),
+                Escape::Zoom => self.zoom.scale = None,
+                Escape::Quad => self.toggle_quad(),
+                Escape::Compare => self.toggle_compare(ctx),
+                Escape::Grid => self.set_grid(false),
+                Escape::Fullscreen => ctx.send_viewport_cmd(ViewportCommand::Fullscreen(false)),
+                Escape::Notice => self.notice = None,
             }
         }
+    }
+}
+
+/// What can be open when `Esc` comes.
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct Escapable {
+    pub(super) countdown: bool,
+    pub(super) zoomed: bool,
+    pub(super) grid: bool,
+    pub(super) quad: bool,
+    pub(super) compare: bool,
+    pub(super) fullscreen: bool,
+}
+
+/// What `Esc` ends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Escape {
+    Deletions,
+    Zoom,
+    Quad,
+    Compare,
+    Grid,
+    Fullscreen,
+    Notice,
+}
+
+/// The first of: a deletion counting down (brought back), the zoom – not while the grid hides
+/// the photo, its zoom is left for when it shows again –, the four-up view, compare mode, the
+/// grid, full screen; else the notice goes.
+pub(super) fn escape_target(open: Escapable) -> Escape {
+    if open.countdown {
+        Escape::Deletions
+    } else if open.zoomed && !open.grid {
+        Escape::Zoom
+    } else if open.quad {
+        Escape::Quad
+    } else if open.compare {
+        Escape::Compare
+    } else if open.grid {
+        Escape::Grid
+    } else if open.fullscreen {
+        Escape::Fullscreen
+    } else {
+        Escape::Notice
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `Esc` ends one thing at a time, in this order; the grid keeps a zoom it hides.
+    #[test]
+    fn escape_ends_one_thing_at_a_time() {
+        let all = Escapable {
+            countdown: true,
+            zoomed: true,
+            grid: false,
+            quad: true,
+            compare: true,
+            fullscreen: true,
+        };
+        assert_eq!(escape_target(all), Escape::Deletions);
+        let open = Escapable {
+            countdown: false,
+            ..all
+        };
+        assert_eq!(escape_target(open), Escape::Zoom);
+        assert_eq!(
+            escape_target(Escapable {
+                grid: true,
+                quad: false,
+                compare: false,
+                ..open
+            }),
+            Escape::Grid
+        );
+        let open = Escapable {
+            zoomed: false,
+            ..open
+        };
+        assert_eq!(escape_target(open), Escape::Quad);
+        let open = Escapable {
+            quad: false,
+            ..open
+        };
+        assert_eq!(escape_target(open), Escape::Compare);
+        let open = Escapable {
+            compare: false,
+            ..open
+        };
+        assert_eq!(escape_target(open), Escape::Fullscreen);
+        assert_eq!(escape_target(Escapable::default()), Escape::Notice);
+    }
     use eframe::egui::{Event, Modifiers, RawInput};
 
     fn key(physical: Key, logical: Key, modifiers: Modifiers) -> Event {

@@ -71,6 +71,19 @@ impl ExifToolSetup {
         }
     }
 
+    /// One on `PATH`, already prepared (tests: marks pass the gate on every machine).
+    #[cfg(test)]
+    pub(super) fn found() -> Self {
+        Self {
+            found: Some(Origin::Path),
+            checked: Instant::now(),
+            offered: false,
+            prepared: true,
+            download: None,
+            install_command: None,
+        }
+    }
+
     /// Ends a running download (on exit); its `.part` waits for the next attempt.
     pub(super) fn cancel(&self) {
         if let Some(download) = &self.download {
