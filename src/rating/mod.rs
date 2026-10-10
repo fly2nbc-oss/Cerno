@@ -166,6 +166,21 @@ impl RatingWriter {
         }
     }
 
+    /// A writer without its thread (tests): marks are sent and never written.
+    #[cfg(test)]
+    pub fn detached() -> Self {
+        let (tx, rx) = mpsc::channel();
+        // Kept open, so sending never fails: the messages stay unread.
+        std::mem::forget(rx);
+        Self {
+            tx,
+            thread: None,
+            lost: AtomicBool::new(false),
+            status: Arc::default(),
+            outcomes: Arc::default(),
+        }
+    }
+
     fn send(&self, message: Message) {
         if self.tx.send(message).is_err() && !self.lost.swap(true, Ordering::Relaxed) {
             log::error!("the mark writer has stopped: marks are no longer written");

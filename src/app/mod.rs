@@ -40,6 +40,9 @@ mod undo;
 mod update;
 mod video;
 
+#[cfg(test)]
+mod harness;
+
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -276,6 +279,17 @@ pub struct CernoApp {
     media_probe: Option<video::Probe>,
 }
 
+/// What `assemble` takes from outside: the index and the parts that write or delete files or
+/// look for ExifTool – the tests pass harmless ones (`harness`).
+struct Parts {
+    db: Arc<Db>,
+    /// The index could not be opened (`db` is then in memory).
+    notice: Option<Notice>,
+    remover: deletion::Remover,
+    writer: fn(egui::Context, Arc<Db>, Arc<FileLocks>) -> RatingWriter,
+    exiftool: fn() -> exiftool::ExifToolSetup,
+}
+
 impl CernoApp {
     /// Runs before the window exists (see `main`): opening the start folder here lets the first
     /// decode overlap with the GPU and window set-up.
@@ -298,7 +312,31 @@ impl CernoApp {
         if let Some(lang) = db.setting("language").and_then(|c| Lang::from_code(&c)) {
             i18n::set(lang);
         }
-        let db = Arc::new(db);
+        let parts = Parts {
+            db: Arc::new(db),
+            notice,
+            remover: deletion::set_aside,
+            writer: RatingWriter::new,
+            exiftool: exiftool::ExifToolSetup::new,
+        };
+        let mut app = Self::assemble(&ctx, parts, started);
+        if let Some(path) = start_path {
+            app.open(&ctx, &path);
+        }
+        app
+    }
+
+    /// Everything after the index is open and the language set; the tests build the app here
+    /// with an index in memory and no writer thread (`harness`).
+    fn assemble(ctx: &egui::Context, parts: Parts, started: Instant) -> Self {
+        let ctx = ctx.clone();
+        let Parts {
+            db,
+            notice,
+            remover,
+            writer,
+            exiftool,
+        } = parts;
         let updates = update::Updates::new(&db);
         let files = Arc::new(FileLocks::default());
         let thumbs = Arc::new(Thumbs::new(ctx.clone(), Arc::clone(&db)));
@@ -349,7 +387,7 @@ impl CernoApp {
             .and_then(|text| parse_area(&text))
             .unwrap_or(START_TARGET);
 
-        let mut app = Self {
+        Self {
             loader: Loader::new(
                 ctx.clone(),
                 start_target,
@@ -363,8 +401,8 @@ impl CernoApp {
                 Arc::clone(&thumbs),
                 Arc::clone(&files),
             ),
-            writer: RatingWriter::new(ctx.clone(), Arc::clone(&db), Arc::clone(&files)),
-            deletions: DeleteQueue::new(deletion::set_aside),
+            writer: writer(ctx.clone(), Arc::clone(&db), Arc::clone(&files)),
+            deletions: DeleteQueue::new(remover),
             transfers: TransferQueue::new(Arc::clone(&files)),
             db,
             files,
@@ -436,7 +474,7 @@ impl CernoApp {
             details_cycles: Vec::new(),
             language_flash: None,
             notice,
-            exiftool: exiftool::ExifToolSetup::new(),
+            exiftool: exiftool(),
             started,
             logged_first_frame: false,
             first_photo: None,
@@ -457,11 +495,7 @@ impl CernoApp {
             video_muted,
             video_silent_told: false,
             media_probe: None,
-        };
-        if let Some(path) = start_path {
-            app.open(&ctx, &path);
         }
-        app
     }
 
     /// Decode size: the photo area in physical pixels (`viewer::decode_size`), so a fitted
@@ -553,8 +587,9 @@ impl CernoApp {
     }
 }
 
-impl eframe::App for CernoApp {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+impl CernoApp {
+    /// One frame: background results, keys, the bars, the photo and what lies over it.
+    fn run_frame(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let window = ui.max_rect();
         if !self.logged_first_frame {
@@ -618,6 +653,12 @@ impl eframe::App for CernoApp {
         };
         self.draw_language_flash(&ctx, flash);
         overlays::drop_hint(ui, window);
+    }
+}
+
+impl eframe::App for CernoApp {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.run_frame(ui);
     }
 
     /// `Tab` toggles the details panel, `Ctrl+Tab` steps through its tabs. egui would move
