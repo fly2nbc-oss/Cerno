@@ -142,6 +142,13 @@ jobs:
       - name: Signing not set up
         if: startsWith(github.ref, 'refs/tags/v') && env.SIGNING != 'true'
         run: echo "::warning::SIGNPATH_ORGANIZATION_ID is not set – the Windows packages are unsigned."
+      # The artifact configurations in SignPath check every signed file's product version
+      # against this parameter (SignPath Foundation: metadata restrictions on all signed files).
+      - name: Version for SignPath
+        id: version
+        if: env.SIGNING == 'true'
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
       - name: Upload cerno.exe for signing
         id: unsigned-exe
         if: env.SIGNING == 'true'
@@ -153,7 +160,7 @@ jobs:
           retention-days: 1
       - name: Sign cerno.exe (SignPath, approved by hand)
         if: env.SIGNING == 'true'
-        uses: signpath/github-action-submit-signing-request@v1
+        uses: signpath/github-action-submit-signing-request@v3
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
@@ -161,6 +168,8 @@ jobs:
           signing-policy-slug: release-signing
           artifact-configuration-slug: exe
           github-artifact-id: ${{ steps.unsigned-exe.outputs.artifact-id }}
+          parameters: |
+            version: "${{ steps.version.outputs.version }}"
           wait-for-completion: true
           wait-for-completion-timeout-in-seconds: 1800
           output-artifact-directory: signed/exe
@@ -181,7 +190,7 @@ jobs:
           retention-days: 1
       - name: Sign the installer (SignPath, approved by hand)
         if: env.SIGNING == 'true'
-        uses: signpath/github-action-submit-signing-request@v1
+        uses: signpath/github-action-submit-signing-request@v3
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
@@ -189,6 +198,8 @@ jobs:
           signing-policy-slug: release-signing
           artifact-configuration-slug: setup
           github-artifact-id: ${{ steps.unsigned-setup.outputs.artifact-id }}
+          parameters: |
+            version: "${{ steps.version.outputs.version }}"
           wait-for-completion: true
           wait-for-completion-timeout-in-seconds: 1800
           output-artifact-directory: signed/setup
@@ -388,6 +399,8 @@ jobs:
           | \`cerno_${VERSION}_amd64.deb\` | Ubuntu 24.04+, Debian 13+ |
 
           Writing ratings, colour labels, comments and keywords needs [ExifTool](https://exiftool.org/): on Windows Cerno offers to download it the first time it is needed; the .deb recommends it. Videos play inside Cerno: the Windows packages bring GStreamer along, on Linux it comes from the system (the .deb depends on it).
+
+          Code signing policy: what is signed, by whom and how – see [Code signing policy](https://github.com/fly2nbc-oss/Cerno#code-signing-policy) in the README.
           EOF
       - uses: softprops/action-gh-release@v3
         with:
