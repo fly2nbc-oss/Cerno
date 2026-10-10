@@ -24,6 +24,9 @@ const OFFER_SHOWN: &str = "exiftool_offer_shown";
 /// installed meanwhile (`apt install`) works without a restart.
 const RECHECK: Duration = Duration::from_secs(1);
 
+/// ExifTool starts this long after the first photo shows (`poll_exiftool`).
+const PREPARE_AFTER: Duration = Duration::from_millis(1500);
+
 /// Windows downloads ExifTool; Linux installs it from the system's packages.
 const CAN_DOWNLOAD: bool = cfg!(windows);
 
@@ -170,13 +173,22 @@ impl CernoApp {
         }
     }
 
-    /// The download's end. And once the first photo shows, ExifTool starts ahead of the first
-    /// mark: its version is known then (a too old one greys the marks out before one is set),
-    /// and the first star needs no Perl start-up.
-    pub(super) fn poll_exiftool(&mut self) {
-        if !self.exiftool.prepared && self.logged_first_photo && self.exiftool.found.is_some() {
-            self.exiftool.prepared = true;
-            self.writer.prepare();
+    /// The download's end. And a moment after the first photo shows, ExifTool starts ahead of
+    /// the first mark: its version is known then (a too old one greys the marks out before one
+    /// is set), and the first star needs no Perl start-up. Not sooner: the neighbours' decodes
+    /// come first. A mark set before that starts it in the writer.
+    pub(super) fn poll_exiftool(&mut self, ctx: &egui::Context) {
+        if !self.exiftool.prepared
+            && self.exiftool.found.is_some()
+            && let Some(shown) = self.first_photo
+        {
+            let waited = shown.elapsed();
+            if waited >= PREPARE_AFTER {
+                self.exiftool.prepared = true;
+                self.writer.prepare();
+            } else {
+                ctx.request_repaint_after(PREPARE_AFTER - waited);
+            }
         }
         let Some(download) = &self.exiftool.download else {
             return;

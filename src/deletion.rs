@@ -37,6 +37,9 @@ pub struct DeleteQueue {
     deadline: Option<Instant>,
     /// Handed to a worker, still hidden until its result arrives.
     in_progress: HashSet<PathBuf>,
+    /// `pending` and `riders` again, for `is_hidden` – asked for every photo of the folder in
+    /// a frame, and a deletion of hundreds made those lists long.
+    waiting: HashSet<PathBuf>,
     tx: mpsc::Sender<Finished>,
     rx: mpsc::Receiver<Finished>,
     workers: Vec<JoinHandle<()>>,
@@ -51,6 +54,7 @@ impl DeleteQueue {
             riders: Vec::new(),
             deadline: None,
             in_progress: HashSet::new(),
+            waiting: HashSet::new(),
             tx,
             rx,
             workers: Vec::new(),
@@ -60,6 +64,7 @@ impl DeleteQueue {
     /// Queues `path` and restarts the countdown.
     pub fn push(&mut self, path: PathBuf, now: Instant) {
         if !self.is_hidden(&path) {
+            self.waiting.insert(path.clone());
             self.pending.push(path);
         }
         self.deadline = Some(now + DELAY);
@@ -68,6 +73,7 @@ impl DeleteQueue {
     /// Queues the RAW riding along with a queued JPEG.
     pub fn push_rider(&mut self, path: PathBuf) {
         if !self.is_hidden(&path) {
+            self.waiting.insert(path.clone());
             self.riders.push(path);
         }
     }
@@ -76,13 +82,12 @@ impl DeleteQueue {
     pub fn cancel(&mut self) -> usize {
         self.deadline = None;
         self.riders.clear();
+        self.waiting.clear();
         std::mem::take(&mut self.pending).len()
     }
 
     pub fn is_hidden(&self, path: &Path) -> bool {
-        self.in_progress.contains(path)
-            || self.pending.iter().any(|p| p == path)
-            || self.riders.iter().any(|p| p == path)
+        self.in_progress.contains(path) || self.waiting.contains(path)
     }
 
     /// Waiting photos and the share of the countdown still left (1.0 → 0.0).
@@ -101,6 +106,7 @@ impl DeleteQueue {
         self.deadline = None;
         let mut batch = std::mem::take(&mut self.pending);
         batch.append(&mut self.riders);
+        self.waiting.clear();
         self.in_progress.extend(batch.iter().cloned());
         let (remove, tx) = (self.remove, self.tx.clone());
         self.workers.push(
@@ -145,6 +151,7 @@ impl DeleteQueue {
         } else {
             let mut batch = std::mem::take(&mut self.pending);
             batch.append(&mut self.riders);
+            self.waiting.clear();
             run(self.remove, batch)
         };
         self.deadline = None;

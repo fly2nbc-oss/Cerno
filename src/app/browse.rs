@@ -449,8 +449,23 @@ impl CernoApp {
             .unwrap_or_else(|| library::file_name_lossy(path))
     }
 
-    /// Sharpness percentiles of the folder, recomputed when scores changed.
-    pub(super) fn percentiles(&mut self) -> &Percentiles {
+    /// Whether the folder has a video (the filter bar's *Videos only*), looked up once per
+    /// list – `format_of` allocates, and the bar asks in every frame. The `Weak` keeps the
+    /// list's address from being reused by the next one.
+    pub(super) fn has_videos(&mut self) -> bool {
+        if !std::sync::Weak::ptr_eq(&self.videos_in.0, &Arc::downgrade(&self.all)) {
+            let any = self
+                .all
+                .iter()
+                .any(|p| library::format_of(p) == Some(library::Format::Video));
+            self.videos_in = (Arc::downgrade(&self.all), any);
+        }
+        self.videos_in.1
+    }
+
+    /// Sharpness percentiles of the folder, recomputed when scores changed – shared, not
+    /// copied for every frame.
+    pub(super) fn percentiles(&mut self) -> Arc<Percentiles> {
         let version = self.board.version();
         if self.percentiles.0 != version {
             let board = &self.board;
@@ -459,9 +474,9 @@ impl CernoApp {
                 .iter()
                 .filter_map(|p| board.get(p).map(|k| k.scores))
                 .collect();
-            self.percentiles = (version, Percentiles::from_scores(scores.iter()));
+            self.percentiles = (version, Arc::new(Percentiles::from_scores(scores.iter())));
         }
-        &self.percentiles.1
+        Arc::clone(&self.percentiles.1)
     }
 
     /// The photo to show after the one at `index` disappears: the next one, otherwise the

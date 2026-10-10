@@ -266,7 +266,9 @@ impl Inner {
             .load_texture(format!("thumb:{}", path.display()), image, options);
         lock(&self.textures).insert(path.to_path_buf(), texture);
         lock(&self.queue).misses.remove(path);
-        self.ctx.request_repaint();
+        // Several arrive at once while the strip or the grid fills: one redraw for them.
+        self.ctx
+            .request_repaint_after(std::time::Duration::from_millis(30));
     }
 
     /// Notes that the database has no thumbnail – unless the analysis delivered one during the

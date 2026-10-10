@@ -286,6 +286,7 @@ fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
         match rx.recv_timeout(timeout) {
             Ok(Message::SetRating { path, rating }) => {
                 files.set_queued(&path, true);
+                allow_taste(db, &path);
                 Pending::of(&mut pending, path).rating = Some(rating);
             }
             Ok(Message::SetLabel { path, label }) => {
@@ -405,6 +406,17 @@ fn run(rx: &mpsc::Receiver<Message>, shared: &Shared<'_>) {
 }
 
 /// After a marks write: the index follows the file, the status shows the error.
+/// A new rating or rejection counts again for the taste model (`Db::allow_taste_for`). Here,
+/// not on the UI thread: a stat, a lookup and a write per star.
+fn allow_taste(db: &Db, path: &Path) {
+    if let Ok(stamp) = crate::db::FileStamp::of(path)
+        && let Ok(Some(record)) = db.lookup(&path.to_string_lossy(), stamp)
+        && let Err(err) = db.allow_taste_for(record.fingerprint)
+    {
+        log::warn!("taste allow: {err:#}");
+    }
+}
+
 fn note_marks(db: &Db, status: &Mutex<WriterStatus>, path: &Path, result: Result<Option<Written>>) {
     if let Ok(Some(written)) = &result {
         // The size changed, the mtime didn't: keep the index valid without rehashing.
