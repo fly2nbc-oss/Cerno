@@ -371,6 +371,38 @@ fn crop(full: &decode::DecodedImage, bbox: [f32; 4]) -> anyhow::Result<ColorImag
 mod tests {
     use super::*;
 
+    /// The faces button counts what the grid shows: no box between two heads, none too small
+    /// at the analysis size, left to right – and the photo's size decides what is too small.
+    #[test]
+    fn the_count_follows_the_grids_rules() {
+        // Pixels of the analysis image of a 4000 × 2000 photo (2048 × 1024) → 0..1.
+        let (w, h) = (2048.0, 1024.0);
+        let row = |score, x: f32, side: f32, eyes: [[f32; 2]; 2]| FaceRow {
+            score,
+            bbox: [x / w, 100.0 / h, side / w, side / h],
+            landmarks: [
+                eyes[0],
+                eyes[1],
+                [x + side / 2.0, 125.0],
+                [x + side * 0.3, 132.0],
+                [x + side * 0.7, 132.0],
+            ]
+            .map(|[px, py]| [px / w, py / h]),
+            eyes: None,
+        };
+        let mother = row(0.85, 100.0, 40.0, [[110.0, 115.0], [128.0, 115.0]]);
+        let child = row(0.80, 150.0, 40.0, [[160.0, 115.0], [178.0, 115.0]]);
+        // One eye of each: the box between the two heads.
+        let bridge = row(0.65, 125.0, 40.0, [[128.0, 115.0], [153.0, 115.0]]);
+        let tiny = row(0.90, 600.0, 20.0, [[605.0, 108.0], [615.0, 108.0]]);
+        assert_eq!(
+            judged(vec![tiny, child, bridge, mother], [4000, 2000]),
+            vec![mother, child]
+        );
+        // Upright, the same boxes are half as wide at the analysis size: 20 px, too small.
+        assert!(judged(vec![mother, child], [2000, 4000]).is_empty());
+    }
+
     fn image(width: u32, height: u32) -> decode::DecodedImage {
         let rgb = (0..width * height)
             .flat_map(|i| [(i % width) as u8, (i / width) as u8, 0])
