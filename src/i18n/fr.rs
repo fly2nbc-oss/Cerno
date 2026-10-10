@@ -274,6 +274,8 @@ pub static TEXTS: Texts = Texts {
     db_unavailable: |err| {
         format!("Les scores ne sont pas enregistrés pendant cette session : {err}")
     },
+    writer_stopped: "Les marques ne sont plus écrites dans les fichiers – erreur interne (crash.log dans le dossier de données). Veuillez redémarrer Cerno.",
+    internal_error: "Erreur interne – la commande a été interrompue, Cerno continue (détails dans crash.log du dossier de données).",
     cannot_open: |path, err| format!("Impossible d'ouvrir {path} : {err}"),
     no_photos_in: |dir| format!("Aucun fichier JPEG ou HEIC dans {dir}"),
     rating_not_saved: |err| format!("Étoiles non enregistrées – {err}"),
@@ -320,11 +322,6 @@ pub static TEXTS: Texts = Texts {
     aesthetics_offer: |size| {
         format!(
             "L'évaluation esthétique a besoin de modèles d'image ({size}) : Menu → Modèles et données."
-        )
-    },
-    v25_offer: |size| {
-        format!(
-            "Une esthétique plus fiable avec le second modèle V2.5 ({size}) : Menu → Modèles et données."
         )
     },
     exiftool_offer: |size| {

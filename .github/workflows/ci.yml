@@ -18,6 +18,10 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
 
+# Read-only by default; only the release job may write (it drafts the release).
+permissions:
+  contents: read
+
 jobs:
   linux:
     name: Lint & test (Linux, HEIC, video)
@@ -38,6 +42,12 @@ jobs:
       - run: cargo clippy --all-targets --features heic,video -- -D warnings
       # The player tests play tests/fixtures/tiny.mp4 on the CPU, without sound.
       - run: cargo test --features heic,video
+      # Known vulnerabilities in the locked dependencies fail the run; warnings (unmaintained,
+      # yanked) are listed only.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - run: cargo audit
 
   windows:
     name: Test & build (Windows)

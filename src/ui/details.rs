@@ -43,7 +43,7 @@ impl DetailsMode {
     pub fn from_id(id: &str) -> Option<Self> {
         match id {
             "off" => Some(Self::Off),
-            "on" | "values" | "explained" => Some(Self::On),
+            "on" => Some(Self::On),
             _ => None,
         }
     }
@@ -839,10 +839,10 @@ mod tests {
     }
 
     #[test]
-    fn details_mode_maps_legacy_settings() {
-        assert_eq!(DetailsMode::from_id("explained"), Some(DetailsMode::On));
-        assert_eq!(DetailsMode::from_id("values"), Some(DetailsMode::On));
+    fn details_mode_ids_round_trip() {
+        assert_eq!(DetailsMode::from_id("on"), Some(DetailsMode::On));
         assert_eq!(DetailsMode::from_id("off"), Some(DetailsMode::Off));
+        assert_eq!(DetailsMode::from_id("explained"), None);
     }
 
     fn details_with_scores(status: &Status) -> Details<'_> {

@@ -140,8 +140,7 @@ impl CernoApp {
     /// photo shown – a RAW by its JPEG.
     pub(super) fn toggle_pairs(&mut self, ctx: &egui::Context) {
         self.pair_mode = !self.pair_mode;
-        self.db
-            .put_setting(SETTING, if self.pair_mode { "1" } else { "0" });
+        self.db.put_flag(SETTING, self.pair_mode);
         let at = self
             .view
             .get(self.current)

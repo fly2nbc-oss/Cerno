@@ -237,6 +237,8 @@ pub static TEXTS: Texts = Texts {
     },
 
     db_unavailable: |err| format!("I punteggi non vengono salvati in questa sessione: {err}"),
+    writer_stopped: "I contrassegni non vengono più scritti nei file – errore interno (crash.log nella cartella dei dati). Riavvia Cerno.",
+    internal_error: "Errore interno – il comando è stato interrotto, Cerno continua (dettagli in crash.log nella cartella dei dati).",
     cannot_open: |path, err| format!("Impossibile aprire {path}: {err}"),
     no_photos_in: |dir| format!("Nessun file JPEG o HEIC in {dir}"),
     rating_not_saved: |err| format!("Stelle non salvate – {err}"),
@@ -281,11 +283,6 @@ pub static TEXTS: Texts = Texts {
     aesthetics_offer: |size| {
         format!(
             "La valutazione estetica richiede modelli di immagini ({size}): Menu → Modelli e dati."
-        )
-    },
-    v25_offer: |size| {
-        format!(
-            "Estetica più affidabile con il secondo modello V2.5 ({size}): Menu → Modelli e dati."
         )
     },
     exiftool_offer: |size| {

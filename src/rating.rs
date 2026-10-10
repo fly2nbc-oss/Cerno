@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -131,6 +132,9 @@ impl Pending {
 pub struct RatingWriter {
     tx: mpsc::Sender<Message>,
     thread: Option<JoinHandle<()>>,
+    /// A message could not be sent: the thread has ended (it panicked). Marks would be lost
+    /// without a word, so the app says so (`stopped`).
+    lost: AtomicBool,
     status: Arc<Mutex<WriterStatus>>,
     outcomes: Arc<Mutex<Vec<EditOutcome>>>,
 }
@@ -164,38 +168,51 @@ impl RatingWriter {
                     },
                 );
             })
-            .expect("failed to spawn rating writer");
+            .unwrap_or_else(crate::process::no_thread);
         Self {
             tx,
             thread: Some(thread),
+            lost: AtomicBool::new(false),
             status,
             outcomes,
         }
     }
 
+    fn send(&self, message: Message) {
+        if self.tx.send(message).is_err() && !self.lost.swap(true, Ordering::Relaxed) {
+            log::error!("the mark writer has stopped: marks are no longer written");
+        }
+    }
+
+    /// The writer thread has ended before `shutdown` – marks and edits are not written.
+    pub fn stopped(&self) -> bool {
+        self.lost.load(Ordering::Relaxed)
+            || self.thread.as_ref().is_some_and(JoinHandle::is_finished)
+    }
+
     /// `Rating::Unrated` removes the rating.
     pub fn set(&self, path: PathBuf, rating: Rating) {
-        let _ = self.tx.send(Message::SetRating { path, rating });
+        self.send(Message::SetRating { path, rating });
     }
 
     /// `None` removes the colour label.
     pub fn set_label(&self, path: PathBuf, label: Option<Label>) {
-        let _ = self.tx.send(Message::SetLabel { path, label });
+        self.send(Message::SetLabel { path, label });
     }
 
     /// The whole comment and keyword list; empty ones remove them from the file.
     pub fn set_description(&self, path: PathBuf, description: Description) {
-        let _ = self.tx.send(Message::SetDescription { path, description });
+        self.send(Message::SetDescription { path, description });
     }
 
     /// Clockwise or counter-clockwise quarter turn, written as EXIF orientation.
     pub fn rotate_quarter(&self, path: PathBuf, clockwise: bool) {
-        let _ = self.tx.send(Message::RotateQuarter { path, clockwise });
+        self.send(Message::RotateQuarter { path, clockwise });
     }
 
     /// Puts the newest kept original of `path` back (after any pending mark write).
     pub fn restore(&self, path: PathBuf) {
-        let _ = self.tx.send(Message::Restore { path });
+        self.send(Message::Restore { path });
     }
 
     /// Another program saved `path`: the rating, label, comment and keywords Cerno knew go
@@ -208,7 +225,7 @@ impl RatingWriter {
         label: Option<Label>,
         description: Description,
     ) {
-        let _ = self.tx.send(Message::KeepMarks {
+        self.send(Message::KeepMarks {
             path,
             rating,
             label,
@@ -219,7 +236,7 @@ impl RatingWriter {
     /// Starts ExifTool in the background, or tries again after it was missing; the outcome
     /// shows in [`WriterStatus`].
     pub fn prepare(&self) {
-        let _ = self.tx.send(Message::Prepare);
+        self.send(Message::Prepare);
     }
 
     /// Handle for a worker that encodes pixels and then hands the JPEG back here.
@@ -632,11 +649,19 @@ fn marks_on_disk(path: &Path, sidecar: bool) -> Result<metadata::FileMetadata> {
         return Ok(metadata::read_sidecar(path));
     }
     let bytes = std::fs::read(path).context("cannot read file")?;
-    Ok(if sidecar {
-        metadata::read_for(path, &bytes)
-    } else {
-        metadata::read(&bytes)
+    parsed(|| {
+        if sidecar {
+            metadata::read_for(path, &bytes)
+        } else {
+            metadata::read(&bytes)
+        }
     })
+}
+
+/// A file's metadata, parsed without ending the writer thread when a parser panics on a
+/// broken file: that is an error for this photo, and every later mark is still written.
+fn parsed(read: impl FnOnce() -> metadata::FileMetadata) -> Result<metadata::FileMetadata> {
+    crate::decode::catch_panic(|| Ok(read()))
 }
 
 fn label_needs_write(on_disk: LabelInfo, wanted: Option<Label>) -> bool {
@@ -786,7 +811,8 @@ fn restore_original(exiftool: &mut Option<ExifTool>, path: &Path, db: &Db) -> Re
     let key = path.to_string_lossy();
     let copy = crate::originals::original(db, path)?.context("no original kept for this photo")?;
     let original = std::fs::read(&copy).context("cannot read the kept original")?;
-    let now = metadata::read(&std::fs::read(path).context("cannot read file")?);
+    let bytes = std::fs::read(path).context("cannot read file")?;
+    let now = parsed(|| metadata::read(&bytes))?;
     let label = match now.label {
         LabelInfo::Known(label) => Some(Some(label)),
         LabelInfo::None => Some(None),
@@ -818,7 +844,7 @@ fn apply_quarter_turn(
 ) -> Result<()> {
     let path_str = path.to_str().context("path is not valid Unicode")?;
     let bytes = std::fs::read(path).context("cannot read file")?;
-    let current = metadata::read(&bytes).orientation;
+    let current = parsed(|| metadata::read(&bytes))?.orientation;
     drop(bytes);
     let next = crate::edit::rotate_orientation(current, if clockwise { 1 } else { -1 });
     if next == current {

@@ -116,7 +116,7 @@ impl DeleteQueue {
                     let _ = tx.send(run(remove, batch));
                     on_done();
                 })
-                .expect("failed to spawn delete worker"),
+                .unwrap_or_else(crate::process::no_thread),
         );
         true
     }

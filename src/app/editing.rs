@@ -229,6 +229,9 @@ impl CernoApp {
         if !self.can_edit() {
             return;
         }
+        let Some(path) = self.view.get(self.current).cloned() else {
+            return;
+        };
         let zoom = self
             .edit
             .take()
@@ -236,7 +239,7 @@ impl CernoApp {
             .unwrap_or(self.zoom);
         self.zoom = viewer::Zoom::default();
         self.edit = Some(EditSession {
-            path: self.view[self.current].clone(),
+            path,
             zoom,
             kind: EditKind::Straighten { radians: 0.0 },
         });
@@ -264,6 +267,9 @@ impl CernoApp {
         let aspect = edit::ratio_aspect(Ratio::Original, image_size[0], image_size[1], landscape);
         let crop =
             edit::Crop::max_centered(f64::from(image_size[0]), f64::from(image_size[1]), aspect);
+        let Some(path) = self.view.get(self.current).cloned() else {
+            return;
+        };
         let zoom = self
             .edit
             .take()
@@ -271,7 +277,7 @@ impl CernoApp {
             .unwrap_or(self.zoom);
         self.zoom = viewer::Zoom::default();
         self.edit = Some(EditSession {
-            path: self.view[self.current].clone(),
+            path,
             zoom,
             kind: EditKind::Crop {
                 ratio: Ratio::Original,

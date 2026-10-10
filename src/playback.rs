@@ -215,7 +215,7 @@ impl Player {
 #[cfg(feature = "video")]
 mod engine {
     use std::path::PathBuf;
-    use std::sync::{Mutex, MutexGuard, OnceLock};
+    use std::sync::{Mutex, OnceLock};
     use std::time::Instant;
 
     use anyhow::{Context as _, Result, anyhow};
@@ -227,9 +227,7 @@ mod engine {
 
     use super::*;
 
-    fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-        m.lock().unwrap_or_else(|p| p.into_inner())
-    }
+    use crate::sync::lock;
 
     static INIT: OnceLock<Result<(), String>> = OnceLock::new();
 
@@ -1041,7 +1039,8 @@ mod tests {
     use std::time::Instant;
 
     fn fixture() -> PathBuf {
-        std::path::absolute(Path::new("tests/fixtures/tiny.mp4")).unwrap()
+        std::path::absolute(Path::new("tests/fixtures/tiny.mp4"))
+            .unwrap_or_else(|_| PathBuf::from("tests/fixtures/tiny.mp4"))
     }
 
     fn wait(player: &Player, what: &str, done: impl Fn(&Status) -> bool) -> Status {

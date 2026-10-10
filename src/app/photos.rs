@@ -405,7 +405,9 @@ impl CernoApp {
     /// Name, stars and scores of each side, and which key keeps it.
     fn draw_compare_labels(&mut self, ui: &egui::Ui, slot: &Slot, image: &LoadedImage) {
         let t = i18n::t();
-        let path = self.view[slot.index].clone();
+        let Some(path) = self.view.get(slot.index).cloned() else {
+            return;
+        };
         // The four-up view: the place in the view instead of a side, no key to keep it.
         let (side, hint) = match slot.side {
             Side::Left => (t.compare_left.to_owned(), (t.keeps_this)("A")),

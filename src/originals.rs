@@ -15,7 +15,6 @@ use std::ffi::{OsStr, OsString};
 use std::fs::{File, OpenOptions};
 use std::io::ErrorKind;
 use std::path::{Component, Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context as _, Result, bail};
 
@@ -27,6 +26,15 @@ pub const FOLDER: &str = ".originals";
 /// `<the photo's folder>/.originals`.
 pub fn folder_of(photo: &Path) -> Option<PathBuf> {
     photo.parent().map(|dir| dir.join(FOLDER))
+}
+
+/// The photo folder a file directly in `.originals` belongs to (the inverse of [`folder_of`]).
+fn folder_of_originals(aside: &Path) -> Option<&Path> {
+    let originals = aside.parent()?;
+    let name = originals.file_name()?.to_str()?;
+    name.eq_ignore_ascii_case(FOLDER)
+        .then(|| originals.parent())
+        .flatten()
 }
 
 /// Whether `path` is an originals folder or lies inside one – such photos are never shown.
@@ -54,12 +62,6 @@ fn allowed(photo: &Path, legacy: Option<&Path>, copy: &Path) -> bool {
     parent.is_some() && (parent == folder_of(photo).as_deref() || parent == legacy)
 }
 
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_millis() as i64)
-}
-
 /// Before an edit: copies the photo into `.originals` – unless its first original is kept
 /// already. If this fails, the edit does not happen.
 pub fn keep(db: &Db, photo: &Path) -> Result<()> {
@@ -69,7 +71,11 @@ pub fn keep(db: &Db, photo: &Path) -> Result<()> {
     let dir = ensure_folder(photo)?;
     let name = photo.file_name().context("photo has no file name")?;
     let copy = copy_into(photo, &dir, name)?;
-    db.push_backup(&photo.to_string_lossy(), &copy.to_string_lossy(), now_ms())?;
+    db.push_backup(
+        &photo.to_string_lossy(),
+        &copy.to_string_lossy(),
+        crate::db::now_ms(),
+    )?;
     log::info!("original kept: {}", copy.display());
     Ok(())
 }
@@ -199,8 +205,17 @@ fn cerno_free_name(dir: &Path, name: &OsStr) -> OsString {
 /// when that one is taken; nothing is overwritten. A RAW's or video's sidecar comes along under
 /// the photo's new name, unless one lies there already. A rename: the dates stay.
 pub fn restore(aside: &Path, original: &Path) -> Result<PathBuf> {
-    let dir = original.parent().context("photo has no folder")?;
     let name = original.file_name().context("photo has no file name")?;
+    // Back into the folder whose `.originals` it lies in, whatever the index says: a row
+    // pointing elsewhere must not move a file there.
+    let dir = folder_of_originals(aside).context("not in an .originals folder")?;
+    if original.parent() != Some(dir) {
+        log::warn!(
+            "put back into {}, not {}",
+            dir.display(),
+            original.display()
+        );
+    }
     let to = move_into(aside, dir, name)?;
     log::info!("restored: {} → {}", aside.display(), to.display());
     let sidecar = crate::sidecar::path_of(aside);
@@ -351,8 +366,11 @@ fn copy_into(from: &Path, dir: &Path, name: &OsStr) -> Result<PathBuf> {
             let _ = std::fs::remove_file(&to);
             return Err(err).context("cannot keep a copy of the original");
         }
-        if let Some(time) = modified {
-            let _ = file.set_modified(time);
+        // The copy is kept either way; a new date on it is no reason to refuse the edit.
+        if let Some(time) = modified
+            && let Err(err) = file.set_modified(time)
+        {
+            log::warn!("kept original {} has a new date: {err}", to.display());
         }
         return Ok(to);
     }
@@ -509,7 +527,7 @@ mod tests {
         .expect("row");
         db.record_deletion(
             &root.join("Neu.jpg").to_string_lossy(),
-            Some(&dir.join("recorded.jpg").to_string_lossy()),
+            &dir.join("recorded.jpg").to_string_lossy(),
         )
         .expect("deletion");
 

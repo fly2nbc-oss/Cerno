@@ -529,6 +529,10 @@ pub struct Texts {
 
     // Notices and dialogs.
     pub db_unavailable: fn(&str) -> String,
+    /// The thread that writes marks into the files has stopped (a crash): they are no longer saved.
+    pub writer_stopped: &'static str,
+    /// A key or menu command failed with an internal error; Cerno caught it and goes on.
+    pub internal_error: &'static str,
     pub cannot_open: fn(&str, &str) -> String,
     pub no_photos_in: fn(&str) -> String,
     pub rating_not_saved: fn(&str) -> String,
@@ -552,8 +556,6 @@ pub struct Texts {
     /// One-time hint after the first folder opens while the CLIP model is missing; the size
     /// of the missing models.
     pub aesthetics_offer: fn(&str) -> String,
-    /// One-time hint when CLIP is there but V2.5 is missing; its size.
-    pub v25_offer: fn(&str) -> String,
     /// Windows, once: ExifTool is missing, where to get it.
     pub exiftool_offer: fn(&str) -> String,
     pub exiftool_title: &'static str,
@@ -854,7 +856,6 @@ mod tests {
                 t.enable_aesthetics_tooltip,
                 t.add_v25_tooltip,
                 t.aesthetics_offer,
-                t.v25_offer,
                 t.confirm_delete_models_text,
             ] {
                 assert!(with_size("1.7 GB").contains("1.7 GB"), "{name}");

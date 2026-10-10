@@ -93,7 +93,7 @@ fn live(path: &str) -> String {
     format!("{path} NOT LIKE '%/.originals/%' AND {path} NOT LIKE '%\\.originals\\%'")
 }
 
-fn now_ms() -> i64 {
+pub fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_millis() as i64)
@@ -450,25 +450,18 @@ impl Db {
     /// keeps size and dates, so its scores and thumbnail are found there at once) and
     /// `set_aside` remembers where it came from; without `aside` the row goes. It teaches the
     /// taste model nothing (since 1.9.0).
-    pub fn record_deletion(&self, path: &str, aside: Option<&str>) -> Result<()> {
+    pub fn record_deletion(&self, path: &str, aside: &str) -> Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
-        match aside {
-            Some(aside) => {
-                tx.execute("DELETE FROM files WHERE path = ?1", [aside])?;
-                tx.execute(
-                    "UPDATE files SET path = ?1 WHERE path = ?2",
-                    params![aside, path],
-                )?;
-                tx.execute(
-                    "INSERT OR REPLACE INTO set_aside (aside, original, at_ms) VALUES (?1, ?2, ?3)",
-                    params![aside, path, now_ms()],
-                )?;
-            }
-            None => {
-                tx.execute("DELETE FROM files WHERE path = ?1", [path])?;
-            }
-        }
+        tx.execute("DELETE FROM files WHERE path = ?1", [aside])?;
+        tx.execute(
+            "UPDATE files SET path = ?1 WHERE path = ?2",
+            params![aside, path],
+        )?;
+        tx.execute(
+            "INSERT OR REPLACE INTO set_aside (aside, original, at_ms) VALUES (?1, ?2, ?3)",
+            params![aside, path, now_ms()],
+        )?;
         tx.commit()?;
         Ok(())
     }
@@ -838,6 +831,11 @@ impl Db {
             .flatten()
     }
 
+    /// A switch, saved as `"1"` / `"0"`.
+    pub fn put_flag(&self, key: &str, on: bool) {
+        self.put_setting(key, if on { "1" } else { "0" });
+    }
+
     pub fn put_setting(&self, key: &str, value: &str) {
         let result = self.conn().execute(
             "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
@@ -1017,7 +1015,8 @@ mod tests {
             db.put_aesthetic(fp, 5.0, "m", &[fp as f32; 768]).unwrap();
             db.put_file(path, STAMP, fp, rating, None).unwrap();
         }
-        db.record_deletion("binned.jpg", None).unwrap();
+        db.record_deletion("binned.jpg", "/.originals/binned.jpg")
+            .unwrap();
         assert!(db.lookup("binned.jpg", STAMP).unwrap().is_none());
 
         let (examples, sources) = db.taste_examples().unwrap();
@@ -1077,7 +1076,7 @@ mod tests {
             db.put_aesthetic(5, 5.0, "m", &[5.0; 768]).unwrap();
             db.put_file(&photo, STAMP, 5, Rating::Stars(5), None)
                 .unwrap();
-            db.record_deletion(&photo, Some(&aside)).unwrap();
+            db.record_deletion(&photo, &aside).unwrap();
             assert!(db.lookup(&photo, STAMP).unwrap().is_none());
             assert_eq!(db.lookup(&aside, STAMP).unwrap().unwrap().fingerprint, 5);
             assert_eq!(sources(&db), TasteSources::default(), "{dir}");
@@ -1113,7 +1112,7 @@ mod tests {
             .unwrap();
         db.push_backup("/p/IMG.jpg", "/p/.originals/IMG.jpg", 1)
             .unwrap();
-        db.record_deletion("/p/IMG.jpg", Some("/p/.originals/IMG (2).jpg"))
+        db.record_deletion("/p/IMG.jpg", "/p/.originals/IMG (2).jpg")
             .unwrap();
         db.push_backup("/p/IMG.jpg", "/p/.originals/IMG (3).jpg", i64::MAX)
             .unwrap();

@@ -293,7 +293,7 @@ impl Loader {
                 std::thread::Builder::new()
                     .name(format!("cerno-decode-{i}"))
                     .spawn(move || worker(&shared))
-                    .expect("failed to spawn decode worker")
+                    .unwrap_or_else(crate::process::no_thread)
             })
             .collect();
         Self { shared, workers }
@@ -683,7 +683,7 @@ fn picture(
         };
         return Ok((meta, decoded, framed, facts));
     }
-    let bytes = read(&shared.files, path)?;
+    let bytes = shared.files.read(path)?;
     let meta = metadata::read_for(path, &bytes);
     let decoded = decode::decode_for_screen(&bytes, format, meta.orientation, target)?;
     let facts = FileFacts {
@@ -764,12 +764,6 @@ fn load_overlay(shared: &Shared, job: &Job) -> Result<Option<TextureHandle>> {
     }
     let (_, decoded, _, _) = picture(shared, &job.path, job.target)?;
     Ok(display_overlay(shared, job, &decoded))
-}
-
-/// The file's bytes, never while the rating writer is halfway through rewriting it.
-fn read(files: &FileLocks, path: &Path) -> Result<Vec<u8>> {
-    let _held = files.hold(path);
-    std::fs::read(path).context("cannot read file")
 }
 
 /// The full resolution as tiles and, when the job asks for it, the overlay's tiles.

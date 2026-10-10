@@ -13,6 +13,12 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Condvar, Mutex, MutexGuard};
 
+use anyhow::{Context as _, Result, bail};
+
+/// The largest photo read whole: a huge file with a photo's extension (a disk image renamed
+/// `.jpg`) would otherwise end Cerno for want of memory. A 200 MP 16-bit TIFF is 1.2 GB.
+pub const MAX_FILE_BYTES: u64 = 2 << 30;
+
 #[derive(Default)]
 pub struct FileLocks {
     state: Mutex<State>,
@@ -64,6 +70,16 @@ impl FileLocks {
             path: path.to_path_buf(),
             write,
         }
+    }
+
+    /// The whole file, read while nobody writes it – never one larger than [`MAX_FILE_BYTES`].
+    pub fn read(&self, path: &Path) -> Result<Vec<u8>> {
+        let _held = self.hold(path);
+        let size = std::fs::metadata(path).context("cannot read file")?.len();
+        if size > MAX_FILE_BYTES {
+            bail!("file too large ({} MB)", size >> 20);
+        }
+        std::fs::read(path).context("cannot read file")
     }
 
     /// Waits until nobody else reads or writes `path`, then holds it for a read or a copy.

@@ -213,7 +213,7 @@ impl Queue {
                     let _ = tx.send(outcome);
                     on_done();
                 })
-                .expect("failed to spawn transfer worker"),
+                .unwrap_or_else(crate::process::no_thread),
         );
         false
     }
@@ -389,6 +389,14 @@ fn move_file(src: &Path, dest: &Path) -> Result<(), String> {
         Ok(()) => Ok(()),
         Err(err) if different_volume(&err) => {
             copy_keeping_times(src, dest)?;
+            // On the disk before the only other copy goes (a pulled card, a power cut). Write
+            // access, not a write: Windows flushes only a handle that may write, and the dates
+            // stay.
+            fs::OpenOptions::new()
+                .write(true)
+                .open(dest)
+                .and_then(|file| file.sync_all())
+                .map_err(|err| err.to_string())?;
             fs::remove_file(src).map_err(|err| err.to_string())
         }
         Err(err) => Err(err.to_string()),

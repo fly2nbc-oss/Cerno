@@ -217,10 +217,7 @@ fn cut_out(
 ) -> anyhow::Result<Found> {
     use anyhow::Context as _;
     let format = library::format_of(path).context("unsupported file type")?;
-    let bytes = {
-        let _held = files.hold(path);
-        std::fs::read(path).context("cannot read the photo")?
-    };
+    let bytes = files.read(path)?;
     let meta = metadata::read_for(path, &bytes);
     let full = decode::catch_panic(|| {
         decode::decode_for_display(&bytes, format, meta.orientation, [u32::MAX, u32::MAX])

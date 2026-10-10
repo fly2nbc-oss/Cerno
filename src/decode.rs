@@ -210,8 +210,11 @@ fn decode_raster(bytes: &[u8], format: Format) -> Result<(u32, u32, Vec<u8>)> {
         .map_err(|e| anyhow!("{kind:?} header unreadable: {e}"))?;
     check_size(u64::from(w), u64::from(h))?;
     let mut decoder = reader();
-    // The size is checked above; the crate's own allocation limit is lower than ours.
-    decoder.no_limits();
+    // The size is checked above; the crate's own allocation limit (512 MB) is lower than ours,
+    // so it gets ours: [`MAX_PIXELS`] as 16-bit RGBA, the most a supported file decodes to.
+    let mut limits = image::Limits::default();
+    limits.max_alloc = Some(MAX_PIXELS * 8);
+    decoder.limits(limits);
     let rgba = decoder
         .decode()
         .map_err(|e| anyhow!("{kind:?} decoding failed: {e}"))?

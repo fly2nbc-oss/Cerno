@@ -15,7 +15,7 @@ use crate::ui::viewer;
 use crate::view::{self, Facts, FilterKind, Percentiles, View, ViewOptions};
 
 use super::notice::Notice;
-use super::{CLIP_OFFER_SHOWN, CernoApp, V25_OFFER_SHOWN};
+use super::{CLIP_OFFER_SHOWN, CernoApp};
 
 pub(super) fn index_of(paths: &[PathBuf]) -> HashMap<PathBuf, usize> {
     paths
@@ -103,8 +103,7 @@ impl CernoApp {
     /// Subfolders on or off (`Ctrl+U`, the settings menu); the current folder opens again.
     pub(super) fn toggle_subfolders(&mut self, ctx: &egui::Context) {
         self.subfolders = !self.subfolders;
-        self.db
-            .put_setting("subfolders", if self.subfolders { "1" } else { "0" });
+        self.db.put_flag("subfolders", self.subfolders);
         if let Some(dir) = self.dir.clone() {
             self.open(ctx, &dir);
         }
@@ -119,8 +118,7 @@ impl CernoApp {
         }
     }
 
-    /// Each hint once: the models as a whole while CLIP is missing, V2.5 alone once CLIP is
-    /// there (users of releases without the V2.5 download).
+    /// The hint once, while CLIP is missing: one download fetches every missing model.
     fn offer_models(&mut self) {
         // ExifTool first: without it no star is saved. The models' hint comes next time.
         if self.offer_exiftool_once() {
@@ -133,10 +131,6 @@ impl CernoApp {
         if missing.contains(&Pack::Clip) && !shown(CLIP_OFFER_SHOWN) {
             self.notice = Some(Notice::hint((t.aesthetics_offer)(&size)));
             self.db.put_setting(CLIP_OFFER_SHOWN, "1");
-            self.db.put_setting(V25_OFFER_SHOWN, "1");
-        } else if missing == [Pack::V25] && !shown(V25_OFFER_SHOWN) {
-            self.notice = Some(Notice::hint((t.v25_offer)(&size)));
-            self.db.put_setting(V25_OFFER_SHOWN, "1");
         }
     }
 
@@ -238,8 +232,8 @@ impl CernoApp {
         filter.set(FilterKind::Deleted, false);
         self.db.put_setting("sort", self.options.sort.id());
         self.db.put_setting("filter", &filter.id());
-        let hide = if self.options.hide_rejected { "1" } else { "0" };
-        self.db.put_setting("hide_rejected", hide);
+        self.db
+            .put_flag("hide_rejected", self.options.hide_rejected);
         self.db.put_setting("media", self.options.media.id());
     }
 

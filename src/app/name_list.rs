@@ -97,7 +97,9 @@ impl CernoApp {
         };
         let out = card_ui::show(ctx, window, &mut card.text, &preview);
         if out.apply {
-            let card = self.name_list.card.take().expect("open card");
+            let Some(card) = self.name_list.card.take() else {
+                return;
+            };
             self.name_list.text = card.text;
             self.name_list.applied = Some(card.preview);
             self.change_options(ctx, |o| o.name_list = true);

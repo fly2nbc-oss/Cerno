@@ -106,7 +106,10 @@ impl CernoApp {
         around: (Option<usize>, Option<u32>),
     ) -> cells::CellInfo {
         let (pinned, current_series) = around;
-        let path = &self.view.paths[i];
+        // A key may have emptied the view after the bars were laid out (1.0–1.3.1 ended there).
+        let Some(path) = self.view.paths.get(i) else {
+            return cells::CellInfo::default();
+        };
         let known = self.board.get(path);
         let blurry = known
             .filter(|k| percentiles.is_blurry(&k.scores))

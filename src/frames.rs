@@ -37,7 +37,7 @@ pub fn grab(path: &Path, seek: Seek, limit: Duration) -> Result<Frame> {
 
 #[cfg(feature = "video")]
 mod engine {
-    use std::time::Instant;
+    use std::time::{Duration, Instant};
 
     use anyhow::{Context as _, anyhow, bail};
     use gstreamer as gst;
@@ -80,11 +80,11 @@ mod engine {
         let _down = Down(playbin.clone());
         let bus = playbin.bus().context("no bus")?;
         playbin.set_state(gst::State::Paused).map_err(|_| {
-            settled(&bus, deadline)
+            settled(&playbin, &bus, deadline)
                 .err()
                 .unwrap_or(anyhow!("cannot open it"))
         })?;
-        settled(&bus, deadline)?;
+        settled(&playbin, &bus, deadline)?;
 
         // At one second – unless the clip is shorter; a seek past its end finds nothing, and
         // the first frame is taken then.
@@ -101,7 +101,7 @@ mod engine {
             moved = playbin
                 .seek_simple(flags, gst::ClockTime::from_seconds(1))
                 .is_ok()
-                && settled(&bus, deadline).is_ok();
+                && settled(&playbin, &bus, deadline).is_ok();
         }
         let sample = match preroll(&appsink, deadline) {
             Some(sample) => sample,
@@ -110,7 +110,7 @@ mod engine {
                     gst::SeekFlags::FLUSH | gst::SeekFlags::ACCURATE,
                     gst::ClockTime::ZERO,
                 )?;
-                settled(&bus, deadline)?;
+                settled(&playbin, &bus, deadline)?;
                 preroll(&appsink, deadline).context("no frame")?
             }
             None => bail!("no frame"),
@@ -118,15 +118,18 @@ mod engine {
         frame_of(&sample)
     }
 
-    /// Waits until the pipeline has prerolled (after the start or a seek).
-    fn settled(bus: &gst::Bus, deadline: Instant) -> Result<()> {
+    /// Waits until the pipeline has prerolled (after the start or a seek): its AsyncDone, or
+    /// the state reached – a change that finished at once posts no AsyncDone, and the helper
+    /// then waited out the whole limit (once on Linux CI, 2026-10-06).
+    fn settled(playbin: &gst::Element, bus: &gst::Bus, deadline: Instant) -> Result<()> {
         loop {
             let left = deadline.saturating_duration_since(Instant::now());
             if left.is_zero() {
                 bail!("no frame within the time limit");
             }
+            let step = left.min(Duration::from_millis(50));
             let message = bus.timed_pop_filtered(
-                gst::ClockTime::from_mseconds(left.as_millis() as u64),
+                gst::ClockTime::from_mseconds(step.as_millis() as u64),
                 &[
                     gst::MessageType::AsyncDone,
                     gst::MessageType::Error,
@@ -138,6 +141,13 @@ mod engine {
                 Some(gst::MessageView::Error(err)) => bail!("{}", err.error()),
                 Some(_) => bail!("the video ended before a frame"),
                 None => {}
+            }
+            let (result, current, pending) = playbin.state(gst::ClockTime::ZERO);
+            if result == Ok(gst::StateChangeSuccess::Success)
+                && current == gst::State::Paused
+                && pending == gst::State::VoidPending
+            {
+                return Ok(());
             }
         }
     }

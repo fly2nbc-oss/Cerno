@@ -1,5 +1,8 @@
 // Release builds have no console window on Windows; debug builds keep it for logs.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// Errors are handled, not panicked on: `unwrap`, `expect` and `panic!` only in tests
+// (clippy.toml) – and where a comment says why it can't happen.
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 mod analysis;
 mod app;
@@ -31,6 +34,7 @@ mod process;
 mod rating;
 mod raw;
 mod sidecar;
+mod sync;
 mod system;
 mod theme;
 mod thumbs;
@@ -46,6 +50,19 @@ use std::time::Instant;
 use eframe::egui_wgpu::{WgpuConfiguration, WgpuSetup, WgpuSetupCreateNew};
 use eframe::{egui, wgpu};
 
+/// Windows looks for a DLL in the working directory too – opened from Explorer that is the
+/// photo folder, where a planted `version.dll` would be loaded. An empty DLL directory takes it
+/// out of the search; the exe's folder, System32 and `PATH` stay.
+fn no_dlls_from_working_directory() {
+    #[cfg(windows)]
+    // SAFETY: a static empty string; only changes this process's DLL search order.
+    if let Err(err) =
+        unsafe { windows::Win32::System::LibraryLoader::SetDllDirectoryW(windows::core::w!("")) }
+    {
+        log::warn!("DLL search order unchanged: {err}");
+    }
+}
+
 fn main() -> eframe::Result {
     let started = Instant::now();
     // Before any thread: the shipped GStreamer's plugin folder and registry (environment).
@@ -54,6 +71,8 @@ fn main() -> eframe::Result {
         .format_timestamp_millis()
         .init();
     crashlog::install();
+    // Before the first delay-loaded DLL (GStreamer, DirectML, libheif) is looked for.
+    no_dlls_from_working_directory();
 
     // `cerno --frames`: a helper that takes video frames for Cerno (`video`).
     let first = std::env::args_os().nth(1);
@@ -120,6 +139,7 @@ fn main() -> eframe::Result {
 /// Window and taskbar icon (eframe scales it to the system sizes); without it eframe shows its
 /// own "e". The exe's icon in Explorer is `assets/icon.ico`, embedded by `build.rs`. Both come
 /// from `tools/make_icon.py`.
+#[allow(clippy::expect_used)] // the PNG is part of the exe, checked by `tools/make_icon.py`
 fn icon() -> egui::IconData {
     eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png"))
         .expect("assets/icon.png is a valid PNG")
