@@ -37,6 +37,7 @@ mod pairs;
 mod panels;
 mod photos;
 mod undo;
+mod update;
 mod video;
 
 use std::collections::{HashMap, HashSet};
@@ -175,6 +176,8 @@ pub struct CernoApp {
     raw_marks: pairs::RawMarks,
     /// What Ctrl+Z takes back: the session's marks and edits.
     journal: undo::Journal,
+    /// The update check: its switch and what it found.
+    updates: update::Updates,
     target: Option<[u32; 2]>,
     /// What the loader decodes for before `target` is known: the saved area, else 4K.
     start_target: [u32; 2],
@@ -291,6 +294,7 @@ impl CernoApp {
             i18n::set(lang);
         }
         let db = Arc::new(db);
+        let updates = update::Updates::new(&db);
         let files = Arc::new(FileLocks::default());
         let thumbs = Arc::new(Thumbs::new(ctx.clone(), Arc::clone(&db)));
         let board = Arc::new(ScoreBoard::default());
@@ -389,6 +393,7 @@ impl CernoApp {
             pairs: crate::pairs::Pairs::default(),
             raw_marks: pairs::RawMarks::default(),
             journal: undo::Journal::default(),
+            updates,
             target: None,
             start_target,
             pending_target: None,
@@ -516,6 +521,7 @@ impl CernoApp {
         self.poll_edits();
         self.poll_exiftool(ctx);
         self.poll_editors(ctx);
+        self.poll_updates(ctx);
         if !self.writer_stopped_told && self.writer.stopped() {
             self.writer_stopped_told = true;
             self.notice = Some(Notice::error(i18n::t().writer_stopped));

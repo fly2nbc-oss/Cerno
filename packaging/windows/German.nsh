@@ -21,3 +21,6 @@ LangString uninstallApp ${LANG_GERMAN} "${PRODUCTNAME} deinstallieren"
 LangString uninstallBeforeInstalling ${LANG_GERMAN} "Vor der Installation deinstallieren"
 LangString unknown ${LANG_GERMAN} "unbekannte"
 LangString deleteAppData ${LANG_GERMAN} "Anwendungsdaten löschen"
+; The welcome page names the update check (shown during installation). MUI defines this
+; string first; this later definition wins (NSIS warns 6030, no error).
+LangString MUI_TEXT_WELCOME_INFO_TEXT ${LANG_GERMAN} "Dieser Assistent installiert $(^NameDA) für dein Benutzerkonto.$\r$\n$\r$\nDatenschutz: Einmal am Tag fragt Cerno bei GitHub nach, ob es eine neuere Version gibt – über dich und deine Fotos wird dabei nichts gesendet. Abschalten lässt sich das unter Einstellungen › Nach Updates suchen. Modelle und ExifTool lädt Cerno nur, wenn du es willst.$\r$\n$\r$\n$_CLICK"

@@ -266,6 +266,15 @@ pub struct Texts {
     pub camera_time_tooltip: fn(&str, &str) -> String,
     pub cmd_pairs: &'static str,
     pub pairs_hint: &'static str,
+    /// Settings ▸ the update check's switch.
+    pub cmd_update_check: &'static str,
+    pub update_check_hint: &'static str,
+    /// Once, before the first check: that Cerno checks and where to turn it off.
+    pub update_first_hint: &'static str,
+    /// Once per new version: the version, and where its link is.
+    pub update_available: fn(&str) -> String,
+    /// The menu row (and About's link) to a newer version's page.
+    pub cmd_update_download: fn(&str) -> String,
     pub pairs_on: &'static str,
     pub pairs_off: &'static str,
     pub pair_badge: &'static str,
@@ -713,6 +722,16 @@ pub struct Texts {
     pub about_third_party: &'static str,
     pub about_third_party_text: &'static str,
     pub about_third_party_link: &'static str,
+    /// About Cerno: the update check.
+    pub about_updates: &'static str,
+    pub about_updates_text: &'static str,
+    pub update_off: &'static str,
+    pub update_never: &'static str,
+    pub update_checking: &'static str,
+    pub update_current: &'static str,
+    pub update_failed: &'static str,
+    pub update_newer: fn(&str) -> String,
+    pub update_check_now: &'static str,
     /// The tips page: how to work with Cerno, seven short sections (the last one explains the
     /// shortcuts' details).
     pub help_tips: [TipSection; 7],

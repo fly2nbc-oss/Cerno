@@ -66,6 +66,10 @@ enum Action {
     CameraTime,
     /// `G`: every face over the photo.
     FaceGrid,
+    /// *Settings ▸ Check for updates*.
+    UpdateCheck,
+    /// A newer release's page in the browser.
+    OpenRelease,
     Rate(Rating),
     Reject,
     /// Only photos like this one (`M`), or all again.
@@ -193,7 +197,11 @@ impl CernoApp {
             }
         }
         if self.help_open {
-            let out = help::overlay(ctx, window, self.help_page, i18n::t());
+            let update = self.update_line();
+            let out = help::overlay(ctx, window, self.help_page, i18n::t(), &update);
+            if out.check_updates {
+                self.start_update_check(ctx);
+            }
             if out.language {
                 self.switch_language(ctx);
             }
@@ -381,6 +389,11 @@ impl CernoApp {
                     .toggle(self.pair_mode)
                     .hint(t.pairs_hint),
             ),
+            Entry::Row(
+                Row::new(Action::UpdateCheck, t.cmd_update_check, None)
+                    .toggle(self.updates.enabled)
+                    .hint(t.update_check_hint),
+            ),
             Entry::Group(Group::new(
                 t.menu_language,
                 Some(i18n::with_ctrl("L")),
@@ -395,6 +408,11 @@ impl CernoApp {
         }
         entries.push(Entry::Group(Group::nested(t.menu_settings, None, settings)));
         entries.push(Entry::Row(Row::new(Action::Help, t.help_title, key("H"))));
+        // A newer release: its page, in the browser (nothing is downloaded by Cerno).
+        if let Some(version) = self.updates.newer() {
+            let label = (t.cmd_update_download)(&version.to_string());
+            entries.push(Entry::Row(Row::new(Action::OpenRelease, label, None)));
+        }
         entries
     }
 
@@ -774,6 +792,8 @@ impl CernoApp {
             Action::Restore => self.restore_current(),
             Action::RestoreShown => self.restore_shown(),
             Action::Help => self.open_help(),
+            Action::UpdateCheck => self.toggle_update_check(),
+            Action::OpenRelease => self.open_release_page(ctx),
         }
     }
 }

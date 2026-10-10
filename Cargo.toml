@@ -103,7 +103,8 @@ resources = ["dist/windows/Cerno/*.dll", "dist/windows/Cerno/licenses", "dist/wi
 installer-icon = "assets/icon.ico"
 installer-mode = "currentUser"
 languages = ["English", "German", "French", "Spanish", "Italian"]
-custom-language-file = { German = "packaging/windows/German.nsh", Italian = "packaging/windows/Italian.nsh" }
+# Every language has its own file: the welcome page names the update check (privacy).
+custom-language-file = { English = "packaging/windows/English.nsh", German = "packaging/windows/German.nsh", French = "packaging/windows/French.nsh", Spanish = "packaging/windows/Spanish.nsh", Italian = "packaging/windows/Italian.nsh" }
 appdata-paths = ['$LOCALAPPDATA\$PRODUCTNAME\data']
 
 # Linux .deb via cargo-deb (`--no-build` packs the HEIC + video release binary CI built).

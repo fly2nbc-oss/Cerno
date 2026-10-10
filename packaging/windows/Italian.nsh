@@ -21,3 +21,6 @@ LangString uninstallApp ${LANG_ITALIAN} "Disinstalla ${PRODUCTNAME}"
 LangString uninstallBeforeInstalling ${LANG_ITALIAN} "Disinstalla prima di installare"
 LangString unknown ${LANG_ITALIAN} "sconosciuta"
 LangString deleteAppData ${LANG_ITALIAN} "Elimina i dati dell'applicazione"
+; The welcome page names the update check (shown during installation). MUI defines this
+; string first; this later definition wins (NSIS warns 6030, no error).
+LangString MUI_TEXT_WELCOME_INFO_TEXT ${LANG_ITALIAN} "Questa procedura installa $(^NameDA) per il tuo account utente.$\r$\n$\r$\nPrivacy: una volta al giorno Cerno chiede a GitHub se esiste una versione più recente – non viene inviato nulla su di te o sulle tue foto. Puoi disattivarlo in Impostazioni › Cerca aggiornamenti. I modelli ed ExifTool vengono scaricati solo se lo chiedi.$\r$\n$\r$\n$_CLICK"

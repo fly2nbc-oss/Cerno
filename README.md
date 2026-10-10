@@ -83,6 +83,14 @@ The details panel (`Tab`) shows more – both AIs separately, exposure, histogra
 
 Backup tools that only compare size and date (e.g. `rsync` without `-c`) may miss a changed rating, because the date stays the same.
 
+## Privacy
+
+Cerno works on your computer. Your photos, their names and your ratings never leave it, and there is no telemetry.
+
+- **Update check:** once a day Cerno asks GitHub which release is the latest – one request to `github.com/fly2nbc-oss/Cerno/releases/latest`, whose redirect names the version. Nothing about you, your computer or your photos is sent; the request says only that it comes from "Cerno". GitHub sees your IP address, as with any website. A newer version is only named; nothing is downloaded or installed. Turn it off under *Settings ▸ Check for updates*. The installer says so on its first page, and Cerno once before the first check.
+- **Downloads you ask for:** the aesthetics models (from Hugging Face and this repository's releases) and, on Windows, ExifTool (from SourceForge) – only after you click, each checked by size and SHA-256.
+- **Links you click:** *About Cerno* opens GitHub issues with the version and system filled in, and Details › File opens a photo's GPS position in Google Maps or OpenStreetMap – only on a click, in your browser.
+
 ## More
 
 - Building from source and checks: [`CONTRIBUTING.md`](./CONTRIBUTING.md)
