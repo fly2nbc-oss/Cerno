@@ -34,6 +34,7 @@ const LABEL_KEYS: [(Key, Label); 4] = [
 const ZOOM_STEP: f32 = 1.25;
 
 /// What the keys of one frame ask for.
+#[cfg_attr(test, derive(Debug, Default, PartialEq))]
 struct KeyInput {
     next: bool,
     prev: bool,
@@ -603,6 +604,72 @@ mod tests {
         );
         output.textures_delta.clear();
         keys.expect("one frame")
+    }
+
+    /// One key cap of the English help as key presses: `Ctrl+←`, `1 – 5`, `Shift+…` (every
+    /// digit and `X` with Shift). The mouse gives none, and neither does `Tab` – it is taken in
+    /// `raw_input_hook`, before `read_keys`.
+    fn presses(cap: &str) -> Vec<(Key, Modifiers)> {
+        let (modifiers, name) = [
+            ("Ctrl+", Modifiers::COMMAND),
+            ("Shift+", Modifiers::SHIFT),
+            ("Alt+", Modifiers::ALT),
+        ]
+        .into_iter()
+        .find_map(|(prefix, modifiers)| cap.strip_prefix(prefix).map(|rest| (modifiers, rest)))
+        .unwrap_or((Modifiers::NONE, cap));
+        let digits = |from: u8, to: u8| -> Vec<Key> {
+            (from..=to)
+                .filter_map(|digit| Key::from_name(&digit.to_string()))
+                .collect()
+        };
+        let keys = match name {
+            "Mouse wheel" | "Drag" | "Double-click" | "Tab" => Vec::new(),
+            "…" => [digits(0, 9), vec![Key::X]].concat(),
+            "1 – 5" => digits(1, 5),
+            "6 – 9" => digits(6, 9),
+            "→" => vec![Key::ArrowRight],
+            "←" => vec![Key::ArrowLeft],
+            "↑" => vec![Key::ArrowUp],
+            "↓" => vec![Key::ArrowDown],
+            "PgDn" => vec![Key::PageDown],
+            "PgUp" => vec![Key::PageUp],
+            "Del" => vec![Key::Delete],
+            other => vec![Key::from_name(other).unwrap_or_else(|| panic!("no key {other}"))],
+        };
+        keys.into_iter().map(|key| (key, modifiers)).collect()
+    }
+
+    /// Every key the help names does something: `read_keys` answers each of them.
+    #[test]
+    fn every_key_in_the_help_is_read() {
+        let t = crate::i18n::Lang::En.texts();
+        let rows = [
+            &t.help_browse[..],
+            &t.help_rate,
+            &t.help_cull,
+            &t.help_video,
+            &t.help_view,
+            &t.help_panels,
+            &t.help_edit,
+            &t.help_more,
+            &t.welcome_keys,
+        ];
+        let mut checked = 0;
+        for (caps, _) in rows.into_iter().flatten() {
+            for cap in caps.split(", ") {
+                for (pressed, modifiers) in presses(cap) {
+                    let input = read(vec![key(pressed, pressed, modifiers)], modifiers);
+                    assert_ne!(
+                        input,
+                        KeyInput::default(),
+                        "{cap} ({pressed:?}) does nothing"
+                    );
+                    checked += 1;
+                }
+            }
+        }
+        assert!(checked > 50, "only {checked} keys");
     }
 
     #[test]

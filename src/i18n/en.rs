@@ -347,7 +347,6 @@ pub static TEXTS: Texts = Texts {
     row_location: "Location",
     tab_values: "Values",
     tab_description: "Description",
-    tab_faces: "Faces",
     section_comment: "Comment",
     section_keywords: "Keywords",
     comment_hint: "Write a comment …",
@@ -506,17 +505,9 @@ pub static TEXTS: Texts = Texts {
     faces_unknown: "Not analysed yet – the faces follow.",
     faces_none: "No faces found",
     faces_only_small: "Only small faces – too small to judge",
-    face_eyes_blurry: "Eyes probably blurry",
     faces_zoom_hint: "Click to zoom to this face",
     faces_grid_hint: "A click or its number (1–9) zooms to a face · Esc closes",
-    cmd_faces: "Faces",
     cmd_face_grid: "All faces large",
-    faces_small: |n| {
-        format!(
-            "+ {n} small {} – too small to judge",
-            if n == 1 { "face" } else { "faces" }
-        )
-    },
     raw_preview_fact: "RAW preview",
     preview_word: "preview",
     edit_failed: |detail| format!("Not written: {detail}"),
@@ -564,6 +555,7 @@ pub static TEXTS: Texts = Texts {
                 "C shows two photos side by side; A keeps the left one, D the right one, the other is rejected.",
                 "M shows only photos like the current one.",
                 "Two cameras whose clocks differ: compare two photos taken at the same moment, then This photo › “Match right camera to left”.",
+                "Shift+C shows four photos at once: the frame is the current photo, ↑ ↓ move it a row.",
             ],
         ),
         (
@@ -571,6 +563,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "Choose “Top 50 photos” in the filter bar's first box: Cerno suggests the best, one from each series first.",
                 "Aesthetics and sharpness under the photo help you decide – the stars are yours to give.",
+                "Filter › By file list …: paste the names a client chose – only those photos show.",
             ],
         ),
         (
@@ -598,6 +591,16 @@ pub static TEXTS: Texts = Texts {
                 "Sorted by prediction, the photos you will probably like come first.",
             ],
         ),
+        (
+            "Good to know",
+            &[
+                "The mouse wheel over the filmstrip steps through the photos; over the photo it zooms.",
+                "Drop a folder onto the window to open it. Hold → to run through the photos.",
+                "In the grid (F7) ↑ ↓ move a row, + − change the size, Enter opens the photo.",
+                "Straighten (S): the wheel and the arrows turn, Shift is finer. Crop (R): draw a frame or move it with the arrows, +/− size it, A changes the ratio, X turns it.",
+                "On the description tab Enter puts the cursor into the keyword field.",
+            ],
+        ),
     ],
     welcome_intro: "View, rate and cull photos without waiting – stars go into the file, its date stays.",
     welcome_keys: [
@@ -608,126 +611,75 @@ pub static TEXTS: Texts = Texts {
         ("Ctrl+K", "Menu with every function"),
     ],
     welcome_more: "All shortcuts: H",
+    setup_line: |exiftool, aesthetics| {
+        format!(
+            "Setup: ExifTool {} · aesthetics {} – Ctrl+K › Settings › Models & data",
+            if exiftool { "ready" } else { "missing" },
+            if aesthetics { "ready" } else { "missing" },
+        )
+    },
     help_sections: [
         "Browse", "Rate", "Sort out", "Video", "View", "Panels", "Edit", "More",
     ],
     help_browse: [
-        ("→, Space, PgDn", "Next photo (hold to run through)"),
+        ("→, Space, PgDn", "Next photo"),
         ("←, Backspace, PgUp", "Previous photo"),
         ("Home, End", "First / last photo"),
-        (
-            "Mouse wheel",
-            "Over the filmstrip: scroll through the photos",
-        ),
-        ("Ctrl+O", "Open a folder (or drop it onto the window)"),
-        ("Ctrl+U", "Include subfolders – on / off"),
+        ("Ctrl+O", "Open a folder"),
+        ("Ctrl+U", "Subfolders on / off"),
     ],
     help_rate: [
-        ("1 – 5", "Give stars – written into the photo file"),
-        ("Shift+1 – 5", "Give stars and go to the next photo"),
-        ("0", "Remove stars or rejection"),
-        (
-            "X, Shift+X",
-            "Reject – marked in the file, nothing is deleted; with Shift go on to the next photo",
-        ),
-        (
-            "6 – 9",
-            "Colour label: red, yellow, green, blue – press again to remove",
-        ),
-        ("Shift+6 – 9", "Set that colour and go to the next photo"),
+        ("1 – 5", "Stars"),
+        ("0", "No stars, not rejected"),
+        ("X", "Reject"),
+        ("6 – 9", "Red, yellow, green, blue"),
+        ("Shift+…", "Same, then the next photo"),
+        ("Ctrl+Z", "Undo"),
     ],
     help_cull: [
-        (
-            "C",
-            "Compare: pin this photo on the left, browse on the right",
-        ),
-        (
-            "A, D",
-            "Compare: keep left / keep right – the other one is rejected, compare mode ends",
-        ),
-        (
-            "Shift+C",
-            "Four-up view: four photos at once, the frame is the current one – ↑ ↓ a row",
-        ),
-        ("M", "Show only similar photos – again: all of them"),
-        (
-            "Del",
-            "Delete: moves into the hidden .originals folder after 5 seconds – nothing is lost",
-        ),
-        (
-            "Esc, Ctrl+Z",
-            "Bring back photos that are waiting to be deleted",
-        ),
+        ("C", "Compare two photos"),
+        ("A, D", "Keep left / right"),
+        ("Shift+C", "Four photos at once"),
+        ("M", "Only similar photos"),
+        ("Del", "Delete (into .originals)"),
+        ("Esc", "Bring the deleted back"),
     ],
     help_video: [
-        ("Space", "Play / pause (Shift+Space: next photo)"),
+        ("Space", "Play / pause"),
+        ("Shift+Space", "Next photo"),
         ("Alt+←, Alt+→", "5 s back / on"),
-        (",, .", "One frame back / on (paused)"),
+        (",, .", "One frame back / on"),
         ("↑, ↓", "Volume"),
     ],
     help_view: [
         ("Z, Double-click", "Whole photo ↔ 100 %"),
         ("Ctrl+0, Ctrl+1", "Whole photo / 100 %"),
-        ("+, −, Mouse wheel", "Zoom in / out – with Ctrl too"),
+        ("+, −, Mouse wheel", "Zoom in / out"),
         ("Drag", "Move the zoomed photo"),
-        (
-            "O",
-            "Overlay: sharp edges → clipped highlights and shadows → off",
-        ),
-        (
-            "F7",
-            "Grid of all photos: ↑ ↓ a row, + − size, Enter opens the photo",
-        ),
+        ("O", "Check: sharp edges, clipping"),
+        ("F7", "Grid of all photos"),
+        ("G", "All faces large"),
         ("F, F11", "Full screen"),
     ],
     help_panels: [
-        (
-            "T",
-            "Filter bar: sort and filter – by stars, colours, sharpness, people",
-        ),
+        ("T", "Filter bar"),
         ("Tab", "Details panel"),
         ("F6", "Filmstrip"),
-        ("Shift+Tab", "Filter bar, details and filmstrip together"),
-        (
-            "Ctrl+Tab",
-            "Details panel tabs: values → description → faces (back with Shift); on the description, Enter puts the cursor into the keyword field",
-        ),
-        (
-            "G",
-            "All faces large over the photo – a click or 1–9 zooms there",
-        ),
+        ("Shift+Tab", "All three panels"),
+        ("Ctrl+Tab", "Next tab of the details"),
     ],
     help_edit: [
-        (
-            "S",
-            "Straighten: grid, wheel and arrows rotate, Shift is finer",
-        ),
-        (
-            "R",
-            "Crop: draw a frame or set it with the arrows and +/−, A changes the ratio, X flips landscape/portrait",
-        ),
-        ("Enter, Esc", "Apply or cancel straighten and crop"),
-        (
-            "Ctrl+←, Ctrl+→",
-            "Rotate 90° – lossless, via the JPEG orientation",
-        ),
-        (
-            "Ctrl+Z",
-            "Undo the last mark or edit; put a deleted photo back",
-        ),
-        (
-            "E",
-            "Edit in another program – the remembered one, or choose one",
-        ),
+        ("S", "Straighten"),
+        ("R", "Crop"),
+        ("Enter, Esc", "Apply / cancel"),
+        ("Ctrl+←, Ctrl+→", "Rotate 90°"),
+        ("E", "Edit in another program"),
     ],
     help_more: [
         ("Ctrl+K", "Menu: every function"),
-        (
-            "Ctrl+M",
-            "Action: copy, move or delete the photos on screen",
-        ),
-        ("Ctrl+L", "Switch language"),
+        ("Ctrl+M", "Copy, move, delete the view"),
+        ("Ctrl+L", "Language"),
         ("H, F1, ?", "This help"),
-        ("Esc", "Step back: zoom, compare mode, grid, full screen"),
+        ("Esc", "One step back"),
     ],
 };

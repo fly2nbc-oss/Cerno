@@ -12,8 +12,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 - **`Ctrl+Z` takes back marks** – stars, rejections and colours of this session, newest first, on whichever photo they were: Cerno shows that photo, gives it back what it had and says so (`Undone – IMG_0012: 3 stars`). Straighten, crop and turns of the session take their turn in the same order. In a RAW + JPG pair both files go back. The menu's *Undo* row names what it would take back. A deletion that is still counting down and a deleted photo on screen come first, as before; an original kept in an earlier session comes last.
 - **Incomplete JPEGs are marked** – a JPEG cut off while it was copied or downloaded shows its missing part grey. Cerno now says so: *File incomplete* beside the stars, a torn page on its cell and a row in Details › File, and the filter bar has a box for them next to *Blurry* and *Duplicates*. Such a photo is never among the *Top N*. Nothing is repaired or rejected. Data after the image's end (a motion photo's video) is fine. Photos analysed before are checked once more in the background, without decoding them again.
 
+- **The start screen says what is still to set up** – while ExifTool or the aesthetics models are missing, one line names them and where to get them (*Ctrl+K › Settings › Models & data*).
+
 ### Changed
 
+- **A shorter, clearer help** – every shortcut is still there, each with a few words; one *Shift+…* row replaces the Shift row of every key. What the rows used to explain in detail – the grid, straighten and crop, the mouse wheel, the four-up view, the file list – is in the tips, under *Good to know* and where it belongs.
+- **No faces tab in the details panel any more** – `G` still shows all faces of a photo large; `Ctrl+Tab` steps between the values and the description.
 - **Faster start** – the first photo appears at once in the size of the last session's photo area, instead of being decoded twice. The aesthetics models, the video and HEIC libraries and ExifTool load only when they are needed, and the analysis and the prediction start a moment after the first photo, so they never compete with it. The screen redraws less often while the analysis runs.
 
 ### Fixed
