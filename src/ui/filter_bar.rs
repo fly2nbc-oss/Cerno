@@ -301,6 +301,9 @@ fn filter_box(ui: &mut Ui, kind: FilterKind, on: bool, has_deleted: bool) -> boo
         FilterKind::Duplicate => chip(ui, on, Face::Text(&kind.label()))
             .on_hover_text(t.filter_duplicate_tooltip)
             .clicked(),
+        FilterKind::Incomplete => chip(ui, on, Face::Incomplete)
+            .on_hover_text(format!("{}\n{}", kind.label(), t.filter_incomplete_tooltip))
+            .clicked(),
         // Icons without text: the names are in the tooltip.
         FilterKind::People | FilterKind::NoPeople => chip(
             ui,
@@ -338,6 +341,8 @@ enum Face<'a> {
     },
     /// A waste bin: the deleted photos.
     Deleted,
+    /// A torn page: JPEGs that end inside their image data.
+    Incomplete,
     /// A word and the reject cross: "without ✕".
     Without(&'a str),
 }
@@ -360,7 +365,9 @@ fn chip_with(ui: &mut Ui, on: bool, face: Face<'_>, enabled: bool) -> Response {
             TextStyle::Button.resolve(ui.style()),
             tokens::TEXT,
         )),
-        Face::Rejected | Face::NoStars | Face::Person { .. } | Face::Deleted => None,
+        Face::Rejected | Face::NoStars | Face::Person { .. } | Face::Deleted | Face::Incomplete => {
+            None
+        }
     };
     let mark = if matches!(face, Face::Without(_)) {
         MARK_GAP + MARK
@@ -425,6 +432,10 @@ fn chip_with(ui: &mut Ui, on: bool, face: Face<'_>, enabled: bool) -> Response {
                 (false, false) => tokens::LINE,
             };
             icons::trash(painter, rect.center(), 1.0, colour);
+        }
+        (Face::Incomplete, _) => {
+            let colour = if on { tokens::TEXT } else { tokens::MUTED };
+            icons::torn_file(painter, rect.center(), colour);
         }
         (Face::Text(_) | Face::Without(_), None) => {}
     }

@@ -94,6 +94,8 @@ pub enum FilterKind {
     Blurry,
     /// A later copy of an earlier photo. The first path in folder order stays out.
     Duplicate,
+    /// A JPEG that ends inside its image data (`jpeg_info::is_complete`).
+    Incomplete,
     /// A colour label. Nothing ticked means every colour.
     Colour(Label),
     /// The face detection found a face – people from behind or very small don't count.
@@ -105,7 +107,7 @@ pub enum FilterKind {
 }
 
 impl FilterKind {
-    pub const ALL: [FilterKind; 17] = [
+    pub const ALL: [FilterKind; 18] = [
         Self::Stars(1),
         Self::Stars(2),
         Self::Stars(3),
@@ -123,6 +125,7 @@ impl FilterKind {
         Self::People,
         Self::NoPeople,
         Self::Deleted,
+        Self::Incomplete,
     ];
 
     pub fn label(self) -> String {
@@ -133,6 +136,7 @@ impl FilterKind {
             Self::Rejected => t.filter_rejected.to_owned(),
             Self::Blurry => t.filter_blurry.to_owned(),
             Self::Duplicate => t.filter_duplicate.to_owned(),
+            Self::Incomplete => t.filter_incomplete.to_owned(),
             Self::Colour(label) => i18n::label_name(label).to_owned(),
             Self::People => t.filter_people.to_owned(),
             Self::NoPeople => t.filter_no_people.to_owned(),
@@ -152,6 +156,7 @@ impl FilterKind {
             Self::Rejected => "rejected",
             Self::Blurry => "blurry",
             Self::Duplicate => "duplicate",
+            Self::Incomplete => "incomplete",
             Self::Colour(label) => label.id(),
             Self::People => "people",
             Self::NoPeople => "nopeople",
@@ -184,9 +189,20 @@ impl FilterKind {
             Self::Colour(Label::Blue),
             Self::Colour(Label::Purple),
         ],
-        &[Self::Blurry, Self::Duplicate],
+        &[Self::Blurry, Self::Duplicate, Self::Incomplete],
         &[Self::People, Self::NoPeople],
     ];
+}
+
+/// What the group of blurry, duplicates and incomplete knows about a photo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Quality {
+    /// Probably out of focus (`Percentiles::is_blurry`).
+    pub blurry: bool,
+    /// A later copy of an earlier photo.
+    pub duplicate: bool,
+    /// A JPEG that ends inside its image data.
+    pub incomplete: bool,
 }
 
 /// Which photos stay visible. Nothing ticked means every photo. Otherwise a photo stays when,
@@ -201,6 +217,7 @@ pub struct PhotoFilter {
     rejected: bool,
     blurry: bool,
     duplicate: bool,
+    incomplete: bool,
     /// Same order as `Label::ALL`.
     colours: [bool; 5],
     people: bool,
@@ -215,6 +232,7 @@ impl PhotoFilter {
             && !self.rejected
             && !self.blurry
             && !self.duplicate
+            && !self.incomplete
             && !self.colours.iter().any(|on| *on)
             && !self.people
             && !self.no_people
@@ -233,6 +251,7 @@ impl PhotoFilter {
             FilterKind::Rejected => self.rejected,
             FilterKind::Blurry => self.blurry,
             FilterKind::Duplicate => self.duplicate,
+            FilterKind::Incomplete => self.incomplete,
             FilterKind::Colour(label) => self.colours[colour_index(label)],
             FilterKind::People => self.people,
             FilterKind::NoPeople => self.no_people,
@@ -248,6 +267,7 @@ impl PhotoFilter {
             FilterKind::Rejected => self.rejected = on,
             FilterKind::Blurry => self.blurry = on,
             FilterKind::Duplicate => self.duplicate = on,
+            FilterKind::Incomplete => self.incomplete = on,
             FilterKind::Colour(label) => self.colours[colour_index(label)] = on,
             FilterKind::People => self.people = on,
             FilterKind::NoPeople => self.no_people = on,
@@ -266,15 +286,14 @@ impl PhotoFilter {
     }
 
     /// A photo matches every group with a ticked box: its rating is ticked, its colour is
-    /// ticked, it is blurry or a copy when one of those boxes is ticked, and it has faces or
-    /// none (`faces`: `None` until the face detection ran – then neither box takes it). A
-    /// deleted photo shows only through the 🗑 box, which stands for its rating: 🗑 + ✕ are the
-    /// deleted and the rejected photos, 🗑 + red the deleted ones with a red label.
+    /// ticked, it is blurry, a copy or incomplete when one of those boxes is ticked, and it has
+    /// faces or none (`faces`: `None` until the face detection ran – then neither box takes
+    /// it). A deleted photo shows only through the 🗑 box, which stands for its rating: 🗑 + ✕
+    /// are the deleted and the rejected photos, 🗑 + red the deleted ones with a red label.
     pub fn accepts(
         self,
         rating: Rating,
-        is_blurry: bool,
-        is_duplicate: bool,
+        quality: Quality,
         colour: Option<Label>,
         faces: Option<u8>,
         deleted: bool,
@@ -294,17 +313,18 @@ impl PhotoFilter {
             };
         let by_colour =
             !self.has_colour() || colour.is_some_and(|label| self.colours[colour_index(label)]);
-        let by_quality = !(self.blurry || self.duplicate)
-            || (self.blurry && is_blurry)
-            || (self.duplicate && is_duplicate);
+        let by_quality = !(self.blurry || self.duplicate || self.incomplete)
+            || (self.blurry && quality.blurry)
+            || (self.duplicate && quality.duplicate)
+            || (self.incomplete && quality.incomplete);
         let by_people = !(self.people || self.no_people)
             || (self.people && faces.is_some_and(|n| n > 0))
             || (self.no_people && faces == Some(0));
         by_rating && by_colour && by_quality && by_people
     }
 
-    /// Stored setting. A leading `*` marks the exact set, so an old `"3"` (at least 3 stars)
-    /// still reads as 3, 4 and 5. Empty means every photo.
+    /// Stored setting: `*` and the ticked boxes' tokens. Empty means every photo; so does
+    /// anything without the `*` (the settings of releases before 0.8).
     pub fn id(self) -> String {
         if self.is_all() {
             return String::new();
@@ -734,11 +754,16 @@ pub fn build(
             if options.name_list && !entry.facts.is_some_and(|f| f.listed) {
                 return false;
             }
-            let blurry = entry
-                .facts
-                .as_ref()
-                .is_some_and(|f| percentiles.is_blurry(&f.scores));
-            let is_duplicate = copies.contains_key(entry.path.as_path());
+            let quality = Quality {
+                blurry: entry
+                    .facts
+                    .as_ref()
+                    .is_some_and(|f| percentiles.is_blurry(&f.scores)),
+                duplicate: copies.contains_key(entry.path.as_path()),
+                incomplete: entry
+                    .facts
+                    .is_some_and(|f| f.scores.truncated == Some(true)),
+            };
             // A photo without an embedding can't be judged: it stays out.
             let similar = !options.similar
                 || entry
@@ -753,14 +778,9 @@ pub fn build(
             let faces = entry.facts.and_then(|f| f.scores.faces);
             similar
                 && in_scope
-                && options.filter.accepts(
-                    entry.rating,
-                    blurry,
-                    is_duplicate,
-                    entry.label,
-                    faces,
-                    entry.deleted,
-                )
+                && options
+                    .filter
+                    .accepts(entry.rating, quality, entry.label, faces, entry.deleted)
         })
         .collect();
 
@@ -813,8 +833,8 @@ pub fn build(
 /// The best `n` photos of what the other filters leave, for "Top N". A photo's value is the
 /// mean of what is known about it, each 0..=1: its own stars (else the For-you prediction),
 /// the aesthetics (`aesthetic::as_percent`, the info bar's scale) and the subject sharpness
-/// within the folder. Rejected and probably blurry photos, copies, videos and photos without
-/// any value never count. Round one takes the best photo of every series and every photo
+/// within the folder. Rejected, probably blurry and incomplete photos, copies, videos and
+/// photos without any value never count. Round one takes the best photo of every series and every photo
 /// outside one, best first; round two the second best of each series, and so on – a burst
 /// can't fill the list with look-alikes. The caller keeps the result: picking again after
 /// every mark would slip the next photo into a rejected one's place unnoticed.
@@ -856,7 +876,11 @@ pub fn pick_top(
             continue;
         };
         let rating = session_ratings.get(path).copied().unwrap_or(known.rating);
-        if rating == Rating::Rejected || known.deleted || percentiles.is_blurry(&known.scores) {
+        if rating == Rating::Rejected
+            || known.deleted
+            || percentiles.is_blurry(&known.scores)
+            || known.scores.truncated == Some(true)
+        {
             continue;
         }
         let Some(value) = top_value(rating, &known, &percentiles) else {
@@ -1329,7 +1353,7 @@ mod tests {
             filter
         };
         let accepts = |kinds: &[FilterKind], faces: Option<u8>| {
-            filter_of(kinds).accepts(Rating::Unrated, false, false, None, faces, false)
+            filter_of(kinds).accepts(Rating::Unrated, Quality::default(), None, faces, false)
         };
         assert!(accepts(&[FilterKind::People], Some(2)));
         assert!(!accepts(&[FilterKind::People], Some(0)));
@@ -1582,6 +1606,37 @@ mod tests {
         assert_eq!(top_of(&all, &known, &HashMap::new(), 0), "");
         let rejected = HashMap::from([(PathBuf::from("b"), Rating::Rejected)]);
         assert_eq!(top_of(&all, &known, &rejected, 2), "cd");
+        // Half of b is grey: it is no best photo either.
+        let mut cut = known.clone();
+        if let Some(b) = cut.get_mut(Path::new("b")) {
+            b.scores.truncated = Some(true);
+        }
+        assert_eq!(top_of(&all, &cut, &HashMap::new(), 2), "cd");
+    }
+
+    /// Incomplete files are a box of the quality group: any of blurry, duplicates and
+    /// incomplete, and the stars on top of that.
+    #[test]
+    fn incomplete_is_a_quality_box() {
+        let mut filter = PhotoFilter::default();
+        filter.set(FilterKind::Incomplete, true);
+        let cut = Quality {
+            incomplete: true,
+            ..Quality::default()
+        };
+        let blurry = Quality {
+            blurry: true,
+            ..Quality::default()
+        };
+        assert!(filter.accepts(Rating::Unrated, cut, None, None, false));
+        assert!(!filter.accepts(Rating::Unrated, Quality::default(), None, None, false));
+        filter.set(FilterKind::Blurry, true);
+        assert!(filter.accepts(Rating::Unrated, blurry, None, None, false));
+        filter.set(FilterKind::Stars(5), true);
+        assert!(!filter.accepts(Rating::Unrated, cut, None, None, false));
+        assert!(filter.accepts(Rating::Stars(5), cut, None, None, false));
+        assert_eq!(filter.id(), "*5,blurry,incomplete");
+        assert_eq!(PhotoFilter::from_stored(&filter.id()), filter);
     }
 
     /// A photo's own stars stand in for the For-you prediction.

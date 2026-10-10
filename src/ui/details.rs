@@ -380,6 +380,18 @@ fn file(ui: &mut Ui, d: &Details<'_>) {
         if let Some(value) = d.jpeg.and_then(jpeg_value) {
             explained_row(ui, t.row_jpeg_quality, value, t.explain_jpeg_quality);
         }
+        let incomplete = d.jpeg.is_some_and(|jpeg| !jpeg.complete)
+            || d.scores
+                .is_some_and(|scores| scores.truncated == Some(true));
+        if incomplete {
+            coloured_row(
+                ui,
+                t.row_complete,
+                t.incomplete_value.to_owned(),
+                t.incomplete_tooltip,
+                tokens::STATUS_WARN,
+            );
+        }
         if let Some((lat, lon)) = d.position {
             plain_row(ui, t.row_location, i18n::coordinates(lat, lon));
             map_links(ui, (lat, lon));
@@ -656,6 +668,11 @@ fn jpeg_value(jpeg: crate::jpeg_info::JpegInfo) -> Option<String> {
 
 /// A plain row that explains itself while the pointer rests on it.
 fn explained_row(ui: &mut Ui, label: &str, value: String, explain: &str) {
+    coloured_row(ui, label, value, explain, tokens::TEXT);
+}
+
+/// A row whose explanation is its tooltip, the value in `colour` (a warning's status colour).
+fn coloured_row(ui: &mut Ui, label: &str, value: String, explain: &str, colour: Color32) {
     let explain = i18n::keep_together(explain);
     ui.horizontal(|ui| {
         ui.add_space(PAD + 14.0);
@@ -675,7 +692,7 @@ fn explained_row(ui: &mut Ui, label: &str, value: String, explain: &str) {
                 Label::new(
                     RichText::new(value)
                         .font(FontId::proportional(text::SMALL))
-                        .color(tokens::TEXT),
+                        .color(colour),
                 )
                 .selectable(false),
             )
@@ -856,6 +873,7 @@ mod tests {
                 shadows: Some(0.0),
                 eyes: None,
                 faces: Some(0),
+                truncated: Some(false),
             }),
             personal: Some(2.8),
             frame_percentile: Some(0.62),

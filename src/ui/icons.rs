@@ -195,6 +195,30 @@ pub fn warning(painter: &Painter, center: Pos2) {
     painter.circle_filled(center + vec2(0.0, 3.4), 1.0, Color32::BLACK);
 }
 
+/// "File incomplete": a page whose lower edge is torn off – a JPEG that ends inside its image
+/// data. About 11 × 13 px.
+pub fn torn_file(painter: &Painter, center: Pos2, color: Color32) {
+    let p = |x: f32, y: f32| center + vec2(x, y);
+    let stroke = Stroke::new(1.4, color);
+    // Top edge with the folded corner, the sides, and a zig-zag where the rest is missing.
+    let outline = vec![
+        p(-5.0, 3.5),
+        p(-5.0, -6.0),
+        p(2.0, -6.0),
+        p(5.0, -3.0),
+        p(5.0, 3.5),
+        p(3.3, 5.5),
+        p(1.7, 3.5),
+        p(0.0, 5.5),
+        p(-1.7, 3.5),
+        p(-3.3, 5.5),
+        p(-5.0, 3.5),
+    ];
+    painter.add(Shape::line(outline, stroke));
+    painter.line_segment([p(2.0, -6.0), p(2.0, -3.0)], stroke);
+    painter.line_segment([p(2.0, -3.0), p(5.0, -3.0)], stroke);
+}
+
 /// A video's play button: a light triangle on a dark disc, both see-through so the frame
 /// shows beneath.
 pub fn play(painter: &Painter, center: Pos2, radius: f32) {

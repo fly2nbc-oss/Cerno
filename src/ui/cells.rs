@@ -27,6 +27,8 @@ pub struct CellInfo {
     pub rating: Rating,
     /// Shown as a warning marker with this explanation.
     pub blurry: Option<String>,
+    /// A JPEG that ends inside its image data: a torn page in the corner.
+    pub incomplete: bool,
     /// The photo pinned on the left in compare mode.
     pub pinned: bool,
     pub label: Option<Label>,
@@ -162,6 +164,17 @@ pub fn paint(
     let mut tooltip = Vec::new();
     if info.video {
         tooltip.push(i18n::t().filmstrip_video.to_owned());
+    }
+    if info.incomplete {
+        // Left of the blurry mark when there is one too.
+        let right = if info.blurry.is_some() { 26.0 } else { 4.0 };
+        let badge = Rect::from_min_size(
+            pos2(cell.right() - right - 18.0, cell.top() + 1.0),
+            vec2(18.0, 18.0),
+        );
+        painter.rect_filled(badge, 3.0, tokens::SURFACE);
+        icons::torn_file(painter, badge.center(), tokens::STATUS_WARN);
+        tooltip.push(i18n::t().incomplete_fact.to_owned());
     }
     if let Some(reason) = &info.blurry {
         icons::warning(painter, pos2(cell.right() - 10.0, cell.top() + 10.0));

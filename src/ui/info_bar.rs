@@ -20,6 +20,10 @@ const STAR_SIZE: f32 = 16.0;
 const STAR_GAP: f32 = 6.0;
 /// Click area of the info bar buttons (design system: at least 32 px).
 const BUTTON: f32 = 32.0;
+/// The incomplete-file note ends this far left of the stars – past the colour dot – and its
+/// torn-page icon takes this much room before the text.
+const NOTE_OFFSET: f32 = 28.0;
+const NOTE_ICON: f32 = 16.0;
 
 pub struct InfoBar<'a> {
     pub name: &'a str,
@@ -43,6 +47,8 @@ pub struct InfoBar<'a> {
     pub sharpness: Option<(f32, bool)>,
     /// The subject is probably out of focus (`view::is_blurry`).
     pub blurry: bool,
+    /// A JPEG that ends inside its image data: a warning beside the stars.
+    pub incomplete: bool,
     pub saving: bool,
     /// Viewer zoom in percent while zoomed in.
     pub zoom: Option<f32>,
@@ -103,7 +109,15 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     // while browsing (the blurry note, "Eyes" instead of "Sharpness", "Analysing…").
     let widest = widest_centre(painter);
     let stars_width = 5.0 * STAR_SIZE + 4.0 * STAR_GAP;
-    let centre_half = (laid.width.max(widest) / 2.0).max(stars_width / 2.0) + 8.0;
+    // Left of the stars (and the colour dot) the note of an incomplete file has its room
+    // always, for the same reason.
+    let note = painter.layout_no_wrap(
+        t.incomplete_fact.to_owned(),
+        FontId::proportional(text::SMALL),
+        tokens::STATUS_WARN,
+    );
+    let note_reach = NOTE_OFFSET + NOTE_ICON + note.size().x;
+    let centre_half = (laid.width.max(widest) / 2.0).max(stars_width / 2.0 + note_reach) + 8.0;
     let centre = rect.center().x;
     for (area, tooltip) in paint_meters(painter, centre, row2, laid) {
         if let Some(tooltip) = tooltip {
@@ -247,6 +261,23 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
         painter.circle_filled(dot.center(), 5.0, crate::theme::label_color(label));
         ui.interact(dot, ui.id().with("label-dot"), Sense::hover())
             .on_hover_text(i18n::label_name(label));
+    }
+    if bar.incomplete {
+        let right = stars_left - NOTE_OFFSET;
+        let text_left = right - note.size().x;
+        let icon = pos2(text_left - NOTE_ICON / 2.0 - 1.0, row1);
+        icons::torn_file(painter, icon, tokens::STATUS_WARN);
+        painter.galley(
+            pos2(text_left, row1 - note.size().y / 2.0),
+            note,
+            tokens::STATUS_WARN,
+        );
+        let area = Rect::from_min_max(
+            pos2(icon.x - NOTE_ICON / 2.0, row1 - 9.0),
+            pos2(right, row1 + 9.0),
+        );
+        ui.interact(area, ui.id().with("incomplete"), Sense::hover())
+            .on_hover_text(t.incomplete_tooltip);
     }
     let hint = hint_stars(bar.rating, bar.personal);
     for n in 1..=5u8 {
@@ -631,6 +662,7 @@ mod tests {
             personal: Some(3.1),
             sharpness: Some((0.1, true)),
             blurry,
+            incomplete: false,
             saving: false,
             zoom: Some(100.0),
             overlay: None,
@@ -677,6 +709,43 @@ mod tests {
         let full = "Duplicate of";
         assert!(!facts(true).contains(full), "760 px cannot show every part");
         assert_eq!(facts(true), facts(false));
+    }
+
+    /// An incomplete file says so left of the stars, and the side columns don't move for it.
+    #[test]
+    fn an_incomplete_file_is_named_beside_the_stars() {
+        let incomplete = InfoBar {
+            incomplete: true,
+            label: Some(Label::Red),
+            ..bar(false)
+        };
+        let texts = texts_of(&incomplete, 760.0);
+        let note = texts
+            .iter()
+            .find(|(text, _)| text == "File incomplete")
+            .expect("the note");
+        let facts = |texts: &[(String, Rect)]| {
+            texts
+                .iter()
+                .find(|(text, _)| text.starts_with("3 / 120"))
+                .map(|(text, rect)| (text.clone(), *rect))
+                .expect("facts line")
+        };
+        let stars_left = 380.0 - (5.0 * STAR_SIZE + 4.0 * STAR_GAP) / 2.0;
+        assert!(
+            note.1.right() < stars_left - 20.0,
+            "clear of the colour dot"
+        );
+        assert!(
+            facts(&texts).1.right() < note.1.left(),
+            "clear of the facts line"
+        );
+        assert_eq!(facts(&texts).0, facts(&texts_of(&bar(false), 760.0)).0);
+        assert!(
+            !texts_of(&bar(false), 760.0)
+                .iter()
+                .any(|(text, _)| text == "File incomplete")
+        );
     }
 
     /// Under the photo only aesthetics and sharpness, both in percent.

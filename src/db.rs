@@ -112,6 +112,7 @@ const ADDED_IMAGE_COLUMNS: &[(&str, &str)] = &[
     ("taken_ms", "INTEGER"),
     ("metadata_version", "INTEGER NOT NULL DEFAULT 0"),
     ("camera", "TEXT"),
+    ("truncated", "INTEGER"),
 ];
 
 /// Columns added to `files` after the first release.
@@ -121,7 +122,7 @@ const ADDED_FILE_COLUMNS: &[(&str, &str)] = &[("label", "TEXT")];
 const IMAGE_COLUMNS: &str = "i.sharpness, i.sharpness_version, i.aesthetic, i.aesthetic_model,
     i.aesthetic25, i.aesthetic25_model, i.highlights, i.shadows, i.exposure_version,
     i.eyes, i.faces, i.faces_version, i.thumbnail IS NOT NULL, i.embedding,
-    i.taken_ms, i.metadata_version, i.camera";
+    i.taken_ms, i.metadata_version, i.camera, i.truncated";
 
 /// Cheap identity check for a file: if size or mtime changed, the fingerprint is recomputed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -159,6 +160,9 @@ pub struct Scores {
     pub eyes: Option<f32>,
     /// Faces found; `None` until face detection ran.
     pub faces: Option<u8>,
+    /// A JPEG that ends inside its image data (`jpeg_info::is_complete`); `None` until checked,
+    /// and for every other format.
+    pub truncated: Option<bool>,
 }
 
 /// What was computed from an image's pixels. Capture time lives here too, so a renamed file
@@ -243,6 +247,7 @@ fn image_from_row(row: &Row<'_>, at: usize) -> rusqlite::Result<ImageRecord> {
             faces: row
                 .get::<_, Option<i64>>(at + 10)?
                 .map(|n| n.clamp(0, 255) as u8),
+            truncated: row.get(at + 17)?,
         },
         sharpness_version: row.get::<_, Option<i64>>(at + 1)?.unwrap_or(0),
         aesthetic_model: row.get(at + 3)?,
@@ -446,10 +451,21 @@ impl Db {
         Ok(())
     }
 
+    /// Whether a JPEG ends inside its image data (`jpeg_info::is_complete`).
+    pub fn put_truncated(&self, fingerprint: u64, truncated: bool) -> Result<()> {
+        self.conn()
+            .prepare_cached(
+                "INSERT INTO images (fingerprint, truncated) VALUES (?1, ?2)
+                 ON CONFLICT(fingerprint) DO UPDATE SET truncated = excluded.truncated",
+            )?
+            .execute(params![fingerprint as i64, truncated])?;
+        Ok(())
+    }
+
     /// A photo was deleted: its `files` row follows it to `aside` in `.originals` (a rename
     /// keeps size and dates, so its scores and thumbnail are found there at once) and
-    /// `set_aside` remembers where it came from; without `aside` the row goes. It teaches the
-    /// taste model nothing (since 1.9.0).
+    /// `set_aside` remembers where it came from. It teaches the taste model nothing (since
+    /// 1.9.0).
     pub fn record_deletion(&self, path: &str, aside: &str) -> Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
@@ -1000,6 +1016,12 @@ mod tests {
         assert_eq!(db.image(9).unwrap().metadata_version, 2);
         db.put_faces(9, None, 0, 1).unwrap();
         assert_eq!(db.image(9).unwrap().scores.faces, Some(0));
+        assert_eq!(record.image.scores.truncated, None, "not checked yet");
+        db.put_truncated(9, true).unwrap();
+        assert_eq!(db.image(9).unwrap().scores.truncated, Some(true));
+        db.put_truncated(9, false).unwrap();
+        let record = db.lookup("old.jpg", STAMP).unwrap().unwrap();
+        assert_eq!(record.image.scores.truncated, Some(false));
     }
 
     /// Stars count with their number, rejections as 0; a deleted photo is no example.
