@@ -486,6 +486,12 @@ pub static TEXTS: Texts = Texts {
     edit_reencoded: "JPEG neu kodiert – Strg+Z holt das Original zurück.",
     undo_done: "Original zurückgeholt",
     undo_nothing: "Für dieses Foto ist kein Original aufbewahrt",
+    undo_mark_row: |what, name| format!("{what} rückgängig – {name}"),
+    undo_what_stars: "Sterne",
+    undo_what_reject: "Ablehnung",
+    undo_what_colour: "Farbe",
+    undo_what_edit: "Bearbeitung",
+    undo_mark_done: |name, value| format!("Rückgängig – {name}: {value}"),
     cmd_restore: "Zurücklegen",
     restored: |n, renamed, name| match (n, renamed) {
         (1, 0) => format!("Zurückgelegt: {name}"),
@@ -731,7 +737,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "Strg+Z",
-            "Original zurückholen – es bleibt in .originals neben dem Foto; ein gelöschtes Foto zurücklegen",
+            "Letzte Markierung oder Bearbeitung zurücknehmen; ein gelöschtes Foto zurücklegen",
         ),
         (
             "E",

@@ -484,6 +484,12 @@ pub static TEXTS: Texts = Texts {
     edit_reencoded: "JPEG recodificado – Ctrl+Z recupera el original.",
     undo_done: "Original recuperado",
     undo_nothing: "No se guarda ningún original de esta foto",
+    undo_mark_row: |what, name| format!("Deshacer {what} – {name}"),
+    undo_what_stars: "las estrellas",
+    undo_what_reject: "el rechazo",
+    undo_what_colour: "el color",
+    undo_what_edit: "la edición",
+    undo_mark_done: |name, value| format!("Deshecho – {name}: {value}"),
     cmd_restore: "Devolver a su sitio",
     restored: |n, renamed, name| match (n, renamed) {
         (1, 0) => format!("Devuelta a su sitio: {name}"),
@@ -730,7 +736,7 @@ pub static TEXTS: Texts = Texts {
         ),
         (
             "Ctrl+Z",
-            "Recuperar el original – se queda en .originals junto a la foto; devolver a su sitio una foto eliminada",
+            "Deshacer la última marca o edición; devolver a su sitio una foto eliminada",
         ),
         ("E", "Editar en otro programa: el recordado o elegir uno"),
     ],

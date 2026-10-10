@@ -15,6 +15,7 @@ use crate::sidecar;
 
 use super::CernoApp;
 use super::notice::Notice;
+use super::undo;
 
 /// The saved switch; on unless it was turned off.
 pub(super) const SETTING: &str = "raw_jpeg_pairs";
@@ -76,16 +77,18 @@ impl CernoApp {
         let t = i18n::t();
         let mut parts = Vec::new();
         if rating != self.rating_of(path, None) {
-            parts.push(match rating {
-                Rating::Stars(n) => (t.filter_stars)(n),
-                Rating::Rejected => t.rejected.to_owned(),
-                Rating::Unrated => t.filter_unrated.to_owned(),
-            });
+            parts.push(undo::rating_word(t, rating));
         }
         if label != self.label_of(path, None) {
-            parts.push(label.map_or(t.label_none, i18n::label_name).to_owned());
+            parts.push(undo::label_word(t, label).to_owned());
         }
         (!parts.is_empty()).then(|| (t.pair_raw_marks)(&parts.join(", ")))
+    }
+
+    /// What the sidecar of `path`'s RAW says, when `path` is a pair's JPEG and it is known.
+    pub(super) fn companion_marks(&self, path: &Path) -> Option<(Rating, Option<Label>)> {
+        let raw = self.pairs.companion(path)?;
+        self.raw_marks.known.get(raw).copied()
     }
 
     /// What the info bar and the cell's tooltip say about a pair – `RAW+JPG`, and the RAW's

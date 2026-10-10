@@ -1,6 +1,7 @@
 //! Stars, rejection and colour labels – shown at once, written by the rating writer.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use eframe::egui;
 
@@ -10,6 +11,7 @@ use crate::view::SortKey;
 
 use super::CernoApp;
 use super::gate::Change;
+use super::undo::Entry;
 
 impl CernoApp {
     /// Rates the current photo. `advance` moves on afterwards, unless the photo itself
@@ -20,6 +22,7 @@ impl CernoApp {
         }
     }
 
+    /// Rates `path` and records it for `Ctrl+Z`.
     pub(super) fn rate(
         &mut self,
         ctx: &egui::Context,
@@ -27,8 +30,29 @@ impl CernoApp {
         rating: Rating,
         advance: bool,
     ) {
+        let before = self.rating_of(&path, self.loaded(&path).as_deref());
+        let raw = self.companion_marks(&path).map(|(raw, _)| raw);
+        if self.apply_rating(ctx, path.clone(), rating, advance) && before != rating {
+            self.journal.push(Entry::Rating {
+                path,
+                before,
+                after: rating,
+                raw,
+            });
+        }
+    }
+
+    /// Rates `path` without recording it (`Ctrl+Z` itself). False when the photo takes no
+    /// mark right now.
+    pub(super) fn apply_rating(
+        &mut self,
+        ctx: &egui::Context,
+        path: PathBuf,
+        rating: Rating,
+        advance: bool,
+    ) -> bool {
         if !self.allowed(Change::Mark, Some(&path)) {
-            return;
+            return false;
         }
         let next = self.next_path();
         self.session_ratings.insert(path.clone(), rating);
@@ -36,11 +60,29 @@ impl CernoApp {
         self.rate_companion(&path, rating);
         self.analyzer.taste_changed();
         self.finish_mark(ctx, &path, next, advance, self.rating_affects_view());
+        true
+    }
+
+    /// The loaded image of `path`, when the loader has it.
+    fn loaded(&self, path: &Path) -> Option<Arc<LoadedImage>> {
+        let index = if self
+            .view
+            .get(self.current)
+            .is_some_and(|shown| shown == path)
+        {
+            self.current
+        } else {
+            self.view.iter().position(|shown| shown == path)?
+        };
+        match self.loader.get(index) {
+            Lookup::Ready(image) => Some(image),
+            _ => None,
+        }
     }
 
     pub(super) fn set_label(&mut self, ctx: &egui::Context, label: Option<Label>, advance: bool) {
         if let Some(path) = self.view.get(self.current).cloned() {
-            self.apply_label(ctx, path, label, advance);
+            self.label(ctx, path, label, advance);
         }
     }
 
@@ -56,25 +98,37 @@ impl CernoApp {
             } else {
                 Some(label)
             };
-            self.apply_label(ctx, path, next, advance);
+            self.label(ctx, path, next, advance);
         }
     }
 
-    fn apply_label(
+    /// Sets or clears the colour of `path` and records it for `Ctrl+Z`.
+    fn label(&mut self, ctx: &egui::Context, path: PathBuf, label: Option<Label>, advance: bool) {
+        let before = self.label_of(&path, self.loaded(&path).as_deref());
+        let raw = self.companion_marks(&path).map(|(_, raw)| raw);
+        if self.apply_label(ctx, path.clone(), label, advance) && before != label {
+            self.journal.push(Entry::Label { path, before, raw });
+        }
+    }
+
+    /// Sets the colour without recording it (`Ctrl+Z` itself). False when the photo takes no
+    /// mark right now.
+    pub(super) fn apply_label(
         &mut self,
         ctx: &egui::Context,
         path: PathBuf,
         label: Option<Label>,
         advance: bool,
-    ) {
+    ) -> bool {
         if !self.allowed(Change::Mark, Some(&path)) {
-            return;
+            return false;
         }
         let next = self.next_path();
         self.session_labels.insert(path.clone(), label);
         self.writer.set_label(path.clone(), label);
         self.label_companion(&path, label);
         self.finish_mark(ctx, &path, next, advance, self.options.filter.has_colour());
+        true
     }
 
     /// The photo after the current one, remembered before a rebuild moves things around.

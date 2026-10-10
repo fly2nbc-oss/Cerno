@@ -88,6 +88,8 @@ impl CernoApp {
         self.options.top = None;
         self.top_pick.clear();
         self.top_pick_for = None;
+        // `Ctrl+Z` takes back what was done since the folder opened.
+        self.journal.clear();
         self.cancel_edit();
         self.thumbs.clear();
         // Only needed when the view depends on scores; the analysis fills the board anyway,

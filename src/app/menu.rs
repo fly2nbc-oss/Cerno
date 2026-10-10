@@ -2,6 +2,7 @@
 //! the help page, the models card and the confirmation cards.
 
 use std::path::PathBuf;
+use std::time::Instant;
 
 use eframe::egui::{self, Rect, ViewportCommand, pos2, vec2};
 
@@ -499,9 +500,15 @@ impl CernoApp {
                 )
                 .disabled(rewrite),
             ),
-            // On a deleted photo `Ctrl+Z` undoes the deletion; the row says so in its place.
-            if current.is_some_and(|path| self.is_deleted(path)) {
+            // What `Ctrl+Z` does, in its order (`editing::undo_target`): bring back a deletion
+            // that counts down, put back the deleted photo shown, take back the session's newest
+            // mark or edit – the row names it – or put back an original kept before.
+            if self.deletions.countdown(Instant::now()).is_some() {
+                Row::new(Action::Undo, t.cmd_undo, Some(i18n::with_ctrl("Z")))
+            } else if current.is_some_and(|path| self.is_deleted(path)) {
                 Row::new(Action::Restore, t.cmd_restore, Some(i18n::with_ctrl("Z")))
+            } else if let Some((label, block)) = self.undo_row() {
+                Row::new(Action::Undo, label, Some(i18n::with_ctrl("Z"))).disabled(block)
             } else {
                 Row::new(Action::Undo, t.cmd_undo, Some(i18n::with_ctrl("Z"))).disabled(rewrite)
             },

@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **`Ctrl+Z` takes back marks** – stars, rejections and colours of this session, newest first, on whichever photo they were: Cerno shows that photo, gives it back what it had and says so (`Undone – IMG_0012: 3 stars`). Straighten, crop and turns of the session take their turn in the same order. In a RAW + JPG pair both files go back. The menu's *Undo* row names what it would take back. A deletion that is still counting down and a deleted photo on screen come first, as before; an original kept in an earlier session comes last.
+
 ### Changed
 
 - **Faster start** – the first photo appears at once in the size of the last session's photo area, instead of being decoded twice. The aesthetics models, the video and HEIC libraries and ExifTool load only when they are needed, and the analysis and the prediction start a moment after the first photo, so they never compete with it. The screen redraws less often while the analysis runs.
