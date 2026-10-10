@@ -29,6 +29,7 @@ mod files;
 mod frame;
 mod gate;
 mod keys;
+mod layer;
 mod marks;
 mod menu;
 mod name_list;
@@ -69,7 +70,6 @@ use crate::ui::{description, side_bar, viewer};
 use crate::view::{Media, Percentiles, PhotoFilter, SortKey, View, ViewOptions};
 
 use editing::EditSession;
-use menu::ConfirmAction;
 use notice::Notice;
 
 /// Decode size before the window exists, so the first photo decodes while the GPU starts up.
@@ -206,14 +206,8 @@ pub struct CernoApp {
     details_last: DetailsMode,
     /// The CLIP attributes are folded out in the details panel (session-wide).
     attributes_open: bool,
-    /// Help page over the photos (`H`, `F1`, `?`).
-    help_open: bool,
-    /// Its tab: the shortcuts or the tips (`←`/`→`); not saved.
-    help_page: crate::ui::help::Page,
-    /// Models & data card (menu).
-    models_open: bool,
-    /// A confirmation waiting for Enter or Esc; `true` reopens the models card afterwards.
-    confirm: Option<(ConfirmAction, bool)>,
+    /// What lies over the window: the help page, the list beside a menu bar row or a card.
+    layer: layer::Layer,
     /// The menu bar on the left is switched on (the menu button, saved as `side_bar`).
     show_side_bar: bool,
     /// `Ctrl+K`, `Ctrl+M` or `E` showed the bar while it is off: it goes again with the
@@ -221,8 +215,6 @@ pub struct CernoApp {
     side_bar_temporary: bool,
     /// Its open groups (saved as `side_bar_open`) and whether it has the keyboard.
     side: side_bar::State,
-    /// The list open beside a row of the bar: *Edit elsewhere*'s programs or the languages.
-    row_list: Option<menu::RowList>,
     /// `E` asked for the programs' list: it opens beside its row once the bar is drawn.
     list_after_draw: Option<menu::ListKind>,
     /// The counts of *Visible photos* (rejected in the folder, deleted on screen), refreshed
@@ -459,14 +451,10 @@ impl CernoApp {
                 details
             },
             attributes_open: false,
-            help_open: false,
-            help_page: crate::ui::help::Page::Keys,
-            models_open: false,
-            confirm: None,
+            layer: layer::Layer::None,
             show_side_bar,
             side_bar_temporary: false,
             side,
-            row_list: None,
             list_after_draw: None,
             bar_counts: menu::BarCounts::default(),
             toolbar_held: false,

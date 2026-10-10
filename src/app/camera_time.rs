@@ -12,17 +12,17 @@ use crate::i18n;
 use crate::ui::camera_time as card_ui;
 
 use super::CernoApp;
+use super::layer::Layer;
 use super::notice::Notice;
 
 #[derive(Default)]
 pub(super) struct CameraTime {
     /// Camera id → milliseconds added to its photos' capture times, in the open folder.
     offsets: HashMap<u64, i64>,
-    /// The card, while it is open.
-    card: Option<Card>,
 }
 
-struct Card {
+/// The card, while it is open (`Layer::CameraTime`).
+pub(super) struct Card {
     /// The camera of each row.
     cameras: Vec<u64>,
     rows: Vec<card_ui::Row>,
@@ -34,10 +34,6 @@ impl CameraTime {
             .and_then(|camera| self.offsets.get(&camera))
             .copied()
             .unwrap_or(0)
-    }
-
-    pub(super) fn card_open(&self) -> bool {
-        self.card.is_some()
     }
 }
 
@@ -52,7 +48,7 @@ struct Pair {
 impl CernoApp {
     /// The open folder's offsets; another folder has its own.
     pub(super) fn load_camera_offsets(&mut self) {
-        self.camera_time.card = None;
+        self.layer.close_if(Layer::is_camera_time);
         let folder = self
             .dir
             .as_ref()
@@ -180,17 +176,17 @@ impl CernoApp {
             .collect();
         rows.sort_by(|(_, a), (_, b)| b.count.cmp(&a.count).then(a.name.cmp(&b.name)));
         let (cameras, rows) = rows.into_iter().unzip();
-        self.camera_time.card = Some(Card { cameras, rows });
+        self.layer = Layer::CameraTime(Card { cameras, rows });
     }
 
     /// The card, while open; Apply stores what changed and sorts again.
     pub(super) fn draw_camera_time_card(&mut self, ctx: &egui::Context, window: Rect) {
-        let Some(card) = &mut self.camera_time.card else {
+        let Layer::CameraTime(card) = &mut self.layer else {
             return;
         };
         let out = card_ui::show(ctx, window, &mut card.rows);
         if out.apply
-            && let Some(card) = self.camera_time.card.take()
+            && let Layer::CameraTime(card) = std::mem::take(&mut self.layer)
         {
             let mut changed = false;
             for (camera, row) in card.cameras.into_iter().zip(card.rows) {
@@ -204,7 +200,7 @@ impl CernoApp {
                 self.rebuild_view(ctx, None);
             }
         } else if out.close {
-            self.camera_time.card = None;
+            self.layer = Layer::None;
         }
     }
 }

@@ -11,6 +11,7 @@ use crate::ui::icons::Panel;
 use crate::ui::viewer;
 
 use super::CernoApp;
+use super::layer::Layer;
 
 /// `0` clears the stars, `1`–`5` set them.
 const STAR_KEYS: [(Key, Rating); 6] = [
@@ -296,14 +297,14 @@ impl CernoApp {
         }
         // `Ctrl+M`: the menu bar on *Visible photos* (copy, move, delete what the filter shows).
         if keys.actions {
-            self.row_list = None;
+            self.layer.close_if(Layer::is_list);
             self.open_visible_photos();
             return;
         }
         // The bar with the keyboard, and the list beside one of its rows, read their own
         // arrows, Enter, letters and Esc (`side_bar`, `palette`); `Ctrl+K` gives the keyboard
         // back to the photo.
-        if self.row_list.is_some() || self.side.focus {
+        if self.layer.is_list() || self.side.focus {
             if keys.palette {
                 self.leave_side_bar();
             }
@@ -315,13 +316,13 @@ impl CernoApp {
         }
         // The help page is modal: only closing it, switching its page (←/→) and the language
         // work.
-        if self.help_open {
+        if let Layer::Help(page) = self.layer {
             if keys.help || keys.escape {
-                self.help_open = false;
+                self.layer = Layer::None;
             } else if keys.next {
-                self.help_page = self.help_page.next();
+                self.layer = Layer::Help(page.next());
             } else if keys.prev {
-                self.help_page = self.help_page.prev();
+                self.layer = Layer::Help(page.prev());
             }
             return;
         }

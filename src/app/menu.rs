@@ -17,6 +17,7 @@ use crate::ui::side_bar::{self, Item, Look, Section, Segment, Segments};
 use crate::ui::{confirm, help, models, palette, viewer};
 
 use super::gate::Change;
+use super::layer::Layer;
 use super::{CLIP_OFFER_SHOWN, CernoApp};
 
 /// The setting with the menu bar's open groups.
@@ -132,9 +133,10 @@ impl CernoApp {
     /// Opens a confirmation card. `from_models`: the models card comes back afterwards.
     pub(super) fn ask(&mut self, action: ConfirmAction, from_models: bool) {
         self.leave_side_bar();
-        self.help_open = false;
-        self.models_open = false;
-        self.confirm = Some((action, from_models));
+        self.layer = Layer::Confirm {
+            action,
+            back_to_models: from_models,
+        };
     }
 
     fn confirm_card(action: ConfirmAction, status: &Status) -> confirm::Confirm<'static> {
@@ -202,18 +204,13 @@ impl CernoApp {
 
     /// The help page, always on its shortcuts (`H`, `F1`, `?`, the button, the menu).
     pub(super) fn open_help(&mut self) {
-        self.help_page = help::Page::Keys;
-        self.help_open = true;
+        self.layer = Layer::Help(help::Page::Keys);
     }
 
     /// A card (models, confirmation) or the faces grid is open: keys and the photo's mouse
     /// handling pause.
     pub(super) fn modal_open(&self) -> bool {
-        self.models_open
-            || self.confirm.is_some()
-            || self.faces.grid_open
-            || self.name_list.card_open()
-            || self.camera_time.card_open()
+        self.layer.is_card() || self.faces.grid_open
     }
 
     /// Help page, menus, models card and confirmation – in this order, the last on top.
@@ -233,17 +230,19 @@ impl CernoApp {
                 self.faces.grid_open = false;
             }
         }
-        if self.help_open {
+        if let Layer::Help(page) = self.layer {
             let update = self.update_line();
-            let out = help::overlay(ctx, window, self.help_page, i18n::t(), &update);
+            let out = help::overlay(ctx, window, page, i18n::t(), &update);
             if out.check_updates {
                 self.start_update_check(ctx);
             }
             if out.language {
                 self.switch_language(ctx);
             }
-            if let Some(page) = out.page {
-                self.help_page = page;
+            if let Some(page) = out.page
+                && let Layer::Help(shown) = &mut self.layer
+            {
+                *shown = page;
             }
             if out.open_data_folder {
                 let opened =
@@ -253,12 +252,14 @@ impl CernoApp {
                 }
             }
             if out.close {
-                self.help_open = false;
+                self.layer.close_if(Layer::is_help);
             }
         }
         // The list beside a row of the menu bar: a pick runs; Esc or a click beside it closes
         // it, and the bar keeps the keyboard if it had it – unless `E` opened the list.
-        if let Some(mut list) = self.row_list.take() {
+        if self.layer.is_list()
+            && let Layer::List(mut list) = std::mem::take(&mut self.layer)
+        {
             let by_key = list.by_key;
             let entries = match list.kind {
                 ListKind::Editors => self.editor_rows(),
@@ -273,7 +274,7 @@ impl CernoApp {
             );
             let picked = out.run.is_some() && out.close;
             if !out.close {
-                self.row_list = Some(list);
+                self.layer = Layer::List(list);
             } else if by_key && !picked {
                 self.leave_side_bar();
             }
@@ -287,10 +288,10 @@ impl CernoApp {
         }
         self.draw_name_list_card(ctx, window);
         self.draw_camera_time_card(ctx, window);
-        if self.models_open {
+        if matches!(self.layer, Layer::Models) {
             let out = models::overlay(ctx, window, &self.analyzer.status(), &self.exiftool_row());
             if out.close {
-                self.models_open = false;
+                self.layer = Layer::None;
             }
             for (asked, action) in [
                 (out.download_exiftool, ConfirmAction::DownloadExifTool),
@@ -303,15 +304,21 @@ impl CernoApp {
                 }
             }
         }
-        if let Some((action, back_to_models)) = self.confirm
+        if let Layer::Confirm {
+            action,
+            back_to_models,
+        } = self.layer
             && let Some(yes) = confirm::show(
                 ctx,
                 window,
                 &Self::confirm_card(action, &self.analyzer.status()),
             )
         {
-            self.confirm = None;
-            self.models_open = back_to_models;
+            self.layer = if back_to_models {
+                Layer::Models
+            } else {
+                Layer::None
+            };
             if yes {
                 self.carry_out(ctx, action);
             } else if action == ConfirmAction::UpdateCheck {
@@ -650,7 +657,7 @@ impl CernoApp {
         if kind == ListKind::Editors {
             self.prepare_editors();
         }
-        self.row_list = Some(RowList {
+        self.layer = Layer::List(RowList {
             kind,
             at,
             state: palette::State::default(),
@@ -675,8 +682,7 @@ impl CernoApp {
         self.refresh_bar_counts();
         let bar = self.side_bar_content();
         // Its keys only while it has the keyboard and nothing lies over it.
-        let listening =
-            self.side.focus && self.row_list.is_none() && !self.modal_open() && !self.help_open;
+        let listening = self.side.focus && !self.layer.is_open() && !self.modal_open();
         let out = side_bar::show(ui, rect, &mut self.side, &bar, listening);
         if out.folded {
             self.db.put_setting(SIDE_BAR_OPEN, &self.side.saved());
@@ -818,11 +824,11 @@ impl CernoApp {
             Action::LanguageList => {}
             // Opening another program closes the list.
             Action::EditWith(index) => {
-                self.row_list = None;
+                self.layer.close_if(Layer::is_list);
                 self.open_in_listed(index);
             }
             Action::EditRemembered => {
-                self.row_list = None;
+                self.layer.close_if(Layer::is_list);
                 self.edit_elsewhere();
             }
             Action::EditWithOther => self.pick_editor(),
@@ -839,7 +845,7 @@ impl CernoApp {
             Action::Subfolders => self.toggle_subfolders(ctx),
             Action::Language(lang) => self.set_language(ctx, lang),
             Action::Models => {
-                self.models_open = true;
+                self.layer = Layer::Models;
                 self.exiftool_card_opens();
             }
             Action::Copy => self.begin_transfer(ctx, TransferMode::Copy),
