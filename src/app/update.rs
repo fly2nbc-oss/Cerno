@@ -118,7 +118,8 @@ impl CernoApp {
     }
 
     /// Until the user has decided: once the window shows, a card asks whether Cerno may check
-    /// – over nothing else, so it never closes a menu or card that is open. Closed without an
+    /// – over nothing else, so it never closes a menu or card that is open, and not during a
+    /// straighten or crop session (its Enter would answer the card). Closed without an
     /// answer (Cerno ended), it asks again at the next start.
     fn ask_about_updates(&mut self) {
         if self.updates.asked
@@ -126,6 +127,7 @@ impl CernoApp {
             || self.layer.is_open()
             || self.modal_open()
             || self.menu_bar.state.focus
+            || self.edits.session.is_some()
         {
             return;
         }

@@ -64,6 +64,18 @@ pub(super) struct EditSession {
     kind: EditKind,
 }
 
+#[cfg(test)]
+impl EditSession {
+    /// A straighten session on `path`, without the checks `begin_straighten` makes (tests).
+    pub(super) fn straightening(path: PathBuf) -> Self {
+        Self {
+            path,
+            zoom: viewer::Zoom::default(),
+            kind: EditKind::Straighten { radians: 0.0 },
+        }
+    }
+}
+
 enum EditKind {
     Straighten {
         radians: f64,

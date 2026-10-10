@@ -191,6 +191,8 @@ pub(super) fn presses(keys: &[(Key, Modifiers)]) -> Vec<Event> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::command::{Command, Source};
+    use crate::app::editing::EditSession;
     use crate::app::menu::ConfirmAction;
 
     const NONE: Modifiers = Modifiers::NONE;
@@ -323,6 +325,34 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    /// The menu bar's Straighten and Crop end the four-up view first, like `S` and `R`.
+    #[test]
+    fn straighten_from_the_menu_ends_the_four_up_view() {
+        let mut h = Harness::new(5);
+        h.settle();
+        for command in [Command::Straighten, Command::Crop] {
+            h.press(Key::C, Modifiers::SHIFT);
+            assert!(h.app.viewer.quad.is_some());
+            let ctx = h.ctx.clone();
+            h.app.run(&ctx, command, Source::Menu, &[]);
+            assert!(h.app.viewer.quad.is_none(), "{command:?}");
+            h.settle();
+        }
+    }
+
+    /// The first-start question waits for a straighten or crop session to end.
+    #[test]
+    fn the_update_question_waits_for_an_edit_session() {
+        let mut h = Harness::asking_about_updates(1);
+        let path = h.app.view.paths.first().cloned().expect("a photo");
+        h.app.edits.session = Some(EditSession::straightening(path));
+        h.settle();
+        assert_eq!(h.layer(), "none");
+        h.app.edits.session = None;
+        h.settle();
+        assert_eq!(h.layer(), "confirm");
     }
 
     /// The faces grid covers the photo only: help opens over it and leaves it open.
