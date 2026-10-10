@@ -54,7 +54,7 @@ impl CernoApp {
             r
         });
         // The grid shows every photo already: its space goes to the grid.
-        let filmstrip = (info.is_some() && self.bars.filmstrip && !self.grid).then(|| {
+        let filmstrip = (info.is_some() && self.bars.filmstrip && !self.viewer.grid).then(|| {
             let r = Rect::from_min_max(
                 pos2(window.min.x, area.max.y - filmstrip::HEIGHT),
                 pos2(window.max.x, area.max.y),
@@ -105,7 +105,7 @@ impl CernoApp {
             }
         } else if self.view.is_empty() {
             overlays::centred_message(ui, area, i18n::t().no_match, tokens::MUTED);
-        } else if self.grid {
+        } else if self.viewer.grid {
             self.draw_grid(ui, area);
         } else {
             // Navigation may have changed the photos; lay them out again.
@@ -197,8 +197,8 @@ impl CernoApp {
         let ctx = ui.ctx().clone();
         let paths = Arc::clone(&self.view.paths);
         let grouped = self.view.grouped;
-        let follow = self.grid_shown != Some(self.current);
-        self.grid_shown = Some(self.current);
+        let follow = self.viewer.grid_shown != Some(self.current);
+        self.viewer.grid_shown = Some(self.current);
         let percentiles = self.percentiles();
         let percentiles = percentiles.as_ref();
         let around = self.around_current();
@@ -206,15 +206,15 @@ impl CernoApp {
             paths: &paths,
             current: self.current,
             grouped,
-            step: self.grid_step,
+            step: self.viewer.grid_step,
             follow,
         };
         let out = grid::draw(ui, rect, &shown, &self.thumbs, |i| {
             self.cell_info(i, percentiles, around)
         });
         self.thumbs.set_visible(out.visible);
-        self.grid_columns = out.columns;
-        self.grid_page = out.page;
+        self.viewer.grid_columns = out.columns;
+        self.viewer.grid_page = out.page;
         if out.resize != 0 {
             self.resize_grid(out.resize);
         }
@@ -228,7 +228,7 @@ impl CernoApp {
         } else if let Some(index) = out.clicked {
             self.go_to(&ctx, index, 1);
             // A click is no reason to scroll.
-            self.grid_shown = Some(self.current);
+            self.viewer.grid_shown = Some(self.current);
         }
     }
 
@@ -274,7 +274,7 @@ impl CernoApp {
             .get(self.current)
             .and_then(|p| p.as_ref())
             .map(|original| self.photo_name(original));
-        let comparing = self.pinned.is_some();
+        let comparing = self.viewer.pinned.is_some();
         let faces = self.face_button(&ctx);
         let bar = info_bar::InfoBar {
             name: &name,
@@ -304,8 +304,8 @@ impl CernoApp {
                 |jpeg| !jpeg.complete,
             ),
             saving: self.writer.status().pending > 0,
-            zoom: self.zoom.scale.map(|s| s * 100.0),
-            overlay: match self.overlay {
+            zoom: self.viewer.zoom.scale.map(|s| s * 100.0),
+            overlay: match self.viewer.overlay {
                 crate::overlay::Mode::Off => None,
                 crate::overlay::Mode::Sharpness => Some(i18n::t().overlay_fact_sharpness),
                 crate::overlay::Mode::Exposure => Some(i18n::t().overlay_fact_exposure),
@@ -322,8 +322,8 @@ impl CernoApp {
                 filmstrip: self.bars.filmstrip,
             },
             views: info_bar::Views {
-                grid: self.grid,
-                faces_open: self.faces.grid_open,
+                grid: self.viewer.grid,
+                faces_open: self.viewer.faces.grid_open,
                 faces,
             },
         };
@@ -377,7 +377,7 @@ impl CernoApp {
                 position: image.as_deref().and_then(|i| i.camera.gps),
                 media: media.as_ref(),
                 video,
-                overlay: self.overlay,
+                overlay: self.viewer.overlay,
             },
             &mut self.bars.attributes_open,
         );

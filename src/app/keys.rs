@@ -281,8 +281,10 @@ impl CernoApp {
         let tabs = std::mem::take(&mut self.pressed.tabs);
         // The faces grid closes with `G` too – read here, before the grid draws: it would see
         // the press that opened it and close in the same frame.
-        if self.faces.grid_open && ctx.input(|i| i.modifiers.is_none() && i.key_pressed(Key::G)) {
-            self.faces.grid_open = false;
+        if self.viewer.faces.grid_open
+            && ctx.input(|i| i.modifiers.is_none() && i.key_pressed(Key::G))
+        {
+            self.viewer.faces.grid_open = false;
             return;
         }
         // The models card, a confirmation and the faces grid read their own keys.
@@ -358,7 +360,7 @@ impl CernoApp {
     ) {
         // Editing, comparing, zooming and the overlay need the single photo: the grid steps
         // aside first.
-        if self.grid
+        if self.viewer.grid
             && (keys.straighten
                 || keys.crop
                 || keys.compare
@@ -369,10 +371,10 @@ impl CernoApp {
             self.set_grid(false);
         }
         if keys.toggle_grid {
-            self.set_grid(!self.grid);
+            self.set_grid(!self.viewer.grid);
         }
         // Straighten and crop need the photo alone: the four-up view ends first.
-        if self.quad.is_some() && (keys.straighten || keys.crop) {
+        if self.viewer.quad.is_some() && (keys.straighten || keys.crop) {
             self.toggle_quad();
         }
         if keys.straighten {
@@ -411,16 +413,20 @@ impl CernoApp {
             self.go_to(ctx, self.current.saturating_sub(1), -1);
         }
         // A screen of cells in the grid, one photo otherwise.
-        let page = if self.grid { self.grid_page.max(1) } else { 1 };
+        let page = if self.viewer.grid {
+            self.viewer.grid_page.max(1)
+        } else {
+            1
+        };
         if keys.page_down {
             self.go_to(ctx, self.current.saturating_add(page), 1);
         }
         if keys.page_up {
             self.go_to(ctx, self.current.saturating_sub(page), -1);
         }
-        if self.grid && (keys.down || keys.up) {
+        if self.viewer.grid && (keys.down || keys.up) {
             let target = crate::ui::grid::row_step(
-                self.grid_columns,
+                self.viewer.grid_columns,
                 self.current,
                 self.view.len(),
                 keys.down,
@@ -428,7 +434,7 @@ impl CernoApp {
             self.go_to(ctx, target, if keys.down { 1 } else { -1 });
         }
         // The four-up view's rows hold two photos.
-        if self.quad.is_some() && !self.grid && (keys.down || keys.up) {
+        if self.viewer.quad.is_some() && !self.viewer.grid && (keys.down || keys.up) {
             if keys.down {
                 let below = self.current + 2;
                 if below < self.view.len() {
@@ -481,12 +487,12 @@ impl CernoApp {
             self.keep_right(ctx);
         }
         // In the grid Enter opens the photo (a video plays with Space only).
-        if keys.play && self.grid {
+        if keys.play && self.viewer.grid {
             self.set_grid(false);
         }
         // On the description tab `Enter` puts the cursor into the keyword field.
         if keys.play
-            && !self.grid
+            && !self.viewer.grid
             && self.bars.details != crate::ui::details::DetailsMode::Off
             && self.bars.details_tab == crate::ui::details::DetailsTab::Description
         {
@@ -512,10 +518,10 @@ impl CernoApp {
             self.toggle_panel(Panel::Bottom);
         }
         if keys.overlay {
-            self.set_overlay(self.overlay.next());
+            self.set_overlay(self.viewer.overlay.next());
         }
         // In the grid + and − change the cell size.
-        if self.grid && (keys.zoom_in || keys.zoom_out) {
+        if self.viewer.grid && (keys.zoom_in || keys.zoom_out) {
             self.resize_grid(if keys.zoom_in { 1 } else { -1 });
         }
         // Zoom keys act on the photo under the mouse, otherwise on the current (right) one.
@@ -528,19 +534,19 @@ impl CernoApp {
             let pointer = pointer.filter(|p| frame.area.contains(*p));
             let anchor = pointer.unwrap_or(frame.area.center());
             if keys.toggle_zoom {
-                self.zoom.toggle(frame, pointer);
+                self.viewer.zoom.toggle(frame, pointer);
             }
             if keys.zoom_in {
-                self.zoom.zoom_by(frame, ZOOM_STEP, anchor);
+                self.viewer.zoom.zoom_by(frame, ZOOM_STEP, anchor);
             }
             if keys.zoom_out {
-                self.zoom.zoom_by(frame, 1.0 / ZOOM_STEP, anchor);
+                self.viewer.zoom.zoom_by(frame, 1.0 / ZOOM_STEP, anchor);
             }
             if keys.zoom_fit {
-                self.zoom.fit();
+                self.viewer.zoom.fit();
             }
             if keys.zoom_actual {
-                self.zoom.actual_size(frame, anchor);
+                self.viewer.zoom.actual_size(frame, anchor);
             }
         }
         // A video has no zoom frame (see `ui`): the keys say why nothing happens.
@@ -559,15 +565,15 @@ impl CernoApp {
         if keys.escape {
             let target = escape_target(Escapable {
                 countdown: self.deletions.countdown(Instant::now()).is_some(),
-                zoomed: self.zoom.is_zoomed(),
-                grid: self.grid,
-                quad: self.quad.is_some(),
-                compare: self.pinned.is_some(),
+                zoomed: self.viewer.zoom.is_zoomed(),
+                grid: self.viewer.grid,
+                quad: self.viewer.quad.is_some(),
+                compare: self.viewer.pinned.is_some(),
                 fullscreen: keys.is_fullscreen,
             });
             match target {
                 Escape::Deletions => self.undo_deletions(ctx),
-                Escape::Zoom => self.zoom.scale = None,
+                Escape::Zoom => self.viewer.zoom.scale = None,
                 Escape::Quad => self.toggle_quad(),
                 Escape::Compare => self.toggle_compare(ctx),
                 Escape::Grid => self.set_grid(false),

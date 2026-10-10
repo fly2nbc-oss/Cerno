@@ -74,7 +74,8 @@ impl CernoApp {
     /// or why not.
     fn pair(&self) -> Result<Pair, &'static str> {
         let t = i18n::t();
-        let (Some(left), Some(right)) = (self.pinned.as_ref(), self.view.get(self.current)) else {
+        let (Some(left), Some(right)) = (self.viewer.pinned.as_ref(), self.view.get(self.current))
+        else {
             return Err(t.align_needs_compare);
         };
         let known = |path: &Path| {

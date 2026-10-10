@@ -97,36 +97,20 @@ pub struct CernoApp {
     /// What is shown, after sorting, filtering and hiding pending deletions.
     view: View,
     current: usize,
-    /// Compare mode: the photo pinned on the left. The current photo is shown on the right.
-    pinned: Option<PathBuf>,
-    /// The four-up view (`Shift+C`): the view index of the first of its four photos.
-    quad: Option<usize>,
     options: ViewOptions,
     /// What the view was built from and with: the similar photo, Top N's pick, versions.
     browse: browse::Browse,
 
     /// The session's marks, what `Ctrl+Z` takes back, auto-advance.
     marks: marks::Marks,
-    /// The current photo's faces (`G`).
-    faces: faces::Faces,
     /// The comment and keyword being typed in the description tab.
     drafts: description::Drafts,
     /// The update check: its switch and what it found.
     updates: update::Updates,
     /// The decode size: the photo area, once it has kept its size.
     target: target::Target,
-    zoom: viewer::Zoom,
-    /// The check overlay over the photos (`O`); not saved.
-    overlay: crate::overlay::Mode,
-    /// The grid (`F7`) instead of the single photo; not saved.
-    grid: bool,
-    /// Its cell size, an index into `grid::STEPS`.
-    grid_step: usize,
-    /// The photo the grid last scrolled to: another current photo scrolls it into view.
-    grid_shown: Option<usize>,
-    /// Columns and cells per page of the last drawn grid, for `↑`/`↓` and Page Up / Down.
-    grid_columns: usize,
-    grid_page: usize,
+    /// How the photo area shows: compare, four-up, zoom, the check overlay, the grids.
+    viewer: photos::Viewer,
     /// Which bars show, and the details panel's stage and tab.
     bars: panels::Bars,
     /// What lies over the window: the help page, the list beside a menu bar row or a card.
@@ -280,22 +264,13 @@ impl CernoApp {
             camera_time: camera_time::CameraTime::default(),
             view: View::default(),
             current: 0,
-            pinned: None,
-            quad: None,
             options,
             browse: browse::Browse::default(),
             marks,
-            faces: faces::Faces::default(),
             drafts: description::Drafts::default(),
             updates,
             target,
-            zoom: viewer::Zoom::default(),
-            overlay: crate::overlay::Mode::Off,
-            grid: false,
-            grid_step: crate::ui::grid::DEFAULT_STEP,
-            grid_shown: None,
-            grid_columns: 1,
-            grid_page: 1,
+            viewer: photos::Viewer::default(),
             bars,
             layer: layer::Layer::None,
             menu_bar,
@@ -381,13 +356,13 @@ impl CernoApp {
 
         let layout = self.layout(window);
         // The grid shows no photo, so it keeps the decode size.
-        if !self.grid {
+        if !self.viewer.grid {
             let areas = self.photo_areas(layout.area);
             self.update_target(&ctx, &areas);
         }
         // The grid shows no photo: zoom keys go to its cell size, not to a hidden photo. A
         // video has no frame here either: it is not zoomed.
-        let frames: Vec<viewer::Frame> = if self.grid {
+        let frames: Vec<viewer::Frame> = if self.viewer.grid {
             Vec::new()
         } else {
             self.slots(layout.area)

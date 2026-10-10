@@ -22,6 +22,45 @@ use super::notice::Notice;
 /// Gap between the photos in compare mode and the four-up view.
 const COMPARE_GUTTER: f32 = 4.0;
 
+/// What the photo area shows and how; nothing of it is saved.
+pub(super) struct Viewer {
+    /// Compare mode: the photo pinned on the left. The current photo is shown on the right.
+    pub(super) pinned: Option<PathBuf>,
+    /// The four-up view (`Shift+C`): the view index of the first of its four photos.
+    pub(super) quad: Option<usize>,
+    pub(super) zoom: viewer::Zoom,
+    /// The check overlay over the photos (`O`).
+    pub(super) overlay: overlay::Mode,
+    /// The grid (`F7`) instead of the single photo.
+    pub(super) grid: bool,
+    /// Its cell size, an index into `grid::STEPS`.
+    pub(super) grid_step: usize,
+    /// The photo the grid last scrolled to: another current photo scrolls it into view.
+    pub(super) grid_shown: Option<usize>,
+    /// Columns and cells per page of the last drawn grid, for `↑`/`↓` and Page Up / Down.
+    pub(super) grid_columns: usize,
+    pub(super) grid_page: usize,
+    /// The current photo's faces and the faces grid (`G`).
+    pub(super) faces: super::faces::Faces,
+}
+
+impl Default for Viewer {
+    fn default() -> Self {
+        Self {
+            pinned: None,
+            quad: None,
+            zoom: viewer::Zoom::default(),
+            overlay: overlay::Mode::Off,
+            grid: false,
+            grid_step: crate::ui::grid::DEFAULT_STEP,
+            grid_shown: None,
+            grid_columns: 1,
+            grid_page: 1,
+            faces: super::faces::Faces::default(),
+        }
+    }
+}
+
 /// One photo slot on screen: which photo, where, and which side (compare mode).
 #[derive(Clone, Copy)]
 pub(super) struct Slot {
@@ -43,7 +82,7 @@ impl CernoApp {
     /// `C`: pin the current photo on the left and show the next one on the right – or leave
     /// compare mode.
     pub(super) fn toggle_compare(&mut self, ctx: &egui::Context) {
-        if self.pinned.take().is_some() {
+        if self.viewer.pinned.take().is_some() {
             self.loader.set_shown(Vec::new());
             return;
         }
@@ -60,15 +99,15 @@ impl CernoApp {
         }
         let right = self.neighbour(self.current, &[&path]);
         // From the four-up view: the framed photo is pinned.
-        self.quad = None;
-        self.pinned = Some(path);
+        self.viewer.quad = None;
+        self.viewer.pinned = Some(path);
         self.rebuild_view(ctx, right);
     }
 
     /// `Shift+C`: four photos at once from the current one, the frame on the current one – or
     /// the single photo again. From compare mode it starts at the right photo.
     pub(super) fn toggle_quad(&mut self) {
-        if self.quad.take().is_some() {
+        if self.viewer.quad.take().is_some() {
             self.loader.set_shown(Vec::new());
             return;
         }
@@ -76,19 +115,19 @@ impl CernoApp {
             self.notice = Some(Notice::hint(i18n::t().compare_needs_two));
             return;
         }
-        self.pinned = None;
-        if self.grid {
+        self.viewer.pinned = None;
+        if self.viewer.grid {
             self.set_grid(false);
         }
-        self.quad = Some(self.current.min(self.view.len().saturating_sub(view::QUAD)));
+        self.viewer.quad = Some(self.current.min(self.view.len().saturating_sub(view::QUAD)));
         self.sync_quad();
     }
 
     /// The four-up window follows the current photo a row at a time, and the loader keeps the
     /// photos on screen.
     pub(super) fn sync_quad(&mut self) {
-        if let Some(start) = self.quad {
-            self.quad = (self.view.len() >= 2)
+        if let Some(start) = self.viewer.quad {
+            self.viewer.quad = (self.view.len() >= 2)
                 .then(|| view::quad_start(start, self.current, self.view.len()));
         }
         self.loader.set_shown(self.others_on_screen());
@@ -96,7 +135,7 @@ impl CernoApp {
 
     /// The photos on screen besides the current one: the pinned one, or the four-up view's.
     pub(super) fn others_on_screen(&self) -> Vec<usize> {
-        if let Some(start) = self.quad {
+        if let Some(start) = self.viewer.quad {
             let end = (start + view::QUAD).min(self.view.len());
             return (start..end).filter(|&i| i != self.current).collect();
         }
@@ -122,7 +161,10 @@ impl CernoApp {
 
     /// The left (pinned) and right photo while comparing.
     fn compared(&self) -> Option<(PathBuf, PathBuf)> {
-        Some((self.pinned.clone()?, self.view.get(self.current).cloned()?))
+        Some((
+            self.viewer.pinned.clone()?,
+            self.view.get(self.current).cloned()?,
+        ))
     }
 
     /// Rejects `loser`, leaves compare mode and shows `winner` alone. A photo that takes no
@@ -131,7 +173,7 @@ impl CernoApp {
         if !self.allowed(Change::Mark, Some(&loser)) {
             return;
         }
-        self.pinned = None;
+        self.viewer.pinned = None;
         self.rate(ctx, loser, Rating::Rejected, false);
         self.rebuild_view(ctx, Some(winner));
     }
@@ -139,7 +181,7 @@ impl CernoApp {
     /// `O` and View ▸ Overlay: sharp edges, clipped highlights and shadows, or nothing. A hint
     /// says what the colours mean.
     pub(super) fn set_overlay(&mut self, mode: overlay::Mode) {
-        self.overlay = mode;
+        self.viewer.overlay = mode;
         self.loader.set_overlay(mode);
         let t = i18n::t();
         self.notice = Some(Notice::hint(match mode {
@@ -157,11 +199,11 @@ impl CernoApp {
             return;
         }
         // The grid replaces the four-up view, like every other photo on screen.
-        if on && self.quad.take().is_some() {
+        if on && self.viewer.quad.take().is_some() {
             self.loader.set_shown(Vec::new());
         }
-        self.grid = on;
-        self.grid_shown = None;
+        self.viewer.grid = on;
+        self.viewer.grid_shown = None;
         self.loader.set_prefetch(!on);
         if !on {
             self.thumbs.set_visible(0);
@@ -174,31 +216,31 @@ impl CernoApp {
         use crate::ui::info_bar::View;
         match view {
             View::Photo => {
-                self.faces.grid_open = false;
-                if self.grid {
+                self.viewer.faces.grid_open = false;
+                if self.viewer.grid {
                     self.set_grid(false);
                 }
             }
             View::Grid => {
-                self.faces.grid_open = false;
+                self.viewer.faces.grid_open = false;
                 self.set_grid(true);
             }
-            View::Faces => self.faces.grid_open = true,
+            View::Faces => self.viewer.faces.grid_open = true,
         }
     }
 
     /// `+`/`−` or Ctrl + wheel in the grid: the cell size, a step at a time.
     pub(super) fn resize_grid(&mut self, steps: i32) {
         let last = crate::ui::grid::STEPS.len() as i32 - 1;
-        self.grid_step = (self.grid_step as i32 + steps).clamp(0, last) as usize;
+        self.viewer.grid_step = (self.viewer.grid_step as i32 + steps).clamp(0, last) as usize;
         // The cursor stays in view at the new size.
-        self.grid_shown = None;
+        self.viewer.grid_shown = None;
     }
 
     /// Photo slots on screen: one, pinned left + current right in compare mode, or the four-up
     /// view in two rows – the current photo's slot last, where the zoom keys look.
     pub(super) fn slots(&self, area: Rect) -> Vec<Slot> {
-        if let Some(start) = self.quad {
+        if let Some(start) = self.viewer.quad {
             let end = (start + view::QUAD).min(self.view.len());
             let size = vec2(
                 (area.width() - COMPARE_GUTTER) / 2.0,
@@ -276,7 +318,7 @@ impl CernoApp {
 
     /// Whether a video's play button sits at the bottom of the photo area (not in the grid).
     pub(super) fn video_on_screen(&self, area: Rect) -> bool {
-        !self.grid
+        !self.viewer.grid
             && self.slots(area).iter().any(|slot| {
                 self.view
                     .get(slot.index)
@@ -293,19 +335,21 @@ impl CernoApp {
             self.frame_slot(ui.ctx(), slot.index);
         }
         if response.double_clicked() {
-            self.zoom.toggle(frame, response.interact_pointer_pos());
+            self.viewer
+                .zoom
+                .toggle(frame, response.interact_pointer_pos());
         }
         if response.hovered() {
             let scroll = ui.input(|i| i.smooth_scroll_delta.y);
             if scroll != 0.0
                 && let Some(pos) = response.hover_pos()
             {
-                self.zoom.zoom_by(frame, (scroll / 200.0).exp(), pos);
+                self.viewer.zoom.zoom_by(frame, (scroll / 200.0).exp(), pos);
             }
         }
-        if self.zoom.is_zoomed() {
+        if self.viewer.zoom.is_zoomed() {
             if response.dragged_by(PointerButton::Primary) {
-                self.zoom.pan(frame, response.drag_delta());
+                self.viewer.zoom.pan(frame, response.drag_delta());
                 ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
             } else if response.hovered() {
                 ui.ctx().set_cursor_icon(CursorIcon::Grab);
@@ -371,7 +415,7 @@ impl CernoApp {
         }
         let full = self.loader.full(slot.index);
         // Not over a straighten or crop session: the frame and grid need the photo alone.
-        let (overlay, full_overlay) = if self.overlay == overlay::Mode::Off || editing {
+        let (overlay, full_overlay) = if self.viewer.overlay == overlay::Mode::Off || editing {
             (None, None)
         } else {
             (
@@ -382,7 +426,7 @@ impl CernoApp {
         let needs_full = viewer::draw(
             ui.painter(),
             &frame,
-            &self.zoom,
+            &self.viewer.zoom,
             image,
             full.as_deref(),
             viewer::Overlay {

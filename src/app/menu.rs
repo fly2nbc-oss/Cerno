@@ -244,7 +244,7 @@ impl CernoApp {
     /// A card (models, confirmation) or the faces grid is open: keys and the photo's mouse
     /// handling pause.
     pub(super) fn modal_open(&self) -> bool {
-        self.layer.is_card() || self.faces.grid_open
+        self.layer.is_card() || self.viewer.faces.grid_open
     }
 
     /// Help page, menus, models card and confirmation – in this order, the last on top.
@@ -254,14 +254,14 @@ impl CernoApp {
         window: Rect,
         frames: &[viewer::Frame],
     ) {
-        if self.faces.grid_open {
+        if self.viewer.faces.grid_open {
             let area = self.layout(window).area;
             let state = self.faces_of_current(ctx);
             let out = crate::ui::faces::grid(ctx, area, &state.shown());
             if let Some(face) = out.clicked {
                 self.zoom_to_face(face);
             } else if out.close {
-                self.faces.grid_open = false;
+                self.viewer.faces.grid_open = false;
             }
         }
         if let Layer::Help(page) = self.layer {
@@ -498,11 +498,12 @@ impl CernoApp {
                     .disabled(mark),
             ),
             Item::Row(
-                Row::new(Action::Compare, t.cmd_compare, key("C")).toggle(self.pinned.is_some()),
+                Row::new(Action::Compare, t.cmd_compare, key("C"))
+                    .toggle(self.viewer.pinned.is_some()),
             ),
             Item::Row(
                 Row::new(Action::Quad, t.cmd_quad, Some(i18n::with_shift("C")))
-                    .toggle(self.quad.is_some()),
+                    .toggle(self.viewer.quad.is_some()),
             ),
             Item::Row(jpeg_only(
                 Row::new(Action::Straighten, t.cmd_straighten, key("S")).disabled(edit),
@@ -570,13 +571,15 @@ impl CernoApp {
                 action: Action::Overlay(mode),
                 look: Look::Text(short.to_owned()),
                 tooltip: format!("{name} (O)"),
-                on: self.overlay == mode,
+                on: self.viewer.overlay == mode,
             })
             .collect(),
             disabled: None,
         };
         vec![
-            Item::Row(Row::new(Action::Zoom, t.cmd_zoom, key("Z")).toggle(self.zoom.is_zoomed())),
+            Item::Row(
+                Row::new(Action::Zoom, t.cmd_zoom, key("Z")).toggle(self.viewer.zoom.is_zoomed()),
+            ),
             Item::Segments(overlay),
             Item::Row(Row::new(Action::Fullscreen, t.cmd_fullscreen, key("F"))),
         ]
@@ -814,7 +817,7 @@ impl CernoApp {
 
     fn run_unguarded(&mut self, ctx: &egui::Context, action: Action, frames: &[viewer::Frame]) {
         // Like their keys: these need the single photo, so the grid steps aside first.
-        if self.grid
+        if self.viewer.grid
             && matches!(
                 action,
                 Action::Compare
@@ -836,7 +839,7 @@ impl CernoApp {
             Action::Undo => self.undo(ctx),
             Action::Zoom => {
                 if let Some(frame) = frames.last() {
-                    self.zoom.toggle(frame, None);
+                    self.viewer.zoom.toggle(frame, None);
                 }
             }
             Action::Overlay(mode) => self.set_overlay(mode),

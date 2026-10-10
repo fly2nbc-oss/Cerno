@@ -138,8 +138,13 @@ impl CernoApp {
                 self.marks.descriptions.remove(src);
                 self.folder.pairs.forget(src);
             }
-            if self.pinned.as_ref().is_some_and(|path| gone.contains(path)) {
-                self.pinned = None;
+            if self
+                .viewer
+                .pinned
+                .as_ref()
+                .is_some_and(|path| gone.contains(path))
+            {
+                self.viewer.pinned = None;
             }
             let all: Vec<PathBuf> = self
                 .folder

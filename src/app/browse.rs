@@ -149,8 +149,8 @@ impl CernoApp {
         self.scan_raw_marks();
         // Found in the background; the 🗑 box shows them once they are known.
         self.scan_deleted();
-        self.pinned = None;
-        self.quad = None;
+        self.viewer.pinned = None;
+        self.viewer.quad = None;
         // "Similar photos" was about a photo of the previous folder, Top N picked from it, the
         // deleted photos lay beside it.
         self.options.similar = false;
@@ -233,10 +233,17 @@ impl CernoApp {
         let before = self.view.get(self.current).cloned();
         let keep = keep.or_else(|| before.clone());
         // Comparing needs the pinned photo plus at least one other.
-        if self.pinned.as_ref().is_some_and(|p| !view.contains(p)) || view.len() < 2 {
-            self.pinned = None;
+        if self
+            .viewer
+            .pinned
+            .as_ref()
+            .is_some_and(|p| !view.contains(p))
+            || view.len() < 2
+        {
+            self.viewer.pinned = None;
         }
         let pinned = self
+            .viewer
             .pinned
             .as_ref()
             .and_then(|p| view.iter().position(|q| q == p));
@@ -250,8 +257,8 @@ impl CernoApp {
         }
         self.browse.view_version = self.board.version();
         self.browse.view_built = Instant::now();
-        if let Some(start) = self.quad {
-            self.quad = (self.view.len() >= 2)
+        if let Some(start) = self.viewer.quad {
+            self.viewer.quad = (self.view.len() >= 2)
                 .then(|| view::quad_start(start, self.current, self.view.len()));
         }
         self.loader.set_library(
@@ -299,7 +306,7 @@ impl CernoApp {
     }
 
     pub(super) fn pinned_index(&self) -> Option<usize> {
-        let pinned = self.pinned.as_ref()?;
+        let pinned = self.viewer.pinned.as_ref()?;
         self.view.iter().position(|p| p == pinned)
     }
 
@@ -387,6 +394,7 @@ impl CernoApp {
         }
         let t = i18n::t();
         let Some(path) = self
+            .viewer
             .pinned
             .clone()
             .or_else(|| self.view.get(self.current).cloned())
@@ -453,11 +461,11 @@ impl CernoApp {
     /// one had (the user's wish of 2026-10-05). Compare mode and the four-up view keep their
     /// shared zoom – it is what lines the photos up.
     fn start_whole(&mut self) {
-        if self.pinned.is_none() && self.quad.is_none() {
-            self.zoom = viewer::Zoom::default();
+        if self.viewer.pinned.is_none() && self.viewer.quad.is_none() {
+            self.viewer.zoom = viewer::Zoom::default();
         }
         // A face zoom asked for the last photo does not apply to this one.
-        self.faces.zoom_to = None;
+        self.viewer.faces.zoom_to = None;
     }
 
     /// Tells the analysis where the user is (in full-folder terms) and pauses it briefly – not
@@ -468,7 +476,7 @@ impl CernoApp {
             .get(self.current)
             .and_then(|p| self.folder.all_index.get(p))
         {
-            if self.grid {
+            if self.viewer.grid {
                 self.analyzer.set_current_quietly(index);
             } else {
                 self.analyzer.set_current(index);
@@ -560,7 +568,7 @@ impl CernoApp {
     /// The photo to show after the one at `index` disappears: the next one, otherwise the
     /// previous one – never the pinned photo or one in `exclude`.
     pub(super) fn neighbour(&self, index: usize, exclude: &[&PathBuf]) -> Option<PathBuf> {
-        let usable = |p: &&PathBuf| !exclude.contains(p) && Some(*p) != self.pinned.as_ref();
+        let usable = |p: &&PathBuf| !exclude.contains(p) && Some(*p) != self.viewer.pinned.as_ref();
         let after = self.view.get(index + 1..).unwrap_or_default();
         let before = self.view.get(..index).unwrap_or_default();
         after

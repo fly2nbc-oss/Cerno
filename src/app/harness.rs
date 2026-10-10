@@ -229,9 +229,9 @@ mod tests {
     fn g_and_x_in_one_frame_only_close_the_faces_grid() {
         let mut h = Harness::new(3);
         h.settle();
-        h.app.faces.grid_open = true;
+        h.app.viewer.faces.grid_open = true;
         h.frame(presses(&[(Key::G, NONE), (Key::X, NONE)]));
-        assert!(!h.app.faces.grid_open);
+        assert!(!h.app.viewer.faces.grid_open);
         assert_eq!(h.rating_of(0), None);
     }
 
@@ -270,12 +270,12 @@ mod tests {
         let mut h = Harness::new(3);
         h.settle();
         h.press(Key::F7, NONE);
-        assert!(h.app.grid);
+        assert!(h.app.viewer.grid);
         h.press(Key::C, NONE);
-        assert!(!h.app.grid);
-        assert!(h.app.pinned.is_some());
+        assert!(!h.app.viewer.grid);
+        assert!(h.app.viewer.pinned.is_some());
         h.press(Key::Escape, NONE);
-        assert!(h.app.pinned.is_none());
+        assert!(h.app.viewer.pinned.is_none());
     }
 
     /// A deletion counting down comes first: `Esc` brings the photo back.
@@ -288,7 +288,10 @@ mod tests {
         assert_eq!(h.app.view.len(), 2);
         h.press(Key::Escape, NONE);
         assert_eq!(h.app.view.len(), 3);
-        assert!(h.app.pinned.is_some(), "compare mode is the next Esc");
+        assert!(
+            h.app.viewer.pinned.is_some(),
+            "compare mode is the next Esc"
+        );
     }
 
     /// A question asked from the models card goes back to it.
@@ -327,10 +330,10 @@ mod tests {
     fn help_over_the_faces_grid_leaves_it_open() {
         let mut h = Harness::new(1);
         h.settle();
-        h.app.faces.grid_open = true;
+        h.app.viewer.faces.grid_open = true;
         h.app.open_help();
         h.settle();
-        assert!(h.app.faces.grid_open);
+        assert!(h.app.viewer.faces.grid_open);
         assert_eq!(h.layer(), "help");
     }
 

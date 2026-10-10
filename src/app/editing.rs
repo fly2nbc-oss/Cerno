@@ -219,7 +219,7 @@ fn crop_caption(ratio: Ratio, landscape: bool) -> String {
 impl CernoApp {
     /// JPEG, one photo on screen, and nothing already being written.
     fn can_edit(&mut self) -> bool {
-        if self.pinned.is_some() {
+        if self.viewer.pinned.is_some() {
             return false;
         }
         let Some(path) = self.view.get(self.current).cloned() else {
@@ -254,8 +254,8 @@ impl CernoApp {
             .session
             .take()
             .map(|session| session.zoom)
-            .unwrap_or(self.zoom);
-        self.zoom = viewer::Zoom::default();
+            .unwrap_or(self.viewer.zoom);
+        self.viewer.zoom = viewer::Zoom::default();
         self.edits.session = Some(EditSession {
             path,
             zoom,
@@ -293,8 +293,8 @@ impl CernoApp {
             .session
             .take()
             .map(|session| session.zoom)
-            .unwrap_or(self.zoom);
-        self.zoom = viewer::Zoom::default();
+            .unwrap_or(self.viewer.zoom);
+        self.viewer.zoom = viewer::Zoom::default();
         self.edits.session = Some(EditSession {
             path,
             zoom,
@@ -310,7 +310,7 @@ impl CernoApp {
 
     pub(super) fn cancel_edit(&mut self) {
         if let Some(session) = self.edits.session.take() {
-            self.zoom = session.zoom;
+            self.viewer.zoom = session.zoom;
         }
     }
 
@@ -323,7 +323,7 @@ impl CernoApp {
         let Some(session) = self.edits.session.take() else {
             return;
         };
-        self.zoom = session.zoom;
+        self.viewer.zoom = session.zoom;
         if self.view.get(self.current) != Some(&session.path) {
             self.notice = Some(Notice::hint(i18n::t().edit_cancelled));
             return;
@@ -383,7 +383,7 @@ impl CernoApp {
     /// In a straighten or crop session it waits for `Enter` or `Esc`: the render would read
     /// the file before or after the turn, and one of the two would be lost.
     pub(super) fn rotate_quarter(&mut self, clockwise: bool) {
-        if self.pinned.is_some() {
+        if self.viewer.pinned.is_some() {
             return;
         }
         let Some(path) = self.view.get(self.current).cloned() else {
@@ -419,7 +419,7 @@ impl CernoApp {
     }
 
     fn undo_edit(&mut self) {
-        if self.pinned.is_some() {
+        if self.viewer.pinned.is_some() {
             return;
         }
         let Some(path) = self.view.get(self.current).cloned() else {
@@ -589,7 +589,7 @@ impl CernoApp {
             return;
         };
         let response = edit_ui::pointer_area(ui, frame.area);
-        let photo = self.zoom.image_rect(frame);
+        let photo = self.viewer.zoom.image_rect(frame);
         let (image_size, crop, active) = match &self.edits.session {
             Some(EditSession {
                 kind:
@@ -719,7 +719,7 @@ impl CernoApp {
         let Some(session) = &self.edits.session else {
             return;
         };
-        let photo = self.zoom.image_rect(frame);
+        let photo = self.viewer.zoom.image_rect(frame);
         match &session.kind {
             EditKind::Straighten { radians } => {
                 let painter = ui.painter().with_clip_rect(photo);

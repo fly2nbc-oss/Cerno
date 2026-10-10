@@ -169,7 +169,7 @@ impl CernoApp {
     /// The photo comes on screen when the view has it; in compare mode the pinned one is there
     /// already.
     fn show_photo(&mut self, ctx: &egui::Context, path: &Path) {
-        if self.pinned.as_deref() == Some(path) {
+        if self.viewer.pinned.as_deref() == Some(path) {
             return;
         }
         if let Some(index) = self.view.iter().position(|shown| shown == path) {

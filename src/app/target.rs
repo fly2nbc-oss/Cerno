@@ -113,7 +113,10 @@ impl CernoApp {
                     self.loader.start_prefetch();
                 }
                 // The single view's size only: Cerno starts in it.
-                if wanted != self.target.start && self.pinned.is_none() && self.quad.is_none() {
+                if wanted != self.target.start
+                    && self.viewer.pinned.is_none()
+                    && self.viewer.quad.is_none()
+                {
                     self.target.start = wanted;
                     self.db
                         .put_setting(AREA_SETTING, &format!("{}x{}", wanted[0], wanted[1]));
