@@ -15,7 +15,7 @@ use crate::ui::{cells, filmstrip, filter_bar, grid, help, info_bar, overlays, si
 use crate::view;
 
 use super::CernoApp;
-use super::menu::ConfirmAction;
+use super::command::{Advance, Command};
 
 /// Where everything goes this frame. `None` for a part that is hidden.
 pub(super) struct Layout {
@@ -98,10 +98,10 @@ impl CernoApp {
             };
             let out = help::welcome(ui, area, i18n::t(), setup);
             if out.language {
-                self.switch_language(&ctx);
+                self.click(&ctx, Command::NextLanguage);
             }
             if out.open_folder {
-                self.pick_folder(&ctx);
+                self.click(&ctx, Command::Open);
             }
         } else if self.view.is_empty() {
             overlays::centred_message(ui, area, i18n::t().no_match, tokens::MUTED);
@@ -183,11 +183,18 @@ impl CernoApp {
         if let Some(index) = strip.clicked
             && self.edits.session.is_none()
         {
-            self.go_to(&ctx, index, 1);
+            self.click(
+                &ctx,
+                Command::GoTo {
+                    index,
+                    direction: 1,
+                },
+            );
         }
         if strip.step != 0 && !self.layer.is_help() && self.edits.session.is_none() {
-            let target = self.current.saturating_add_signed(strip.step);
-            self.go_to(&ctx, target, strip.step.signum());
+            let index = self.current.saturating_add_signed(strip.step);
+            let direction = strip.step.signum();
+            self.click(&ctx, Command::GoTo { index, direction });
         }
     }
 
@@ -216,31 +223,29 @@ impl CernoApp {
         self.viewer.grid_columns = out.columns;
         self.viewer.grid_page = out.page;
         if out.resize != 0 {
-            self.resize_grid(out.resize);
+            self.click(&ctx, Command::ResizeGrid(out.resize));
         }
         let covered = self.layer.is_help() || self.layer.is_list();
         if covered {
             return;
         }
         if let Some(index) = out.opened {
-            self.go_to(&ctx, index, 1);
-            self.set_grid(false);
+            self.click(&ctx, Command::OpenFromGrid(index));
         } else if let Some(index) = out.clicked {
-            self.go_to(&ctx, index, 1);
-            // A click is no reason to scroll.
-            self.viewer.grid_shown = Some(self.current);
+            self.click(&ctx, Command::PickInGrid(index));
         }
     }
 
     /// The info bar and, when it is open, the details panel – both about the current photo.
     /// No photo, no info bar: the menu bar's button and help still sit bottom right.
     pub(super) fn draw_corner_buttons(&mut self, ui: &mut egui::Ui, window: Rect) {
+        let ctx = ui.ctx().clone();
         let out = info_bar::corner_buttons(ui, window, self.side_bar_shown());
         if out.help {
-            self.open_help();
+            self.click(&ctx, Command::Help);
         }
         if let Some(panel) = out.panel {
-            self.toggle_panel(panel);
+            self.click(&ctx, Command::TogglePanel(panel));
         }
     }
 
@@ -329,18 +334,18 @@ impl CernoApp {
         };
         let out = info_bar::info_bar(ui, rect, &bar);
         if let Some(stars) = out.rating {
-            self.set_rating(&ctx, stars, false);
+            self.click(&ctx, Command::SetRating(stars, Advance::No));
         }
         if out.help {
-            self.open_help();
+            self.click(&ctx, Command::Help);
         }
         // The bars' buttons, the menu bar's among them (the user's decisions F3 and option A
         // of 2026-10-10).
         if let Some(panel) = out.panel {
-            self.toggle_panel(panel);
+            self.click(&ctx, Command::TogglePanel(panel));
         }
         if let Some(view) = out.view {
-            self.show_view(view);
+            self.click(&ctx, Command::ShowView(view));
         }
         let Some(rect) = details_rect else {
             // The panel is closed: a comment still being typed is written now.
@@ -349,7 +354,7 @@ impl CernoApp {
         };
         let (tabs, body) = rect.split_top_bottom_at_y(rect.top() + details::TABS_HEIGHT);
         if let Some(tab) = details::tabs(ui, tabs, self.bars.details_tab) {
-            self.set_details_tab(tab);
+            self.click(&ctx, Command::DetailsTab(tab));
         }
         if self.bars.details_tab == DetailsTab::Description {
             self.draw_description(ui, body, &path, image.as_deref());
@@ -382,7 +387,7 @@ impl CernoApp {
             &mut self.bars.attributes_open,
         );
         if let Some(mode) = overlay {
-            self.set_overlay(mode);
+            self.click(&ctx, Command::SetOverlay(mode));
         }
     }
 
@@ -422,13 +427,13 @@ impl CernoApp {
             self.options_changed(&ctx);
         }
         if out.toggle_similar {
-            self.toggle_similar(&ctx);
+            self.click(&ctx, Command::Similar);
         }
         if out.refresh {
-            self.refresh_order(&ctx);
+            self.click(&ctx, Command::RefreshOrder);
         }
         if out.download_model {
-            self.ask(ConfirmAction::DownloadModel, false);
+            self.click(&ctx, Command::DownloadModels);
         }
     }
 }

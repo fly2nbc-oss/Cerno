@@ -19,6 +19,7 @@
 
 mod browse;
 mod camera_time;
+mod command;
 mod deleted;
 mod describe;
 mod editing;

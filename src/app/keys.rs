@@ -2,15 +2,14 @@
 //! `handle_keys` decides who gets the keys (cards, menus, help, an edit session) and carries
 //! them out.
 
-use std::time::Instant;
-
-use eframe::egui::{self, Key, ViewportCommand};
+use eframe::egui::{self, Key};
 
 use crate::metadata::{Label, Rating};
 use crate::ui::icons::Panel;
 use crate::ui::viewer;
 
 use super::CernoApp;
+use super::command::{Advance, Command, Source, ZoomKeys};
 use super::layer::Layer;
 
 /// `0` clears the stars, `1`–`5` set them.
@@ -30,9 +29,6 @@ const LABEL_KEYS: [(Key, Label); 4] = [
     (Key::Num8, Label::Green),
     (Key::Num9, Label::Blue),
 ];
-
-/// Zoom step for `+`/`-`.
-const ZOOM_STEP: f32 = 1.25;
 
 /// What the keys of one frame ask for.
 #[cfg_attr(test, derive(Debug, Default, PartialEq))]
@@ -100,7 +96,6 @@ struct KeyInput {
     open: bool,
     /// `Ctrl+U`: subfolders on or off.
     subfolders: bool,
-    is_fullscreen: bool,
     straighten: bool,
     crop: bool,
     rotate_cw: bool,
@@ -251,12 +246,99 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         zoom_actual: ctrl_digit(&i.events, Key::Num1),
         open: i.modifiers.command && i.key_pressed(Key::O),
         subfolders: i.modifiers.command_only() && i.key_pressed(Key::U),
-        is_fullscreen: i.viewport().fullscreen.unwrap_or(false),
         straighten: plain && i.key_pressed(Key::S),
         crop: plain && i.key_pressed(Key::R),
         rotate_cw: i.modifiers.command && !i.modifiers.shift && i.key_pressed(Key::ArrowRight),
         rotate_ccw: i.modifiers.command && !i.modifiers.shift && i.key_pressed(Key::ArrowLeft),
         undo: i.modifiers.command && !i.modifiers.shift && i.key_pressed(Key::Z),
+    }
+}
+
+impl KeyInput {
+    /// The commands of one frame's keys, in the order they are carried out: the grid and the
+    /// edits, the video keys, moving, marks, compare mode, the bars, the overlay, the zoom,
+    /// full screen and `Esc` last. `tabs` are the `Tab` presses (`true` with Shift).
+    fn commands(&self, tabs: &[bool]) -> Vec<Command> {
+        let mut out = Vec::new();
+        let mut push = |on: bool, command: Command| {
+            if on {
+                out.push(command);
+            }
+        };
+        push(self.toggle_grid, Command::ToggleGrid);
+        push(self.straighten, Command::Straighten);
+        push(self.crop, Command::Crop);
+        push(self.rotate_ccw, Command::Rotate(false));
+        push(self.rotate_cw, Command::Rotate(true));
+        push(self.undo, Command::Undo);
+        push(self.open, Command::Open);
+        push(self.subfolders, Command::Subfolders);
+        // Every frame: whether the current photo is a video is looked at here, as the zoom
+        // keys' hint needs it.
+        push(
+            true,
+            Command::Video {
+                keys: self.video,
+                space: self.space,
+            },
+        );
+        push(self.next, Command::Next);
+        push(self.prev, Command::Prev);
+        push(self.page_down, Command::PageDown);
+        push(self.page_up, Command::PageUp);
+        push(self.down || self.up, Command::Row { down: self.down });
+        push(self.first, Command::First);
+        push(self.last, Command::Last);
+        if let Some(stars) = self.rating {
+            push(true, Command::SetRating(stars, Advance::Setting));
+        }
+        if let Some(stars) = self.rate_and_next {
+            push(true, Command::SetRating(stars, Advance::Yes));
+        }
+        push(self.reject, Command::ToggleReject(Advance::Setting));
+        push(
+            self.reject_and_next,
+            Command::SetRating(Rating::Rejected, Advance::Yes),
+        );
+        if let Some(label) = self.label {
+            push(true, Command::ToggleLabel(label, Advance::Setting));
+        }
+        if let Some(label) = self.label_and_next {
+            push(true, Command::SetLabel(Some(label), Advance::Yes));
+        }
+        push(self.compare, Command::Compare);
+        push(self.quad, Command::Quad);
+        push(self.keep_left, Command::KeepLeft);
+        push(self.edit_elsewhere, Command::EditElsewhere);
+        push(self.similar, Command::Similar);
+        push(self.keep_right, Command::KeepRight);
+        push(self.play, Command::Enter);
+        push(self.face_grid, Command::FaceGrid);
+        push(self.delete, Command::DeleteCurrent);
+        for &shift in tabs {
+            push(
+                true,
+                if shift {
+                    Command::AllPanels
+                } else {
+                    Command::TogglePanel(Panel::Right)
+                },
+            );
+        }
+        push(self.toggle_toolbar, Command::TogglePanel(Panel::Top));
+        push(self.toggle_filmstrip, Command::TogglePanel(Panel::Bottom));
+        push(self.overlay, Command::NextOverlay);
+        let zoom = ZoomKeys {
+            toggle: self.toggle_zoom,
+            zoom_in: self.zoom_in,
+            zoom_out: self.zoom_out,
+            fit: self.zoom_fit,
+            actual: self.zoom_actual,
+        };
+        push(zoom != ZoomKeys::default(), Command::Zoom(zoom));
+        push(self.toggle_fullscreen, Command::Fullscreen);
+        push(self.escape, Command::Escape);
+        out
     }
 }
 
@@ -347,240 +429,7 @@ impl CernoApp {
             self.handle_edit_keys(ctx);
             return;
         }
-        self.act_on_keys(ctx, &keys, &tabs, frames);
-    }
-
-    /// The keys that reach the photo: nothing modal is open.
-    fn act_on_keys(
-        &mut self,
-        ctx: &egui::Context,
-        keys: &KeyInput,
-        tabs: &[bool],
-        frames: &[viewer::Frame],
-    ) {
-        // Editing, comparing, zooming and the overlay need the single photo: the grid steps
-        // aside first.
-        if self.viewer.grid
-            && (keys.straighten
-                || keys.crop
-                || keys.compare
-                || keys.toggle_zoom
-                || keys.zoom_actual
-                || keys.overlay)
-        {
-            self.set_grid(false);
-        }
-        if keys.toggle_grid {
-            self.set_grid(!self.viewer.grid);
-        }
-        // Straighten and crop need the photo alone: the four-up view ends first.
-        if self.viewer.quad.is_some() && (keys.straighten || keys.crop) {
-            self.toggle_quad();
-        }
-        if keys.straighten {
-            self.begin_straighten();
-        }
-        if keys.crop {
-            self.begin_crop();
-        }
-        if keys.rotate_ccw {
-            self.rotate_quarter(false);
-        }
-        if keys.rotate_cw {
-            self.rotate_quarter(true);
-        }
-        if keys.undo {
-            self.undo(ctx);
-        }
-        if keys.open {
-            self.pick_folder(ctx);
-        }
-        if keys.subfolders {
-            self.toggle_subfolders(ctx);
-        }
-        // On a video shown alone the video keys act on it; Space plays and pauses there and
-        // moves on everywhere else.
-        let on_video = self.current_video().is_some();
-        if on_video {
-            self.video_keys(ctx, keys.video);
-        } else if keys.space {
-            self.go_to(ctx, self.current.saturating_add(1), 1);
-        }
-        if keys.next {
-            self.go_to(ctx, self.current.saturating_add(1), 1);
-        }
-        if keys.prev {
-            self.go_to(ctx, self.current.saturating_sub(1), -1);
-        }
-        // A screen of cells in the grid, one photo otherwise.
-        let page = if self.viewer.grid {
-            self.viewer.grid_page.max(1)
-        } else {
-            1
-        };
-        if keys.page_down {
-            self.go_to(ctx, self.current.saturating_add(page), 1);
-        }
-        if keys.page_up {
-            self.go_to(ctx, self.current.saturating_sub(page), -1);
-        }
-        if self.viewer.grid && (keys.down || keys.up) {
-            let target = crate::ui::grid::row_step(
-                self.viewer.grid_columns,
-                self.current,
-                self.view.len(),
-                keys.down,
-            );
-            self.go_to(ctx, target, if keys.down { 1 } else { -1 });
-        }
-        // The four-up view's rows hold two photos.
-        if self.viewer.quad.is_some() && !self.viewer.grid && (keys.down || keys.up) {
-            if keys.down {
-                let below = self.current + 2;
-                if below < self.view.len() {
-                    self.go_to(ctx, below, 1);
-                }
-            } else if let Some(above) = self.current.checked_sub(2) {
-                self.go_to(ctx, above, -1);
-            }
-        }
-        if keys.first {
-            self.go_to(ctx, 0, 1);
-        }
-        if keys.last {
-            self.go_to(ctx, usize::MAX, -1);
-        }
-        if let Some(stars) = keys.rating {
-            self.set_rating(ctx, stars, self.marks.auto_advance);
-        }
-        if let Some(stars) = keys.rate_and_next {
-            self.set_rating(ctx, stars, true);
-        }
-        if keys.reject {
-            self.toggle_reject(ctx, self.marks.auto_advance);
-        }
-        if keys.reject_and_next {
-            self.set_rating(ctx, Rating::Rejected, true);
-        }
-        if let Some(label) = keys.label {
-            self.toggle_label(ctx, label, self.marks.auto_advance);
-        }
-        if let Some(label) = keys.label_and_next {
-            self.set_label(ctx, Some(label), true);
-        }
-        if keys.compare {
-            self.toggle_compare(ctx);
-        }
-        if keys.quad {
-            self.toggle_quad();
-        }
-        if keys.keep_left {
-            self.keep_left(ctx);
-        }
-        if keys.edit_elsewhere {
-            self.edit_elsewhere();
-        }
-        if keys.similar {
-            self.toggle_similar(ctx);
-        }
-        if keys.keep_right {
-            self.keep_right(ctx);
-        }
-        // In the grid Enter opens the photo (a video plays with Space only).
-        if keys.play && self.viewer.grid {
-            self.set_grid(false);
-        }
-        // On the description tab `Enter` puts the cursor into the keyword field.
-        if keys.play
-            && !self.viewer.grid
-            && self.bars.details != crate::ui::details::DetailsMode::Off
-            && self.bars.details_tab == crate::ui::details::DetailsTab::Description
-        {
-            self.drafts.focus_keyword = true;
-        }
-        if keys.face_grid {
-            self.toggle_face_grid();
-        }
-        if keys.delete {
-            self.delete_current(ctx);
-        }
-        for &shift in tabs {
-            if shift {
-                self.toggle_all_panels();
-            } else {
-                self.toggle_panel(Panel::Right);
-            }
-        }
-        if keys.toggle_toolbar {
-            self.toggle_panel(Panel::Top);
-        }
-        if keys.toggle_filmstrip {
-            self.toggle_panel(Panel::Bottom);
-        }
-        if keys.overlay {
-            self.set_overlay(self.viewer.overlay.next());
-        }
-        // In the grid + and − change the cell size.
-        if self.viewer.grid && (keys.zoom_in || keys.zoom_out) {
-            self.resize_grid(if keys.zoom_in { 1 } else { -1 });
-        }
-        // Zoom keys act on the photo under the mouse, otherwise on the current (right) one.
-        let pointer = ctx.pointer_hover_pos();
-        let hovered = frames
-            .iter()
-            .find(|f| pointer.is_some_and(|p| f.area.contains(p)))
-            .or(frames.last());
-        if let Some(frame) = hovered {
-            let pointer = pointer.filter(|p| frame.area.contains(*p));
-            let anchor = pointer.unwrap_or(frame.area.center());
-            if keys.toggle_zoom {
-                self.viewer.zoom.toggle(frame, pointer);
-            }
-            if keys.zoom_in {
-                self.viewer.zoom.zoom_by(frame, ZOOM_STEP, anchor);
-            }
-            if keys.zoom_out {
-                self.viewer.zoom.zoom_by(frame, 1.0 / ZOOM_STEP, anchor);
-            }
-            if keys.zoom_fit {
-                self.viewer.zoom.fit();
-            }
-            if keys.zoom_actual {
-                self.viewer.zoom.actual_size(frame, anchor);
-            }
-        }
-        // A video has no zoom frame (see `ui`): the keys say why nothing happens.
-        if on_video
-            && (keys.toggle_zoom
-                || keys.zoom_in
-                || keys.zoom_out
-                || keys.zoom_fit
-                || keys.zoom_actual)
-        {
-            self.notice = Some(super::notice::Notice::hint(crate::i18n::t().video_no_zoom));
-        }
-        if keys.toggle_fullscreen {
-            ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!keys.is_fullscreen));
-        }
-        if keys.escape {
-            let target = escape_target(Escapable {
-                countdown: self.deletions.countdown(Instant::now()).is_some(),
-                zoomed: self.viewer.zoom.is_zoomed(),
-                grid: self.viewer.grid,
-                quad: self.viewer.quad.is_some(),
-                compare: self.viewer.pinned.is_some(),
-                fullscreen: keys.is_fullscreen,
-            });
-            match target {
-                Escape::Deletions => self.undo_deletions(ctx),
-                Escape::Zoom => self.viewer.zoom.scale = None,
-                Escape::Quad => self.toggle_quad(),
-                Escape::Compare => self.toggle_compare(ctx),
-                Escape::Grid => self.set_grid(false),
-                Escape::Fullscreen => ctx.send_viewport_cmd(ViewportCommand::Fullscreen(false)),
-                Escape::Notice => self.notice = None,
-            }
-        }
+        self.execute_all(ctx, &keys.commands(&tabs), Source::Keys, frames);
     }
 }
 
@@ -631,6 +480,63 @@ pub(super) fn escape_target(open: Escapable) -> Escape {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::video::VideoKeys;
+
+    /// The keys of one frame are carried out in a fixed order: the grid and the edits, the
+    /// video keys (every frame), moving, marks, compare mode, the bars, the overlay, the zoom,
+    /// full screen, `Esc`.
+    #[test]
+    fn commands_come_in_a_fixed_order() {
+        let keys = KeyInput {
+            escape: true,
+            toggle_zoom: true,
+            overlay: true,
+            toggle_toolbar: true,
+            delete: true,
+            compare: true,
+            rating: Some(Rating::Stars(3)),
+            next: true,
+            undo: true,
+            toggle_grid: true,
+            ..KeyInput::default()
+        };
+        let video = Command::Video {
+            keys: VideoKeys::default(),
+            space: false,
+        };
+        assert_eq!(
+            keys.commands(&[true]),
+            vec![
+                Command::ToggleGrid,
+                Command::Undo,
+                video,
+                Command::Next,
+                Command::SetRating(Rating::Stars(3), Advance::Setting),
+                Command::Compare,
+                Command::DeleteCurrent,
+                Command::AllPanels,
+                Command::TogglePanel(Panel::Top),
+                Command::NextOverlay,
+                Command::Zoom(ZoomKeys {
+                    toggle: true,
+                    ..ZoomKeys::default()
+                }),
+                Command::Escape,
+            ]
+        );
+        assert_eq!(KeyInput::default().commands(&[]), vec![video]);
+    }
+
+    /// `↓` and `↑` together are one step down, as before.
+    #[test]
+    fn both_rows_at_once_step_down() {
+        let keys = KeyInput {
+            down: true,
+            up: true,
+            ..KeyInput::default()
+        };
+        assert!(keys.commands(&[]).contains(&Command::Row { down: true }));
+    }
 
     /// `Esc` ends one thing at a time, in this order; the grid keeps a zoom it hides.
     #[test]

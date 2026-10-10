@@ -5,17 +5,17 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use eframe::egui::{self, Rect, ViewportCommand};
+use eframe::egui::{self, Rect};
 
 use crate::analysis::Status;
 use crate::analysis::manifest::Pack;
 use crate::i18n::{self, Lang};
 use crate::loader::Lookup;
 use crate::metadata::{Label, Rating};
-use crate::transfer::Mode as TransferMode;
 use crate::ui::side_bar::{self, Item, Look, Section, Segment, Segments};
 use crate::ui::{confirm, help, models, palette, viewer};
 
+use super::command::{Advance, Command, Source, ZoomKeys};
 use super::gate::Change;
 use super::layer::Layer;
 use super::{CLIP_OFFER_SHOWN, CernoApp};
@@ -92,6 +92,15 @@ impl BarCounts {
     }
 }
 
+/// The menu bar's *Zoom*: 100 % or the whole photo, like `Z`.
+const ZOOM_TOGGLE: ZoomKeys = ZoomKeys {
+    toggle: true,
+    zoom_in: false,
+    zoom_out: false,
+    fit: false,
+    actual: false,
+};
+
 /// How long a count may be old while the view stays the same (a mark changes the rejected
 /// count without a new view).
 const COUNTS_FRESH: Duration = Duration::from_millis(300);
@@ -106,61 +115,6 @@ pub(super) enum ConfirmAction {
     DeleteModels,
     /// The first start's question: may Cerno check for updates once a day?
     UpdateCheck,
-}
-
-/// What a row of the menu bar (or of the list beside it) does. Only what has no other home:
-/// stars are in the info bar, sort and filters in the filter bar, the panels' buttons in the
-/// info bar, help behind its button.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Action {
-    Open,
-    Compare,
-    Zoom,
-    Overlay(crate::overlay::Mode),
-    Fullscreen,
-    /// *Visible photos ▸ By file list …*: the card for a pasted list.
-    NameList,
-    /// `Shift+C`: four photos at once.
-    Quad,
-    /// Settings: RAW + JPG as one photo.
-    Pairs,
-    /// Compare mode: the right photo's camera takes the left one's time.
-    AlignCamera,
-    /// *Visible photos ▸ Camera time …*: the card with every camera's offset.
-    CameraTime,
-    /// *Settings ▸ Check for updates*.
-    UpdateCheck,
-    /// A newer release's page in the browser.
-    OpenRelease,
-    Reject,
-    DeleteCurrent,
-    /// *Edit elsewhere*: the list of programs beside the row.
-    EditList,
-    /// One of the programs the system offers, by its place in the list.
-    EditWith(usize),
-    EditRemembered,
-    EditWithOther,
-    EditWithChooser,
-    DeleteRejected,
-    Label(Option<Label>),
-    AutoAdvance,
-    Subfolders,
-    Straighten,
-    RotateCcw,
-    RotateCw,
-    Crop,
-    Undo,
-    /// *Language*: the list of languages beside the row.
-    LanguageList,
-    Language(Lang),
-    Models,
-    Copy,
-    Move,
-    DeleteSelection,
-    /// The deleted photo shown goes back into its folder.
-    Restore,
-    /// Every deleted photo the filter shows goes back.
-    RestoreShown,
 }
 
 impl CernoApp {
@@ -259,7 +213,7 @@ impl CernoApp {
             let state = self.faces_of_current(ctx);
             let out = crate::ui::faces::grid(ctx, area, &state.shown());
             if let Some(face) = out.clicked {
-                self.zoom_to_face(face);
+                self.click(ctx, Command::ZoomToFace(face));
             } else if out.close {
                 self.viewer.faces.grid_open = false;
             }
@@ -268,10 +222,10 @@ impl CernoApp {
             let update = self.update_line();
             let out = help::overlay(ctx, window, page, i18n::t(), &update);
             if out.check_updates {
-                self.start_update_check(ctx);
+                self.click(ctx, Command::CheckUpdatesNow);
             }
             if out.language {
-                self.switch_language(ctx);
+                self.click(ctx, Command::NextLanguage);
             }
             if let Some(page) = out.page
                 && let Layer::Help(shown) = &mut self.layer
@@ -279,11 +233,7 @@ impl CernoApp {
                 *shown = page;
             }
             if out.open_data_folder {
-                let opened =
-                    crate::paths::data_dir().and_then(|dir| crate::external::open_folder(&dir));
-                if let Err(err) = opened {
-                    self.notice = Some(super::notice::Notice::error(format!("{err:#}")));
-                }
+                self.click(ctx, Command::OpenDataFolder);
             }
             if out.close {
                 self.layer.close_if(Layer::is_help);
@@ -317,7 +267,7 @@ impl CernoApp {
                 if picked {
                     self.leave_side_bar();
                 }
-                self.run(ctx, action, frames);
+                self.run(ctx, action, Source::Menu, frames);
             }
         }
         self.draw_name_list_card(ctx, window);
@@ -366,10 +316,10 @@ impl CernoApp {
     /// the filter shows, the view, the settings. Switches show a box, choices a tick; rows
     /// that can't run now are greyed out with the reason as their tooltip. Without a folder
     /// only *Open folder* and the settings.
-    fn side_bar_content(&self) -> side_bar::Bar<Action> {
+    fn side_bar_content(&self) -> side_bar::Bar<Command> {
         let t = i18n::t();
         let top = vec![Item::Row(palette::Row::new(
-            Action::Open,
+            Command::Open,
             t.open_folder,
             Some(i18n::with_ctrl("O")),
         ))];
@@ -401,7 +351,7 @@ impl CernoApp {
 
     /// "This photo": colour, rejection, compare, the edits, undo, edit elsewhere, deleting.
     /// The stars are in the info bar, the comment and keywords in Details › Description.
-    fn photo_items(&self) -> Vec<Item<Action>> {
+    fn photo_items(&self) -> Vec<Item<Command>> {
         use palette::Row;
         let t = i18n::t();
         let key = |k: &str| Some(k.to_owned());
@@ -419,7 +369,7 @@ impl CernoApp {
         let colour = current.and_then(|path| self.label_of(path, image.as_deref()));
         // A pair's edits change the JPEG alone; the rows say so.
         let paired = current.is_some_and(|path| self.folder.pairs.companion(path).is_some());
-        let jpeg_only = |row: Row<Action>| {
+        let jpeg_only = |row: Row<Command>| {
             if paired {
                 row.hint(t.pair_edit_jpeg_only)
             } else {
@@ -429,7 +379,7 @@ impl CernoApp {
 
         // "No colour" first, like the filter bar's colours; each with its key (purple has none).
         let mut colours = vec![Segment {
-            action: Action::Label(None),
+            action: Command::SetLabel(None, Advance::No),
             look: Look::NoColour,
             tooltip: t.label_none.to_owned(),
             on: colour.is_none(),
@@ -446,7 +396,7 @@ impl CernoApp {
             .map(|(label, digit)| {
                 let name = i18n::label_name(label);
                 Segment {
-                    action: Action::Label(Some(label)),
+                    action: Command::ToggleLabel(label, Advance::No),
                     look: Look::Swatch(crate::theme::label_color(label)),
                     tooltip: match digit {
                         Some(digit) => format!("{name} ({digit})"),
@@ -460,13 +410,13 @@ impl CernoApp {
             label: t.bar_rotate.to_owned(),
             segments: vec![
                 Segment {
-                    action: Action::RotateCcw,
+                    action: Command::Rotate(false),
                     look: Look::Turn(false),
                     tooltip: format!("{} ({}+←)", t.cmd_rotate_ccw, t.key_ctrl),
                     on: false,
                 },
                 Segment {
-                    action: Action::RotateCw,
+                    action: Command::Rotate(true),
                     look: Look::Turn(true),
                     tooltip: format!("{} ({}+→)", t.cmd_rotate_cw, t.key_ctrl),
                     on: false,
@@ -478,13 +428,13 @@ impl CernoApp {
         // that counts down, put back the deleted photo shown, take back the session's newest
         // mark or edit – the row names it – or put back an original kept before.
         let undo = if self.deletions.countdown(Instant::now()).is_some() {
-            Row::new(Action::Undo, t.cmd_undo, Some(i18n::with_ctrl("Z")))
+            Row::new(Command::Undo, t.cmd_undo, Some(i18n::with_ctrl("Z")))
         } else if current.is_some_and(|path| self.is_deleted(path)) {
-            Row::new(Action::Restore, t.cmd_restore, Some(i18n::with_ctrl("Z")))
+            Row::new(Command::Restore, t.cmd_restore, Some(i18n::with_ctrl("Z")))
         } else if let Some((label, block)) = self.undo_row() {
-            Row::new(Action::Undo, label, Some(i18n::with_ctrl("Z"))).disabled(block)
+            Row::new(Command::Undo, label, Some(i18n::with_ctrl("Z"))).disabled(block)
         } else {
-            Row::new(Action::Undo, t.cmd_undo, Some(i18n::with_ctrl("Z"))).disabled(rewrite)
+            Row::new(Command::Undo, t.cmd_undo, Some(i18n::with_ctrl("Z"))).disabled(rewrite)
         };
         vec![
             Item::Segments(Segments {
@@ -493,38 +443,38 @@ impl CernoApp {
                 disabled: mark,
             }),
             Item::Row(
-                Row::new(Action::Reject, t.cmd_reject, key("X"))
+                Row::new(Command::ToggleReject(Advance::No), t.cmd_reject, key("X"))
                     .toggle(rating == Rating::Rejected)
                     .disabled(mark),
             ),
             Item::Row(
-                Row::new(Action::Compare, t.cmd_compare, key("C"))
+                Row::new(Command::Compare, t.cmd_compare, key("C"))
                     .toggle(self.viewer.pinned.is_some()),
             ),
             Item::Row(
-                Row::new(Action::Quad, t.cmd_quad, Some(i18n::with_shift("C")))
+                Row::new(Command::Quad, t.cmd_quad, Some(i18n::with_shift("C")))
                     .toggle(self.viewer.quad.is_some()),
             ),
             Item::Row(jpeg_only(
-                Row::new(Action::Straighten, t.cmd_straighten, key("S")).disabled(edit),
+                Row::new(Command::Straighten, t.cmd_straighten, key("S")).disabled(edit),
             )),
             Item::Row(jpeg_only(
-                Row::new(Action::Crop, t.cmd_crop, key("R")).disabled(edit),
+                Row::new(Command::Crop, t.cmd_crop, key("R")).disabled(edit),
             )),
             Item::Segments(turns),
             Item::Row(undo),
             Item::List(
-                Row::new(Action::EditList, t.menu_external, key("E"))
+                Row::new(Command::EditList, t.menu_external, key("E"))
                     .disabled(self.menu_block(Change::External, current)),
             ),
             Item::Row(
-                Row::new(Action::AlignCamera, t.bar_align_camera, None)
+                Row::new(Command::AlignCamera, t.bar_align_camera, None)
                     .hint(t.align_camera_hint)
                     .disabled(self.align_block()),
             ),
             Item::Row(
                 Row::new(
-                    Action::DeleteCurrent,
+                    Command::DeleteCurrent,
                     t.selection_delete,
                     Some(t.key_delete.to_owned()),
                 )
@@ -535,13 +485,13 @@ impl CernoApp {
 
     /// "Visible photos": the file list and the camera clocks, then what acts on every photo
     /// the filter shows. Sort, filters and Top N are in the filter bar.
-    fn visible_items(&self) -> Vec<Item<Action>> {
+    fn visible_items(&self) -> Vec<Item<Command>> {
         use palette::Row;
         let t = i18n::t();
         let mut items = vec![
-            Item::Row(Row::new(Action::NameList, t.menu_name_list, None).hint(t.name_list_intro)),
+            Item::Row(Row::new(Command::NameList, t.menu_name_list, None).hint(t.name_list_intro)),
             Item::Row(
-                Row::new(Action::CameraTime, t.menu_camera_time, None).hint(t.camera_time_intro),
+                Row::new(Command::CameraTime, t.menu_camera_time, None).hint(t.camera_time_intro),
             ),
         ];
         items.extend(self.bulk_rows().into_iter().map(Item::Row));
@@ -550,7 +500,7 @@ impl CernoApp {
 
     /// "View": zoom, the check overlay's three modes, the grid, the faces, full screen. The
     /// bars' switches are buttons in the info bar.
-    fn view_items(&self) -> Vec<Item<Action>> {
+    fn view_items(&self) -> Vec<Item<Command>> {
         use crate::overlay::Mode;
         use palette::Row;
         let t = i18n::t();
@@ -568,7 +518,7 @@ impl CernoApp {
             ]
             .into_iter()
             .map(|(mode, short, name)| Segment {
-                action: Action::Overlay(mode),
+                action: Command::SetOverlay(mode),
                 look: Look::Text(short.to_owned()),
                 tooltip: format!("{name} (O)"),
                 on: self.viewer.overlay == mode,
@@ -578,51 +528,52 @@ impl CernoApp {
         };
         vec![
             Item::Row(
-                Row::new(Action::Zoom, t.cmd_zoom, key("Z")).toggle(self.viewer.zoom.is_zoomed()),
+                Row::new(Command::Zoom(ZOOM_TOGGLE), t.cmd_zoom, key("Z"))
+                    .toggle(self.viewer.zoom.is_zoomed()),
             ),
             Item::Segments(overlay),
-            Item::Row(Row::new(Action::Fullscreen, t.cmd_fullscreen, key("F"))),
+            Item::Row(Row::new(Command::Fullscreen, t.cmd_fullscreen, key("F"))),
         ]
     }
 
     /// "Settings"; a newer release's page last, while there is one.
-    fn settings_items(&self) -> Vec<Item<Action>> {
+    fn settings_items(&self) -> Vec<Item<Command>> {
         use palette::Row;
         let t = i18n::t();
         let mut items = vec![
             Item::Row(
-                Row::new(Action::AutoAdvance, t.cmd_auto_advance, None)
+                Row::new(Command::AutoAdvance, t.cmd_auto_advance, None)
                     .toggle(self.marks.auto_advance),
             ),
             Item::Row(
                 Row::new(
-                    Action::Subfolders,
+                    Command::Subfolders,
                     t.cmd_subfolders,
                     Some(i18n::with_ctrl("U")),
                 )
                 .toggle(self.folder.subfolders),
             ),
             Item::Row(
-                Row::new(Action::Pairs, t.cmd_pairs, None)
+                Row::new(Command::Pairs, t.cmd_pairs, None)
                     .toggle(self.folder.pair_mode)
                     .hint(t.pairs_hint),
             ),
             Item::Row(
-                Row::new(Action::UpdateCheck, t.cmd_update_check, None)
+                Row::new(Command::UpdateCheck, t.cmd_update_check, None)
                     .toggle(self.updates.enabled)
                     .hint(t.update_check_hint),
             ),
             Item::List(Row::new(
-                Action::LanguageList,
+                Command::LanguageList,
                 t.menu_language,
                 Some(i18n::with_ctrl("L")),
             )),
-            Item::Row(Row::new(Action::Models, t.menu_models, None)),
+            Item::Row(Row::new(Command::Models, t.menu_models, None)),
         ];
         // Nothing is downloaded by Cerno: the row opens the release's page in the browser.
         if let Some(version) = self.updates.newer() {
             let label = (t.cmd_update_download)(&version.to_string());
-            items.push(Item::Row(Row::new(Action::OpenRelease, label, None)));
+            items.push(Item::Row(Row::new(Command::OpenRelease, label, None)));
         }
         items
     }
@@ -630,7 +581,7 @@ impl CernoApp {
     /// "Edit elsewhere": the programs the system offers for the photo's type (the remembered
     /// one ticked, with `E`), one picked by hand, the system's chooser. Picking one opens the
     /// photo there.
-    fn editor_rows(&self) -> Vec<palette::Row<Action>> {
+    fn editor_rows(&self) -> Vec<palette::Row<Command>> {
         use palette::Row;
         let t = i18n::t();
         let current = self.view.get(self.current).map(PathBuf::as_path);
@@ -643,7 +594,7 @@ impl CernoApp {
         {
             rows.push(
                 Row::new(
-                    Action::EditRemembered,
+                    Command::EditRemembered,
                     editor.name.clone(),
                     Some("E".into()),
                 )
@@ -655,7 +606,7 @@ impl CernoApp {
             let chosen = remembered.is_some_and(|r| r.id == editor.id);
             rows.push(
                 Row::new(
-                    Action::EditWith(index),
+                    Command::EditWith(index),
                     editor.name.clone(),
                     chosen.then(|| "E".to_owned()),
                 )
@@ -663,14 +614,14 @@ impl CernoApp {
                 .disabled(block),
             );
         }
-        rows.push(Row::new(Action::EditWithOther, t.external_other, None).disabled(block));
+        rows.push(Row::new(Command::EditWithOther, t.external_other, None).disabled(block));
         // Linux has no chooser to call: `xdg-open` starts the default program.
         let chooser = if cfg!(windows) {
             t.external_chooser
         } else {
             t.external_default
         };
-        rows.push(Row::new(Action::EditWithChooser, chooser, None).disabled(block));
+        rows.push(Row::new(Command::EditWithChooser, chooser, None).disabled(block));
         rows
     }
 
@@ -679,7 +630,7 @@ impl CernoApp {
         let index = self
             .photo_items()
             .iter()
-            .position(|item| matches!(item, Item::List(row) if row.action == Action::EditList));
+            .position(|item| matches!(item, Item::List(row) if row.action == Command::EditList));
         self.open_side_bar_at(PHOTO, index);
         self.menu_bar.list_after_draw = Some(ListKind::Editors);
     }
@@ -738,8 +689,8 @@ impl CernoApp {
             return;
         };
         match (action, out.row) {
-            (Action::EditList, Some(at)) => self.open_row_list(ListKind::Editors, at, false),
-            (Action::LanguageList, Some(at)) => {
+            (Command::EditList, Some(at)) => self.open_row_list(ListKind::Editors, at, false),
+            (Command::LanguageList, Some(at)) => {
                 self.open_row_list(ListKind::Languages, at, false);
             }
             _ => {
@@ -747,7 +698,7 @@ impl CernoApp {
                 if !out.keep {
                     self.leave_side_bar();
                 }
-                self.run(&ctx, action, frames);
+                self.run(&ctx, action, Source::Menu, frames);
             }
         }
     }
@@ -766,7 +717,7 @@ impl CernoApp {
     /// What acts on many photos at once: copy, move and delete what the filter shows, delete
     /// the rejected ones, put back the deleted ones shown. Every row is always there – greyed
     /// out with the reason when it has nothing to do – so nothing moves under the pointer.
-    fn bulk_rows(&self) -> Vec<palette::Row<Action>> {
+    fn bulk_rows(&self) -> Vec<palette::Row<Command>> {
         use palette::Row;
         let t = i18n::t();
         let transfer = if self.transfers.is_busy() {
@@ -787,119 +738,35 @@ impl CernoApp {
         } = self.menu_bar.counts;
         let shown = self.view.len().saturating_sub(deleted);
         vec![
-            Row::new(Action::Copy, (t.bulk_copy)(shown), None)
+            Row::new(Command::Copy, (t.bulk_copy)(shown), None)
                 .hint(t.transfer_copy_cmd)
                 .disabled(transfer),
-            Row::new(Action::Move, (t.bulk_move)(shown), None)
+            Row::new(Command::Move, (t.bulk_move)(shown), None)
                 .hint(t.transfer_move_cmd)
                 .disabled(transfer),
-            Row::new(Action::DeleteSelection, (t.bulk_delete)(shown), None)
+            Row::new(Command::DeleteSelection, (t.bulk_delete)(shown), None)
                 .hint(t.bulk_delete_hint)
                 .disabled(delete_shown),
             Row::new(
-                Action::DeleteRejected,
+                Command::DeleteRejected,
                 (t.cmd_delete_rejected)(rejected),
                 None,
             )
             .hint(t.delete_rejected_hint)
             .disabled(delete.or((rejected == 0).then_some(t.bar_none_rejected))),
-            Row::new(Action::RestoreShown, (t.bulk_restore)(deleted), None)
+            Row::new(Command::RestoreShown, (t.bulk_restore)(deleted), None)
                 .hint(t.bulk_restore_hint)
                 .disabled((deleted == 0).then_some(t.bar_none_deleted)),
         ]
     }
-
-    fn run(&mut self, ctx: &egui::Context, action: Action, frames: &[viewer::Frame]) {
-        self.guarded(ctx, "menu command", |app| {
-            app.run_unguarded(ctx, action, frames)
-        });
-    }
-
-    fn run_unguarded(&mut self, ctx: &egui::Context, action: Action, frames: &[viewer::Frame]) {
-        // Like their keys: these need the single photo, so the grid steps aside first.
-        if self.viewer.grid
-            && matches!(
-                action,
-                Action::Compare
-                    | Action::Straighten
-                    | Action::Crop
-                    | Action::Zoom
-                    | Action::Overlay(_)
-            )
-        {
-            self.set_grid(false);
-        }
-        match action {
-            Action::Open => self.pick_folder(ctx),
-            Action::Compare => self.toggle_compare(ctx),
-            Action::Straighten => self.begin_straighten(),
-            Action::RotateCcw => self.rotate_quarter(false),
-            Action::RotateCw => self.rotate_quarter(true),
-            Action::Crop => self.begin_crop(),
-            Action::Undo => self.undo(ctx),
-            Action::Zoom => {
-                if let Some(frame) = frames.last() {
-                    self.viewer.zoom.toggle(frame, None);
-                }
-            }
-            Action::Overlay(mode) => self.set_overlay(mode),
-            Action::NameList => self.open_name_list(),
-            Action::Quad => self.toggle_quad(),
-            Action::Pairs => self.toggle_pairs(ctx),
-            Action::AlignCamera => self.align_right_camera(ctx),
-            Action::CameraTime => self.open_camera_time(),
-            Action::Fullscreen => {
-                let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
-                ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!fullscreen));
-            }
-            Action::Reject => self.toggle_reject(ctx, false),
-            Action::DeleteCurrent => self.delete_current(ctx),
-            // The lists beside the bar's rows open where the bar draws them.
-            Action::EditList => self.open_editors_list(),
-            Action::LanguageList => {}
-            // Opening another program closes the list.
-            Action::EditWith(index) => {
-                self.layer.close_if(Layer::is_list);
-                self.open_in_listed(index);
-            }
-            Action::EditRemembered => {
-                self.layer.close_if(Layer::is_list);
-                self.edit_elsewhere();
-            }
-            Action::EditWithOther => self.pick_editor(),
-            Action::EditWithChooser => self.edit_with_chooser(),
-            Action::DeleteRejected => self.delete_rejected(ctx),
-            Action::Label(label) => match label {
-                Some(label) => self.toggle_label(ctx, label, false),
-                None => self.set_label(ctx, None, false),
-            },
-            Action::AutoAdvance => {
-                self.marks.auto_advance = !self.marks.auto_advance;
-                self.db.put_flag("auto_advance", self.marks.auto_advance);
-            }
-            Action::Subfolders => self.toggle_subfolders(ctx),
-            Action::Language(lang) => self.set_language(ctx, lang),
-            Action::Models => {
-                self.layer = Layer::Models;
-                self.exiftool_card_opens();
-            }
-            Action::Copy => self.begin_transfer(ctx, TransferMode::Copy),
-            Action::Move => self.begin_transfer(ctx, TransferMode::Move),
-            Action::DeleteSelection => self.delete_selection(ctx),
-            Action::Restore => self.restore_current(),
-            Action::RestoreShown => self.restore_shown(),
-            Action::UpdateCheck => self.toggle_update_check(),
-            Action::OpenRelease => self.open_release_page(ctx),
-        }
-    }
 }
 
 /// The languages, the current one ticked (*Language*'s list).
-fn language_rows() -> Vec<palette::Row<Action>> {
+fn language_rows() -> Vec<palette::Row<Command>> {
     Lang::ALL
         .into_iter()
         .map(|lang| {
-            palette::Row::new(Action::Language(lang), lang.name(), None)
+            palette::Row::new(Command::Language(lang), lang.name(), None)
                 .choice(i18n::current() == lang)
         })
         .collect()
