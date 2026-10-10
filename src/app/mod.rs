@@ -67,7 +67,7 @@ use crate::thumbs::Thumbs;
 use crate::transfer::Queue as TransferQueue;
 use crate::ui::details::{DetailsMode, DetailsTab};
 use crate::ui::overlays;
-use crate::ui::{description, side_bar, viewer};
+use crate::ui::{description, viewer};
 use crate::view::{Media, Percentiles, PhotoFilter, SortKey, View, ViewOptions};
 
 use editing::EditSession;
@@ -185,16 +185,8 @@ pub struct CernoApp {
     layer: layer::Layer,
     /// The menu bar on the left is switched on (the menu button, saved as `side_bar`).
     show_side_bar: bool,
-    /// `Ctrl+K`, `Ctrl+M` or `E` showed the bar while it is off: it goes again with the
-    /// keyboard.
-    side_bar_temporary: bool,
-    /// Its open groups (saved as `side_bar_open`) and whether it has the keyboard.
-    side: side_bar::State,
-    /// `E` asked for the programs' list: it opens beside its row once the bar is drawn.
-    list_after_draw: Option<menu::ListKind>,
-    /// The counts of *Visible photos* (rejected in the folder, deleted on screen), refreshed
-    /// with the view and at most every 300 ms – the bar shows them every frame.
-    bar_counts: menu::BarCounts,
+    /// The menu bar's groups, its keyboard and its counts.
+    menu_bar: menu::MenuBar,
     /// The filter bar showed on its own (a filter hid everything) and the pointer is on it: it
     /// stays until the pointer leaves.
     toolbar_held: bool,
@@ -322,7 +314,7 @@ impl CernoApp {
         let show_filmstrip = db.setting("filmstrip").as_deref() != Some("0");
         // Off until the menu button switches it on (the user's decision F3 of 2026-10-10).
         let show_side_bar = db.setting("side_bar").as_deref() == Some("1");
-        let side = side_bar::State::restore(db.setting(menu::SIDE_BAR_OPEN).as_deref());
+        let menu_bar = menu::MenuBar::restore(&db);
         let external = external::External::restore(&db);
         let details = db
             .setting("details_mode")
@@ -407,10 +399,7 @@ impl CernoApp {
             attributes_open: false,
             layer: layer::Layer::None,
             show_side_bar,
-            side_bar_temporary: false,
-            side,
-            list_after_draw: None,
-            bar_counts: menu::BarCounts::default(),
+            menu_bar,
             toolbar_held: false,
             pressed: keys::Pressed::default(),
             language_flash: None,

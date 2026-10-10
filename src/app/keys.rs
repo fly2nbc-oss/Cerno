@@ -314,7 +314,7 @@ impl CernoApp {
         // The bar with the keyboard, and the list beside one of its rows, read their own
         // arrows, Enter, letters and Esc (`side_bar`, `palette`); `Ctrl+K` gives the keyboard
         // back to the photo.
-        if self.layer.is_list() || self.side.focus {
+        if self.layer.is_list() || self.menu_bar.state.focus {
             if keys.palette {
                 self.leave_side_bar();
             }

@@ -45,28 +45,28 @@ impl CernoApp {
 
     /// The menu bar shows: switched on, or for the keyboard (`Ctrl+K`, `Ctrl+M`, `E`).
     pub(super) fn side_bar_shown(&self) -> bool {
-        self.show_side_bar || self.side_bar_temporary
+        self.show_side_bar || self.menu_bar.temporary
     }
 
     /// `Ctrl+K`: the keyboard goes to the menu bar – shown for it while the bar is off.
     pub(super) fn open_side_bar(&mut self) {
         self.layer.close_if(Layer::is_help);
-        self.side_bar_temporary = !self.show_side_bar;
-        self.side.take_keyboard();
+        self.menu_bar.temporary = !self.show_side_bar;
+        self.menu_bar.state.take_keyboard();
     }
 
     /// `Ctrl+M` (*Visible photos*), `E` (*Edit elsewhere*): the same, on a group or a row.
     pub(super) fn open_side_bar_at(&mut self, section: &'static str, item: Option<usize>) {
         self.open_side_bar();
-        self.side.take_keyboard_at(section, item);
+        self.menu_bar.state.take_keyboard_at(section, item);
     }
 
     /// The keyboard goes back to the photo; a bar shown only for it goes too, with its list.
     pub(super) fn leave_side_bar(&mut self) {
-        self.side.release();
+        self.menu_bar.state.release();
         self.layer.close_if(Layer::is_list);
-        self.list_after_draw = None;
-        self.side_bar_temporary = false;
+        self.menu_bar.list_after_draw = None;
+        self.menu_bar.temporary = false;
     }
 
     pub(super) fn set_details(&mut self, mode: DetailsMode) {
@@ -80,8 +80,8 @@ impl CernoApp {
     /// menu button switches the menu bar: a bar shown only for the keyboard stays, switched on.
     pub(super) fn toggle_panel(&mut self, panel: Panel) {
         match panel {
-            Panel::Left if self.side_bar_temporary => {
-                self.side_bar_temporary = false;
+            Panel::Left if self.menu_bar.temporary => {
+                self.menu_bar.temporary = false;
                 self.show_side_bar = true;
             }
             Panel::Left => {

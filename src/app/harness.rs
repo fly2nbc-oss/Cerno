@@ -356,11 +356,11 @@ mod tests {
         let mut h = Harness::new(3);
         h.settle();
         h.press(Key::K, Modifiers::COMMAND);
-        assert!(h.app.side.focus);
+        assert!(h.app.menu_bar.state.focus);
         h.press(Key::X, NONE);
         assert_eq!(h.rating_of(0), None, "the bar has the keyboard");
         h.press(Key::K, Modifiers::COMMAND);
-        assert!(!h.app.side.focus);
+        assert!(!h.app.menu_bar.state.focus);
         h.press(Key::X, NONE);
         assert_eq!(h.rating_of(0), Some(Rating::Rejected));
     }
@@ -374,12 +374,12 @@ mod tests {
         assert!(!h.app.show_side_bar);
         h.press(Key::M, Modifiers::COMMAND);
         h.settle();
-        assert!(h.app.side.focus);
-        assert!(h.app.side_bar_temporary);
+        assert!(h.app.menu_bar.state.focus);
+        assert!(h.app.menu_bar.temporary);
         h.press(Key::Escape, NONE);
         h.settle();
-        assert!(!h.app.side.focus);
-        assert!(!h.app.side_bar_temporary);
+        assert!(!h.app.menu_bar.state.focus);
+        assert!(!h.app.menu_bar.temporary);
         assert_eq!(h.app.view.len(), 3, "Esc on the bar touches nothing else");
     }
 }

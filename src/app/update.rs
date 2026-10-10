@@ -125,7 +125,7 @@ impl CernoApp {
             || !self.startup.logged_first_frame
             || self.layer.is_open()
             || self.modal_open()
-            || self.side.focus
+            || self.menu_bar.state.focus
         {
             return;
         }
