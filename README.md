@@ -85,7 +85,7 @@ Backup tools that only compare size and date (e.g. `rsync` without `-c`) may mis
 
 ## Privacy
 
-Cerno works on your computer. Your photos, their names and your ratings never leave it, and there is no telemetry.
+Cerno works on your computer. Your photos, their names and your ratings never leave it, and there is no telemetry. This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it:
 
 - **Update check, only if you agree:** at the first start Cerno asks whether it may look for a new version; until you say yes it never does. Then it asks GitHub once a day which release is the latest – one request to `github.com/fly2nbc-oss/Cerno/releases/latest`, whose redirect names the version. Nothing about you, your computer or your photos is sent; the request says only that it comes from "Cerno". GitHub sees your IP address, as with any website. A newer version is only named; nothing is downloaded or installed. *Settings ▸ Check for updates* turns it on or off.
 - **Downloads you ask for:** the aesthetics models (from Hugging Face and this repository's releases) and, on Windows, ExifTool (from SourceForge) – only after you click, each checked by size and SHA-256.
