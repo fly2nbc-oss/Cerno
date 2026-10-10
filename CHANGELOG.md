@@ -7,6 +7,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+`F10` for the menu bar, which is now for the mouse; stars in the menu bar; an update for an ExifTool Cerno downloaded; and a tidier inside.
+
+### Added
+
+- **`F10` shows and hides the menu bar** – like `T`, `Tab` and `F6` the other bars. It stays while you browse and is remembered.
+- **Stars in the menu bar** – *This photo* starts with a row of stars: none, then 1★ to 5★, like the filter bar's boxes. A click rates the photo without moving on, like the stars in the info bar.
+- **An update for ExifTool** – when Cerno downloaded ExifTool and a newer Cerno brings a newer version, *Models & data* offers it, and a hint says so once. The old one keeps writing until the new one is in place.
+
+### Changed
+
+- **The menu bar is for the mouse** – `Ctrl+K` and `Ctrl+M` are gone, and the bar takes no key: `X`, the digits and `Space` always reach the photo. Its rows still name the keys that do the same.
+- **`E` without a remembered program** opens the list of programs over the photo (`↑`/`↓`, `Enter`, `Esc`) instead of the menu bar.
+- The help, the start screen and the setup line name `F10`; `Shift+Tab` says "all four panels" (there are four since 1.11).
+- **A little lighter browsing** – the details panel's histogram is counted from every fourth pixel: the same curve, a quarter of the work for every photo loaded.
+
+### Fixed
+
+- **The bar under a playing video fades again** – since 1.5 it stayed as long as the video played.
+- *Straighten* and *Crop* from the menu bar end the four-up view first, like `S` and `R`; before, the session opened unseen behind the four photos.
+- The first-start question about updates waits until a straighten or crop session ends, so `Enter` can't answer it by accident.
+- A panic in a click or a menu row becomes the *internal error* message instead of ending Cerno, as it already did for keys.
+
+### Under the hood
+
+- The large modules are split into folders, the app's state into parts; what lies over the window is one layer, keys, menu rows and clicks are one set of commands. A test harness drives the whole app without a window.
+- CI checks the experimental `webgpu` feature on Linux. The README and the release notes carry the code signing policy SignPath asks for.
+
 ## [1.11.0] – 2026-10-10
 
 A menu bar on the left instead of the menu popup, and one block of buttons in the info bar for the views and the bars.
