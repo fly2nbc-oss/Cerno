@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+## [1.11.0] – 2026-10-10
+
+A menu bar on the left instead of the menu popup, and one block of buttons in the info bar for the views and the bars.
+
 ### Changed
 
 - **A menu bar on the left instead of the menu popup** – the button at the bottom right shows or hides it (off at first, remembered), and `Shift+Tab` takes it along with the other panels. It holds only what has no other place: this photo (colour, reject, compare, the edits, undo, edit elsewhere, delete), the photos on screen (file list, camera time, copy, move, delete, delete rejected, put back), the view and the settings – stars, sorting, filters and the panels stay in the info bar and the filter bar. Its groups fold and stay as you left them. `Ctrl+K` gives it the keyboard – shown for the moment if it is off –: `↑`/`↓`, `Enter`, `→` unfolds, `←` folds, a letter jumps, `Esc` gives the keyboard back to the photo. Without the keyboard it takes no key, so `X`, the digits and `Space` always reach the photo.
