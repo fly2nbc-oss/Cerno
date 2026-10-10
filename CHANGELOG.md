@@ -7,6 +7,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Changed
+
+- **Faster start** – the first photo appears at once in the size of the last session's photo area, instead of being decoded twice. The aesthetics models, the video and HEIC libraries and ExifTool load only when they are needed, and the analysis and the prediction start a moment after the first photo, so they never compete with it. The screen redraws less often while the analysis runs.
+
+### Fixed
+
+- **A video and a RAW of the same name no longer share their marks.** Both kept them in `IMG_1.xmp`, so a star on `IMG_1.MOV` landed on `IMG_1.CR3` too. The RAW keeps `IMG_1.xmp`; the video (or a BMP) now uses `IMG_1.MOV.xmp` whenever another file of the folder would want the short name, also after copying, moving, deleting and putting back. A sidecar the two shared until now belongs to the RAW, so the video's marks may seem to have moved to it.
+- ExifTool and the video helpers end with Cerno, also when Cerno is ended by force – each start used to leave an ExifTool behind.
+- When the background writer for marks stops, Cerno says so instead of losing the following marks without a word.
+- An unexpected error in a key or menu command no longer ends Cerno: it is written to `crash.log`, a message says so, and Cerno goes on.
+- A deleted photo's colour label no longer lingered for the session.
+- Files over 2 GB are no longer read as photos; a cross-drive move writes the copy to disk before the original goes; a photo put back goes only into the folder above its `.originals`.
+
 ## [1.9.1] – 2026-10-06
 
 Group photos without doubled faces, and a photo's path with one click.

@@ -347,13 +347,18 @@ fn transfer_one(
     }
 }
 
-/// A RAW's or video's marks live in its XMP sidecar: it goes (or is copied) along. One already
-/// at the destination is left as it is.
+/// A RAW's or video's marks live in its XMP sidecar: it goes (or is copied) along – under the
+/// name the destination's folder asks for, so it never lands on a RAW's of the same name
+/// there. One already at the destination is left as it is.
 fn carry_sidecar(mode: Mode, src: &Path, dest: &Path) {
-    let (from, to) = (crate::sidecar::path_of(src), crate::sidecar::path_of(dest));
-    if !crate::sidecar::applies(src) || !from.is_file() {
+    if !crate::sidecar::applies(src) {
         return;
     }
+    let from = crate::sidecar::path_of(src);
+    if !from.is_file() {
+        return;
+    }
+    let to = crate::sidecar::moved(src, &from, dest);
     if to.exists() {
         log::warn!("sidecar {} exists already – kept", to.display());
         return;
@@ -554,6 +559,44 @@ mod tests {
         assert!(!src_dir.join("IMG_7.xmp").exists());
         assert!(src_dir.join("IMG_8.xmp").exists(), "not the JPEG's");
         assert!(!dest_dir.join("IMG_8.xmp").exists());
+
+        fs::remove_dir_all(&src_dir).unwrap();
+        fs::remove_dir_all(&dest_dir).unwrap();
+    }
+
+    /// A video alone has `IMG_1.xmp`; where it lands beside a RAW of its name, that name is the
+    /// RAW's – the video's marks become `IMG_1.MOV.xmp` and the RAW's stay as they were. A long
+    /// name moves as one, in either order.
+    #[test]
+    fn a_video_never_lands_on_a_raw_sidecar() {
+        let src_dir = temp_dir("video-src");
+        let dest_dir = temp_dir("video-dest");
+        let video = write_old(&src_dir, "IMG_1.MOV", b"video");
+        write_old(&src_dir, "IMG_1.xmp", b"video's");
+        write_old(&dest_dir, "IMG_1.CR3", b"raw");
+        write_old(&dest_dir, "IMG_1.xmp", b"raw's");
+        let both = [
+            write_old(&src_dir, "IMG_2.MOV", b"video"),
+            write_old(&src_dir, "IMG_2.CR3", b"raw"),
+        ];
+        write_old(&src_dir, "IMG_2.MOV.xmp", b"video 2's");
+        write_old(&src_dir, "IMG_2.xmp", b"raw 2's");
+
+        let outcome = run(
+            Mode::Move,
+            &[video, both[0].clone(), both[1].clone()],
+            &HashMap::new(),
+            &dest_dir,
+            &FileLocks::default(),
+            &Progress::default(),
+        );
+        assert_eq!(outcome.done.len(), 3);
+        let read = |name: &str| fs::read(dest_dir.join(name)).unwrap();
+        assert_eq!(read("IMG_1.xmp"), b"raw's", "untouched");
+        assert_eq!(read("IMG_1.MOV.xmp"), b"video's");
+        assert_eq!(read("IMG_2.MOV.xmp"), b"video 2's");
+        assert_eq!(read("IMG_2.xmp"), b"raw 2's");
+        assert_eq!(fs::read_dir(&src_dir).unwrap().count(), 0, "all moved");
 
         fs::remove_dir_all(&src_dir).unwrap();
         fs::remove_dir_all(&dest_dir).unwrap();

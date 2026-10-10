@@ -111,12 +111,13 @@ fn original_in(db: &Db, photo: &Path, legacy: Option<&Path>) -> Result<Option<Pa
 pub fn set_aside(photo: &Path) -> Result<PathBuf> {
     let dir = ensure_folder(photo)?;
     let name = photo.file_name().context("photo has no file name")?;
+    // Asked before the photo leaves: its sidecar's name depends on its neighbours.
+    let sidecar = crate::sidecar::applies(photo).then(|| crate::sidecar::path_of(photo));
     let to = move_into(photo, &dir, name)?;
     log::info!("set aside: {} → {}", photo.display(), to.display());
     // A RAW's or video's marks go with it, named like it.
-    let sidecar = crate::sidecar::path_of(photo);
-    if crate::sidecar::applies(photo) && sidecar.is_file() {
-        let paired = crate::sidecar::path_of(&to);
+    if let Some(sidecar) = sidecar.filter(|sidecar| sidecar.is_file()) {
+        let paired = crate::sidecar::moved(photo, &sidecar, &to);
         let name = paired.file_name().context("sidecar has no file name")?;
         if let Err(err) = move_into(&sidecar, &dir, name) {
             log::warn!("sidecar {}: {err:#}", sidecar.display());
@@ -216,11 +217,11 @@ pub fn restore(aside: &Path, original: &Path) -> Result<PathBuf> {
             original.display()
         );
     }
+    let sidecar = crate::sidecar::applies(aside).then(|| crate::sidecar::path_of(aside));
     let to = move_into(aside, dir, name)?;
     log::info!("restored: {} → {}", aside.display(), to.display());
-    let sidecar = crate::sidecar::path_of(aside);
-    if crate::sidecar::applies(aside) && sidecar.is_file() {
-        let paired = crate::sidecar::path_of(&to);
+    if let Some(sidecar) = sidecar.filter(|sidecar| sidecar.is_file()) {
+        let paired = crate::sidecar::moved(aside, &sidecar, &to);
         if paired.exists() {
             log::warn!("sidecar stays in .originals: {} is taken", paired.display());
         } else if let Err(err) = std::fs::rename(&sidecar, &paired) {
@@ -484,6 +485,41 @@ mod tests {
             b"marks"
         );
         assert!(!root.join("IMG_5.xmp").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A video beside a RAW of its name keeps `IMG_1.MOV.xmp` through deleting and putting
+    /// back, whichever goes first; the RAW's `IMG_1.xmp` is never touched by it.
+    #[test]
+    fn a_video_and_a_raw_of_one_name_keep_their_own_sidecars() {
+        let root = temp("aside-video");
+        for (name, bytes) in [
+            ("IMG_1.MOV", "video"),
+            ("IMG_1.CR3", "raw"),
+            ("IMG_1.MOV.xmp", "video's"),
+            ("IMG_1.xmp", "raw's"),
+        ] {
+            std::fs::write(root.join(name), bytes).expect("file");
+        }
+        let video = set_aside(&root.join("IMG_1.MOV")).expect("video");
+        let raw = set_aside(&root.join("IMG_1.CR3")).expect("raw");
+        let aside = |name: &str| std::fs::read(root.join(FOLDER).join(name)).expect(name);
+        assert_eq!(aside("IMG_1.MOV.xmp"), b"video's");
+        assert_eq!(aside("IMG_1.xmp"), b"raw's");
+        assert_eq!(
+            crate::sidecar::path_of(&video),
+            root.join(FOLDER).join("IMG_1.MOV.xmp")
+        );
+
+        // The video comes back alone: its long name stays.
+        restore(&video, &root.join("IMG_1.MOV")).expect("video back");
+        assert_eq!(
+            std::fs::read(root.join("IMG_1.MOV.xmp")).expect("long name back"),
+            b"video's"
+        );
+        assert!(!root.join("IMG_1.xmp").exists());
+        assert_eq!(aside("IMG_1.xmp"), b"raw's", "still the RAW's");
+        assert!(raw.exists());
         let _ = std::fs::remove_dir_all(&root);
     }
 
