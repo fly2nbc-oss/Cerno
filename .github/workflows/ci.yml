@@ -42,6 +42,9 @@ jobs:
       - run: cargo clippy --all-targets --features heic,video -- -D warnings
       # The player tests play tests/fixtures/tiny.mp4 on the CPU, without sound.
       - run: cargo test --features heic,video
+      # The experimental WebGPU path for the models (Linux only; ort ships a prebuilt ONNX
+      # Runtime with WebGPU for x86_64 Linux): it must keep compiling, warning-free.
+      - run: cargo clippy --all-targets --features webgpu -- -D warnings
       # Known vulnerabilities in the locked dependencies fail the run; warnings (unmaintained,
       # yanked) are listed only.
       - uses: taiki-e/install-action@v2
