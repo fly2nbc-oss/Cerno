@@ -12,6 +12,77 @@ use crate::metadata::Rating;
 use crate::theme::{text, tokens};
 use crate::ui::{icons, stars};
 
+/// How long the browse arrows stay after the pointer last moved, and how long they fade.
+const ARROWS_SHOWN: f32 = 1.2;
+const ARROWS_FADE: f32 = 0.4;
+const ARROW_RADIUS: f32 = 22.0;
+/// The arrows' centres this far inside the photo area's sides.
+const ARROW_INSET: f32 = 44.0;
+
+/// The browse arrows over the single photo: a round, see-through button at each side,
+/// vertically centred, while the pointer moves over the photo; ~1.5 s after it rests they
+/// fade, unless it rests on one. `prev` / `next`: whether there is a photo that way (none at
+/// the ends). Returns −1 or +1 when one was clicked. A faded arrow takes no click, so the photo
+/// keeps its own (zoom, drag).
+pub fn browse_arrows(ui: &Ui, area: Rect, prev: bool, next: bool) -> Option<isize> {
+    let (pointer, rest) =
+        ui.input(|i| (i.pointer.hover_pos(), i.pointer.time_since_last_movement()));
+    let pointer = pointer.filter(|pos| area.contains(*pos))?;
+    let fading = ((rest - ARROWS_SHOWN) / ARROWS_FADE).clamp(0.0, 1.0);
+    let painter = ui.painter().with_clip_rect(area);
+    let mut clicked = None;
+    for (step, x, there) in [
+        (-1, area.left() + ARROW_INSET, prev),
+        (1, area.right() - ARROW_INSET, next),
+    ] {
+        let centre = pos2(x, area.center().y);
+        let button = Rect::from_center_size(centre, vec2(2.0, 2.0) * ARROW_RADIUS);
+        let on_it = button.contains(pointer);
+        let alpha = if on_it { 1.0 } else { 1.0 - fading };
+        if !there || alpha <= 0.0 {
+            continue;
+        }
+        let response = ui
+            .interact(button, Id::new(("browse-arrow", step)), Sense::click())
+            .on_hover_cursor(CursorIcon::PointingHand);
+        let (shade, arrow) = if response.hovered() {
+            (170.0, tokens::ACCENT)
+        } else {
+            (110.0, tokens::TEXT)
+        };
+        painter.circle_filled(
+            centre,
+            ARROW_RADIUS,
+            Color32::from_black_alpha((shade * alpha) as u8),
+        );
+        icons::side_chevron(
+            &painter,
+            centre,
+            step > 0,
+            18.0,
+            arrow.gamma_multiply(alpha),
+        );
+        if response.clicked() {
+            // A click must not leave keyboard focus here, or `Space` would click it again.
+            response.surrender_focus();
+            clicked = Some(step);
+        }
+    }
+    // Fade out without waiting for the next input: woken when the fade begins, then animated.
+    let wake = if rest < ARROWS_SHOWN {
+        Some(ARROWS_SHOWN - rest)
+    } else if rest < ARROWS_SHOWN + ARROWS_FADE {
+        Some(1.0 / 60.0)
+    } else {
+        None
+    };
+    if let Some(after) = wake {
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_secs_f32(after));
+    }
+    clicked
+}
+
 /// Over a video's frame, near the bottom: a round button with a large painted play sign (its
 /// tooltip says `Space`).
 pub fn video_badge(ui: &Ui, area: Rect, slot: usize) -> Response {
@@ -304,7 +375,53 @@ pub fn language_flash(painter: &Painter, area: Rect, lang: Lang, opacity: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use eframe::egui::{Context, RawInput, Shape};
+    use eframe::egui::{Context, Event, Modifiers, PointerButton, RawInput, Shape};
+
+    /// The arrows come with the pointer, a click on one steps, at the first photo there is no
+    /// left one, and once the pointer rests they fade – unless it rests on one.
+    #[test]
+    fn browse_arrows_come_with_the_pointer_and_fade() {
+        let ctx = Context::default();
+        let area = Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
+        let (middle, right) = (pos2(400.0, 300.0), pos2(800.0 - ARROW_INSET, 300.0));
+        let frame = |time: f64, prev: bool, events: Vec<Event>| {
+            let mut clicked = None;
+            let mut output = ctx.run_ui(
+                RawInput {
+                    time: Some(time),
+                    screen_rect: Some(area),
+                    events,
+                    ..Default::default()
+                },
+                |ui| clicked = browse_arrows(ui, area, prev, true),
+            );
+            output.textures_delta.clear();
+            let circles = output
+                .shapes
+                .iter()
+                .filter(|clipped| matches!(clipped.shape, Shape::Circle(_)))
+                .count();
+            (clicked, circles)
+        };
+        assert_eq!(frame(0.0, true, vec![Event::PointerMoved(middle)]).1, 2);
+        assert_eq!(frame(0.05, false, vec![]).1, 1, "no photo to the left");
+
+        frame(0.1, true, vec![Event::PointerMoved(right)]);
+        let press = |pressed| Event::PointerButton {
+            pos: right,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        };
+        frame(0.2, true, vec![press(true)]);
+        assert_eq!(frame(0.25, true, vec![press(false)]).0, Some(1));
+        // Resting on the right arrow keeps it; the left one fades.
+        assert_eq!(frame(3.0, true, vec![]).1, 1);
+
+        frame(3.1, true, vec![Event::PointerMoved(middle)]);
+        assert_eq!(frame(3.1 + 0.5, true, vec![]).1, 2, "still there");
+        assert_eq!(frame(3.1 + 2.0, true, vec![]).1, 0, "faded");
+    }
 
     /// The copy progress stacks above the slot below it, says what it does and fills its bar
     /// in the accent as far as it is.

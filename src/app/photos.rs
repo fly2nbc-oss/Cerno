@@ -313,6 +313,24 @@ impl CernoApp {
                 }
             }
         }
+        // The browse arrows: the single photo only – also while it loads or is zoomed – never
+        // over a straighten or crop session, a menu or a card. Drawn after the photo, so they
+        // take the click.
+        let covered = self.help_open
+            || self.palette.is_some()
+            || self.action_menu.is_some()
+            || self.modal_open();
+        if let [slot] = slots
+            && slot.side == Side::Single
+            && self.edit.is_none()
+            && !covered
+        {
+            let prev = slot.index > 0;
+            let next = slot.index + 1 < self.view.len();
+            if let Some(step) = overlays::browse_arrows(ui, slot.area, prev, next) {
+                self.go_to(ui.ctx(), slot.index.saturating_add_signed(step), step);
+            }
+        }
     }
 
     /// One loaded photo: its pointer input (unless a menu or card is open over it), the
