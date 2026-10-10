@@ -208,7 +208,8 @@ impl RatingWriter {
     }
 
     /// What the writer reports, set by a test (the detached writer has no thread to say it).
-    #[cfg(test)]
+    /// Only the update offer's tests need it, and they run on Windows only.
+    #[cfg(all(test, windows))]
     pub fn report(&self, status: WriterStatus) {
         if let Ok(mut shown) = self.status.lock() {
             *shown = status;
