@@ -11,6 +11,7 @@ mod crashlog;
 mod db;
 mod decode;
 mod deletion;
+mod dlls;
 mod download;
 mod edit;
 mod exiftool;

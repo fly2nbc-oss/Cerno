@@ -15,6 +15,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 - **`E` without a remembered program** opens the list of programs beside *Edit elsewhere* in the menu bar.
 - Filters, sorting and *Top N* are now in the filter bar only, no longer in a keyboard menu; `M` (similar photos) and `Ctrl+U` (subfolders) stay keys.
 
+### Fixed
+
+- **A missing video, HEIC or GPU library no longer ends Cerno.** Since 1.10 they load only when first needed; when one was missing – a development build started without GStreamer, a damaged installation – Cerno ended at that moment without a word. Now that part is switched off with a message: videos show their placeholder and say why they don't play, HEIC photos an error, the aesthetics models run on the CPU.
+
 ## [1.10.0] – 2026-10-10
 
 A faster start, `Ctrl+Z` for marks, a warning for cut-off JPEGs, a shorter help, arrows to browse with the mouse and an update check.

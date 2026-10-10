@@ -170,6 +170,8 @@ fn decode_jpeg(bytes: &[u8], srgb: bool) -> Result<(u32, u32, Vec<u8>)> {
 fn decode_heif(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>)> {
     use libheif_rs::{ColorSpace, HeifContext, LibHeif, RgbChroma};
 
+    // Without heif.dll beside the exe its first call would end Cerno: an error for this photo.
+    crate::dlls::load(crate::dlls::LIBHEIF).map_err(|err| anyhow!("HEIC: {err}"))?;
     let lib = LibHeif::new();
     let ctx = HeifContext::read_from_bytes(bytes)?;
     let handle = ctx.primary_image_handle()?;

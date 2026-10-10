@@ -274,7 +274,9 @@ mod engine {
     pub(super) fn init() -> Result<()> {
         INIT.get_or_init(|| {
             let started = Instant::now();
-            let result = gst::init().map_err(|err| format!("{err}"));
+            // A GStreamer missing beside the exe would end Cerno at the first call.
+            let result = crate::dlls::load(crate::dlls::GSTREAMER)
+                .and_then(|()| gst::init().map_err(|err| format!("{err}")));
             match &result {
                 Ok(()) => log::info!(
                     "video: {} ready after {} ms, {} plugins",
