@@ -29,6 +29,8 @@ cargo test --features heic,video
 
 The ExifTool round-trip test (`rating::tests::writes_stars_and_keeps_file_dates`) skips silently when ExifTool is missing — make sure it actually ran before trusting rating-write changes. Fixture: `tests/fixtures/tiny.jpg`.
 
+What the whole app does with a key – which card, list or mode takes it, in which order a frame's keys run – is tested without a window through `src/app/harness.rs`: an index in memory, a writer without its thread, temporary copies of the fixture. Nothing there touches your photos, your index or the models.
+
 The first build downloads ONNX Runtime. A release build puts `DirectML.dll` next to `cerno.exe`, a `--features heic` build also `heif.dll`, `libde265.dll` and `licenses/`; keep them beside the exe when you copy it elsewhere.
 
 ## HEIC
