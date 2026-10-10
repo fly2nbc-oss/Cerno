@@ -240,8 +240,41 @@ mod engine {
         dir.is_dir().then_some(dir)
     }
 
+    /// `bin` of the GStreamer `install-gstreamer.ps1` installs for the user, when it is there.
+    #[cfg(windows)]
+    pub(super) fn installed_bin(local_app_data: &Path) -> Option<PathBuf> {
+        let bin = local_app_data.join(r"Programs\gstreamer\1.0\msvc_x86_64\bin");
+        bin.join("gstreamer-1.0-0.dll").is_file().then_some(bin)
+    }
+
+    /// A build without GStreamer beside it (`cargo build`, started from Explorer) takes the
+    /// user's installed one, unless `PATH` already has a GStreamer: its `bin` goes in front of
+    /// `PATH`, where the delay-loaded DLLs, the plugins (found from the DLL's place) and the
+    /// frame helpers (they inherit `PATH`) find it. The packages carry their own.
+    #[cfg(windows)]
+    fn use_installed() {
+        let path = std::env::var_os("PATH").unwrap_or_default();
+        if std::env::split_paths(&path).any(|dir| dir.join("gstreamer-1.0-0.dll").is_file()) {
+            return;
+        }
+        let Some(bin) =
+            std::env::var_os("LOCALAPPDATA").and_then(|dir| installed_bin(Path::new(&dir)))
+        else {
+            return;
+        };
+        let Ok(joined) =
+            std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&path)))
+        else {
+            return;
+        };
+        // SAFETY: called at the start of `main`, before any thread exists.
+        unsafe { std::env::set_var("PATH", joined) };
+    }
+
     pub(super) fn configure_environment() {
         let Some(plugins) = bundled_plugins() else {
+            #[cfg(windows)]
+            use_installed();
             return;
         };
         let registry = crate::paths::data_dir()
@@ -1043,6 +1076,19 @@ mod tests {
     fn fixture() -> PathBuf {
         std::path::absolute(Path::new("tests/fixtures/tiny.mp4"))
             .unwrap_or_else(|_| PathBuf::from("tests/fixtures/tiny.mp4"))
+    }
+
+    /// A development build finds the user's GStreamer by its core DLL, not by the folder alone.
+    #[cfg(windows)]
+    #[test]
+    fn the_installed_gstreamer_is_found_by_its_dll() {
+        let root = std::env::temp_dir().join(format!("cerno-gst-{}", std::process::id()));
+        let bin = root.join(r"Programs\gstreamer\1.0\msvc_x86_64\bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        assert_eq!(engine::installed_bin(&root), None);
+        std::fs::write(bin.join("gstreamer-1.0-0.dll"), b"").unwrap();
+        assert_eq!(engine::installed_bin(&root), Some(bin));
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     fn wait(player: &Player, what: &str, done: impl Fn(&Status) -> bool) -> Status {
