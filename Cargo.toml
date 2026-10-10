@@ -59,7 +59,12 @@ zune-jpeg = "0.5.15"
 ort = { version = "2.0.0-rc.13", default-features = false, features = ["directml"] }
 # The programs Windows offers for a file type ("Open with"), for editing a photo elsewhere.
 # The same version wgpu already brings in.
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_Shell_Common"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Com", "Win32_System_JobObjects", "Win32_System_LibraryLoader", "Win32_UI_Shell", "Win32_UI_Shell_Common"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# The helpers (ExifTool, the video frame helper) get the parent-death signal: they end with
+# Cerno even when it is killed.
+libc = "0.2"
 
 [target.'cfg(windows)'.build-dependencies]
 # Embeds assets/icon.ico and the version info into the exe (uses the Windows SDK's rc.exe).
@@ -137,8 +142,3 @@ opt-level = 3
 [profile.release]
 lto = "thin"
 codegen-units = 1
-
-# Proof of concept for playing videos inside Cerno (not shipped).
-[[example]]
-name = "video_poc"
-required-features = ["video"]

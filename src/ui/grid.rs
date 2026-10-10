@@ -169,7 +169,9 @@ pub fn draw(
             order.sort_by_key(|&n| (range.start + n).abs_diff(current));
             for n in order {
                 let index = range.start + n;
-                let path = &paths[index];
+                let (Some(path), Some(cell_info)) = (paths.get(index), infos.get(n)) else {
+                    continue;
+                };
                 let cell = layout.cell(index).translate(origin);
                 let name = library::file_name_lossy(path);
                 let empty = Empty { name: Some(&name) };
@@ -180,14 +182,13 @@ pub fn draw(
                     Id::new(("grid", index)),
                     thumbs.get_or_request(path).as_ref(),
                     empty,
-                    &infos[n],
+                    cell_info,
                 );
                 if response.double_clicked() {
                     out.opened = Some(index);
                 } else if response.clicked() {
                     out.clicked = Some(index);
                 }
-                let cell_info = &infos[n];
                 if cell_info.in_current_series {
                     cells::series_line(&painter, cell, cell.bottom() + cells::STARS_ROW - 2.0);
                 }

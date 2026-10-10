@@ -684,6 +684,7 @@ dependencies = [
  "image",
  "jpeg-encoder",
  "kamadak-exif",
+ "libc",
  "libheif-rs",
  "log",
  "memchr",

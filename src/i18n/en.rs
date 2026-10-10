@@ -252,6 +252,8 @@ pub static TEXTS: Texts = Texts {
     },
 
     db_unavailable: |err| format!("Scores are not saved this session: {err}"),
+    writer_stopped: "Marks are no longer written into the files – an internal error (crash.log in the data folder). Please restart Cerno.",
+    internal_error: "Internal error – the command was stopped, Cerno goes on (details in crash.log in the data folder).",
     cannot_open: |path, err| format!("Cannot open {path}: {err}"),
     no_photos_in: |dir| format!("No JPEG or HEIC files in {dir}"),
     rating_not_saved: |err| format!("Rating not saved – {err}"),
@@ -295,11 +297,6 @@ pub static TEXTS: Texts = Texts {
     btn_close: "Close (Esc)",
     aesthetics_offer: |size| {
         format!("Aesthetics scoring needs image models ({size}): Menu → Models & data.")
-    },
-    v25_offer: |size| {
-        format!(
-            "More reliable aesthetics with the second model V2.5 ({size}): Menu → Models & data."
-        )
     },
     exiftool_offer: |size| {
         format!("Cerno saves stars and colours with ExifTool ({size}): Menu → Models & data.")

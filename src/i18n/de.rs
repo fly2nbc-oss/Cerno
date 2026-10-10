@@ -255,6 +255,8 @@ pub static TEXTS: Texts = Texts {
     },
 
     db_unavailable: |err| format!("Bewertungen werden in dieser Sitzung nicht gespeichert: {err}"),
+    writer_stopped: "Markierungen werden nicht mehr in die Dateien geschrieben – ein interner Fehler (crash.log im Datenordner). Bitte Cerno neu starten.",
+    internal_error: "Interner Fehler – der Befehl wurde abgebrochen, Cerno läuft weiter (Details in crash.log im Datenordner).",
     cannot_open: |path, err| format!("{path} lässt sich nicht öffnen: {err}"),
     no_photos_in: |dir| format!("Keine JPEG- oder HEIC-Dateien in {dir}"),
     rating_not_saved: |err| format!("Sterne nicht gespeichert – {err}"),
@@ -298,11 +300,6 @@ pub static TEXTS: Texts = Texts {
     btn_close: "Schließen (Esc)",
     aesthetics_offer: |size| {
         format!("Die Ästhetik-Bewertung braucht Bildmodelle ({size}): Menü → Modelle & Daten.")
-    },
-    v25_offer: |size| {
-        format!(
-            "Verlässlichere Ästhetik mit dem zweiten Modell V2.5 ({size}): Menü → Modelle & Daten."
-        )
     },
     exiftool_offer: |size| {
         format!("Sterne und Farben speichert Cerno mit ExifTool ({size}): Menü → Modelle & Daten.")

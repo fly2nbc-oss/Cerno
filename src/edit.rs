@@ -393,10 +393,7 @@ pub fn render_crop(path: &Path, rect: PixelRect, files: &FileLocks) -> Result<Ve
 }
 
 fn decode_jpeg(path: &Path, files: &FileLocks) -> Result<(u32, u32, Vec<u8>)> {
-    let bytes = {
-        let _held = files.hold(path);
-        std::fs::read(path).context("cannot read file")?
-    };
+    let bytes = files.read(path)?;
     let meta = metadata::read(&bytes);
     // In the file's colour space: `rating::apply_pixels` carries its ICC profile over.
     let decoded = decode::decode_for_edit(&bytes, meta.orientation)?;

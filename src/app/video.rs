@@ -244,8 +244,7 @@ impl CernoApp {
         }
         if let Some(muted) = muted {
             self.video_muted = muted;
-            self.db
-                .put_setting(MUTED_KEY, if muted { "1" } else { "0" });
+            self.db.put_flag(MUTED_KEY, muted);
         }
         if let Some(session) = &self.video {
             session

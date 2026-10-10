@@ -9,7 +9,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -22,6 +22,7 @@ use zune_jpeg::JpegDecoder;
 
 use crate::db::{Db, FileStamp};
 use crate::library::{self, Format};
+use crate::sync::lock;
 use crate::{decode, video};
 
 /// Longest side of a thumbnail in pixels.
@@ -159,10 +160,6 @@ impl Queue {
     }
 }
 
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(|p| p.into_inner())
-}
-
 impl Thumbs {
     pub fn new(ctx: egui::Context, db: Arc<Db>) -> Self {
         let inner = Arc::new(Inner {
@@ -179,7 +176,7 @@ impl Thumbs {
             std::thread::Builder::new()
                 .name(name.into())
                 .spawn(move || work(&inner))
-                .expect("failed to spawn thumbnail worker")
+                .unwrap_or_else(crate::process::no_thread)
         };
         let workers = vec![
             spawn("cerno-thumbs", worker),

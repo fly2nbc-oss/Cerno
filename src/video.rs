@@ -9,13 +9,14 @@ use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result, anyhow, bail};
 
 use crate::decode::DecodedImage;
 use crate::frames::Seek;
+use crate::sync::lock;
 
 /// Exactly the frame at one second, like ffmpeg's up to 1.8.0: the frame at the keyframe
 /// before it was faster but often visibly another one (measured 2026-10-05 on 162 phone and
@@ -34,8 +35,9 @@ const ANSWER: Duration = Duration::from_secs(25);
 const IDLE: Duration = Duration::from_secs(60);
 const KEEP_IDLE: Duration = Duration::from_secs(50);
 
-/// Helpers kept waiting for the next frame: the loader's workers and the thumbnail thread.
-const KEPT: usize = 3;
+/// Helpers kept waiting for the next frame: the loader's workers (up to four) and the
+/// thumbnail thread. With three, a busy moment started and ended one per round.
+const KEPT: usize = 4;
 
 /// A frame larger than this is no answer of the helper's (a broken stream).
 const MAX_FRAME_BYTES: u64 = 512 << 20;
@@ -66,12 +68,6 @@ enum Answer {
 }
 
 static IDLE_HELPERS: Mutex<Vec<Helper>> = Mutex::new(Vec::new());
-
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
 
 fn frame(path: &Path, max: [u32; 2], sharp: bool) -> Result<DecodedImage> {
     // Loaded here first, so a helper finds the plugin registry up to date.
@@ -128,7 +124,8 @@ impl Helper {
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
         crate::process::hide_window(&mut command);
-        let mut child = command.spawn().context("cannot start the frame helper")?;
+        let mut child =
+            crate::process::spawn_tied(&mut command).context("cannot start the frame helper")?;
         let stdin = child.stdin.take().context("frame helper stdin")?;
         let stdout = child.stdout.take().context("frame helper stdout")?;
         let (tx, answers) = mpsc::channel();

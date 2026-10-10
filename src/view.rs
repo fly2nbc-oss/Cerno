@@ -78,12 +78,8 @@ impl SortKey {
         }
     }
 
-    /// A stored sort. Up to 1.2 LAION and V2.5 were sorted apart; a saved V2.5 sort
-    /// (`"aesthetics25"`) now means the combined score, like `"aesthetics"`.
+    /// A stored sort.
     pub fn from_id(id: &str) -> Option<Self> {
-        if id == "aesthetics25" {
-            return Some(Self::Aesthetics);
-        }
         Self::ALL.into_iter().find(|k| k.id() == id)
     }
 }
@@ -324,29 +320,11 @@ impl PhotoFilter {
 
     pub fn from_stored(id: &str) -> Self {
         let mut filter = Self::default();
-        if id.is_empty() || id == "all" {
-            return filter;
-        }
         if let Some(rest) = id.strip_prefix('*') {
             for token in rest.split(',').filter(|token| !token.is_empty()) {
                 if let Some(kind) = FilterKind::from_token(token) {
                     filter.set(kind, true);
                 }
-            }
-            return filter;
-        }
-        // Saved before checkboxes: one choice, and a digit meant "at least".
-        if let Some(kind) = FilterKind::from_token(id)
-            && !matches!(kind, FilterKind::Stars(_))
-        {
-            filter.set(kind, true);
-            return filter;
-        }
-        if let Ok(n) = id.parse::<u8>()
-            && (1..=5).contains(&n)
-        {
-            for star in n..=5 {
-                filter.set(FilterKind::Stars(star), true);
             }
         }
         filter
@@ -1521,19 +1499,15 @@ mod tests {
     }
 
     #[test]
-    fn stored_filter_keeps_old_at_least_values() {
+    fn stored_filters_round_trip() {
         assert!(PhotoFilter::from_stored("").is_all());
-        assert!(PhotoFilter::from_stored("all").is_all());
-        let legacy = PhotoFilter::from_stored("3");
-        assert!(legacy.contains(FilterKind::Stars(3)));
-        assert!(legacy.contains(FilterKind::Stars(5)));
-        assert!(!legacy.contains(FilterKind::Stars(2)));
+        // Anything else that isn't a list of boxes (saved before 1.1) is no filter.
+        assert!(PhotoFilter::from_stored("3").is_all());
         let exact = PhotoFilter::from_stored("*3");
         assert!(exact.contains(FilterKind::Stars(3)));
         assert!(!exact.contains(FilterKind::Stars(4)));
         let mixed = PhotoFilter::from_stored("*1,2,unrated,blurry,duplicate");
         assert_eq!(mixed.id(), "*1,2,unrated,blurry,duplicate");
-        assert_eq!(PhotoFilter::from_stored("rejected").id(), "*rejected");
         assert_eq!(PhotoFilter::default().id(), "");
         let red = PhotoFilter::from_stored("*red");
         assert!(red.contains(FilterKind::Colour(Label::Red)));
@@ -2037,8 +2011,6 @@ mod tests {
         for key in SortKey::ALL {
             assert_eq!(SortKey::from_id(key.id()), Some(key));
         }
-        // The V2.5 sort of 1.2 and earlier is the combined score now.
-        assert_eq!(SortKey::from_id("aesthetics25"), Some(SortKey::Aesthetics));
         assert_eq!(SortKey::from_id("laion"), None);
         let mut filter = PhotoFilter::default();
         for kind in FilterKind::ALL {

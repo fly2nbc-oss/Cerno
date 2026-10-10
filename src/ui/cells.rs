@@ -20,6 +20,7 @@ pub const STARS_ROW: f32 = 22.0;
 const PLAY_RADIUS: f32 = 13.0;
 
 /// What a cell shows about one photo besides its thumbnail.
+#[derive(Default)]
 pub struct CellInfo {
     /// The current photo: the accent frame.
     pub current: bool,

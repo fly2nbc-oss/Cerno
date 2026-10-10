@@ -242,7 +242,7 @@ impl CernoApp {
     pub(super) fn forget_deleted(&self, path: &Path, aside: &Path) {
         if let Err(err) = self
             .db
-            .record_deletion(&path.to_string_lossy(), Some(&aside.to_string_lossy()))
+            .record_deletion(&path.to_string_lossy(), &aside.to_string_lossy())
         {
             log::warn!("index: {err:#}");
         }
@@ -271,6 +271,7 @@ impl CernoApp {
                 for (path, aside) in &done.deleted {
                     self.pairs.forget(path);
                     self.session_ratings.remove(path);
+                    self.session_labels.remove(path);
                     self.session_descriptions.remove(path);
                     self.forget_deleted(path, aside);
                     self.add_deleted(path.clone(), aside.clone());

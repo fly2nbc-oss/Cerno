@@ -81,8 +81,7 @@ impl ExifTool {
             }
         }
         crate::process::hide_window(&mut command);
-        let mut child = command
-            .spawn()
+        let mut child = crate::process::spawn_tied(&mut command)
             .with_context(|| format!("cannot start {}", found.path.display()))?;
 
         let stdin = child.stdin.take().context("ExifTool stdin")?;

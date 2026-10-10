@@ -61,7 +61,7 @@ use crate::transfer::Queue as TransferQueue;
 use crate::ui::details::{DetailsMode, DetailsTab};
 use crate::ui::overlays;
 use crate::ui::{description, palette, viewer};
-use crate::view::{FilterKind, Media, Percentiles, PhotoFilter, SortKey, View, ViewOptions};
+use crate::view::{Media, Percentiles, PhotoFilter, SortKey, View, ViewOptions};
 
 use editing::EditSession;
 use menu::ConfirmAction;
@@ -93,10 +93,6 @@ const TARGET_SETTLE: Duration = Duration::from_millis(200);
 /// Set once the hint about the aesthetics model has been shown. Before 0.10 the same key
 /// meant "the download dialog was declined", which also ends the hint.
 const CLIP_OFFER_SHOWN: &str = "clip_download_declined";
-
-/// Set once the hint about V2.5 has been shown (or a download was asked for) – CLIP users of
-/// releases before the V2.5 download get it once.
-const V25_OFFER_SHOWN: &str = "v25_offer_shown";
 
 pub struct CernoApp {
     db: Arc<Db>,
@@ -236,6 +232,8 @@ pub struct CernoApp {
     logged_first_frame: bool,
     /// When the first photo was drawn; ExifTool starts a little later.
     first_photo: Option<Instant>,
+    /// The notice that the mark writer stopped was shown (`poll_background`).
+    writer_stopped_told: bool,
     /// The program `E` opens photos in (remembered).
     external_editor: Option<crate::external::Editor>,
     /// The programs the system offers, per file extension (asked once).
@@ -282,6 +280,8 @@ impl CernoApp {
                 notice = Some(Notice::error((i18n::t().db_unavailable)(&format!(
                     "{err:#}"
                 ))));
+                // SQLite in memory needs no file; it fails only without memory.
+                #[allow(clippy::expect_used)]
                 Db::open_in_memory().expect("in-memory SQLite")
             });
         if let Some(lang) = db.setting("language").and_then(|c| Lang::from_code(&c)) {
@@ -292,34 +292,10 @@ impl CernoApp {
         let thumbs = Arc::new(Thumbs::new(ctx.clone(), Arc::clone(&db)));
         let board = Arc::new(ScoreBoard::default());
 
-        let mut filter = db
+        let filter = db
             .setting("filter")
             .map(|s| PhotoFilter::from_stored(&s))
             .unwrap_or_default();
-        let mut migrated_filter = false;
-        if db.setting("hide_blurry").as_deref() == Some("1") {
-            filter.set(FilterKind::Blurry, true);
-            migrated_filter = true;
-        }
-        if db.setting("only_duplicates").as_deref() == Some("1") {
-            filter.set(FilterKind::Duplicate, true);
-            migrated_filter = true;
-        }
-        if let Some(label) = db
-            .setting("label_filter")
-            .as_deref()
-            .filter(|s| !s.is_empty())
-            .and_then(Label::from_stored)
-        {
-            filter.set(FilterKind::Colour(label), true);
-            migrated_filter = true;
-        }
-        if migrated_filter {
-            db.put_setting("filter", &filter.id());
-            db.put_setting("hide_blurry", "0");
-            db.put_setting("only_duplicates", "0");
-            db.put_setting("label_filter", "");
-        }
         let options = ViewOptions {
             sort: db
                 .setting("sort")
@@ -445,6 +421,7 @@ impl CernoApp {
             started,
             logged_first_frame: false,
             first_photo: None,
+            writer_stopped_told: false,
             external_editor,
             editors: HashMap::new(),
             editors_coming: None,
@@ -510,6 +487,19 @@ impl CernoApp {
         }
     }
 
+    /// Runs a key or menu command. A panic in it – where 1.0–1.3.1 ended – becomes a notice
+    /// instead of the end of Cerno; the panic hook has written `crash.log` by then. A rebuilt
+    /// view makes whole what the command left half done.
+    fn guarded(&mut self, ctx: &egui::Context, what: &str, command: impl FnOnce(&mut Self)) {
+        let finished = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| command(self)));
+        if finished.is_err() {
+            log::error!("{what} failed; Cerno goes on");
+            self.notice = Some(Notice::error(i18n::t().internal_error));
+            let current = self.view.get(self.current).cloned();
+            self.rebuild_view(ctx, current);
+        }
+    }
+
     /// Results from the background: deletions, copy/move, edits, new analysis marks and a
     /// finished "Delete models".
     fn poll_background(&mut self, ctx: &egui::Context) {
@@ -522,6 +512,10 @@ impl CernoApp {
         self.poll_edits();
         self.poll_exiftool(ctx);
         self.poll_editors(ctx);
+        if !self.writer_stopped_told && self.writer.stopped() {
+            self.writer_stopped_told = true;
+            self.notice = Some(Notice::error(i18n::t().writer_stopped));
+        }
         self.refresh_marks(ctx);
         if let Some(removal) = self.analyzer.take_removal() {
             self.notice = Some(match removal {
@@ -573,7 +567,7 @@ impl eframe::App for CernoApp {
                 .collect()
         };
         self.apply_face_zoom(&frames);
-        self.handle_keys(&ctx, &frames);
+        self.guarded(&ctx, "key", |app| app.handle_keys(&ctx, &frames));
         self.update_video(&ctx);
         // Again: a key can empty the view (a mark took the last photo the filter showed), and
         // the bars of the old layout would then draw cells of photos that are gone.

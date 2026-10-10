@@ -2,7 +2,7 @@
 //! download with its offer on Windows, and the install command on Linux.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use eframe::egui;
@@ -16,6 +16,7 @@ use super::CernoApp;
 use super::gate::{Blocked, Tool};
 use super::menu::ConfirmAction;
 use super::notice::Notice;
+use crate::sync::lock;
 
 /// Set once the hint about ExifTool has been shown (Windows, ExifTool missing).
 const OFFER_SHOWN: &str = "exiftool_offer_shown";
@@ -76,12 +77,6 @@ impl ExifToolSetup {
             download.cancel.store(true, Ordering::Relaxed);
         }
     }
-}
-
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 impl CernoApp {

@@ -34,9 +34,8 @@ impl CernoApp {
     }
 
     pub(super) fn save_panels(&self) {
-        let flag = |shown: bool| if shown { "1" } else { "0" };
-        self.db.put_setting("top_bar", flag(self.show_toolbar));
-        self.db.put_setting("filmstrip", flag(self.show_filmstrip));
+        self.db.put_flag("top_bar", self.show_toolbar);
+        self.db.put_flag("filmstrip", self.show_filmstrip);
         self.db.put_setting("details_mode", self.details.id());
     }
 

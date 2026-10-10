@@ -20,7 +20,7 @@ pub mod taste;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, RwLock};
+use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -35,6 +35,7 @@ use aesthetic::{AestheticModel, V25Model};
 use faces::FaceDetector;
 use taste::TasteModel;
 
+use crate::sync::lock;
 pub use models::ModelState;
 use models::{Slot, clip_path, installed, run_model};
 
@@ -200,10 +201,6 @@ struct Shared {
     download: Mutex<Option<Result<(), String>>>,
 }
 
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(|p| p.into_inner())
-}
-
 struct Job {
     generation: u64,
     index: usize,
@@ -326,7 +323,7 @@ impl Analyzer {
                 std::thread::Builder::new()
                     .name(format!("cerno-analysis-{i}"))
                     .spawn(move || worker(&shared))
-                    .expect("failed to spawn analysis worker")
+                    .unwrap_or_else(crate::process::no_thread)
             })
             .collect();
         let trainer_shared = Arc::clone(&shared);
@@ -334,7 +331,7 @@ impl Analyzer {
             std::thread::Builder::new()
                 .name("cerno-taste".into())
                 .spawn(move || taste_trainer(&trainer_shared))
-                .expect("failed to spawn taste trainer"),
+                .unwrap_or_else(crate::process::no_thread),
         );
         Self { shared, workers }
     }
@@ -598,12 +595,6 @@ fn next_job(state: &mut State, now: Instant) -> Option<Job> {
     None
 }
 
-/// The file's bytes, read while nobody writes it.
-fn read(files: &FileLocks, path: &Path) -> Result<Vec<u8>> {
-    let _held = files.hold(path);
-    std::fs::read(path).context("cannot read file")
-}
-
 fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
     // A mark on its way would make the rating read below stale; take the photo up later.
     let files = &*shared.files;
@@ -646,7 +637,7 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
         }
         // Scores are done; only the capture time (and a fresh read of rating/label) is missing.
         if scores_complete(&record.image, caps) {
-            let bytes = read(files, path)?;
+            let bytes = files.read(path)?;
             let meta = metadata::read_for(path, &bytes);
             if changed() {
                 return Ok(Outcome::Retry);
@@ -692,7 +683,7 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
     };
 
     let format = library::format_of(path).context("unsupported file type")?;
-    let bytes = read(files, path)?;
+    let bytes = files.read(path)?;
     let meta = metadata::read_for(path, &bytes);
     let image = decode::decode_for_display(
         &bytes,

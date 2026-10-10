@@ -206,7 +206,7 @@ impl Analyzer {
                 shared.wake.notify_all();
                 shared.ctx.request_repaint();
             })
-            .expect("failed to spawn model removal");
+            .unwrap_or_else(crate::process::no_thread);
     }
 
     /// The outcome of the last "Delete models", once.
@@ -286,7 +286,7 @@ impl Analyzer {
                 *lock(&shared.download) = Some(result);
                 shared.ctx.request_repaint();
             })
-            .expect("failed to spawn download thread");
+            .unwrap_or_else(crate::process::no_thread);
     }
 
     /// The outcome of the last download, once.

@@ -251,6 +251,8 @@ pub static TEXTS: Texts = Texts {
     },
 
     db_unavailable: |err| format!("Las puntuaciones no se guardan en esta sesión: {err}"),
+    writer_stopped: "Las marcas ya no se escriben en los archivos – error interno (crash.log en la carpeta de datos). Reinicia Cerno.",
+    internal_error: "Error interno – se detuvo el comando, Cerno sigue funcionando (detalles en crash.log de la carpeta de datos).",
     cannot_open: |path, err| format!("No se puede abrir {path}: {err}"),
     no_photos_in: |dir| format!("No hay archivos JPEG ni HEIC en {dir}"),
     rating_not_saved: |err| format!("Estrellas no guardadas – {err}"),
@@ -296,9 +298,6 @@ pub static TEXTS: Texts = Texts {
         format!(
             "La puntuación estética necesita modelos de imagen ({size}): Menú → Modelos y datos."
         )
-    },
-    v25_offer: |size| {
-        format!("Estética más fiable con el segundo modelo V2.5 ({size}): Menú → Modelos y datos.")
     },
     exiftool_offer: |size| {
         format!("Cerno guarda estrellas y colores con ExifTool ({size}): Menú → Modelos y datos.")

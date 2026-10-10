@@ -18,7 +18,7 @@ use crate::ui::{confirm, filter_bar, help, models, palette, viewer};
 use crate::view::{FilterKind, Media, Scope, SortKey, TOP_LEVELS, ViewOptions};
 
 use super::gate::Change;
-use super::{CLIP_OFFER_SHOWN, CernoApp, V25_OFFER_SHOWN};
+use super::{CLIP_OFFER_SHOWN, CernoApp};
 
 /// What a confirmation card asks about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,7 +152,6 @@ impl CernoApp {
             ConfirmAction::DownloadModel => {
                 // Asked for: no hint about the models any more.
                 self.db.put_setting(CLIP_OFFER_SHOWN, "1");
-                self.db.put_setting(V25_OFFER_SHOWN, "1");
                 self.analyzer.download_missing();
             }
             ConfirmAction::ResetTaste => self.analyzer.reset_taste_learning(),
@@ -677,6 +676,12 @@ impl CernoApp {
     }
 
     fn run(&mut self, ctx: &egui::Context, action: Action, frames: &[viewer::Frame]) {
+        self.guarded(ctx, "menu command", |app| {
+            app.run_unguarded(ctx, action, frames)
+        });
+    }
+
+    fn run_unguarded(&mut self, ctx: &egui::Context, action: Action, frames: &[viewer::Frame]) {
         // Like their keys: these need the single photo, so the grid steps aside first.
         if self.grid
             && matches!(
@@ -751,8 +756,7 @@ impl CernoApp {
             },
             Action::AutoAdvance => {
                 self.auto_advance = !self.auto_advance;
-                self.db
-                    .put_setting("auto_advance", if self.auto_advance { "1" } else { "0" });
+                self.db.put_flag("auto_advance", self.auto_advance);
             }
             Action::Subfolders => self.toggle_subfolders(ctx),
             Action::Language(lang) => self.set_language(ctx, lang),

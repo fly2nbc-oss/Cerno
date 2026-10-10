@@ -1,9 +1,86 @@
 //! Starting the helper programs Cerno runs (ExifTool, the video frame helper): found by an
-//! absolute path only, started without a console window.
+//! absolute path only, started without a console window, ended with Cerno. And what happens
+//! when one of Cerno's own threads can't start.
 
 use std::ffi::OsStr;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Child, Command};
+
+/// A thread Cerno can't do without did not start: the system is out of threads or memory.
+/// Nothing sensible goes on from there, so this ends Cerno, with the reason in `crash.log`.
+#[allow(clippy::panic)]
+pub fn no_thread<T>(err: std::io::Error) -> T {
+    panic!("cannot start a thread: {err}")
+}
+
+/// Starts a helper that ends with Cerno – also when Cerno is killed or crashes, which can't
+/// end it itself. ExifTool's `-stay_open` waits for more commands forever otherwise: a killed
+/// Cerno left one ExifTool per start behind (seen 2026-10-10). Windows: a job object that
+/// kills its processes when Cerno's handle to it closes; Linux: the parent-death signal.
+/// Never for a program the user works in (Edit elsewhere): that one outlives Cerno.
+pub fn spawn_tied(command: &mut Command) -> std::io::Result<Child> {
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::process::CommandExt;
+        // SAFETY: only an async-signal-safe call between fork and exec.
+        unsafe {
+            command.pre_exec(|| {
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+                Ok(())
+            });
+        }
+    }
+    let child = command.spawn()?;
+    #[cfg(windows)]
+    job::assign(&child);
+    Ok(child)
+}
+
+#[cfg(windows)]
+mod job {
+    use std::os::windows::io::AsRawHandle;
+    use std::sync::OnceLock;
+
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+        SetInformationJobObject,
+    };
+
+    /// The job's handle as a number (a `HANDLE` is not `Sync`); never closed – Windows closes
+    /// it when Cerno ends, and that ends the helpers.
+    static JOB: OnceLock<Option<isize>> = OnceLock::new();
+
+    fn create() -> Option<isize> {
+        // SAFETY: a new anonymous job; the struct is plain data of the documented size.
+        unsafe {
+            let job = CreateJobObjectW(None, None).ok()?;
+            let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                std::ptr::from_ref(&limits).cast(),
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )
+            .ok()?;
+            Some(job.0 as isize)
+        }
+    }
+
+    pub fn assign(child: &std::process::Child) {
+        let Some(job) = *JOB.get_or_init(create) else {
+            log::warn!("no job object: a helper may outlive Cerno");
+            return;
+        };
+        let process = HANDLE(child.as_raw_handle());
+        // SAFETY: both handles are valid; the child's stays open while `child` lives.
+        if let Err(err) = unsafe { AssignProcessToJobObject(HANDLE(job as *mut _), process) } {
+            log::warn!("helper not tied to Cerno: {err}");
+        }
+    }
+}
 
 /// No console window flashes up for a helper started from the GUI.
 pub fn hide_window(command: &mut Command) {
