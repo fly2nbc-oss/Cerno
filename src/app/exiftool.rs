@@ -188,7 +188,7 @@ impl CernoApp {
     pub(super) fn poll_exiftool(&mut self, ctx: &egui::Context) {
         if !self.exiftool.prepared
             && self.exiftool.found.is_some()
-            && let Some(shown) = self.first_photo
+            && let Some(shown) = self.startup.first_photo
         {
             let waited = shown.elapsed();
             if waited >= PREPARE_AFTER {

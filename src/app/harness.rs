@@ -83,14 +83,14 @@ impl Harness {
         // What `open` does for the view, without `Library::open` and the analysis (it would
         // load the models).
         let paths = Arc::new(paths);
-        app.all_index = paths
+        app.folder.all_index = paths
             .iter()
             .enumerate()
             .map(|(index, path)| (path.clone(), index))
             .collect();
-        app.all = Arc::clone(&paths);
-        app.library = paths;
-        app.dir = Some(dir.clone());
+        app.folder.all = Arc::clone(&paths);
+        app.folder.library = paths;
+        app.folder.dir = Some(dir.clone());
         app.rebuild_view(&ctx, None);
         Self {
             app,
@@ -132,7 +132,7 @@ impl Harness {
     /// The current photo's mark as the app shows it (the session's, before the writer).
     pub(super) fn rating_of(&self, index: usize) -> Option<Rating> {
         let path = self.app.view.get(index)?;
-        self.app.session_ratings.get(path).copied()
+        self.app.marks.ratings.get(path).copied()
     }
 
     /// What lies over the window and takes the keyboard.
@@ -213,14 +213,14 @@ mod tests {
         h.settle();
         h.app.layer = Layer::Models;
         h.settle();
-        let details = h.app.details;
+        let details = h.app.bars.details;
         h.frame(presses(&[
             (Key::X, NONE),
             (Key::Num3, NONE),
             (Key::Tab, NONE),
         ]));
         assert_eq!(h.rating_of(0), None);
-        assert_eq!(h.app.details, details);
+        assert_eq!(h.app.bars.details, details);
         assert_eq!(h.layer(), "models");
     }
 
@@ -229,9 +229,9 @@ mod tests {
     fn g_and_x_in_one_frame_only_close_the_faces_grid() {
         let mut h = Harness::new(3);
         h.settle();
-        h.app.faces.grid_open = true;
+        h.app.viewer.faces.grid_open = true;
         h.frame(presses(&[(Key::G, NONE), (Key::X, NONE)]));
-        assert!(!h.app.faces.grid_open);
+        assert!(!h.app.viewer.faces.grid_open);
         assert_eq!(h.rating_of(0), None);
     }
 
@@ -270,12 +270,12 @@ mod tests {
         let mut h = Harness::new(3);
         h.settle();
         h.press(Key::F7, NONE);
-        assert!(h.app.grid);
+        assert!(h.app.viewer.grid);
         h.press(Key::C, NONE);
-        assert!(!h.app.grid);
-        assert!(h.app.pinned.is_some());
+        assert!(!h.app.viewer.grid);
+        assert!(h.app.viewer.pinned.is_some());
         h.press(Key::Escape, NONE);
-        assert!(h.app.pinned.is_none());
+        assert!(h.app.viewer.pinned.is_none());
     }
 
     /// A deletion counting down comes first: `Esc` brings the photo back.
@@ -288,7 +288,10 @@ mod tests {
         assert_eq!(h.app.view.len(), 2);
         h.press(Key::Escape, NONE);
         assert_eq!(h.app.view.len(), 3);
-        assert!(h.app.pinned.is_some(), "compare mode is the next Esc");
+        assert!(
+            h.app.viewer.pinned.is_some(),
+            "compare mode is the next Esc"
+        );
     }
 
     /// A question asked from the models card goes back to it.
@@ -327,10 +330,10 @@ mod tests {
     fn help_over_the_faces_grid_leaves_it_open() {
         let mut h = Harness::new(1);
         h.settle();
-        h.app.faces.grid_open = true;
+        h.app.viewer.faces.grid_open = true;
         h.app.open_help();
         h.settle();
-        assert!(h.app.faces.grid_open);
+        assert!(h.app.viewer.faces.grid_open);
         assert_eq!(h.layer(), "help");
     }
 
@@ -356,11 +359,11 @@ mod tests {
         let mut h = Harness::new(3);
         h.settle();
         h.press(Key::K, Modifiers::COMMAND);
-        assert!(h.app.side.focus);
+        assert!(h.app.menu_bar.state.focus);
         h.press(Key::X, NONE);
         assert_eq!(h.rating_of(0), None, "the bar has the keyboard");
         h.press(Key::K, Modifiers::COMMAND);
-        assert!(!h.app.side.focus);
+        assert!(!h.app.menu_bar.state.focus);
         h.press(Key::X, NONE);
         assert_eq!(h.rating_of(0), Some(Rating::Rejected));
     }
@@ -371,15 +374,15 @@ mod tests {
     fn ctrl_m_shows_the_menu_bar_for_the_moment() {
         let mut h = Harness::new(3);
         h.settle();
-        assert!(!h.app.show_side_bar);
+        assert!(!h.app.bars.side_bar);
         h.press(Key::M, Modifiers::COMMAND);
         h.settle();
-        assert!(h.app.side.focus);
-        assert!(h.app.side_bar_temporary);
+        assert!(h.app.menu_bar.state.focus);
+        assert!(h.app.menu_bar.temporary);
         h.press(Key::Escape, NONE);
         h.settle();
-        assert!(!h.app.side.focus);
-        assert!(!h.app.side_bar_temporary);
+        assert!(!h.app.menu_bar.state.focus);
+        assert!(!h.app.menu_bar.temporary);
         assert_eq!(h.app.view.len(), 3, "Esc on the bar touches nothing else");
     }
 }

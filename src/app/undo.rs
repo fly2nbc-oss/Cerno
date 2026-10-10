@@ -130,7 +130,7 @@ impl CernoApp {
     /// `Ctrl+Z` with an entry in the journal: its photo is shown first, then it gets back what
     /// it had. A photo that takes no such change right now keeps the entry; the hint says why.
     pub(super) fn undo_newest(&mut self, ctx: &egui::Context) {
-        let Some(entry) = self.journal.newest().cloned() else {
+        let Some(entry) = self.marks.journal.newest().cloned() else {
             return;
         };
         let path = entry.path().to_path_buf();
@@ -138,7 +138,7 @@ impl CernoApp {
         if !self.allowed(entry.change(), Some(&path)) {
             return;
         }
-        self.journal.take_newest();
+        self.marks.journal.take_newest();
         let t = i18n::t();
         let name = library::file_name_lossy(&path);
         match entry {
@@ -169,7 +169,7 @@ impl CernoApp {
     /// The photo comes on screen when the view has it; in compare mode the pinned one is there
     /// already.
     fn show_photo(&mut self, ctx: &egui::Context, path: &Path) {
-        if self.pinned.as_deref() == Some(path) {
+        if self.viewer.pinned.as_deref() == Some(path) {
             return;
         }
         if let Some(index) = self.view.iter().position(|shown| shown == path) {
@@ -180,7 +180,7 @@ impl CernoApp {
     /// The menu's *Undo* row while the journal has an entry: what it takes back on which
     /// photo, and why it can't right now.
     pub(super) fn undo_row(&self) -> Option<(String, Option<&'static str>)> {
-        let entry = self.journal.newest()?;
+        let entry = self.marks.journal.newest()?;
         let t = i18n::t();
         let label = (t.undo_mark_row)(entry.what(t), &library::file_name_lossy(entry.path()));
         Some((label, self.menu_block(entry.change(), Some(entry.path()))))

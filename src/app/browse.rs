@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, ViewportCommand};
@@ -18,6 +18,78 @@ use super::layer::Layer;
 use super::notice::Notice;
 use super::{CLIP_OFFER_SHOWN, CernoApp};
 
+/// The open folder.
+pub(super) struct Folder {
+    pub(super) dir: Option<PathBuf>,
+    /// Every photo of the folder, in name order.
+    pub(super) all: Arc<Vec<PathBuf>>,
+    /// What sorting and filtering look at, and the analysis works on: `all`, plus the deleted
+    /// photos while the 🗑 box is ticked (`sync_library`).
+    pub(super) library: Arc<Vec<PathBuf>>,
+    /// Index into `library`.
+    pub(super) all_index: HashMap<PathBuf, usize>,
+    /// The open folder includes nested folders.
+    pub(super) subfolders: bool,
+    /// RAW + JPG of one name are one photo (*RAW+JPG as one photo*, on by default).
+    pub(super) pair_mode: bool,
+    /// The RAWs riding along with the open folder's JPEGs.
+    pub(super) pairs: crate::pairs::Pairs,
+    /// What the pairs' RAW sidecars say, for the note where they differ.
+    pub(super) raw_marks: super::pairs::RawMarks,
+}
+
+impl Folder {
+    /// No folder yet; the saved switches.
+    pub(super) fn restore(db: &crate::db::Db) -> Self {
+        Self {
+            dir: None,
+            all: Arc::new(Vec::new()),
+            library: Arc::new(Vec::new()),
+            all_index: HashMap::new(),
+            subfolders: db.setting("subfolders").as_deref() == Some("1"),
+            pair_mode: db.setting(super::pairs::SETTING).as_deref() != Some("0"),
+            pairs: crate::pairs::Pairs::default(),
+            raw_marks: super::pairs::RawMarks::default(),
+        }
+    }
+}
+
+/// What the view was built from and with, kept between frames.
+pub(super) struct Browse {
+    /// The photo "similar photos" (`M`) is about and its CLIP embedding, while that filter is
+    /// on. The embedding stays even if the photo is deleted meanwhile.
+    pub(super) similar_to: Option<(PathBuf, Arc<[f32]>)>,
+    /// The photos Top N picked (`view::pick_top`), kept until a filter changes or "Refresh
+    /// order": picking again after every mark would slip the next photo into a rejected one's
+    /// place unnoticed. Empty while Top N is off.
+    pub(super) top_pick: HashSet<PathBuf>,
+    /// The options `top_pick` was made for, sort aside (`ViewOptions::top_key`): another sort
+    /// keeps it.
+    pub(super) top_pick_for: Option<ViewOptions>,
+    /// Score board version the view was built from.
+    pub(super) view_version: u64,
+    /// When the view was last built (quiet refreshes are spaced out).
+    pub(super) view_built: Instant,
+    /// Sorted sharpness values of the folder, for percentiles (board version, values).
+    pub(super) percentiles: (u64, Arc<Percentiles>),
+    /// `has_videos` for this list of the folder.
+    pub(super) videos_in: (Weak<Vec<PathBuf>>, bool),
+}
+
+impl Default for Browse {
+    fn default() -> Self {
+        Self {
+            similar_to: None,
+            top_pick: HashSet::new(),
+            top_pick_for: None,
+            view_version: 0,
+            view_built: Instant::now(),
+            percentiles: (u64::MAX, Arc::default()),
+            videos_in: (Weak::new(), false),
+        }
+    }
+}
+
 pub(super) fn index_of(paths: &[PathBuf]) -> HashMap<PathBuf, usize> {
     paths
         .iter()
@@ -28,7 +100,7 @@ pub(super) fn index_of(paths: &[PathBuf]) -> HashMap<PathBuf, usize> {
 
 impl CernoApp {
     pub(super) fn open(&mut self, ctx: &egui::Context, path: &Path) {
-        let (library, index) = match Library::open(path, self.subfolders) {
+        let (library, index) = match Library::open(path, self.folder.subfolders) {
             Ok(opened) => opened,
             Err(err) => {
                 let path = path.display().to_string();
@@ -51,7 +123,7 @@ impl CernoApp {
             }
         }
         // RAW + JPG of one name: the RAW rides along with the JPEG (`pairs`).
-        let (paths, pairs) = if self.pair_mode {
+        let (paths, pairs) = if self.folder.pair_mode {
             crate::pairs::pair_up(library.paths.to_vec(), Path::to_path_buf)
         } else {
             (library.paths.to_vec(), crate::pairs::Pairs::default())
@@ -68,17 +140,17 @@ impl CernoApp {
                     .map_or(opened.clone(), Path::to_path_buf)
             });
         let paths = Arc::new(paths);
-        self.all_index = index_of(&paths);
-        self.pairs = pairs;
-        self.all = paths;
-        self.library = Arc::clone(&self.all);
-        self.dir = Some(library.dir);
+        self.folder.all_index = index_of(&paths);
+        self.folder.pairs = pairs;
+        self.folder.all = paths;
+        self.folder.library = Arc::clone(&self.folder.all);
+        self.folder.dir = Some(library.dir);
         self.load_camera_offsets();
         self.scan_raw_marks();
         // Found in the background; the 🗑 box shows them once they are known.
         self.scan_deleted();
-        self.pinned = None;
-        self.quad = None;
+        self.viewer.pinned = None;
+        self.viewer.quad = None;
         // "Similar photos" was about a photo of the previous folder, Top N picked from it, the
         // deleted photos lay beside it.
         self.options.similar = false;
@@ -86,35 +158,36 @@ impl CernoApp {
         self.options.name_list = false;
         self.name_list.forget();
         self.layer.close_if(Layer::is_name_list);
-        self.similar_to = None;
+        self.browse.similar_to = None;
         self.options.top = None;
-        self.top_pick.clear();
-        self.top_pick_for = None;
+        self.browse.top_pick.clear();
+        self.browse.top_pick_for = None;
         // `Ctrl+Z` takes back what was done since the folder opened.
-        self.journal.clear();
+        self.marks.journal.clear();
         self.cancel_edit();
         self.thumbs.clear();
         // Only needed when the view depends on scores; the analysis fills the board anyway,
         // and on big folders the lookups would delay the first frame.
         if self.options.depends_on_scores() {
-            self.analyzer.preload(&self.all);
+            self.analyzer.preload(&self.folder.all);
         }
-        self.analyzer.set_library(Arc::clone(&self.all), index);
+        self.analyzer
+            .set_library(Arc::clone(&self.folder.all), index);
         self.view = View::default();
         self.rebuild_view(ctx, start);
     }
 
     /// Subfolders on or off (`Ctrl+U`, the settings menu); the current folder opens again.
     pub(super) fn toggle_subfolders(&mut self, ctx: &egui::Context) {
-        self.subfolders = !self.subfolders;
-        self.db.put_flag("subfolders", self.subfolders);
-        if let Some(dir) = self.dir.clone() {
+        self.folder.subfolders = !self.folder.subfolders;
+        self.db.put_flag("subfolders", self.folder.subfolders);
+        if let Some(dir) = self.folder.dir.clone() {
             self.open(ctx, &dir);
         }
         // An error or "no photos here" from opening says more.
         if self.notice.is_none() {
             let t = i18n::t();
-            self.notice = Some(Notice::hint(if self.subfolders {
+            self.notice = Some(Notice::hint(if self.folder.subfolders {
                 t.subfolders_on
             } else {
                 t.subfolders_off
@@ -147,11 +220,11 @@ impl CernoApp {
 
     pub(super) fn build_view(&self) -> View {
         view::build(
-            &self.library,
+            &self.folder.library,
             self.options,
             |p| self.facts(p),
-            &self.session_ratings,
-            &self.session_labels,
+            &self.marks.ratings,
+            &self.marks.labels,
             |p| self.deletions.is_hidden(p),
         )
     }
@@ -160,10 +233,17 @@ impl CernoApp {
         let before = self.view.get(self.current).cloned();
         let keep = keep.or_else(|| before.clone());
         // Comparing needs the pinned photo plus at least one other.
-        if self.pinned.as_ref().is_some_and(|p| !view.contains(p)) || view.len() < 2 {
-            self.pinned = None;
+        if self
+            .viewer
+            .pinned
+            .as_ref()
+            .is_some_and(|p| !view.contains(p))
+            || view.len() < 2
+        {
+            self.viewer.pinned = None;
         }
         let pinned = self
+            .viewer
             .pinned
             .as_ref()
             .and_then(|p| view.iter().position(|q| q == p));
@@ -175,10 +255,10 @@ impl CernoApp {
         if self.view.get(self.current) != before.as_ref() {
             self.start_whole();
         }
-        self.view_version = self.board.version();
-        self.view_built = Instant::now();
-        if let Some(start) = self.quad {
-            self.quad = (self.view.len() >= 2)
+        self.browse.view_version = self.board.version();
+        self.browse.view_built = Instant::now();
+        if let Some(start) = self.viewer.quad {
+            self.viewer.quad = (self.view.len() >= 2)
                 .then(|| view::quad_start(start, self.current, self.view.len()));
         }
         self.loader.set_library(
@@ -189,7 +269,7 @@ impl CernoApp {
         self.sync_analyzer();
         self.update_title(ctx);
         // A copy or move finished, a filter changed …: the geometry belongs to the other photo.
-        if let Some(session) = &self.edit
+        if let Some(session) = &self.edits.session
             && self.view.get(self.current) != Some(&session.path)
         {
             self.cancel_edit();
@@ -206,10 +286,10 @@ impl CernoApp {
     /// would restart the loader (discarding decodes in flight) and pause the analysis.
     pub(super) fn refresh_marks(&mut self, ctx: &egui::Context) {
         const EVERY: Duration = Duration::from_secs(2);
-        if self.options.depends_on_scores() || self.board.version() == self.view_version {
+        if self.options.depends_on_scores() || self.board.version() == self.browse.view_version {
             return;
         }
-        let since = self.view_built.elapsed();
+        let since = self.browse.view_built.elapsed();
         if since < EVERY {
             ctx.request_repaint_after(EVERY - since);
             return;
@@ -218,15 +298,15 @@ impl CernoApp {
         let view = self.build_view();
         if *view.paths == *self.view.paths {
             self.view = view;
-            self.view_version = version;
-            self.view_built = Instant::now();
+            self.browse.view_version = version;
+            self.browse.view_built = Instant::now();
         } else {
             self.set_view(ctx, view, None);
         }
     }
 
     pub(super) fn pinned_index(&self) -> Option<usize> {
-        let pinned = self.pinned.as_ref()?;
+        let pinned = self.viewer.pinned.as_ref()?;
         self.view.iter().position(|p| p == pinned)
     }
 
@@ -243,7 +323,7 @@ impl CernoApp {
 
     pub(super) fn pick_folder(&mut self, ctx: &egui::Context) {
         let mut dialog = rfd::FileDialog::new().set_title(i18n::t().open_folder);
-        if let Some(dir) = &self.dir {
+        if let Some(dir) = &self.folder.dir {
             dialog = dialog.set_directory(dir);
         }
         if let Some(dir) = dialog.pick_folder() {
@@ -265,13 +345,13 @@ impl CernoApp {
     /// changed – another sort only shows the same photos in another order.
     pub(super) fn options_changed(&mut self, ctx: &egui::Context) {
         if !self.options.similar {
-            self.similar_to = None;
+            self.browse.similar_to = None;
         }
         if !self.options.name_list {
             self.name_list.drop_applied();
         }
         self.save_options();
-        if self.top_pick_for != self.options.top_key() {
+        if self.browse.top_pick_for != self.options.top_key() {
             self.pick_top();
         }
         // The 🗑 box adds the deleted photos to what is looked at, or takes them away.
@@ -289,18 +369,18 @@ impl CernoApp {
     fn pick_top(&mut self) {
         let picked = match self.options.top {
             Some(n) => view::pick_top(
-                &self.all,
+                &self.folder.all,
                 self.options,
                 |p| self.facts(p),
-                &self.session_ratings,
-                &self.session_labels,
+                &self.marks.ratings,
+                &self.marks.labels,
                 |p| self.deletions.is_hidden(p),
                 usize::from(n),
             ),
             None => HashSet::new(),
         };
-        self.top_pick = picked;
-        self.top_pick_for = self.options.top_key();
+        self.browse.top_pick = picked;
+        self.browse.top_pick_for = self.options.top_key();
     }
 
     /// `M`: only the photos like the current one – in compare mode like the pinned one – or
@@ -314,6 +394,7 @@ impl CernoApp {
         }
         let t = i18n::t();
         let Some(path) = self
+            .viewer
             .pinned
             .clone()
             .or_else(|| self.view.get(self.current).cloned())
@@ -328,7 +409,7 @@ impl CernoApp {
             }));
             return;
         };
-        let any = self.all.iter().any(|other| {
+        let any = self.folder.all.iter().any(|other| {
             *other != path
                 && self
                     .analyzer
@@ -339,13 +420,17 @@ impl CernoApp {
             self.notice = Some(Notice::hint((t.similar_none)(view::SIMILAR_MIN * 100.0)));
             return;
         }
-        self.similar_to = Some((path, reference));
+        self.browse.similar_to = Some((path, reference));
         self.change_options(ctx, |o| o.similar = true);
     }
 
     /// The photo "similar photos" is about, while that filter is on, and how alike `path` is.
     pub(super) fn similarity_to_reference(&self, path: &Path) -> Option<f32> {
-        let (_, reference) = self.similar_to.as_ref().filter(|_| self.options.similar)?;
+        let (_, reference) = self
+            .browse
+            .similar_to
+            .as_ref()
+            .filter(|_| self.options.similar)?;
         self.analyzer.similarity(path, reference)
     }
 
@@ -376,11 +461,11 @@ impl CernoApp {
     /// one had (the user's wish of 2026-10-05). Compare mode and the four-up view keep their
     /// shared zoom – it is what lines the photos up.
     fn start_whole(&mut self) {
-        if self.pinned.is_none() && self.quad.is_none() {
-            self.zoom = viewer::Zoom::default();
+        if self.viewer.pinned.is_none() && self.viewer.quad.is_none() {
+            self.viewer.zoom = viewer::Zoom::default();
         }
         // A face zoom asked for the last photo does not apply to this one.
-        self.faces.zoom_to = None;
+        self.viewer.faces.zoom_to = None;
     }
 
     /// Tells the analysis where the user is (in full-folder terms) and pauses it briefly – not
@@ -389,9 +474,9 @@ impl CernoApp {
         if let Some(&index) = self
             .view
             .get(self.current)
-            .and_then(|p| self.all_index.get(p))
+            .and_then(|p| self.folder.all_index.get(p))
         {
-            if self.grid {
+            if self.viewer.grid {
                 self.analyzer.set_current_quietly(index);
             } else {
                 self.analyzer.set_current(index);
@@ -431,7 +516,7 @@ impl CernoApp {
             scores: known.scores,
             personal: self.analyzer.personal(path),
             similarity: self.similarity_to_reference(path),
-            top: self.top_pick.contains(path),
+            top: self.browse.top_pick.contains(path),
             deleted,
             listed,
         })
@@ -441,7 +526,8 @@ impl CernoApp {
     /// deleted photo the one it had there.
     pub(super) fn photo_name(&self, path: &Path) -> String {
         let path = self.deleted.original_of(path).unwrap_or(path);
-        self.dir
+        self.folder
+            .dir
             .as_ref()
             .map(|dir| library::display_name(dir, path))
             .unwrap_or_else(|| library::file_name_lossy(path))
@@ -451,36 +537,38 @@ impl CernoApp {
     /// list – `format_of` allocates, and the bar asks in every frame. The `Weak` keeps the
     /// list's address from being reused by the next one.
     pub(super) fn has_videos(&mut self) -> bool {
-        if !std::sync::Weak::ptr_eq(&self.videos_in.0, &Arc::downgrade(&self.all)) {
+        if !std::sync::Weak::ptr_eq(&self.browse.videos_in.0, &Arc::downgrade(&self.folder.all)) {
             let any = self
+                .folder
                 .all
                 .iter()
                 .any(|p| library::format_of(p) == Some(library::Format::Video));
-            self.videos_in = (Arc::downgrade(&self.all), any);
+            self.browse.videos_in = (Arc::downgrade(&self.folder.all), any);
         }
-        self.videos_in.1
+        self.browse.videos_in.1
     }
 
     /// Sharpness percentiles of the folder, recomputed when scores changed – shared, not
     /// copied for every frame.
     pub(super) fn percentiles(&mut self) -> Arc<Percentiles> {
         let version = self.board.version();
-        if self.percentiles.0 != version {
+        if self.browse.percentiles.0 != version {
             let board = &self.board;
             let scores: Vec<_> = self
+                .folder
                 .all
                 .iter()
                 .filter_map(|p| board.get(p).map(|k| k.scores))
                 .collect();
-            self.percentiles = (version, Arc::new(Percentiles::from_scores(scores.iter())));
+            self.browse.percentiles = (version, Arc::new(Percentiles::from_scores(scores.iter())));
         }
-        Arc::clone(&self.percentiles.1)
+        Arc::clone(&self.browse.percentiles.1)
     }
 
     /// The photo to show after the one at `index` disappears: the next one, otherwise the
     /// previous one – never the pinned photo or one in `exclude`.
     pub(super) fn neighbour(&self, index: usize, exclude: &[&PathBuf]) -> Option<PathBuf> {
-        let usable = |p: &&PathBuf| !exclude.contains(p) && Some(*p) != self.pinned.as_ref();
+        let usable = |p: &&PathBuf| !exclude.contains(p) && Some(*p) != self.viewer.pinned.as_ref();
         let after = self.view.get(index + 1..).unwrap_or_default();
         let before = self.view.get(..index).unwrap_or_default();
         after

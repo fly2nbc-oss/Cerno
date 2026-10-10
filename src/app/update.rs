@@ -100,7 +100,7 @@ impl CernoApp {
         if self.updates.looked || !self.updates.enabled {
             return;
         }
-        let Some(first) = self.first_photo else {
+        let Some(first) = self.startup.first_photo else {
             return;
         };
         let waited = first.elapsed();
@@ -122,10 +122,10 @@ impl CernoApp {
     /// answer (Cerno ended), it asks again at the next start.
     fn ask_about_updates(&mut self) {
         if self.updates.asked
-            || !self.logged_first_frame
+            || !self.startup.logged_first_frame
             || self.layer.is_open()
             || self.modal_open()
-            || self.side.focus
+            || self.menu_bar.state.focus
         {
             return;
         }

@@ -121,10 +121,10 @@ impl CernoApp {
     /// must not delay the first photo).
     pub(super) fn scan_deleted(&mut self) {
         self.deleted = Deleted::default();
-        let Some(dir) = self.dir.clone() else {
+        let Some(dir) = self.folder.dir.clone() else {
             return;
         };
-        let (db, subfolders) = (Arc::clone(&self.db), self.subfolders);
+        let (db, subfolders) = (Arc::clone(&self.db), self.folder.subfolders);
         let (tx, rx) = mpsc::channel();
         let spawned = std::thread::Builder::new()
             .name("cerno-deleted".into())
@@ -159,26 +159,26 @@ impl CernoApp {
     pub(super) fn sync_library(&mut self) {
         let shown = self.options.filter.contains(FilterKind::Deleted) && self.has_deleted();
         let library = if shown {
-            let mut all = self.all.to_vec();
+            let mut all = self.folder.all.to_vec();
             all.extend(self.deleted.paths.iter().cloned());
             Arc::new(all)
         } else {
-            Arc::clone(&self.all)
+            Arc::clone(&self.folder.all)
         };
         let current = self.view.get(self.current).cloned();
-        self.all_index = index_of(&library);
+        self.folder.all_index = index_of(&library);
         let index = current
-            .and_then(|path| self.all_index.get(&path).copied())
+            .and_then(|path| self.folder.all_index.get(&path).copied())
             .unwrap_or(0);
-        if *library != *self.library {
+        if *library != *self.folder.library {
             self.analyzer.set_library(Arc::clone(&library), index);
         }
-        self.library = library;
+        self.folder.library = library;
     }
 
     /// A deletion was carried out: the photo now lies at `aside`.
     pub(super) fn add_deleted(&mut self, original: PathBuf, aside: PathBuf) {
-        self.deleted.add(aside, original, self.pair_mode);
+        self.deleted.add(aside, original, self.folder.pair_mode);
     }
 
     /// `Ctrl+Z` or the menu on a deleted photo: it goes back into its folder.
@@ -241,7 +241,7 @@ impl CernoApp {
     pub(super) fn poll_deleted(&mut self, ctx: &egui::Context) {
         if let Some(found) = self.deleted.scan.as_ref().and_then(|rx| rx.try_recv().ok()) {
             self.deleted.scan = None;
-            self.deleted.set(found, self.pair_mode);
+            self.deleted.set(found, self.folder.pair_mode);
             if self.options.filter.contains(FilterKind::Deleted) {
                 self.sync_library();
                 self.rebuild_view(ctx, None);
@@ -307,7 +307,7 @@ impl CernoApp {
     /// their deletion no longer teaches the taste model.
     fn apply_restored(&mut self, ctx: &egui::Context, restored: Restored) {
         let t = i18n::t();
-        let mut all = self.all.to_vec();
+        let mut all = self.folder.all.to_vec();
         let mut renamed = 0;
         for (aside, original, to) in &restored.done {
             if let Err(err) = self.db.record_restore(
@@ -334,21 +334,23 @@ impl CernoApp {
                 log::warn!("index: {err:#}");
             }
             self.deleted.remove(&rider.aside);
-            if self.pair_mode {
-                self.pairs.insert(rider.primary.clone(), rider.to.clone());
+            if self.folder.pair_mode {
+                self.folder
+                    .pairs
+                    .insert(rider.primary.clone(), rider.to.clone());
             }
         }
-        if let Some(dir) = &self.dir {
+        if let Some(dir) = &self.folder.dir {
             library::sort(dir, &mut all);
         }
         // A RAW put back alone beside its JPEG pairs with it now; the hint reads the sidecars
         // of the pairs back.
-        if self.pair_mode {
+        if self.folder.pair_mode {
             let (paired, found) = pairs::pair_up(all, Path::to_path_buf);
             all = paired;
-            self.pairs.extend(found);
+            self.folder.pairs.extend(found);
         }
-        self.all = Arc::new(all);
+        self.folder.all = Arc::new(all);
         if !restored.done.is_empty() {
             self.analyzer.taste_changed();
             self.scan_raw_marks();

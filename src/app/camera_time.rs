@@ -50,6 +50,7 @@ impl CernoApp {
     pub(super) fn load_camera_offsets(&mut self) {
         self.layer.close_if(Layer::is_camera_time);
         let folder = self
+            .folder
             .dir
             .as_ref()
             .map(|dir| dir.to_string_lossy().into_owned());
@@ -73,7 +74,8 @@ impl CernoApp {
     /// or why not.
     fn pair(&self) -> Result<Pair, &'static str> {
         let t = i18n::t();
-        let (Some(left), Some(right)) = (self.pinned.as_ref(), self.view.get(self.current)) else {
+        let (Some(left), Some(right)) = (self.viewer.pinned.as_ref(), self.view.get(self.current))
+        else {
             return Err(t.align_needs_compare);
         };
         let known = |path: &Path| {
@@ -127,7 +129,7 @@ impl CernoApp {
 
     /// Writes one camera's offset to the index and uses it from now on.
     fn store_camera_offset(&mut self, camera: u64, offset: i64) -> bool {
-        let Some(dir) = &self.dir else {
+        let Some(dir) = &self.folder.dir else {
             return false;
         };
         if let Err(err) = self
@@ -151,7 +153,7 @@ impl CernoApp {
     pub(super) fn open_camera_time(&mut self) {
         self.leave_side_bar();
         let mut counts: HashMap<u64, usize> = HashMap::new();
-        for path in self.all.iter() {
+        for path in self.folder.all.iter() {
             if let Some(known) = self.board.get(path)
                 && let (Some(camera), Some(_)) = (known.camera, known.taken_ms)
             {

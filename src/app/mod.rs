@@ -37,6 +37,7 @@ mod notice;
 mod pairs;
 mod panels;
 mod photos;
+mod target;
 mod undo;
 mod update;
 mod video;
@@ -44,13 +45,11 @@ mod video;
 #[cfg(test)]
 mod harness;
 
-use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use eframe::egui::{self, Key, Rect, ViewportCommand};
+use eframe::egui::{self, Key, ViewportCommand};
 
 use crate::analysis::{Analyzer, ScoreBoard};
 use crate::db::Db;
@@ -58,42 +57,16 @@ use crate::deletion::{self, DeleteQueue};
 use crate::filelock::FileLocks;
 use crate::i18n::{self, Lang};
 use crate::loader::Loader;
-use crate::metadata::{Description, Label, Rating};
 use crate::paths;
 use crate::rating::RatingWriter;
 use crate::theme::tokens;
 use crate::thumbs::Thumbs;
 use crate::transfer::Queue as TransferQueue;
-use crate::ui::details::{DetailsMode, DetailsTab};
 use crate::ui::overlays;
-use crate::ui::{description, side_bar, viewer};
-use crate::view::{Media, Percentiles, PhotoFilter, SortKey, View, ViewOptions};
+use crate::ui::{description, viewer};
+use crate::view::{Media, PhotoFilter, SortKey, View, ViewOptions};
 
-use editing::EditSession;
 use notice::Notice;
-
-/// Decode size before the window exists, so the first photo decodes while the GPU starts up.
-/// Covers screens up to 4K; once the photo area is known, that photo is decoded again for it.
-/// Used only until the photo area has been seen once: then the last one is saved
-/// ([`AREA_SETTING`]) and the first photo decodes for it – nothing twice.
-const START_TARGET: [u32; 2] = [3840, 2160];
-
-/// The last photo area's decode size, `W×H` in physical pixels.
-const AREA_SETTING: &str = "photo_area";
-
-/// `3840x2054` → the decode size; anything else is ignored.
-fn parse_area(text: &str) -> Option<[u32; 2]> {
-    let (width, height) = text.split_once('x')?;
-    let size = [width.parse().ok()?, height.parse().ok()?];
-    size.iter()
-        .all(|&side| (64..=16384).contains(&side))
-        .then_some(size)
-}
-
-/// How long the photo area must keep its size before photos are decoded for it: a window
-/// dragged larger, or maximized after the first frame, would otherwise decode them at every
-/// step.
-const TARGET_SETTLE: Duration = Duration::from_millis(200);
 
 /// Set once the hint about the aesthetics model has been shown. Before 0.10 the same key
 /// meant "the download dialog was declined", which also ends the hint.
@@ -113,14 +86,8 @@ pub struct CernoApp {
     /// Copy or move of the photos the filter currently shows.
     transfers: TransferQueue,
 
-    dir: Option<PathBuf>,
-    /// Every photo of the folder, in name order.
-    all: Arc<Vec<PathBuf>>,
-    /// What sorting and filtering look at, and the analysis works on: `all`, plus the deleted
-    /// photos while the 🗑 box is ticked (`sync_library`).
-    library: Arc<Vec<PathBuf>>,
-    /// Index into `library`.
-    all_index: HashMap<PathBuf, usize>,
+    /// The open folder: its photos, subfolders, RAW + JPG pairs.
+    folder: browse::Folder,
     /// The deleted photos of the folder, lying in `.originals`.
     deleted: deleted::Deleted,
     /// The pasted file-name list (*Filter ▸ By file list …*).
@@ -130,145 +97,54 @@ pub struct CernoApp {
     /// What is shown, after sorting, filtering and hiding pending deletions.
     view: View,
     current: usize,
-    /// Compare mode: the photo pinned on the left. The current photo is shown on the right.
-    pinned: Option<PathBuf>,
-    /// The four-up view (`Shift+C`): the view index of the first of its four photos.
-    quad: Option<usize>,
     options: ViewOptions,
-    /// The photo "similar photos" (`M`) is about and its CLIP embedding, while that filter is
-    /// on. The embedding stays even if the photo is deleted meanwhile.
-    similar_to: Option<(PathBuf, Arc<[f32]>)>,
-    /// The photos Top N picked (`view::pick_top`), kept until a filter changes or "Refresh
-    /// order": picking again after every mark would slip the next photo into a rejected one's
-    /// place unnoticed. Empty while Top N is off.
-    top_pick: HashSet<PathBuf>,
-    /// The options `top_pick` was made for, sort aside (`ViewOptions::top_key`): another sort
-    /// keeps it.
-    top_pick_for: Option<ViewOptions>,
-    /// Score board version the view was built from.
-    view_version: u64,
-    /// When the view was last built (quiet refreshes are spaced out).
-    view_built: Instant,
-    /// Sorted sharpness values of the folder, for percentiles (board version, values).
-    percentiles: (u64, Arc<Percentiles>),
-    /// `has_videos` for this list of the folder.
-    videos_in: (std::sync::Weak<Vec<PathBuf>>, bool),
+    /// What the view was built from and with: the similar photo, Top N's pick, versions.
+    browse: browse::Browse,
 
-    /// Ratings given in this session; they win over the value read from the file, whose
-    /// write may still be pending.
-    session_ratings: HashMap<PathBuf, Rating>,
-    /// Colour labels given in this session (`None` clears). They win over the file the same way.
-    session_labels: HashMap<PathBuf, Option<Label>>,
-    /// Comments and keywords given in this session; they win over the file the same way.
-    session_descriptions: HashMap<PathBuf, Description>,
-    /// Which tab the details panel shows (`Ctrl+Tab` steps through them).
-    details_tab: DetailsTab,
-    /// The current photo's faces (`G`).
-    faces: faces::Faces,
+    /// The session's marks, what `Ctrl+Z` takes back, auto-advance.
+    marks: marks::Marks,
     /// The comment and keyword being typed in the description tab.
     drafts: description::Drafts,
-    /// `0`–`5`, `X` and `6`–`9` also move to the next photo.
-    auto_advance: bool,
-    /// The open folder includes nested folders.
-    subfolders: bool,
-    /// RAW + JPG of one name are one photo (*RAW+JPG as one photo*, on by default).
-    pair_mode: bool,
-    /// The RAWs riding along with the open folder's JPEGs.
-    pairs: crate::pairs::Pairs,
-    /// What the pairs' RAW sidecars say, for the note where they differ.
-    raw_marks: pairs::RawMarks,
-    /// What Ctrl+Z takes back: the session's marks and edits.
-    journal: undo::Journal,
     /// The update check: its switch and what it found.
     updates: update::Updates,
-    target: Option<[u32; 2]>,
-    /// What the loader decodes for before `target` is known: the saved area, else 4K.
-    start_target: [u32; 2],
-    /// A new decode size and since when the photo area has had it (see `TARGET_SETTLE`).
-    pending_target: Option<([u32; 2], Instant)>,
-    zoom: viewer::Zoom,
-    /// The check overlay over the photos (`O`); not saved.
-    overlay: crate::overlay::Mode,
-    /// The grid (`F7`) instead of the single photo; not saved.
-    grid: bool,
-    /// Its cell size, an index into `grid::STEPS`.
-    grid_step: usize,
-    /// The photo the grid last scrolled to: another current photo scrolls it into view.
-    grid_shown: Option<usize>,
-    /// Columns and cells per page of the last drawn grid, for `↑`/`↓` and Page Up / Down.
-    grid_columns: usize,
-    grid_page: usize,
-    /// Top bar (`F`), filmstrip (`F6`) and details panel (`Tab`); the info bar always shows.
-    show_toolbar: bool,
-    show_filmstrip: bool,
-    details: DetailsMode,
-    /// The stage `Tab` brings back.
-    details_last: DetailsMode,
-    /// The CLIP attributes are folded out in the details panel (session-wide).
-    attributes_open: bool,
+    /// The decode size: the photo area, once it has kept its size.
+    target: target::Target,
+    /// How the photo area shows: compare, four-up, zoom, the check overlay, the grids.
+    viewer: photos::Viewer,
+    /// Which bars show, and the details panel's stage and tab.
+    bars: panels::Bars,
     /// What lies over the window: the help page, the list beside a menu bar row or a card.
     layer: layer::Layer,
-    /// The menu bar on the left is switched on (the menu button, saved as `side_bar`).
-    show_side_bar: bool,
-    /// `Ctrl+K`, `Ctrl+M` or `E` showed the bar while it is off: it goes again with the
-    /// keyboard.
-    side_bar_temporary: bool,
-    /// Its open groups (saved as `side_bar_open`) and whether it has the keyboard.
-    side: side_bar::State,
-    /// `E` asked for the programs' list: it opens beside its row once the bar is drawn.
-    list_after_draw: Option<menu::ListKind>,
-    /// The counts of *Visible photos* (rejected in the folder, deleted on screen), refreshed
-    /// with the view and at most every 300 ms – the bar shows them every frame.
-    bar_counts: menu::BarCounts,
-    /// The filter bar showed on its own (a filter hid everything) and the pointer is on it: it
-    /// stays until the pointer leaves.
-    toolbar_held: bool,
-    /// `Tab` presses taken out of egui's input (`true` = with Shift), see `raw_input_hook`.
-    tab_presses: Vec<bool>,
-    /// `Ctrl+Tab` presses (`true` = with Shift: backwards): the details panel's tabs.
-    details_cycles: Vec<bool>,
+    /// The menu bar's groups, its keyboard and its counts.
+    menu_bar: menu::MenuBar,
+    /// `Tab` and `Ctrl+Tab` taken out of egui's input (`raw_input_hook`).
+    pressed: keys::Pressed,
     /// When the language was last switched (the flag shows for a moment).
     language_flash: Option<Instant>,
     /// Message over the photo; hints fade, errors wait for Esc or a click.
     notice: Option<Notice>,
     /// ExifTool: found or not, its download (Windows).
     exiftool: exiftool::ExifToolSetup,
-    /// Process start, for the start-up log lines.
+    /// When the process started and the first frame and photo showed.
+    startup: Startup,
+    /// The notice that the mark writer stopped was shown (`poll_background`).
+    writer_stopped_told: bool,
+    /// Edit elsewhere: the remembered program, the system's programs, the watched photos.
+    external: external::External,
+    /// Straighten, crop and turns: the open session, the encoding thread, the writer's work.
+    edits: editing::Edits,
+    /// The video playing in the single view, its volume, the details panel's probe.
+    videos: video::Videos,
+}
+
+/// The start, for the start-up log lines; ExifTool, the system's programs and the update check
+/// wait for the first photo.
+struct Startup {
+    /// Process start.
     started: Instant,
     logged_first_frame: bool,
     /// When the first photo was drawn; ExifTool starts a little later.
     first_photo: Option<Instant>,
-    /// The notice that the mark writer stopped was shown (`poll_background`).
-    writer_stopped_told: bool,
-    /// The program `E` opens photos in (remembered).
-    external_editor: Option<crate::external::Editor>,
-    /// The programs the system offers, per file extension (asked once).
-    editors: HashMap<String, Vec<crate::external::Editor>>,
-    /// The programs for the start photo's type, asked on a thread (`poll_editors`).
-    editors_coming: Option<std::sync::mpsc::Receiver<(String, Vec<crate::external::Editor>)>>,
-    editors_asked: bool,
-    /// Photos opened in another program, watched for saves.
-    watched: Vec<external::Watched>,
-    /// A program being started (its original kept first).
-    launching: Option<std::sync::mpsc::Receiver<external::Launched>>,
-    external_checked: Instant,
-    /// Straighten or crop, while it is open. The saved zoom comes back on Enter or Esc.
-    edit: Option<EditSession>,
-    /// Encodes a confirmed edit. Joined on exit so the write is not lost.
-    edit_thread: Option<JoinHandle<()>>,
-    /// A quarter turn or a re-encode is still in the writer.
-    edit_busy: bool,
-    /// The video playing (or paused) in the single view (`video`).
-    video: Option<video::Session>,
-    /// Stopped players, until their files are closed.
-    video_releases: Vec<crate::playback::Release>,
-    /// Volume 0..=1 and sound off, saved.
-    video_volume: f32,
-    video_muted: bool,
-    /// "Plays without sound" (no sound device) was shown in this run.
-    video_silent_told: bool,
-    /// The streams of the video the details panel shows, read in the background.
-    media_probe: Option<video::Probe>,
 }
 
 /// What `assemble` takes from outside: the index and the parts that write or delete files or
@@ -353,36 +229,18 @@ impl CernoApp {
             hide_rejected: db.setting("hide_rejected").as_deref() == Some("1"),
             name_list: false,
         };
-        let auto_advance = db.setting("auto_advance").as_deref() == Some("1");
-        let subfolders = db.setting("subfolders").as_deref() == Some("1");
-        let pair_mode = db.setting(pairs::SETTING).as_deref() != Some("0");
-        // Only the photo, the filmstrip and the info bar by default.
-        let show_toolbar = db.setting("top_bar").as_deref() == Some("1");
-        let show_filmstrip = db.setting("filmstrip").as_deref() != Some("0");
-        // Off until the menu button switches it on (the user's decision F3 of 2026-10-10).
-        let show_side_bar = db.setting("side_bar").as_deref() == Some("1");
-        let side = side_bar::State::restore(db.setting(menu::SIDE_BAR_OPEN).as_deref());
-        let external_editor = db
-            .setting(external::SETTING)
-            .and_then(|text| crate::external::Editor::from_setting(&text));
-        let details = db
-            .setting("details_mode")
-            .and_then(|m| DetailsMode::from_id(&m))
-            .unwrap_or(DetailsMode::Off);
-        let details_tab = db
-            .setting("details_tab")
-            .and_then(|id| DetailsTab::from_id(&id))
-            .unwrap_or(DetailsTab::Values);
-        let (video_volume, video_muted) = video::saved_volume(&db);
-        let start_target = db
-            .setting(AREA_SETTING)
-            .and_then(|text| parse_area(&text))
-            .unwrap_or(START_TARGET);
+        let marks = marks::Marks::restore(&db);
+        let folder = browse::Folder::restore(&db);
+        let bars = panels::Bars::restore(&db);
+        let menu_bar = menu::MenuBar::restore(&db);
+        let external = external::External::restore(&db);
+        let videos = video::Videos::restore(&db);
+        let target = target::Target::restore(&db);
 
         Self {
             loader: Loader::new(
                 ctx.clone(),
-                start_target,
+                target.start,
                 Arc::clone(&thumbs),
                 Arc::clone(&files),
             ),
@@ -400,131 +258,35 @@ impl CernoApp {
             files,
             thumbs,
             board,
-            dir: None,
-            all: Arc::new(Vec::new()),
-            library: Arc::new(Vec::new()),
-            all_index: HashMap::new(),
+            folder,
             deleted: deleted::Deleted::default(),
             name_list: name_list::NameList::default(),
             camera_time: camera_time::CameraTime::default(),
             view: View::default(),
             current: 0,
-            pinned: None,
-            quad: None,
             options,
-            similar_to: None,
-            top_pick: HashSet::new(),
-            top_pick_for: None,
-            view_version: 0,
-            view_built: Instant::now(),
-            percentiles: (u64::MAX, Arc::default()),
-            videos_in: (std::sync::Weak::new(), false),
-            session_ratings: HashMap::new(),
-            session_labels: HashMap::new(),
-            session_descriptions: HashMap::new(),
-            details_tab,
-            faces: faces::Faces::default(),
+            browse: browse::Browse::default(),
+            marks,
             drafts: description::Drafts::default(),
-            auto_advance,
-            subfolders,
-            pair_mode,
-            pairs: crate::pairs::Pairs::default(),
-            raw_marks: pairs::RawMarks::default(),
-            journal: undo::Journal::default(),
             updates,
-            target: None,
-            start_target,
-            pending_target: None,
-            zoom: viewer::Zoom::default(),
-            overlay: crate::overlay::Mode::Off,
-            grid: false,
-            grid_step: crate::ui::grid::DEFAULT_STEP,
-            grid_shown: None,
-            grid_columns: 1,
-            grid_page: 1,
-            show_toolbar,
-            show_filmstrip,
-            details,
-            details_last: if details == DetailsMode::Off {
-                DetailsMode::On
-            } else {
-                details
-            },
-            attributes_open: false,
+            target,
+            viewer: photos::Viewer::default(),
+            bars,
             layer: layer::Layer::None,
-            show_side_bar,
-            side_bar_temporary: false,
-            side,
-            list_after_draw: None,
-            bar_counts: menu::BarCounts::default(),
-            toolbar_held: false,
-            tab_presses: Vec::new(),
-            details_cycles: Vec::new(),
+            menu_bar,
+            pressed: keys::Pressed::default(),
             language_flash: None,
             notice,
             exiftool: exiftool(),
-            started,
-            logged_first_frame: false,
-            first_photo: None,
+            startup: Startup {
+                started,
+                logged_first_frame: false,
+                first_photo: None,
+            },
             writer_stopped_told: false,
-            external_editor,
-            editors: HashMap::new(),
-            editors_coming: None,
-            editors_asked: false,
-            watched: Vec::new(),
-            launching: None,
-            external_checked: Instant::now(),
-            edit: None,
-            edit_thread: None,
-            edit_busy: false,
-            video: None,
-            video_releases: Vec::new(),
-            video_volume,
-            video_muted,
-            video_silent_told: false,
-            media_probe: None,
-        }
-    }
-
-    /// Decode size: the photo area in physical pixels (`viewer::decode_size`), so a fitted
-    /// photo is drawn pixel for pixel. Taken once the area has kept it for [`TARGET_SETTLE`] –
-    /// at start-up at once when it is the saved one the first photo was decoded for. The first
-    /// one also starts the prefetch – after it, so the neighbours are decoded for the area and
-    /// not for the start-up guess.
-    fn update_target(&mut self, ctx: &egui::Context, areas: &[Rect]) {
-        let max_side = ctx.input(|i| i.max_texture_side) as u32;
-        let Some(wanted) = viewer::decode_size(areas, ctx.pixels_per_point(), max_side) else {
-            return;
-        };
-        if self.target == Some(wanted) {
-            self.pending_target = None;
-            return;
-        }
-        let now = Instant::now();
-        let since = match self.pending_target {
-            Some((pending, since)) if pending == wanted => since,
-            _ => {
-                self.pending_target = Some((wanted, now));
-                now
-            }
-        };
-        let waited = now - since;
-        let known = self.target.is_none() && wanted == self.start_target;
-        if waited < TARGET_SETTLE && !known {
-            ctx.request_repaint_after(TARGET_SETTLE - waited);
-            return;
-        }
-        self.pending_target = None;
-        let first = self.target.replace(wanted).is_none();
-        self.loader.set_target(wanted);
-        if first {
-            self.loader.start_prefetch();
-        }
-        // The single view's size only: Cerno starts in it.
-        if wanted != self.start_target && self.pinned.is_none() && self.quad.is_none() {
-            self.start_target = wanted;
-            self.db
-                .put_setting(AREA_SETTING, &format!("{}x{}", wanted[0], wanted[1]));
+            external,
+            edits: editing::Edits::default(),
+            videos,
         }
     }
 
@@ -580,27 +342,27 @@ impl CernoApp {
     fn run_frame(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let window = ui.max_rect();
-        if !self.logged_first_frame {
-            self.logged_first_frame = true;
+        if !self.startup.logged_first_frame {
+            self.startup.logged_first_frame = true;
             // Fill the work area of the monitor the window is on. Maximized stays on one
             // screen; F11 is the separate fullscreen switch.
             ctx.send_viewport_cmd(ViewportCommand::Maximized(true));
             log::info!(
                 "start-up: first frame after {} ms",
-                self.started.elapsed().as_millis()
+                self.startup.started.elapsed().as_millis()
             );
         }
         self.poll_background(&ctx);
 
         let layout = self.layout(window);
         // The grid shows no photo, so it keeps the decode size.
-        if !self.grid {
+        if !self.viewer.grid {
             let areas = self.photo_areas(layout.area);
             self.update_target(&ctx, &areas);
         }
         // The grid shows no photo: zoom keys go to its cell size, not to a hidden photo. A
         // video has no frame here either: it is not zoomed.
-        let frames: Vec<viewer::Frame> = if self.grid {
+        let frames: Vec<viewer::Frame> = if self.viewer.grid {
             Vec::new()
         } else {
             self.slots(layout.area)
@@ -634,7 +396,7 @@ impl CernoApp {
         }
         self.draw_messages(ui, layout.area);
         self.draw_overlays(&ctx, window, &frames);
-        let flash = if self.all.is_empty() {
+        let flash = if self.folder.all.is_empty() {
             window
         } else {
             layout.area
@@ -663,7 +425,7 @@ impl eframe::App for CernoApp {
                 ..
             } if modifiers.command && !modifiers.alt => {
                 if *pressed && !*repeat {
-                    self.details_cycles.push(modifiers.shift);
+                    self.pressed.details_cycles.push(modifiers.shift);
                 }
                 false
             }
@@ -682,7 +444,7 @@ impl eframe::App for CernoApp {
                 ..
             } => {
                 if *pressed && !*repeat && !modifiers.command && !modifiers.alt {
-                    self.tab_presses.push(modifiers.shift);
+                    self.pressed.tabs.push(modifiers.shift);
                 }
                 false
             }
@@ -696,7 +458,7 @@ impl eframe::App for CernoApp {
         // A rating given right before closing must still reach the file, and a deletion that
         // wasn't undone is carried out. A confirmed edit encodes first, then the writer
         // applies it.
-        if let Some(thread) = self.edit_thread.take() {
+        if let Some(thread) = self.edits.thread.take() {
             let _ = thread.join();
         }
         // A comment still in its field is written with the rest.

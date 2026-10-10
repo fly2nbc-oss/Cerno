@@ -74,8 +74,8 @@ impl CernoApp {
     /// The card, while open: what the list finds is shown as it is typed; Apply shows just
     /// those photos.
     pub(super) fn draw_name_list_card(&mut self, ctx: &egui::Context, window: Rect) {
-        let dir = self.dir.clone().unwrap_or_default();
-        let all = std::sync::Arc::clone(&self.all);
+        let dir = self.folder.dir.clone().unwrap_or_default();
+        let all = std::sync::Arc::clone(&self.folder.all);
         let Layer::NameList(card) = &mut self.layer else {
             return;
         };

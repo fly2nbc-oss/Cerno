@@ -48,14 +48,48 @@ pub(super) struct RowList {
     by_key: bool,
 }
 
+/// The menu bar's state; whether it shows is `show_side_bar`.
+pub(super) struct MenuBar {
+    /// Its open groups (saved as `side_bar_open`) and whether it has the keyboard.
+    pub(super) state: side_bar::State,
+    /// `Ctrl+K`, `Ctrl+M` or `E` showed the bar while it is off: it goes again with the
+    /// keyboard.
+    pub(super) temporary: bool,
+    /// `E` asked for the programs' list: it opens beside its row once the bar is drawn.
+    pub(super) list_after_draw: Option<ListKind>,
+    /// The counts of *Visible photos* (rejected in the folder, deleted on screen), refreshed
+    /// with the view and at most every 300 ms – the bar shows them every frame.
+    counts: BarCounts,
+}
+
+impl MenuBar {
+    /// The saved open groups.
+    pub(super) fn restore(db: &crate::db::Db) -> Self {
+        Self {
+            state: side_bar::State::restore(db.setting(SIDE_BAR_OPEN).as_deref()),
+            temporary: false,
+            list_after_draw: None,
+            counts: BarCounts::default(),
+        }
+    }
+}
+
 /// *Visible photos*' counts – rejected photos of the folder, deleted ones shown – kept, so
 /// the bar doesn't count every photo every frame (CER-34).
 #[derive(Debug, Default)]
-pub(super) struct BarCounts {
+struct BarCounts {
     rejected: usize,
     deleted_shown: usize,
     /// The view it was counted for (when it was built), and when.
     counted: Option<(Instant, Instant)>,
+}
+
+impl BarCounts {
+    /// Counted for the view built at `built`, less than `COUNTS_FRESH` before `now`.
+    fn fresh(&self, built: Instant, now: Instant) -> bool {
+        self.counted
+            .is_some_and(|(counted_for, at)| counted_for == built && now - at < COUNTS_FRESH)
+    }
 }
 
 /// How long a count may be old while the view stays the same (a mark changes the rejected
@@ -210,7 +244,7 @@ impl CernoApp {
     /// A card (models, confirmation) or the faces grid is open: keys and the photo's mouse
     /// handling pause.
     pub(super) fn modal_open(&self) -> bool {
-        self.layer.is_card() || self.faces.grid_open
+        self.layer.is_card() || self.viewer.faces.grid_open
     }
 
     /// Help page, menus, models card and confirmation – in this order, the last on top.
@@ -220,14 +254,14 @@ impl CernoApp {
         window: Rect,
         frames: &[viewer::Frame],
     ) {
-        if self.faces.grid_open {
+        if self.viewer.faces.grid_open {
             let area = self.layout(window).area;
             let state = self.faces_of_current(ctx);
             let out = crate::ui::faces::grid(ctx, area, &state.shown());
             if let Some(face) = out.clicked {
                 self.zoom_to_face(face);
             } else if out.close {
-                self.faces.grid_open = false;
+                self.viewer.faces.grid_open = false;
             }
         }
         if let Layer::Help(page) = self.layer {
@@ -340,7 +374,7 @@ impl CernoApp {
             Some(i18n::with_ctrl("O")),
         ))];
         let mut sections = Vec::new();
-        if !self.all.is_empty() {
+        if !self.folder.all.is_empty() {
             sections.push(Section {
                 id: PHOTO,
                 title: t.menu_this_photo.to_owned(),
@@ -384,7 +418,7 @@ impl CernoApp {
         });
         let colour = current.and_then(|path| self.label_of(path, image.as_deref()));
         // A pair's edits change the JPEG alone; the rows say so.
-        let paired = current.is_some_and(|path| self.pairs.companion(path).is_some());
+        let paired = current.is_some_and(|path| self.folder.pairs.companion(path).is_some());
         let jpeg_only = |row: Row<Action>| {
             if paired {
                 row.hint(t.pair_edit_jpeg_only)
@@ -464,11 +498,12 @@ impl CernoApp {
                     .disabled(mark),
             ),
             Item::Row(
-                Row::new(Action::Compare, t.cmd_compare, key("C")).toggle(self.pinned.is_some()),
+                Row::new(Action::Compare, t.cmd_compare, key("C"))
+                    .toggle(self.viewer.pinned.is_some()),
             ),
             Item::Row(
                 Row::new(Action::Quad, t.cmd_quad, Some(i18n::with_shift("C")))
-                    .toggle(self.quad.is_some()),
+                    .toggle(self.viewer.quad.is_some()),
             ),
             Item::Row(jpeg_only(
                 Row::new(Action::Straighten, t.cmd_straighten, key("S")).disabled(edit),
@@ -536,13 +571,15 @@ impl CernoApp {
                 action: Action::Overlay(mode),
                 look: Look::Text(short.to_owned()),
                 tooltip: format!("{name} (O)"),
-                on: self.overlay == mode,
+                on: self.viewer.overlay == mode,
             })
             .collect(),
             disabled: None,
         };
         vec![
-            Item::Row(Row::new(Action::Zoom, t.cmd_zoom, key("Z")).toggle(self.zoom.is_zoomed())),
+            Item::Row(
+                Row::new(Action::Zoom, t.cmd_zoom, key("Z")).toggle(self.viewer.zoom.is_zoomed()),
+            ),
             Item::Segments(overlay),
             Item::Row(Row::new(Action::Fullscreen, t.cmd_fullscreen, key("F"))),
         ]
@@ -554,7 +591,8 @@ impl CernoApp {
         let t = i18n::t();
         let mut items = vec![
             Item::Row(
-                Row::new(Action::AutoAdvance, t.cmd_auto_advance, None).toggle(self.auto_advance),
+                Row::new(Action::AutoAdvance, t.cmd_auto_advance, None)
+                    .toggle(self.marks.auto_advance),
             ),
             Item::Row(
                 Row::new(
@@ -562,11 +600,11 @@ impl CernoApp {
                     t.cmd_subfolders,
                     Some(i18n::with_ctrl("U")),
                 )
-                .toggle(self.subfolders),
+                .toggle(self.folder.subfolders),
             ),
             Item::Row(
                 Row::new(Action::Pairs, t.cmd_pairs, None)
-                    .toggle(self.pair_mode)
+                    .toggle(self.folder.pair_mode)
                     .hint(t.pairs_hint),
             ),
             Item::Row(
@@ -597,7 +635,7 @@ impl CernoApp {
         let t = i18n::t();
         let current = self.view.get(self.current).map(PathBuf::as_path);
         let block = self.menu_block(Change::External, current);
-        let remembered = self.external_editor.as_ref();
+        let remembered = self.external.remembered.as_ref();
         let listed = self.editors_for_current();
         let mut rows = Vec::new();
         if let Some(editor) = remembered
@@ -643,7 +681,7 @@ impl CernoApp {
             .iter()
             .position(|item| matches!(item, Item::List(row) if row.action == Action::EditList));
         self.open_side_bar_at(PHOTO, index);
-        self.list_after_draw = Some(ListKind::Editors);
+        self.menu_bar.list_after_draw = Some(ListKind::Editors);
     }
 
     /// `Ctrl+M`: the bar on *Visible photos* – copy, move, delete what the filter shows.
@@ -682,12 +720,13 @@ impl CernoApp {
         self.refresh_bar_counts();
         let bar = self.side_bar_content();
         // Its keys only while it has the keyboard and nothing lies over it.
-        let listening = self.side.focus && !self.layer.is_open() && !self.modal_open();
-        let out = side_bar::show(ui, rect, &mut self.side, &bar, listening);
+        let listening = self.menu_bar.state.focus && !self.layer.is_open() && !self.modal_open();
+        let out = side_bar::show(ui, rect, &mut self.menu_bar.state, &bar, listening);
         if out.folded {
-            self.db.put_setting(SIDE_BAR_OPEN, &self.side.saved());
+            self.db
+                .put_setting(SIDE_BAR_OPEN, &self.menu_bar.state.saved());
         }
-        if let Some(kind) = self.list_after_draw.take()
+        if let Some(kind) = self.menu_bar.list_after_draw.take()
             && let Some(at) = out.cursor
         {
             self.open_row_list(kind, at, true);
@@ -716,16 +755,12 @@ impl CernoApp {
     /// *Visible photos*' counts, again when the view changed and at most every 300 ms.
     fn refresh_bar_counts(&mut self) {
         let now = Instant::now();
-        let fresh = self
-            .bar_counts
-            .counted
-            .is_some_and(|(built, at)| built == self.view_built && now - at < COUNTS_FRESH);
-        if fresh {
+        if self.menu_bar.counts.fresh(self.browse.view_built, now) {
             return;
         }
-        self.bar_counts.rejected = self.rejected().len();
-        self.bar_counts.deleted_shown = self.deleted_shown();
-        self.bar_counts.counted = Some((self.view_built, now));
+        self.menu_bar.counts.rejected = self.rejected().len();
+        self.menu_bar.counts.deleted_shown = self.deleted_shown();
+        self.menu_bar.counts.counted = Some((self.browse.view_built, now));
     }
 
     /// What acts on many photos at once: copy, move and delete what the filter shows, delete
@@ -749,7 +784,7 @@ impl CernoApp {
             rejected,
             deleted_shown: deleted,
             ..
-        } = self.bar_counts;
+        } = self.menu_bar.counts;
         let shown = self.view.len().saturating_sub(deleted);
         vec![
             Row::new(Action::Copy, (t.bulk_copy)(shown), None)
@@ -782,7 +817,7 @@ impl CernoApp {
 
     fn run_unguarded(&mut self, ctx: &egui::Context, action: Action, frames: &[viewer::Frame]) {
         // Like their keys: these need the single photo, so the grid steps aside first.
-        if self.grid
+        if self.viewer.grid
             && matches!(
                 action,
                 Action::Compare
@@ -804,7 +839,7 @@ impl CernoApp {
             Action::Undo => self.undo(ctx),
             Action::Zoom => {
                 if let Some(frame) = frames.last() {
-                    self.zoom.toggle(frame, None);
+                    self.viewer.zoom.toggle(frame, None);
                 }
             }
             Action::Overlay(mode) => self.set_overlay(mode),
@@ -839,8 +874,8 @@ impl CernoApp {
                 None => self.set_label(ctx, None, false),
             },
             Action::AutoAdvance => {
-                self.auto_advance = !self.auto_advance;
-                self.db.put_flag("auto_advance", self.auto_advance);
+                self.marks.auto_advance = !self.marks.auto_advance;
+                self.db.put_flag("auto_advance", self.marks.auto_advance);
             }
             Action::Subfolders => self.toggle_subfolders(ctx),
             Action::Language(lang) => self.set_language(ctx, lang),
@@ -884,5 +919,17 @@ mod tests {
             .filter(|row| row.mark == palette::Mark::Choice(true))
             .count();
         assert_eq!(ticked, 1);
+    }
+
+    /// The counts hold for one view and a short while.
+    #[test]
+    fn bar_counts_go_stale_with_a_new_view_or_time() {
+        let built = Instant::now();
+        let mut counts = BarCounts::default();
+        assert!(!counts.fresh(built, built), "never counted");
+        counts.counted = Some((built, built));
+        assert!(counts.fresh(built, built + COUNTS_FRESH / 2));
+        assert!(!counts.fresh(built, built + COUNTS_FRESH));
+        assert!(!counts.fresh(built + COUNTS_FRESH, built), "another view");
     }
 }

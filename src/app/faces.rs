@@ -81,7 +81,7 @@ impl State {
 impl CernoApp {
     /// `G`: every face of the photo large over it, or the photo again.
     pub(super) fn toggle_face_grid(&mut self) {
-        self.faces.grid_open = !self.faces.grid_open;
+        self.viewer.faces.grid_open = !self.viewer.faces.grid_open;
     }
 
     /// The faces part of the info bar's view switcher: what the faces grid would show for the
@@ -105,27 +105,27 @@ impl CernoApp {
             Some(0) => FaceButton::OnlySmall,
             count => FaceButton::Found(count),
         };
-        if self.faces.path.as_ref() == Some(&path)
-            && let Some(found) = &self.faces.found
+        if self.viewer.faces.path.as_ref() == Some(&path)
+            && let Some(found) = &self.viewer.faces.found
         {
             return shown(Some(found.crops.len()));
         }
-        if let Some(rx) = &self.faces.count_rx
+        if let Some(rx) = &self.viewer.faces.count_rx
             && let Ok(counted) = rx.try_recv()
         {
-            self.faces.count_rx = None;
-            self.faces.counted = Some(counted);
+            self.viewer.faces.count_rx = None;
+            self.viewer.faces.counted = Some(counted);
         }
-        if let Some((counted, count)) = &self.faces.counted
+        if let Some((counted, count)) = &self.viewer.faces.counted
             && *counted == path
         {
             return shown(*count);
         }
-        if self.faces.counting.as_ref() != Some(&path)
+        if self.viewer.faces.counting.as_ref() != Some(&path)
             && let Lookup::Ready(image) = self.loader.get(self.current)
         {
-            self.faces.counting = Some(path.clone());
-            self.faces.count_rx = Some(count_faces(
+            self.viewer.faces.counting = Some(path.clone());
+            self.viewer.faces.count_rx = Some(count_faces(
                 ctx.clone(),
                 Arc::clone(&self.db),
                 path,
@@ -151,10 +151,10 @@ impl CernoApp {
             Some(0) => return State::None,
             Some(_) => {}
         }
-        if self.faces.path.as_ref() != Some(&path) {
-            self.faces.path = Some(path.clone());
-            self.faces.found = None;
-            self.faces.rx = Some(search(
+        if self.viewer.faces.path.as_ref() != Some(&path) {
+            self.viewer.faces.path = Some(path.clone());
+            self.viewer.faces.found = None;
+            self.viewer.faces.rx = Some(search(
                 ctx.clone(),
                 Arc::clone(&self.db),
                 Arc::clone(&self.files),
@@ -162,45 +162,45 @@ impl CernoApp {
                 known.and_then(|k| k.fingerprint),
             ));
         }
-        match &self.faces.found {
+        match &self.viewer.faces.found {
             Some(found) => State::Ready(Arc::clone(found)),
-            None if self.faces.rx.is_some() => State::Loading,
+            None if self.viewer.faces.rx.is_some() => State::Loading,
             None => State::None,
         }
     }
 
     /// A finished search, if its photo is still the current one.
     pub(super) fn poll_faces(&mut self) {
-        let Some(rx) = &self.faces.rx else {
+        let Some(rx) = &self.viewer.faces.rx else {
             return;
         };
         match rx.try_recv() {
             Ok(result) => {
-                self.faces.rx = None;
+                self.viewer.faces.rx = None;
                 match result {
-                    Ok(found) => self.faces.found = Some(Arc::new(found)),
+                    Ok(found) => self.viewer.faces.found = Some(Arc::new(found)),
                     Err(err) => log::warn!("faces: {err}"),
                 }
             }
             Err(mpsc::TryRecvError::Empty) => {}
-            Err(mpsc::TryRecvError::Disconnected) => self.faces.rx = None,
+            Err(mpsc::TryRecvError::Disconnected) => self.viewer.faces.rx = None,
         }
     }
 
     /// A face was clicked in the grid: zoom to it (the grid closes, the single
     /// photo shows).
     pub(super) fn zoom_to_face(&mut self, index: usize) {
-        let Some(found) = &self.faces.found else {
+        let Some(found) = &self.viewer.faces.found else {
             return;
         };
         let Some(face) = found.boxes.get(index).copied() else {
             return;
         };
-        self.faces.grid_open = false;
-        if self.grid {
+        self.viewer.faces.grid_open = false;
+        if self.viewer.grid {
             self.set_grid(false);
         }
-        self.faces.zoom_to = Some(face);
+        self.viewer.faces.zoom_to = Some(face);
     }
 
     /// Applies a face zoom once the photo's frame is known: the face's box takes about half
@@ -209,23 +209,23 @@ impl CernoApp {
         let Some(frame) = frames.last() else {
             return;
         };
-        let Some([x, y, w, h]) = self.faces.zoom_to.take() else {
+        let Some([x, y, w, h]) = self.viewer.faces.zoom_to.take() else {
             return;
         };
         let ih = frame.image_size[1] as f32;
         let area_h = frame.area.height() * frame.pixels_per_point;
         let wanted = area_h * ZOOM_SHARE / (h * ih).max(1.0);
         let fit = frame.fit_scale();
-        self.zoom.scale = Some(wanted.clamp(fit, ZOOM_MAX.max(fit)));
-        self.zoom.center = vec2(x + w / 2.0, y + h / 2.0);
+        self.viewer.zoom.scale = Some(wanted.clamp(fit, ZOOM_MAX.max(fit)));
+        self.viewer.zoom.center = vec2(x + w / 2.0, y + h / 2.0);
     }
 
     /// The photo was changed (an edit, another program's save): its faces are looked for
     /// again the next time they show.
     pub(super) fn forget_faces(&mut self, path: &Path) {
-        if self.faces.path.as_deref() == Some(path) {
-            self.faces = Faces {
-                grid_open: self.faces.grid_open,
+        if self.viewer.faces.path.as_deref() == Some(path) {
+            self.viewer.faces = Faces {
+                grid_open: self.viewer.faces.grid_open,
                 ..Faces::default()
             };
         }
