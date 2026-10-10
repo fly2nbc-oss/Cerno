@@ -16,6 +16,7 @@ use crate::ui::{overlays, viewer};
 use crate::view;
 
 use super::CernoApp;
+use super::command::Command;
 use super::gate::Change;
 use super::notice::Notice;
 
@@ -388,7 +389,14 @@ impl CernoApp {
             let prev = slot.index > 0;
             let next = slot.index + 1 < self.view.len();
             if let Some(step) = overlays::browse_arrows(ui, slot.area, prev, next) {
-                self.go_to(ui.ctx(), slot.index.saturating_add_signed(step), step);
+                let index = slot.index.saturating_add_signed(step);
+                self.click(
+                    ui.ctx(),
+                    Command::GoTo {
+                        index,
+                        direction: step,
+                    },
+                );
             }
         }
     }
