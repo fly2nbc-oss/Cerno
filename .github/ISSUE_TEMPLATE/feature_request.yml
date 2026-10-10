@@ -24,4 +24,4 @@ body:
     id: version
     attributes:
       label: Cerno version
-      placeholder: "1.11.0"
+      placeholder: "1.12.0"

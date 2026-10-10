@@ -7,6 +7,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+## [1.12.0] – 2026-10-11
+
 `F10` for the menu bar, which is now for the mouse; stars in the menu bar; an update for an ExifTool Cerno downloaded; and a tidier inside.
 
 ### Added
