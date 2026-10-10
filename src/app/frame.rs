@@ -11,7 +11,6 @@ use crate::library;
 use crate::loader::Lookup;
 use crate::theme::tokens;
 use crate::ui::details::{self, DetailsMode, DetailsTab};
-use crate::ui::icons::Panel;
 use crate::ui::{cells, filmstrip, filter_bar, grid, help, info_bar, overlays, side_bar};
 use crate::view;
 
@@ -240,8 +239,8 @@ impl CernoApp {
         if out.help {
             self.open_help();
         }
-        if out.menu {
-            self.toggle_panel(Panel::Left);
+        if let Some(panel) = out.panel {
+            self.toggle_panel(panel);
         }
     }
 
@@ -276,6 +275,7 @@ impl CernoApp {
             .and_then(|p| p.as_ref())
             .map(|original| self.photo_name(original));
         let comparing = self.pinned.is_some();
+        let faces = self.face_button(&ctx);
         let bar = info_bar::InfoBar {
             name: &name,
             position: (self.current + 1, self.view.len()),
@@ -321,6 +321,11 @@ impl CernoApp {
                 details: self.details != DetailsMode::Off,
                 filmstrip: self.show_filmstrip,
             },
+            views: info_bar::Views {
+                grid: self.grid,
+                faces_open: self.faces.grid_open,
+                faces,
+            },
         };
         let out = info_bar::info_bar(ui, rect, &bar);
         if let Some(stars) = out.rating {
@@ -329,12 +334,13 @@ impl CernoApp {
         if out.help {
             self.open_help();
         }
-        // The menu button switches the menu bar (the user's decision F3 of 2026-10-10).
-        if out.menu {
-            self.toggle_panel(Panel::Left);
-        }
+        // The bars' buttons, the menu bar's among them (the user's decisions F3 and option A
+        // of 2026-10-10).
         if let Some(panel) = out.panel {
             self.toggle_panel(panel);
+        }
+        if let Some(view) = out.view {
+            self.show_view(view);
         }
         let Some(rect) = details_rect else {
             // The panel is closed: a comment still being typed is written now.

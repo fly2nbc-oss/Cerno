@@ -168,6 +168,25 @@ impl CernoApp {
         }
     }
 
+    /// The info bar's view switcher: the photo, the grid or the faces of the photo – what
+    /// `Esc`, `F7` and `G` do.
+    pub(super) fn show_view(&mut self, view: crate::ui::info_bar::View) {
+        use crate::ui::info_bar::View;
+        match view {
+            View::Photo => {
+                self.faces.grid_open = false;
+                if self.grid {
+                    self.set_grid(false);
+                }
+            }
+            View::Grid => {
+                self.faces.grid_open = false;
+                self.set_grid(true);
+            }
+            View::Faces => self.faces.grid_open = true,
+        }
+    }
+
     /// `+`/`−` or Ctrl + wheel in the grid: the cell size, a step at a time.
     pub(super) fn resize_grid(&mut self, steps: i32) {
         let last = crate::ui::grid::STEPS.len() as i32 - 1;

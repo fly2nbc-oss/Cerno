@@ -110,7 +110,8 @@ pub enum Panel {
 }
 
 /// Window outline with the panel's strip, filled while the panel shows: the info bar's panel
-/// buttons.
+/// buttons. The left strip is the menu bar and carries three menu lines, so the one button
+/// reads as both "left panel" and "menu".
 pub fn panel(painter: &Painter, center: Pos2, panel: Panel, shown: bool, color: Color32) {
     let frame = Rect::from_center_size(center, vec2(16.0, 13.0));
     let strip = match panel {
@@ -142,7 +143,63 @@ pub fn panel(painter: &Painter, center: Pos2, panel: Panel, shown: bool, color: 
         };
         painter.line_segment(line, Stroke::new(1.3, color));
     }
+    if panel == Panel::Left {
+        // Cut out of the filled strip, drawn into the empty one.
+        let ink = if shown { tokens::SURFACE } else { color };
+        for dy in [-3.0, 0.0, 3.0] {
+            let y = strip.center().y + dy;
+            painter.line_segment(
+                [pos2(strip.min.x + 1.4, y), pos2(strip.max.x - 1.3, y)],
+                Stroke::new(1.1, ink),
+            );
+        }
+    }
     painter.rect_stroke(frame, 2.0, Stroke::new(1.3, color), StrokeKind::Inside);
+}
+
+/// A landscape in a frame: the view switcher's single photo.
+pub fn photo(painter: &Painter, center: Pos2, color: Color32) {
+    let frame = Rect::from_center_size(center, vec2(16.0, 13.0));
+    let stroke = Stroke::new(1.3, color);
+    painter.rect_stroke(frame, 2.0, stroke, StrokeKind::Inside);
+    let points = vec![
+        pos2(frame.min.x + 1.5, frame.max.y - 2.0),
+        pos2(frame.min.x + 6.0, frame.min.y + 6.5),
+        pos2(frame.min.x + 9.5, frame.min.y + 9.5),
+        pos2(frame.min.x + 12.0, frame.min.y + 7.5),
+        pos2(frame.max.x - 1.5, frame.max.y - 2.0),
+    ];
+    painter.add(Shape::line(points, stroke));
+    painter.circle_filled(pos2(frame.max.x - 4.5, frame.min.y + 3.8), 1.4, color);
+}
+
+/// Four squares: the view switcher's grid.
+pub fn grid(painter: &Painter, center: Pos2, color: Color32) {
+    let stroke = Stroke::new(1.3, color);
+    for (dx, dy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+        let cell = Rect::from_center_size(center + vec2(dx * 4.0, dy * 4.0), vec2(6.4, 6.4));
+        painter.rect_stroke(cell, 1.3, stroke, StrokeKind::Inside);
+    }
+}
+
+/// A face in the corners of a viewfinder: the view switcher's faces.
+pub fn face_frame(painter: &Painter, center: Pos2, color: Color32) {
+    let stroke = Stroke::new(1.3, color);
+    let (d, arm) = (7.5, 3.2);
+    for (sx, sy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+        let corner = center + vec2(sx * d, sy * d);
+        painter.line_segment([corner, corner - vec2(sx * arm, 0.0)], stroke);
+        painter.line_segment([corner, corner - vec2(0.0, sy * arm)], stroke);
+    }
+    painter.circle_stroke(center + vec2(0.0, -1.6), 2.4, stroke);
+    let shoulders = center + vec2(0.0, 5.6);
+    let points = (0..=10)
+        .map(|i| {
+            let angle = std::f32::consts::PI * (1.0 + i as f32 / 10.0);
+            shoulders + vec2(angle.cos() * 4.2, angle.sin() * 3.0)
+        })
+        .collect();
+    painter.add(Shape::line(points, stroke));
 }
 
 /// The "rejected" cross.
@@ -252,14 +309,6 @@ pub fn copy(painter: &Painter, center: Pos2, color: Color32) {
     painter.rect_stroke(back, 1.0, stroke, StrokeKind::Inside);
     painter.rect_filled(front, 1.0, tokens::SURFACE);
     painter.rect_stroke(front, 1.0, stroke, StrokeKind::Inside);
-}
-
-/// Three bars, the menu button at the bottom right.
-pub fn menu(painter: &Painter, center: Pos2, color: Color32) {
-    let stroke = Stroke::new(1.6, color);
-    for dy in [-5.0, 0.0, 5.0] {
-        painter.line_segment([center + vec2(-6.0, dy), center + vec2(6.0, dy)], stroke);
-    }
 }
 
 /// Circled question mark.

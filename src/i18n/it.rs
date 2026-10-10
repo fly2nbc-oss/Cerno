@@ -166,6 +166,18 @@ pub static TEXTS: Texts = Texts {
     button_details: "Pannello dettagli",
     button_filmstrip: "Striscia di miniature",
     button_help: "Aiuto",
+    view_photo: "Foto",
+    view_grid: "Griglia",
+    view_faces: "Volti",
+    faces_video: "Nei video non si cercano volti",
+    filmstrip_in_grid: "Non serve nella griglia – F7 torna alla foto",
+    faces_button: |n| {
+        if n == 1 {
+            "Mostra 1 volto in grande (G)".to_owned()
+        } else {
+            format!("Mostra {n} volti in grande (G)")
+        }
+    },
     button_side_bar: "Barra dei menu",
     bar_rotate: "Ruota",
     bar_colour: "Colore",
@@ -190,7 +202,6 @@ pub static TEXTS: Texts = Texts {
     overlay_hint_exposure: "Esposizione: rosso = bruciato, blu = nero chiuso",
     overlay_hint_off: "Sovrapposizione disattivata",
     overlay_show_on_photo: "Mostra sulla foto (O)",
-    cmd_grid: "Griglia",
     cmd_reject: "Rifiuta",
     cmd_delete_rejected: |n| format!("Elimina le rifiutate ({n} foto)"),
     cmd_auto_advance: "Avanza automaticamente",

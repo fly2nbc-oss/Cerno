@@ -179,6 +179,18 @@ pub static TEXTS: Texts = Texts {
     button_details: "Detailansicht",
     button_filmstrip: "Filmstreifen",
     button_help: "Hilfe",
+    view_photo: "Foto",
+    view_grid: "Raster",
+    view_faces: "Gesichter",
+    faces_video: "Videos werden nicht nach Gesichtern durchsucht",
+    filmstrip_in_grid: "Im Raster nicht nötig – F7 zurück zum Foto",
+    faces_button: |n| {
+        if n == 1 {
+            "1 Gesicht groß zeigen (G)".to_owned()
+        } else {
+            format!("{n} Gesichter groß zeigen (G)")
+        }
+    },
     button_side_bar: "Menüleiste",
     bar_rotate: "Drehen",
     bar_colour: "Farbe",
@@ -203,7 +215,6 @@ pub static TEXTS: Texts = Texts {
     overlay_hint_exposure: "Belichtung: Rot = ausgebrannte Lichter, Blau = verlorene Tiefen",
     overlay_hint_off: "Overlay aus",
     overlay_show_on_photo: "Auf dem Foto zeigen (O)",
-    cmd_grid: "Raster",
     cmd_reject: "Ablehnen",
     cmd_delete_rejected: |n| {
         format!(

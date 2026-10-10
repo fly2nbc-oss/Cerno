@@ -196,6 +196,18 @@ pub static TEXTS: Texts = Texts {
     button_details: "Panneau de détails",
     button_filmstrip: "Pellicule",
     button_help: "Aide",
+    view_photo: "Photo",
+    view_grid: "Grille",
+    view_faces: "Visages",
+    faces_video: "Les vidéos ne sont pas analysées pour les visages",
+    filmstrip_in_grid: "Inutile dans la grille – F7 revient à la photo",
+    faces_button: |n| {
+        if n == 1 {
+            "Afficher 1 visage en grand (G)".to_owned()
+        } else {
+            format!("Afficher {n} visages en grand (G)")
+        }
+    },
     button_side_bar: "Barre de menu",
     bar_rotate: "Pivoter",
     bar_colour: "Couleur",
@@ -220,7 +232,6 @@ pub static TEXTS: Texts = Texts {
     overlay_hint_exposure: "Exposition : rouge = brûlé, bleu = bouché",
     overlay_hint_off: "Superposition désactivée",
     overlay_show_on_photo: "Afficher sur la photo (O)",
-    cmd_grid: "Grille",
     cmd_reject: "Rejeter",
     cmd_delete_rejected: |n| {
         format!(

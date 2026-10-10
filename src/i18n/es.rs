@@ -175,6 +175,18 @@ pub static TEXTS: Texts = Texts {
     button_details: "Panel de detalles",
     button_filmstrip: "Tira de miniaturas",
     button_help: "Ayuda",
+    view_photo: "Foto",
+    view_grid: "Cuadrícula",
+    view_faces: "Caras",
+    faces_video: "En los vídeos no se buscan caras",
+    filmstrip_in_grid: "No hace falta en la cuadrícula – F7 vuelve a la foto",
+    faces_button: |n| {
+        if n == 1 {
+            "Mostrar 1 cara en grande (G)".to_owned()
+        } else {
+            format!("Mostrar {n} caras en grande (G)")
+        }
+    },
     button_side_bar: "Barra de menú",
     bar_rotate: "Girar",
     bar_colour: "Color",
@@ -199,7 +211,6 @@ pub static TEXTS: Texts = Texts {
     overlay_hint_exposure: "Exposición: rojo = quemado, azul = negro empastado",
     overlay_hint_off: "Superposición desactivada",
     overlay_show_on_photo: "Mostrar en la foto (O)",
-    cmd_grid: "Cuadrícula",
     cmd_reject: "Rechazar",
     cmd_delete_rejected: |n| {
         format!(

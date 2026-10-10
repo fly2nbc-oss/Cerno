@@ -82,7 +82,6 @@ enum Action {
     Compare,
     Zoom,
     Overlay(crate::overlay::Mode),
-    Grid,
     Fullscreen,
     /// *Visible photos ▸ By file list …*: the card for a pasted list.
     NameList,
@@ -94,8 +93,6 @@ enum Action {
     AlignCamera,
     /// *Visible photos ▸ Camera time …*: the card with every camera's offset.
     CameraTime,
-    /// `G`: every face over the photo.
-    FaceGrid,
     /// *Settings ▸ Check for updates*.
     UpdateCheck,
     /// A newer release's page in the browser.
@@ -540,8 +537,6 @@ impl CernoApp {
         vec![
             Item::Row(Row::new(Action::Zoom, t.cmd_zoom, key("Z")).toggle(self.zoom.is_zoomed())),
             Item::Segments(overlay),
-            Item::Row(Row::new(Action::Grid, t.cmd_grid, key("F7")).toggle(self.grid)),
-            Item::Row(Row::new(Action::FaceGrid, t.cmd_face_grid, key("G"))),
             Item::Row(Row::new(Action::Fullscreen, t.cmd_fullscreen, key("F"))),
         ]
     }
@@ -801,13 +796,11 @@ impl CernoApp {
                 }
             }
             Action::Overlay(mode) => self.set_overlay(mode),
-            Action::Grid => self.set_grid(!self.grid),
             Action::NameList => self.open_name_list(),
             Action::Quad => self.toggle_quad(),
             Action::Pairs => self.toggle_pairs(ctx),
             Action::AlignCamera => self.align_right_camera(ctx),
             Action::CameraTime => self.open_camera_time(),
-            Action::FaceGrid => self.toggle_face_grid(),
             Action::Fullscreen => {
                 let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
                 ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!fullscreen));

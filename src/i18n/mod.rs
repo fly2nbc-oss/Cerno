@@ -383,6 +383,16 @@ pub struct Texts {
     pub button_details: &'static str,
     pub button_filmstrip: &'static str,
     pub button_help: &'static str,
+    /// The view switcher in the info bar: the photo, the grid, the faces of the photo.
+    pub view_photo: &'static str,
+    pub view_grid: &'static str,
+    pub view_faces: &'static str,
+    /// Why the faces button is greyed out on a video.
+    pub faces_video: &'static str,
+    /// Why the filmstrip button is greyed out in the grid.
+    pub filmstrip_in_grid: &'static str,
+    /// The faces button's tooltip while the photo has faces large enough to judge.
+    pub faces_button: fn(usize) -> String,
     /// The menu button's name: it switches the menu bar on the left.
     pub button_side_bar: &'static str,
     /// Short labels where the menu's are too long for the bar: the quarter turns' row, the
@@ -416,8 +426,6 @@ pub struct Texts {
     pub overlay_hint_off: &'static str,
     /// Tooltip of the eye next to Sharpness and Exposure in the details panel.
     pub overlay_show_on_photo: &'static str,
-    /// View ▸ (`F7`): every photo as a thumbnail.
-    pub cmd_grid: &'static str,
     pub cmd_reject: &'static str,
     pub cmd_delete_rejected: fn(usize) -> String,
     pub cmd_auto_advance: &'static str,
@@ -778,6 +786,8 @@ mod tests {
             let progress = (t.analyzing_progress)(4, 9);
             assert!(progress.contains('4') && progress.contains('9'), "{name}");
             assert!((t.downloading_model)(42.0).contains("42"), "{name}");
+            assert!((t.faces_button)(3).contains('3'), "{name}");
+            assert!((t.faces_button)(1).contains('1'), "{name}");
             let row = (t.undo_mark_row)(t.undo_what_stars, "IMG_7.jpg");
             assert!(
                 row.contains(t.undo_what_stars) && row.contains("IMG_7"),

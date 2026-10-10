@@ -180,6 +180,18 @@ pub static TEXTS: Texts = Texts {
     button_details: "Details panel",
     button_filmstrip: "Filmstrip",
     button_help: "Help",
+    view_photo: "Photo",
+    view_grid: "Grid",
+    view_faces: "Faces",
+    faces_video: "Videos are not searched for faces",
+    filmstrip_in_grid: "Not needed in the grid – F7 back to the photo",
+    faces_button: |n| {
+        if n == 1 {
+            "Show 1 face large (G)".to_owned()
+        } else {
+            format!("Show {n} faces large (G)")
+        }
+    },
     button_side_bar: "Menu bar",
     bar_rotate: "Rotate",
     bar_colour: "Colour",
@@ -204,7 +216,6 @@ pub static TEXTS: Texts = Texts {
     overlay_hint_exposure: "Exposure: red = blown out, blue = crushed black",
     overlay_hint_off: "Overlay off",
     overlay_show_on_photo: "Show on the photo (O)",
-    cmd_grid: "Grid",
     cmd_reject: "Reject",
     cmd_delete_rejected: |n| {
         format!(
