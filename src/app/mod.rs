@@ -240,18 +240,8 @@ pub struct CernoApp {
     first_photo: Option<Instant>,
     /// The notice that the mark writer stopped was shown (`poll_background`).
     writer_stopped_told: bool,
-    /// The program `E` opens photos in (remembered).
-    external_editor: Option<crate::external::Editor>,
-    /// The programs the system offers, per file extension (asked once).
-    editors: HashMap<String, Vec<crate::external::Editor>>,
-    /// The programs for the start photo's type, asked on a thread (`poll_editors`).
-    editors_coming: Option<std::sync::mpsc::Receiver<(String, Vec<crate::external::Editor>)>>,
-    editors_asked: bool,
-    /// Photos opened in another program, watched for saves.
-    watched: Vec<external::Watched>,
-    /// A program being started (its original kept first).
-    launching: Option<std::sync::mpsc::Receiver<external::Launched>>,
-    external_checked: Instant,
+    /// Edit elsewhere: the remembered program, the system's programs, the watched photos.
+    external: external::External,
     /// Straighten or crop, while it is open. The saved zoom comes back on Enter or Esc.
     edit: Option<EditSession>,
     /// Encodes a confirmed edit. Joined on exit so the write is not lost.
@@ -353,9 +343,7 @@ impl CernoApp {
         // Off until the menu button switches it on (the user's decision F3 of 2026-10-10).
         let show_side_bar = db.setting("side_bar").as_deref() == Some("1");
         let side = side_bar::State::restore(db.setting(menu::SIDE_BAR_OPEN).as_deref());
-        let external_editor = db
-            .setting(external::SETTING)
-            .and_then(|text| crate::external::Editor::from_setting(&text));
+        let external = external::External::restore(&db);
         let details = db
             .setting("details_mode")
             .and_then(|m| DetailsMode::from_id(&m))
@@ -458,13 +446,7 @@ impl CernoApp {
             logged_first_frame: false,
             first_photo: None,
             writer_stopped_told: false,
-            external_editor,
-            editors: HashMap::new(),
-            editors_coming: None,
-            editors_asked: false,
-            watched: Vec::new(),
-            launching: None,
-            external_checked: Instant::now(),
+            external,
             edit: None,
             edit_thread: None,
             edit_busy: false,

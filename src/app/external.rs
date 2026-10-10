@@ -2,6 +2,7 @@
 //! offers for its type, one picked by hand, or the system's chooser. The first original goes
 //! to `.originals` before, and the photo reloads as soon as the other program saves it.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc::{self, TryRecvError};
@@ -30,6 +31,39 @@ const CHECK_EVERY: Duration = Duration::from_secs(1);
 /// The system's programs are asked this long after the first photo shows (`poll_editors`).
 const EDITORS_AFTER: Duration = Duration::from_secs(2);
 
+/// Edit elsewhere's state.
+pub(super) struct External {
+    /// The program `E` opens photos in (remembered).
+    pub(super) remembered: Option<Editor>,
+    /// The programs the system offers, per file extension (asked once).
+    pub(super) editors: HashMap<String, Vec<Editor>>,
+    /// The programs for the start photo's type, asked on a thread (`poll_editors`).
+    pub(super) coming: Option<mpsc::Receiver<(String, Vec<Editor>)>>,
+    pub(super) asked: bool,
+    /// Photos opened in another program, watched for saves.
+    pub(super) watched: Vec<Watched>,
+    /// A program being started (its original kept first).
+    pub(super) launching: Option<mpsc::Receiver<Launched>>,
+    pub(super) checked: Instant,
+}
+
+impl External {
+    /// The remembered program; nothing asked or watched yet.
+    pub(super) fn restore(db: &Db) -> Self {
+        Self {
+            remembered: db
+                .setting(SETTING)
+                .and_then(|text| Editor::from_setting(&text)),
+            editors: HashMap::new(),
+            coming: None,
+            asked: false,
+            watched: Vec::new(),
+            launching: None,
+            checked: Instant::now(),
+        }
+    }
+}
+
 /// A photo opened in another program, and how it looked then.
 pub(super) struct Watched {
     path: PathBuf,
@@ -54,7 +88,7 @@ impl CernoApp {
         if self.view.get(self.current).is_none() {
             return;
         }
-        match self.external_editor.clone() {
+        match self.external.remembered.clone() {
             Some(editor) => self.open_in(editor),
             None => self.open_editors_list(),
         }
@@ -63,18 +97,18 @@ impl CernoApp {
     /// Asks the system for the current photo's programs on a thread, a moment after the first
     /// photo shows: the shell can take a while, and the first menu or `E` would wait for it.
     pub(super) fn poll_editors(&mut self, ctx: &egui::Context) {
-        if let Some(coming) = &self.editors_coming {
+        if let Some(coming) = &self.external.coming {
             match coming.try_recv() {
                 Ok((extension, editors)) => {
-                    self.editors.entry(extension).or_insert(editors);
-                    self.editors_coming = None;
+                    self.external.editors.entry(extension).or_insert(editors);
+                    self.external.coming = None;
                 }
                 Err(TryRecvError::Empty) => {}
-                Err(TryRecvError::Disconnected) => self.editors_coming = None,
+                Err(TryRecvError::Disconnected) => self.external.coming = None,
             }
             return;
         }
-        let Some(shown) = self.first_photo.filter(|_| !self.editors_asked) else {
+        let Some(shown) = self.first_photo.filter(|_| !self.external.asked) else {
             return;
         };
         let waited = shown.elapsed();
@@ -82,12 +116,12 @@ impl CernoApp {
             ctx.request_repaint_after(EDITORS_AFTER - waited);
             return;
         }
-        self.editors_asked = true;
+        self.external.asked = true;
         let Some(path) = self.view.get(self.current).cloned() else {
             return;
         };
         let wanted = extension(&path);
-        if self.editors.contains_key(&wanted) {
+        if self.external.editors.contains_key(&wanted) {
             return;
         }
         let (tx, rx) = mpsc::channel();
@@ -99,7 +133,7 @@ impl CernoApp {
                 ctx.request_repaint();
             });
         if spawned.is_ok() {
-            self.editors_coming = Some(rx);
+            self.external.coming = Some(rx);
         }
     }
 
@@ -108,7 +142,8 @@ impl CernoApp {
         let Some(path) = self.view.get(self.current) else {
             return;
         };
-        self.editors
+        self.external
+            .editors
             .entry(extension(path))
             .or_insert_with(|| external::editors_for(path));
     }
@@ -117,7 +152,7 @@ impl CernoApp {
     pub(super) fn editors_for_current(&self) -> &[Editor] {
         self.view
             .get(self.current)
-            .and_then(|path| self.editors.get(&extension(path)))
+            .and_then(|path| self.external.editors.get(&extension(path)))
             .map_or(&[], Vec::as_slice)
     }
 
@@ -155,7 +190,7 @@ impl CernoApp {
         let Some(path) = self.view.get(self.current).cloned() else {
             return;
         };
-        if self.launching.is_some() || !self.allowed(Change::External, Some(&path)) {
+        if self.external.launching.is_some() || !self.allowed(Change::External, Some(&path)) {
             return;
         }
         // A video playing here would keep its file open in the other program's way.
@@ -171,7 +206,7 @@ impl CernoApp {
                 result,
             });
         });
-        self.launching = Some(rx);
+        self.external.launching = Some(rx);
     }
 
     /// The started program (or why not), then the photos opened elsewhere: for one another
@@ -179,28 +214,28 @@ impl CernoApp {
     /// the save dropped; then it is reloaded and analysed again. Cerno's own writes are told
     /// apart by the write generation.
     pub(super) fn poll_external(&mut self, ctx: &egui::Context) {
-        if let Some(rx) = &self.launching {
+        if let Some(rx) = &self.external.launching {
             match rx.try_recv() {
                 Ok(launched) => {
-                    self.launching = None;
+                    self.external.launching = None;
                     self.launched(launched);
                 }
                 Err(TryRecvError::Empty) => ctx.request_repaint_after(Duration::from_millis(100)),
-                Err(TryRecvError::Disconnected) => self.launching = None,
+                Err(TryRecvError::Disconnected) => self.external.launching = None,
             }
         }
-        if self.watched.is_empty() {
+        if self.external.watched.is_empty() {
             return;
         }
-        if self.external_checked.elapsed() < CHECK_EVERY {
+        if self.external.checked.elapsed() < CHECK_EVERY {
             ctx.request_repaint_after(CHECK_EVERY);
             return;
         }
-        self.external_checked = Instant::now();
+        self.external.checked = Instant::now();
         let now = Instant::now();
-        self.watched.retain(|w| w.until > now);
+        self.external.watched.retain(|w| w.until > now);
         let mut saved = Vec::new();
-        for watched in &mut self.watched {
+        for watched in &mut self.external.watched {
             // Mid-write the file already differs while the generation is still the old one:
             // a busy photo waits, and a write that started or ended meanwhile counts as ours.
             let generation = self.files.generation(&watched.path);
@@ -233,8 +268,8 @@ impl CernoApp {
         let t = i18n::t();
         match result {
             Ok((stamp, generation)) => {
-                self.watched.retain(|w| w.path != path);
-                self.watched.push(Watched {
+                self.external.watched.retain(|w| w.path != path);
+                self.external.watched.push(Watched {
                     path,
                     stamp,
                     generation,
@@ -243,7 +278,7 @@ impl CernoApp {
                 if let Some(editor) = editor {
                     self.db.put_setting(SETTING, &editor.to_setting());
                     self.notice = Some(Notice::hint((t.external_opened)(&editor.name)));
-                    self.external_editor = Some(editor);
+                    self.external.remembered = Some(editor);
                 }
             }
             Err(err) => {

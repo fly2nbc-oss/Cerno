@@ -597,7 +597,7 @@ impl CernoApp {
         let t = i18n::t();
         let current = self.view.get(self.current).map(PathBuf::as_path);
         let block = self.menu_block(Change::External, current);
-        let remembered = self.external_editor.as_ref();
+        let remembered = self.external.remembered.as_ref();
         let listed = self.editors_for_current();
         let mut rows = Vec::new();
         if let Some(editor) = remembered
