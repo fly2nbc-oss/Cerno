@@ -80,8 +80,16 @@ jobs:
     name: Package (Windows installer, portable)
     if: github.event_name != 'pull_request'
     runs-on: windows-latest
-    timeout-minutes: 90
+    # A tag waits for two approvals in SignPath (cerno.exe, the installer), up to 30 min each.
+    timeout-minutes: ${{ startsWith(github.ref, 'refs/tags/v') && 150 || 90 }}
+    # SignPath's secret and variable live in the `release` environment, for v* tags only.
+    environment: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || '' }}
+    permissions:
+      contents: read
+      # SignPath's connector downloads the uploaded artifact from this run.
+      actions: read
     env:
+      SIGNING: ${{ startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != '' }}
       # libheif from vcpkg at the revision pinned in Cargo.toml, in target\vcpkg where
       # build.rs looks for the DLLs. Built packages are cached as vcpkg binary cache.
       VCPKG_ROOT: ${{ github.workspace }}\target\vcpkg
@@ -129,8 +137,81 @@ jobs:
           $env:PKG_CONFIG_PATH = "$env:GSTREAMER_ROOT\lib\pkgconfig"
           cargo build --release --locked --features heic,video
           if ($LASTEXITCODE) { exit 1 }
+      # Code signing (README: Code signing policy): only on v* tags, and only once the SignPath
+      # project exists – without its variable the packages stay unsigned, as before.
+      - name: Signing not set up
+        if: startsWith(github.ref, 'refs/tags/v') && env.SIGNING != 'true'
+        run: echo "::warning::SIGNPATH_ORGANIZATION_ID is not set – the Windows packages are unsigned."
+      - name: Upload cerno.exe for signing
+        id: unsigned-exe
+        if: env.SIGNING == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: unsigned-exe
+          path: target/release/cerno.exe
+          if-no-files-found: error
+          retention-days: 1
+      - name: Sign cerno.exe (SignPath, approved by hand)
+        if: env.SIGNING == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: cerno
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: exe
+          github-artifact-id: ${{ steps.unsigned-exe.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 1800
+          output-artifact-directory: signed/exe
+      # The folder, the zip and the installer are built from the signed exe.
+      - name: Use the signed cerno.exe
+        if: env.SIGNING == 'true'
+        run: Copy-Item signed/exe/cerno.exe target/release/cerno.exe -Force
       - name: Package
         run: ./packaging/windows/build.ps1
+      - name: Upload the installer for signing
+        id: unsigned-setup
+        if: env.SIGNING == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: unsigned-setup
+          path: dist/windows/cerno_*_x64-setup.exe
+          if-no-files-found: error
+          retention-days: 1
+      - name: Sign the installer (SignPath, approved by hand)
+        if: env.SIGNING == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: cerno
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: setup
+          github-artifact-id: ${{ steps.unsigned-setup.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 1800
+          output-artifact-directory: signed/setup
+      # The uninstaller is written at install time and stays unsigned; so do others' DLLs.
+      - name: Use and check the signed files
+        if: env.SIGNING == 'true'
+        run: |
+          $setup = Get-Item dist/windows/cerno_*_x64-setup.exe
+          Copy-Item (Join-Path signed/setup $setup.Name) $setup.FullName -Force
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+            Sort-Object FullName | Select-Object -Last 1
+          foreach ($file in @((Resolve-Path dist/windows/Cerno/cerno.exe).Path, $setup.FullName)) {
+            & $signtool.FullName verify /pa /v $file
+            if ($LASTEXITCODE) { Write-Error "not signed: $file"; exit 1 }
+          }
+          # The zip holds the same signed exe as the folder.
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [IO.Compression.ZipFile]::OpenRead((Get-Item dist/windows/cerno_*_x64-portable.zip).FullName)
+          $inside = $zip.Entries | Where-Object { $_.FullName -match '(^|/)cerno\.exe$' } | Select-Object -First 1
+          $zip.Dispose()
+          if ($inside.Length -ne (Get-Item dist/windows/Cerno/cerno.exe).Length) {
+            Write-Error "the portable zip holds another cerno.exe"; exit 1
+          }
       - name: Install, start and uninstall
         run: >
           ./packaging/windows/test-installer.ps1
