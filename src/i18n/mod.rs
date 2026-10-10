@@ -186,11 +186,11 @@ pub fn with_shift(key: &str) -> String {
     format!("{}+{key}", t().key_shift)
 }
 
-/// Glues "50 %" and French "valeur :" together, so wrapping never leaves a lone sign at the
-/// start of a line (egui does not break at U+00A0).
+/// Glues "50 %", French "valeur :" and a menu path's "Settings ›" together, so wrapping never
+/// leaves a lone sign at the start of a line (egui does not break at U+00A0).
 pub fn keep_together(text: &str) -> String {
     let mut out = text.to_owned();
-    for sign in ['%', ':', ';', '?', '!'] {
+    for sign in ['%', ':', ';', '?', '!', '›', '▸'] {
         out = out.replace(&format!(" {sign}"), &format!("\u{a0}{sign}"));
     }
     out
@@ -269,12 +269,16 @@ pub struct Texts {
     /// Settings ▸ the update check's switch.
     pub cmd_update_check: &'static str,
     pub update_check_hint: &'static str,
-    /// Once, before the first check: that Cerno checks and where to turn it off.
-    pub update_first_hint: &'static str,
     /// Once per new version: the version, and where its link is.
     pub update_available: fn(&str) -> String,
     /// The menu row (and About's link) to a newer version's page.
     pub cmd_update_download: fn(&str) -> String,
+    /// The first start's card: may Cerno check for updates once a day?
+    pub update_ask_title: &'static str,
+    pub update_ask_text: &'static str,
+    /// Its two buttons.
+    pub btn_update_yes: &'static str,
+    pub btn_update_no: &'static str,
     pub pairs_on: &'static str,
     pub pairs_off: &'static str,
     pub pair_badge: &'static str,
@@ -960,6 +964,10 @@ mod tests {
             "50\u{a0}% – valeur\u{a0}: oui\u{a0}?"
         );
         assert_eq!(keep_together("1–10; x"), "1–10; x");
+        assert_eq!(
+            keep_together("Settings › Check for updates"),
+            "Settings\u{a0}› Check for updates"
+        );
     }
 
     #[test]

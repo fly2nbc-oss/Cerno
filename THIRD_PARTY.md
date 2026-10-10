@@ -29,8 +29,6 @@ On Windows the HEIC libraries are loaded at run time (vcpkg triplet `x64-windows
 
 On Windows, GStreamer comes from its official installer, unchanged; `packaging/windows/build.ps1` copies the plugins Cerno uses, the DLLs they import and their licence texts (`licenses/gstreamer/`) into the package. [licenses/gstreamer.txt](licenses/gstreamer.txt) names the version, the source of every part and how to replace the DLLs. On Linux, `--features video` links the system's GStreamer: the `.deb` depends on its plugin packages, and the AppImage bundles no GStreamer, GLib or FFmpeg – it uses the system's. H.264, H.265 and AAC are patent-encumbered; these terms cover copyright only.
 
-The Windows installer is built with [NSIS](https://nsis.sourceforge.io/) (zlib licence) through [cargo-packager](https://github.com/crabnebula-dev/cargo-packager) (Apache-2.0 OR MIT). Its English, French and Spanish texts (`packaging/windows/*.nsh`) are copies of cargo-packager's own, with the welcome page's text added.
-
 On Linux, `--features heic` links the system libheif. The `.deb` depends on the distribution's libheif and its libde265 plugin. The AppImage bundles them as separate shared libraries; `usr/share/doc/cerno/bundled-libraries.txt` inside it lists the Ubuntu package versions, whose source is in Ubuntu's archive.
 
 ## Model files in the models folder (not distributed with Cerno)

@@ -1,6 +1,7 @@
-//! Confirmation card for the model download and for the two actions that cannot be undone
-//! (resetting For you, deleting the models). Enter confirms, Esc cancels. It replaces the
-//! system message boxes, which appeared light in the dark window and blocked it.
+//! Confirmation card for the downloads, for the two actions that cannot be undone (resetting
+//! For you, deleting the models) and for the first start's question about the update check.
+//! Enter confirms, Esc cancels. It replaces the system message boxes, which appeared light in
+//! the dark window and blocked it.
 
 use eframe::egui::{
     Align, Button, Color32, Context, FontId, Id, Key, Label, Layout, Modifiers, Rect, RichText,
@@ -15,13 +16,14 @@ pub struct Confirm<'a> {
     pub title: &'a str,
     pub text: String,
     pub confirm: &'a str,
+    /// The other button: *Cancel*, or *No* where the card asks a question.
+    pub cancel: &'a str,
     /// The confirm button in the error colour (the action deletes something).
     pub danger: bool,
 }
 
 /// `Some(true)` confirmed, `Some(false)` cancelled, `None` while it waits.
 pub fn show(ctx: &Context, window: Rect, confirm: &Confirm<'_>) -> Option<bool> {
-    let t = i18n::t();
     let (enter, escape) = ctx.input_mut(|i| {
         (
             i.consume_key(Modifiers::NONE, Key::Enter),
@@ -59,7 +61,7 @@ pub fn show(ctx: &Context, window: Rect, confirm: &Confirm<'_>) -> Option<bool> 
                     answer = Some(true);
                 }
                 if ui
-                    .add(Button::new(t.btn_cancel).min_size(vec2(100.0, 32.0)))
+                    .add(Button::new(confirm.cancel).min_size(vec2(100.0, 32.0)))
                     .clicked()
                 {
                     answer = Some(false);
@@ -89,6 +91,7 @@ mod tests {
             title: "Delete?",
             text: "Gone for good.".into(),
             confirm: "Delete",
+            cancel: "Cancel",
             danger: true,
         };
         let mut result = None;
