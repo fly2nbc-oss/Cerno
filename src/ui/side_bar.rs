@@ -3,22 +3,21 @@
 //! other side. Nothing in it has another home – the stars are in the info bar, sort and
 //! filters in the filter bar, the panels' buttons in the info bar.
 //!
-//! The bar takes no key unless it has the keyboard (`Ctrl+K`, `Ctrl+M`, `E`): then ↑/↓ move,
-//! Enter runs a row or folds a group, → unfolds a group or steps to the next segment, ← steps
-//! back or folds the group (from a row inside it too), a letter jumps, Esc gives the keyboard
-//! back. Its rows never take egui's focus (`Sense::CLICK`), so `Space` can't click one again.
+//! It is for the mouse (since 1.12, the user's decision of 2026-10-10 – the bar is for
+//! beginners; `F10` shows and hides it like `T`, `Tab` and `F6` the other bars): it takes no
+//! key. Its rows never take egui's focus (`Sense::CLICK`), so `Space` can't click one again.
 
 use std::collections::BTreeSet;
 
 use eframe::egui::text::{LayoutJob, TextWrapping};
 use eframe::egui::{
-    Color32, CursorIcon, Event, FontId, Id, Key, Rect, ScrollArea, Sense, Stroke, StrokeKind, Ui,
-    UiBuilder, pos2, vec2,
+    Color32, CursorIcon, FontId, Id, Rect, ScrollArea, Sense, Stroke, StrokeKind, Ui, UiBuilder,
+    pos2, vec2,
 };
 
 use crate::theme::{text, tokens};
-use crate::ui::icons;
-use crate::ui::palette::{self, Mark, Row};
+use crate::ui::palette::{self, Row};
+use crate::ui::{icons, stars};
 
 /// The same in every language and state, so nothing moves under the pointer; a label that
 /// doesn't fit is cut short and shows whole in its tooltip.
@@ -53,6 +52,8 @@ pub enum Look {
     NoColour,
     /// A quarter turn, clockwise or not.
     Turn(bool),
+    /// An empty star: no stars.
+    NoStars,
 }
 
 pub struct Segment<A> {
@@ -78,21 +79,9 @@ impl<A> Segments<A> {
             .iter()
             .any(|s| matches!(s.look, Look::Text(_)))
     }
-
-    /// The segment the keyboard lands on: the current value, else the first.
-    fn start(&self) -> usize {
-        self.segments.iter().position(|s| s.on).unwrap_or(0)
-    }
 }
 
 impl<A> Item<A> {
-    fn label(&self) -> &str {
-        match self {
-            Self::Row(row) | Self::List(row) => &row.label,
-            Self::Segments(segments) => &segments.label,
-        }
-    }
-
     fn height(&self) -> f32 {
         match self {
             Self::Segments(segments) if segments.text() => ROW + SEGMENT + 4.0,
@@ -143,31 +132,12 @@ impl<A> Bar<A> {
             Line::Title(_) => None,
         }
     }
-
-    fn label(&self, line: Line) -> &str {
-        match line {
-            Line::Title(s) => self.sections.get(s).map_or("", |section| &section.title),
-            _ => self.item(line).map_or("", Item::label),
-        }
-    }
 }
 
-/// Which groups are open and where the keyboard is.
+/// Which groups are open.
 #[derive(Debug)]
 pub struct State {
     open: BTreeSet<String>,
-    /// The bar has the keyboard: its keys don't reach the photo.
-    pub focus: bool,
-    cursor: Option<Line>,
-    /// The segment of a row of segments the cursor is on.
-    segment: usize,
-    /// The keyboard moved the cursor: scroll its line into view.
-    follow: bool,
-    /// Where the keyboard goes once the bar is drawn: a group, and one of its items.
-    wanted: Option<(&'static str, Option<usize>)>,
-    /// The keyboard came this frame: the key that brought it (`E` types an "e") is not the
-    /// bar's, or it would jump to a row starting with it.
-    fresh: bool,
 }
 
 impl Default for State {
@@ -187,15 +157,7 @@ impl State {
                 .collect(),
             None => BTreeSet::from([FIRST_OPEN.to_owned()]),
         };
-        Self {
-            open,
-            focus: false,
-            cursor: None,
-            segment: 0,
-            follow: false,
-            wanted: None,
-            fresh: false,
-        }
+        Self { open }
     }
 
     /// The open groups, for the settings.
@@ -205,25 +167,6 @@ impl State {
             .map(String::as_str)
             .collect::<Vec<_>>()
             .join(",")
-    }
-
-    /// `Ctrl+K`: the keyboard goes to the bar, where its cursor was (or on the first line).
-    pub fn take_keyboard(&mut self) {
-        self.focus = true;
-        self.follow = true;
-        self.fresh = true;
-    }
-
-    /// `Ctrl+M`, `E`: the keyboard goes to the bar, on a group – unfolded – or one of its
-    /// items.
-    pub fn take_keyboard_at(&mut self, section: &'static str, item: Option<usize>) {
-        self.take_keyboard();
-        self.open.insert(section.to_owned());
-        self.wanted = Some((section, item));
-    }
-
-    pub fn release(&mut self) {
-        self.focus = false;
     }
 
     fn fold(&mut self, id: &str, open: bool) {
@@ -240,12 +183,6 @@ pub struct Output<A> {
     pub run: Option<A>,
     /// Where the line that ran is: a list opens beside it.
     pub row: Option<Rect>,
-    /// Where the keyboard's line is (E opens the programs' list beside it).
-    pub cursor: Option<Rect>,
-    /// What ran keeps the keyboard in the bar: a switch, a choice, a segment, a list.
-    pub keep: bool,
-    /// The keyboard goes back to the photo: Esc, or a click beside the bar.
-    pub leave: bool,
     /// A group folded or unfolded: its state is saved.
     pub folded: bool,
 }
@@ -255,61 +192,15 @@ impl<A> Default for Output<A> {
         Self {
             run: None,
             row: None,
-            cursor: None,
-            keep: false,
-            leave: false,
             folded: false,
         }
     }
 }
 
-/// Draws the bar in `rect` and reads its keys while `listening` (it has the keyboard and no
-/// list beside it is open).
-pub fn show<A: Copy>(
-    ui: &mut Ui,
-    rect: Rect,
-    state: &mut State,
-    bar: &Bar<A>,
-    listening: bool,
-) -> Output<A> {
+/// Draws the bar in `rect`: a click runs a row or a segment, or folds a group.
+pub fn show<A: Copy>(ui: &mut Ui, rect: Rect, state: &mut State, bar: &Bar<A>) -> Output<A> {
     let mut out = Output::default();
-    let listening = listening && !std::mem::take(&mut state.fresh);
-    if let Some((id, item)) = state.wanted.take()
-        && let Some(s) = bar.sections.iter().position(|section| section.id == id)
-    {
-        state.cursor = Some(match item {
-            Some(i) if i < bar.sections[s].items.len() => Line::Item(s, i),
-            _ if !bar.sections[s].items.is_empty() => Line::Item(s, 0),
-            _ => Line::Title(s),
-        });
-        state.segment = state
-            .cursor
-            .and_then(|line| match bar.item(line) {
-                Some(Item::Segments(segments)) => Some(segments.start()),
-                _ => None,
-            })
-            .unwrap_or(0);
-    }
-    let mut lines = bar.lines(&state.open);
-    if !state.cursor.is_some_and(|line| lines.contains(&line)) {
-        state.cursor = state.focus.then(|| lines.first().copied()).flatten();
-        state.segment = 0;
-    }
-    // Which line runs with the keyboard; its rect is known once it is drawn.
-    let mut ran_by_key = None;
-    if listening {
-        keyboard(ui, state, bar, &mut lines, &mut out, &mut ran_by_key);
-        let pressed_beside = ui.input(|i| {
-            i.pointer.any_pressed()
-                && i.pointer
-                    .interact_pos()
-                    .is_some_and(|pos| !rect.contains(pos))
-        });
-        if pressed_beside {
-            out.leave = true;
-        }
-    }
-
+    let lines = bar.lines(&state.open);
     ui.painter().rect_filled(rect, 0.0, tokens::SURFACE);
     ui.painter().vline(
         rect.right() - 0.5,
@@ -336,43 +227,25 @@ pub fn show<A: Copy>(
                 let (slot, _) =
                     ui.allocate_exact_size(vec2(rect.width() - 1.0, height), Sense::hover());
                 let area = slot.shrink2(vec2(4.0, 0.0));
-                let lit = state.focus && state.cursor == Some(line);
-                if lit {
-                    out.cursor = Some(area);
-                    if state.follow {
-                        ui.scroll_to_rect(slot, None);
-                    }
-                }
-                if ran_by_key == Some(line) {
-                    out.row = Some(area);
-                }
                 let line_id = id.with(line_key(line));
                 match line {
                     Line::Title(s) => {
                         let section = &bar.sections[s];
                         let open = state.open.contains(section.id);
-                        if title(ui, area, line_id, &section.title, open, lit) {
+                        if title(ui, area, line_id, &section.title, open) {
                             state.fold(section.id, !open);
                             out.folded = true;
-                            state.cursor = state.focus.then_some(line);
                         }
                     }
                     _ => {
                         let Some(item) = bar.item(line) else {
                             continue;
                         };
-                        let segment = lit.then_some(state.segment);
-                        if let Some(clicked) = draw_item(ui, area, line_id, item, lit, segment) {
+                        if let Some(clicked) = draw_item(ui, area, line_id, item) {
                             out.row = Some(area);
                             match clicked {
                                 Clicked::Row => run(item, None, &mut out),
                                 Clicked::Segment(k) => run(item, Some(k), &mut out),
-                            }
-                            if state.focus {
-                                state.cursor = Some(line);
-                                if let Clicked::Segment(k) = clicked {
-                                    state.segment = k;
-                                }
                             }
                         }
                     }
@@ -380,15 +253,6 @@ pub fn show<A: Copy>(
             }
             ui.add_space(8.0);
         });
-    state.follow = false;
-    if state.focus {
-        // The bar has the keyboard: an accent line along its edge.
-        ui.painter().vline(
-            rect.right() - 1.0,
-            rect.y_range(),
-            Stroke::new(2.0, tokens::ACCENT),
-        );
-    }
     out
 }
 
@@ -417,7 +281,6 @@ fn run<A: Copy>(item: &Item<A>, segment: Option<usize>, out: &mut Output<A>) {
                 return;
             }
             out.run = Some(row.action);
-            out.keep = matches!(item, Item::List(_)) || row.mark != Mark::None;
         }
         Item::Segments(segments) => {
             if segments.disabled.is_some() {
@@ -425,152 +288,18 @@ fn run<A: Copy>(item: &Item<A>, segment: Option<usize>, out: &mut Output<A>) {
             }
             if let Some(s) = segments.segments.get(segment.unwrap_or(0)) {
                 out.run = Some(s.action);
-                out.keep = true;
             }
-        }
-    }
-}
-
-/// Keys without modifiers, in the order they were pressed, taken out of the input so the
-/// photo never sees them.
-fn keyboard<A: Copy>(
-    ui: &Ui,
-    state: &mut State,
-    bar: &Bar<A>,
-    lines: &mut Vec<Line>,
-    out: &mut Output<A>,
-    ran: &mut Option<Line>,
-) {
-    let (keys, letters) = ui.ctx().input_mut(|i| {
-        let mut keys = Vec::new();
-        let mut letters = Vec::new();
-        i.events.retain(|event| match event {
-            Event::Key {
-                key,
-                pressed: true,
-                modifiers,
-                ..
-            } if modifiers.is_none()
-                && matches!(
-                    key,
-                    Key::ArrowUp
-                        | Key::ArrowDown
-                        | Key::ArrowLeft
-                        | Key::ArrowRight
-                        | Key::Enter
-                        | Key::Escape
-                ) =>
-            {
-                keys.push(*key);
-                false
-            }
-            Event::Text(text) => {
-                letters.extend(text.chars().filter(|c| c.is_alphanumeric()));
-                false
-            }
-            _ => true,
-        });
-        (keys, letters)
-    });
-    if !keys.is_empty() || !letters.is_empty() {
-        state.follow = true;
-    }
-    for key in keys {
-        let Some(line) = state.cursor else {
-            state.cursor = lines.first().copied();
-            continue;
-        };
-        let item = bar.item(line);
-        match key {
-            Key::Escape => out.leave = true,
-            Key::ArrowDown | Key::ArrowUp => {
-                let at = lines.iter().position(|l| *l == line).unwrap_or(0);
-                let len = lines.len().max(1);
-                let next = if key == Key::ArrowDown {
-                    (at + 1) % len
-                } else {
-                    (at + len - 1) % len
-                };
-                state.cursor = lines.get(next).copied();
-                state.segment = state
-                    .cursor
-                    .and_then(|l| match bar.item(l) {
-                        Some(Item::Segments(segments)) => Some(segments.start()),
-                        _ => None,
-                    })
-                    .unwrap_or(0);
-            }
-            Key::Enter => match (line, item) {
-                (Line::Title(s), _) => {
-                    let id = bar.sections[s].id;
-                    let open = state.open.contains(id);
-                    state.fold(id, !open);
-                    out.folded = true;
-                }
-                (_, Some(item)) => {
-                    run(item, Some(state.segment), out);
-                    *ran = Some(line);
-                }
-                _ => {}
-            },
-            Key::ArrowRight => match (line, item) {
-                (Line::Title(s), _) => {
-                    let id = bar.sections[s].id;
-                    if !state.open.contains(id) {
-                        state.fold(id, true);
-                        out.folded = true;
-                    }
-                }
-                (_, Some(Item::Segments(segments))) => {
-                    state.segment =
-                        (state.segment + 1).min(segments.segments.len().saturating_sub(1));
-                }
-                (_, Some(item @ Item::List(_))) => {
-                    run(item, None, out);
-                    *ran = Some(line);
-                }
-                _ => {}
-            },
-            Key::ArrowLeft => match (line, item) {
-                (_, Some(Item::Segments(_))) if state.segment > 0 => state.segment -= 1,
-                (Line::Item(s, _), _) => {
-                    // Back on the title, and the group folds.
-                    state.cursor = Some(Line::Title(s));
-                    state.fold(bar.sections[s].id, false);
-                    out.folded = true;
-                }
-                (Line::Title(s), _) => {
-                    let id = bar.sections[s].id;
-                    if state.open.contains(id) {
-                        state.fold(id, false);
-                        out.folded = true;
-                    }
-                }
-                _ => {}
-            },
-            _ => {}
-        }
-        *lines = bar.lines(&state.open);
-    }
-    for letter in letters {
-        let labels: Vec<&str> = lines.iter().map(|&line| bar.label(line)).collect();
-        let at = state
-            .cursor
-            .and_then(|c| lines.iter().position(|l| *l == c));
-        if let Some(i) = palette::jump(&labels, at, letter) {
-            state.cursor = lines.get(i).copied();
-            state.segment = 0;
         }
     }
 }
 
 /// A group's title: muted capitals behind a fold triangle. Returns whether it was clicked.
-fn title(ui: &mut Ui, area: Rect, id: Id, label: &str, open: bool, lit: bool) -> bool {
+fn title(ui: &mut Ui, area: Rect, id: Id, label: &str, open: bool) -> bool {
     let response = ui
         .interact(area, id, Sense::CLICK)
         .on_hover_cursor(CursorIcon::PointingHand);
     let painter = ui.painter();
-    if response.hovered() || lit {
+    if response.hovered() {
         painter.rect_filled(area, 5.0, tokens::ACCENT_SUBTLE);
     }
     let y = area.center().y + 2.0;
@@ -592,34 +321,20 @@ fn title(ui: &mut Ui, area: Rect, id: Id, label: &str, open: bool, lit: bool) ->
 }
 
 /// Draws an item; returns what a click hit.
-fn draw_item<A>(
-    ui: &mut Ui,
-    area: Rect,
-    id: Id,
-    item: &Item<A>,
-    lit: bool,
-    segment: Option<usize>,
-) -> Option<Clicked> {
+fn draw_item<A>(ui: &mut Ui, area: Rect, id: Id, item: &Item<A>) -> Option<Clicked> {
     match item {
-        Item::Row(row) => palette::bar_row(ui, area, id, row, false, lit)
+        Item::Row(row) => palette::bar_row(ui, area, id, row, false, false)
             .clicked
             .then_some(Clicked::Row),
-        Item::List(row) => palette::bar_row(ui, area, id, row, true, lit)
+        Item::List(row) => palette::bar_row(ui, area, id, row, true, false)
             .clicked
             .then_some(Clicked::Row),
-        Item::Segments(segments) => draw_segments(ui, area, id, segments, lit, segment),
+        Item::Segments(segments) => draw_segments(ui, area, id, segments),
     }
 }
 
 /// A label and its segments – beside it for icons, under it for text.
-fn draw_segments<A>(
-    ui: &mut Ui,
-    area: Rect,
-    id: Id,
-    segments: &Segments<A>,
-    lit: bool,
-    cursor: Option<usize>,
-) -> Option<Clicked> {
+fn draw_segments<A>(ui: &mut Ui, area: Rect, id: Id, segments: &Segments<A>) -> Option<Clicked> {
     let disabled = segments.disabled.is_some();
     let colour = if disabled {
         tokens::MUTED
@@ -627,9 +342,6 @@ fn draw_segments<A>(
         tokens::TEXT
     };
     let painter = ui.painter().clone();
-    if lit {
-        painter.rect_filled(area, 5.0, tokens::ACCENT_SUBTLE);
-    }
     let label_y = area.top() + ROW / 2.0;
     let text = segments.text();
     let n = segments.segments.len();
@@ -683,7 +395,7 @@ fn draw_segments<A>(
         if response.clicked() && !disabled {
             clicked = Some(Clicked::Segment(k));
         }
-        if hovered || cursor == Some(k) {
+        if hovered {
             painter.rect_filled(*rect, 4.0, tokens::ACCENT_SUBTLE);
         }
         if text {
@@ -733,6 +445,7 @@ fn draw_segments<A>(
                 painter.circle_stroke(c, 5.0, Stroke::new(1.2, tokens::MUTED));
             }
             Look::Turn(clockwise) => icons::turn(&painter, c, *clockwise, ink),
+            Look::NoStars => stars::paint_star(&painter, c, 6.5, false, ink),
         }
     }
     clicked
@@ -790,17 +503,7 @@ fn text_rects(area: Rect, widths: &[f32]) -> Vec<Rect> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use eframe::egui::{Context, Modifiers, RawInput};
-
-    fn key(key: Key) -> Event {
-        Event::Key {
-            key,
-            physical_key: None,
-            pressed: true,
-            repeat: false,
-            modifiers: Modifiers::NONE,
-        }
-    }
+    use eframe::egui::{Context, Event, Modifiers, Pos2, RawInput};
 
     fn bar() -> Bar<u8> {
         Bar {
@@ -836,6 +539,17 @@ mod tests {
         }
     }
 
+    /// The open groups are saved and come back.
+    #[test]
+    fn the_open_groups_are_saved() {
+        let mut state = State::default();
+        assert_eq!(state.saved(), FIRST_OPEN);
+        state.fold("view", true);
+        assert_eq!(state.saved(), "photo,view");
+        assert_eq!(State::restore(Some("view")).saved(), "view");
+        assert_eq!(State::restore(Some("")).saved(), "");
+    }
+
     const WINDOW: Rect = Rect {
         min: pos2(0.0, 0.0),
         max: pos2(900.0, 700.0),
@@ -845,151 +559,20 @@ mod tests {
         Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 700.0))
     }
 
-    /// One frame of the bar; `consumed` says which of the events nobody took.
-    fn frame(state: &mut State, bar: &Bar<u8>, events: Vec<Event>) -> (Output<u8>, usize) {
+    /// A click at `at` (moved there, pressed, released): what ran, and the context.
+    fn click(state: &mut State, bar: &Bar<u8>, at: Pos2) -> (Option<u8>, Context) {
         let ctx = Context::default();
-        let mut result = None;
-        let mut left = 0;
-        let listening = state.focus;
-        let mut output = ctx.run_ui(
-            RawInput {
-                screen_rect: Some(WINDOW),
-                events,
-                ..Default::default()
-            },
-            |ui| {
-                result = Some(show(ui, area(), state, bar, listening));
-                left = ui.input(|i| i.events.len());
-            },
-        );
-        output.textures_delta.clear();
-        (result.unwrap(), left)
-    }
-
-    #[test]
-    fn without_the_keyboard_the_bar_takes_no_key() {
-        let mut state = State::default();
-        let (out, left) = frame(
-            &mut state,
-            &bar(),
-            vec![
-                key(Key::ArrowDown),
-                key(Key::Enter),
-                Event::Text("x".into()),
-            ],
-        );
-        assert!(out.run.is_none());
-        assert_eq!(left, 3, "every key stays for the photo");
-    }
-
-    #[test]
-    fn arrows_and_enter_run_a_row_and_escape_gives_the_keyboard_back() {
-        let bar = bar();
-        let mut state = State::default();
-        state.take_keyboard();
-        frame(&mut state, &bar, Vec::new());
-        // Open folder, This photo, Colour, Reject: Enter toggles it and the bar keeps the
-        // keyboard (a switch).
-        let (out, left) = frame(
-            &mut state,
-            &bar,
-            vec![
-                key(Key::ArrowDown),
-                key(Key::ArrowDown),
-                key(Key::ArrowDown),
-                key(Key::Enter),
-            ],
-        );
-        assert_eq!(left, 0, "the bar took its keys");
-        assert_eq!(out.run, Some(2));
-        assert!(out.keep);
-        // Compare: a plain command, the keyboard goes back.
-        let (out, _) = frame(&mut state, &bar, vec![key(Key::ArrowDown), key(Key::Enter)]);
-        assert_eq!(out.run, Some(3));
-        assert!(!out.keep);
-        let (out, _) = frame(&mut state, &bar, vec![key(Key::Escape)]);
-        assert!(out.leave);
-    }
-
-    #[test]
-    fn segments_step_with_left_and_right() {
-        let bar = bar();
-        let mut state = State::default();
-        state.take_keyboard_at("photo", Some(0));
-        frame(&mut state, &bar, Vec::new());
-        // It lands on the current value (the middle one); → and Enter take the last.
-        let (out, _) = frame(
-            &mut state,
-            &bar,
-            vec![key(Key::ArrowRight), key(Key::Enter)],
-        );
-        assert_eq!(out.run, Some(12));
-        assert!(out.keep, "a segment keeps the keyboard");
-        // ← twice to the first, a third ← folds the group and lands on its title.
-        let (out, _) = frame(
-            &mut state,
-            &bar,
-            vec![key(Key::ArrowLeft), key(Key::ArrowLeft), key(Key::Enter)],
-        );
-        assert_eq!(out.run, Some(10));
-        let (out, _) = frame(&mut state, &bar, vec![key(Key::ArrowLeft)]);
-        assert!(out.folded);
-        assert!(!state.open.contains("photo"));
-        assert_eq!(state.cursor, Some(Line::Title(0)));
-        // → unfolds it again.
-        frame(&mut state, &bar, vec![key(Key::ArrowRight)]);
-        assert!(state.open.contains("photo"));
-    }
-
-    #[test]
-    fn a_list_row_keeps_the_keyboard_and_says_where_it_is() {
-        let bar = bar();
-        let mut state = State::default();
-        state.take_keyboard_at("photo", Some(3));
-        frame(&mut state, &bar, Vec::new());
-        let (out, _) = frame(&mut state, &bar, vec![key(Key::ArrowRight)]);
-        assert_eq!(out.run, Some(4));
-        assert!(out.keep);
-        assert!(out.row.is_some(), "the list opens beside its row");
-    }
-
-    #[test]
-    fn letters_jump_and_titles_fold() {
-        let bar = bar();
-        let mut state = State::default();
-        state.take_keyboard();
-        // The key that brought the keyboard (`E` opens the programs' list) jumps nowhere.
-        let (_, left) = frame(&mut state, &bar, vec![Event::Text("a".into())]);
-        assert_eq!(state.cursor, Some(Line::Top(0)), "still on the first line");
-        assert_eq!(left, 1);
-        frame(&mut state, &bar, vec![Event::Text("a".into())]);
-        assert_eq!(state.cursor, Some(Line::Item(0, 1)), "Ablehnen");
-        frame(&mut state, &bar, vec![Event::Text("a".into())]);
-        assert_eq!(state.cursor, Some(Line::Title(1)), "Ansicht");
-        let (out, _) = frame(&mut state, &bar, vec![key(Key::Enter)]);
-        assert!(out.folded && state.open.contains("view"));
-        assert_eq!(state.saved(), "photo,view");
-        assert_eq!(State::restore(Some("view")).saved(), "view");
-    }
-
-    #[test]
-    fn a_click_runs_what_the_key_runs() {
-        let bar = bar();
-        let mut state = State::default();
-        // Lines: 4 + 28 Open folder, 6 + 30 This photo, 28 Colour, then Reject.
-        let reject = pos2(100.0, 4.0 + ROW + GAP + HEADER + ROW + ROW / 2.0);
-        let ctx = Context::default();
-        let mut runs = Vec::new();
+        let mut ran = None;
         for events in [
-            vec![Event::PointerMoved(reject)],
+            vec![Event::PointerMoved(at)],
             vec![Event::PointerButton {
-                pos: reject,
+                pos: at,
                 button: eframe::egui::PointerButton::Primary,
                 pressed: true,
                 modifiers: Modifiers::NONE,
             }],
             vec![Event::PointerButton {
-                pos: reject,
+                pos: at,
                 button: eframe::egui::PointerButton::Primary,
                 pressed: false,
                 modifiers: Modifiers::NONE,
@@ -1001,16 +584,42 @@ mod tests {
                     events,
                     ..Default::default()
                 },
-                |ui| runs.push(show(ui, area(), &mut state, &bar, false).run),
+                |ui| ran = show(ui, area(), state, bar).run.or(ran),
             );
             output.textures_delta.clear();
         }
-        assert_eq!(runs.last().copied().flatten(), Some(2));
-        assert!(!state.focus, "a click never takes the keyboard");
+        (ran, ctx)
+    }
+
+    #[test]
+    fn a_click_runs_a_row_and_takes_no_focus() {
+        // Lines: 4 + 28 Open folder, 6 + 30 This photo, 28 Colour, then Reject.
+        let reject = pos2(100.0, 4.0 + ROW + GAP + HEADER + ROW + ROW / 2.0);
+        let (ran, ctx) = click(&mut State::default(), &bar(), reject);
+        assert_eq!(ran, Some(2));
         assert!(
             ctx.memory(|m| m.focused().is_none()),
-            "nor egui's focus: Space would click the row again"
+            "a click takes no egui focus: Space would click the row again"
         );
+    }
+
+    /// A greyed-out row says why in its tooltip and runs nothing.
+    #[test]
+    fn a_greyed_out_row_runs_nothing() {
+        let bar = Bar {
+            top: vec![Item::Row(
+                Row::new(1u8, "Verschieben", None).disabled(Some("läuft schon")),
+            )],
+            sections: Vec::new(),
+        };
+        let (ran, _) = click(&mut State::default(), &bar, pos2(100.0, 4.0 + ROW / 2.0));
+        assert_eq!(ran, None);
+        let open = Bar {
+            top: vec![Item::Row(Row::new(1u8, "Verschieben", None))],
+            sections: Vec::new(),
+        };
+        let (ran, _) = click(&mut State::default(), &open, pos2(100.0, 4.0 + ROW / 2.0));
+        assert_eq!(ran, Some(1), "the same row, not greyed out, runs");
     }
 
     /// The short labels of the rows with segments fit in every language: the colour row's
@@ -1032,6 +641,10 @@ mod tests {
                     "{lang:?}: {} {colour} > {room}",
                     t.bar_colour
                 );
+                // The stars' segments are text: their label has the line to itself.
+                let stars = text_width(painter, t.bar_stars, text::BODY) * 1.05;
+                let line = row.width() - 10.0 - LABEL_LEFT;
+                assert!(stars <= line, "{lang:?}: {} {stars} > {line}", t.bar_stars);
                 let labels = [
                     t.overlay_off,
                     t.bar_overlay_sharpness,
@@ -1052,20 +665,5 @@ mod tests {
             }
         });
         output.textures_delta.clear();
-    }
-
-    #[test]
-    fn a_greyed_out_row_runs_nothing() {
-        let bar = Bar {
-            top: vec![Item::Row(
-                Row::new(1u8, "Verschieben", None).disabled(Some("läuft schon")),
-            )],
-            sections: Vec::new(),
-        };
-        let mut state = State::default();
-        state.take_keyboard();
-        frame(&mut state, &bar, Vec::new());
-        let (out, _) = frame(&mut state, &bar, vec![key(Key::Enter)]);
-        assert!(out.run.is_none());
     }
 }

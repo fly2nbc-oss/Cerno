@@ -176,7 +176,7 @@ fn format_sizes(t: &Texts, done: Option<u64>, total: u64) -> String {
     }
 }
 
-/// `Strg+K` / `Ctrl+K` with this language's key name.
+/// `Strg+Z` / `Ctrl+Z` with this language's key name.
 pub fn with_ctrl(key: &str) -> String {
     format!("{}+{key}", t().key_ctrl)
 }
@@ -399,6 +399,8 @@ pub struct Texts {
     /// compare row that sets a camera's clock, the overlay's two modes.
     pub bar_rotate: &'static str,
     pub bar_colour: &'static str,
+    /// The stars row of *This photo* (☆, 1★–5★).
+    pub bar_stars: &'static str,
     pub bar_align_camera: &'static str,
     pub bar_overlay_sharpness: &'static str,
     pub bar_overlay_exposure: &'static str,
@@ -407,7 +409,7 @@ pub struct Texts {
     pub bar_none_deleted: &'static str,
     pub button_language: fn(&str) -> String,
 
-    // Command menu (`Ctrl+K`).
+    // The menu bar's rows.
     pub cmd_fullscreen: &'static str,
     pub cmd_compare: &'static str,
     pub cmd_quad: &'static str,
@@ -752,9 +754,9 @@ pub struct Texts {
     pub help_cull: [HelpRow; 6],
     pub help_video: [HelpRow; 5],
     pub help_view: [HelpRow; 8],
-    pub help_panels: [HelpRow; 5],
+    pub help_panels: [HelpRow; 6],
     pub help_edit: [HelpRow; 5],
-    pub help_more: [HelpRow; 5],
+    pub help_more: [HelpRow; 3],
 }
 
 #[cfg(test)]

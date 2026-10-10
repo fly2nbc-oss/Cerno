@@ -63,7 +63,6 @@ impl NameList {
 impl CernoApp {
     /// *Filter ▸ By file list …*: the card, with the last list in it.
     pub(super) fn open_name_list(&mut self) {
-        self.leave_side_bar();
         self.layer = Layer::NameList(Card {
             text: self.name_list.text.clone(),
             preview: Matched::default(),

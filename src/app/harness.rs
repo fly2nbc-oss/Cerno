@@ -191,7 +191,7 @@ pub(super) fn presses(keys: &[(Key, Modifiers)]) -> Vec<Event> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::command::{Command, Source};
+    use crate::app::command::{Advance, Command, Source};
     use crate::app::editing::EditSession;
     use crate::app::menu::ConfirmAction;
 
@@ -383,36 +383,74 @@ mod tests {
         assert_eq!(h.rating_of(0), Some(Rating::Rejected));
     }
 
-    /// `Ctrl+K` gives the menu bar the keyboard and takes it back (removed with 1.12's keys).
+    /// `F10` switches the menu bar like `T`, `Tab` and `F6` the other bars: it stays while
+    /// the photos change, takes no key, and is saved.
     #[test]
-    fn ctrl_k_gives_the_menu_bar_the_keyboard_and_takes_it_back() {
+    fn f10_switches_the_menu_bar_and_it_stays() {
+        let mut h = Harness::new(3);
+        h.settle();
+        assert!(!h.app.bars.side_bar);
+        h.press(Key::F10, NONE);
+        assert!(h.app.bars.side_bar);
+        assert_eq!(h.app.db.setting("side_bar").as_deref(), Some("1"));
+        h.press(Key::ArrowRight, NONE);
+        h.press(Key::X, NONE);
+        assert_eq!(h.app.current, 1, "the bar takes no key");
+        assert_eq!(h.rating_of(1), Some(Rating::Rejected));
+        assert!(h.app.bars.side_bar, "it stays while browsing");
+        h.press(Key::F10, NONE);
+        assert!(!h.app.bars.side_bar);
+    }
+
+    /// `Ctrl+K` and `Ctrl+M` are gone (the menu bar is for the mouse).
+    #[test]
+    fn ctrl_k_and_ctrl_m_do_nothing() {
         let mut h = Harness::new(3);
         h.settle();
         h.press(Key::K, Modifiers::COMMAND);
-        assert!(h.app.menu_bar.state.focus);
-        h.press(Key::X, NONE);
-        assert_eq!(h.rating_of(0), None, "the bar has the keyboard");
-        h.press(Key::K, Modifiers::COMMAND);
-        assert!(!h.app.menu_bar.state.focus);
+        h.press(Key::M, Modifiers::COMMAND);
+        h.settle();
+        assert!(!h.app.bars.side_bar);
+        assert_eq!(h.layer(), "none");
+        assert!(!h.app.options.similar);
         h.press(Key::X, NONE);
         assert_eq!(h.rating_of(0), Some(Rating::Rejected));
     }
 
-    /// `Ctrl+M` opens the menu bar for the moment, with the keyboard; `Esc` takes both back
-    /// (removed with 1.12's keys).
+    /// `E` without a remembered program opens the programs' list over the photo – not the
+    /// menu bar; `Esc` closes it and the keys reach the photo again.
     #[test]
-    fn ctrl_m_shows_the_menu_bar_for_the_moment() {
+    fn e_without_a_program_opens_the_list_over_the_photo() {
         let mut h = Harness::new(3);
+        // The system is not asked for its programs here.
+        h.app.external.editors.insert("jpg".into(), Vec::new());
         h.settle();
-        assert!(!h.app.bars.side_bar);
-        h.press(Key::M, Modifiers::COMMAND);
+        h.press(Key::E, NONE);
         h.settle();
-        assert!(h.app.menu_bar.state.focus);
-        assert!(h.app.menu_bar.temporary);
+        assert_eq!(h.layer(), "list");
+        assert!(!h.app.bars.side_bar, "the menu bar stays off");
+        h.press(Key::X, NONE);
+        assert_eq!(h.rating_of(0), None, "the list has the keyboard");
         h.press(Key::Escape, NONE);
+        assert_eq!(h.layer(), "none");
+        h.press(Key::X, NONE);
+        assert_eq!(h.rating_of(0), Some(Rating::Rejected));
+    }
+
+    /// The stars row of the menu bar rates like the info bar's stars (no moving on).
+    #[test]
+    fn the_stars_row_rates_without_moving_on() {
+        let mut h = Harness::new(3);
+        h.app.marks.auto_advance = true;
         h.settle();
-        assert!(!h.app.menu_bar.state.focus);
-        assert!(!h.app.menu_bar.temporary);
-        assert_eq!(h.app.view.len(), 3, "Esc on the bar touches nothing else");
+        let ctx = h.ctx.clone();
+        h.app.run(
+            &ctx,
+            Command::SetRating(Rating::Stars(4), Advance::No),
+            Source::Menu,
+            &[],
+        );
+        assert_eq!(h.rating_of(0), Some(Rating::Stars(4)));
+        assert_eq!(h.app.current, 0);
     }
 }

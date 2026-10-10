@@ -81,10 +81,8 @@ struct KeyInput {
     toggle_grid: bool,
     help: bool,
     language: bool,
-    /// `Ctrl+K`: the keyboard to the menu bar, or back to the photo.
-    palette: bool,
-    /// `Ctrl+M`: the menu bar on *Visible photos*.
-    actions: bool,
+    /// `F10`: the menu bar.
+    toggle_side_bar: bool,
     toggle_zoom: bool,
     /// `+`/`−`, with or without Ctrl.
     zoom_in: bool,
@@ -221,7 +219,6 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         edit_elsewhere: plain && i.key_pressed(Key::E),
         // Ctrl+O opens a folder.
         overlay: plain && i.key_pressed(Key::O),
-        // Ctrl+M is the menu bar's *Visible photos*.
         similar: plain && i.key_pressed(Key::M),
         // F and F11 full screen; T (`toggle_toolbar`) is the filter bar.
         toggle_fullscreen: i.key_pressed(Key::F11) || (plain && i.key_pressed(Key::F)),
@@ -233,8 +230,7 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
             || i.key_pressed(Key::Questionmark)
             || (plain && i.key_pressed(Key::H)),
         language: i.modifiers.command && i.key_pressed(Key::L),
-        palette: i.modifiers.command && i.key_pressed(Key::K),
-        actions: i.modifiers.command && !i.modifiers.shift && i.key_pressed(Key::M),
+        toggle_side_bar: i.key_pressed(Key::F10),
         toggle_zoom: plain && i.key_pressed(Key::Z),
         // German layouts type "=" for Shift+0, which is "rate 0 and next" here.
         zoom_in: !i.modifiers.alt
@@ -327,6 +323,7 @@ impl KeyInput {
         }
         push(self.toggle_toolbar, Command::TogglePanel(Panel::Top));
         push(self.toggle_filmstrip, Command::TogglePanel(Panel::Bottom));
+        push(self.toggle_side_bar, Command::TogglePanel(Panel::Left));
         push(self.overlay, Command::NextOverlay);
         let zoom = ZoomKeys {
             toggle: self.toggle_zoom,
@@ -389,23 +386,8 @@ impl CernoApp {
         if keys.language {
             self.switch_language(ctx);
         }
-        // `Ctrl+M`: the menu bar on *Visible photos* (copy, move, delete what the filter shows).
-        if keys.actions {
-            self.layer.close_if(Layer::is_list);
-            self.open_visible_photos();
-            return;
-        }
-        // The bar with the keyboard, and the list beside one of its rows, read their own
-        // arrows, Enter, letters and Esc (`side_bar`, `palette`); `Ctrl+K` gives the keyboard
-        // back to the photo.
-        if self.layer.is_list() || self.menu_bar.state.focus {
-            if keys.palette {
-                self.leave_side_bar();
-            }
-            return;
-        }
-        if keys.palette {
-            self.open_side_bar();
+        // An open list reads its own arrows, Enter, letters and Esc (`palette`).
+        if self.layer.is_list() {
             return;
         }
         // The help page is modal: only closing it, switching its page (←/→) and the language
@@ -814,14 +796,28 @@ mod tests {
         assert!(!read(vec![key(Key::Num1, Key::Num1, plain)], plain).zoom_actual);
     }
 
+    /// `M` filters similar photos; `Ctrl+M` and `Ctrl+K` do nothing since 1.12. `F10` is the
+    /// menu bar, with any modifier like `F6`.
     #[test]
-    fn m_filters_similar_photos_and_ctrl_m_opens_visible_photos() {
+    fn m_filters_similar_photos_and_f10_is_the_menu_bar() {
         let plain = Modifiers::NONE;
         let keys = read(vec![key(Key::M, Key::M, plain)], plain);
-        assert!(keys.similar && !keys.actions);
+        assert!(keys.similar);
         let ctrl = Modifiers::COMMAND;
-        let keys = read(vec![key(Key::M, Key::M, ctrl)], ctrl);
-        assert!(keys.actions && !keys.similar);
+        assert_eq!(
+            read(vec![key(Key::M, Key::M, ctrl)], ctrl),
+            KeyInput::default()
+        );
+        assert_eq!(
+            read(vec![key(Key::K, Key::K, ctrl)], ctrl),
+            KeyInput::default()
+        );
+        assert!(read(vec![key(Key::F10, Key::F10, plain)], plain).toggle_side_bar);
+        let keys = read(vec![key(Key::F10, Key::F10, plain)], plain);
+        assert!(
+            keys.commands(&[])
+                .contains(&Command::TogglePanel(Panel::Left))
+        );
     }
 
     #[test]

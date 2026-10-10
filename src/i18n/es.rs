@@ -190,6 +190,7 @@ pub static TEXTS: Texts = Texts {
     button_side_bar: "Barra de menú",
     bar_rotate: "Girar",
     bar_colour: "Color",
+    bar_stars: "Estrellas",
     bar_align_camera: "Igualar cámaras",
     bar_overlay_sharpness: "Nitidez",
     bar_overlay_exposure: "Exposición",
@@ -572,7 +573,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "Primero recorrer rápido (Espacio) y rechazar lo fallido con X, sin pensarlo mucho.",
                 "Después «sin ×» en la barra de filtros: las rechazadas desaparecen; ahora valorar de 1 a 5.",
-                "Por último, barra de menú › Fotos visibles › «Eliminar las rechazadas» (Ctrl+M).",
+                "Por último, barra de menú (F10) › Fotos visibles › «Eliminar las rechazadas».",
             ],
         ),
         (
@@ -625,7 +626,7 @@ pub static TEXTS: Texts = Texts {
                 "Arrastra una carpeta a la ventana para abrirla. Mantén pulsado → para avanzar sin parar.",
                 "En la cuadrícula (F7), ↑ ↓ cambian de fila, + − el tamaño, Intro abre la foto.",
                 "Enderezar (S): la rueda y las flechas giran, Mayús más fino. Recorte (R): traza un marco o muévelo con las flechas, +/− cambia su tamaño, A el formato, X cambia horizontal/vertical.",
-                "La barra de menú (el botón abajo a la derecha) reúne lo que actúa sobre esta foto, las fotos visibles y la vista, y los ajustes; Ctrl+K llega a ella con el teclado, Esc la deja.",
+                "La barra de menú (F10 o el botón abajo a la derecha) reúne lo que actúa sobre esta foto, las fotos visibles y la vista, y los ajustes – todo con el ratón.",
                 "En la descripción, Intro lleva el cursor al campo de palabras clave.",
             ],
         ),
@@ -636,12 +637,12 @@ pub static TEXTS: Texts = Texts {
         ("1 – 5", "Dar estrellas"),
         ("X", "Rechazar"),
         ("Supr", "Eliminar – Esc la recupera"),
-        ("Ctrl+K", "Barra de menú (botón inferior derecho)"),
+        ("F10", "Barra de menú (botón inferior derecho)"),
     ],
     welcome_more: "Todos los atajos: H",
     setup_line: |exiftool, aesthetics| {
         format!(
-            "Configuración: ExifTool {} · estética {} – Ctrl+K › Configuración › Modelos y datos",
+            "Configuración: ExifTool {} · estética {} – Barra de menú (F10) › Configuración › Modelos y datos",
             if exiftool { "listo" } else { "falta" },
             if aesthetics { "lista" } else { "falta" },
         )
@@ -697,10 +698,11 @@ pub static TEXTS: Texts = Texts {
         ("F, F11", "Pantalla completa"),
     ],
     help_panels: [
+        ("F10", "Barra de menú"),
         ("T", "Barra de filtros"),
         ("Tab", "Panel de detalles"),
         ("F6", "Tira de miniaturas"),
-        ("Mayús+Tab", "Los tres paneles"),
+        ("Mayús+Tab", "Los cuatro paneles"),
         ("Ctrl+Tab", "Pestaña siguiente de detalles"),
     ],
     help_edit: [
@@ -711,8 +713,6 @@ pub static TEXTS: Texts = Texts {
         ("E", "Editar en otro programa"),
     ],
     help_more: [
-        ("Ctrl+K", "Barra de menú con el teclado"),
-        ("Ctrl+M", "Copiar, mover, eliminar"),
         ("Ctrl+L", "Idioma"),
         ("H, F1, ?", "Esta ayuda"),
         ("Esc", "Volver atrás"),

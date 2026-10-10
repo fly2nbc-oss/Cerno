@@ -37,26 +37,18 @@ pub(super) enum ListKind {
     Languages,
 }
 
-/// The list open beside a row of the bar.
+/// The list open beside a row of the bar, or over the photo.
 pub(super) struct RowList {
     kind: ListKind,
-    /// The row it opened from.
-    at: Rect,
+    /// The row it opened from; `None`: `E` opened it, over the photo.
+    at: Option<Rect>,
     state: palette::State,
-    /// `E` opened it from the photo: closing it gives the keyboard back as well (a bar shown
-    /// only for it goes), while one opened in the bar returns to its row.
-    by_key: bool,
 }
 
-/// The menu bar's state; whether it shows is `show_side_bar`.
+/// The menu bar's state; whether it shows is `Bars::side_bar`.
 pub(super) struct MenuBar {
-    /// Its open groups (saved as `side_bar_open`) and whether it has the keyboard.
+    /// Its open groups (saved as `side_bar_open`).
     pub(super) state: side_bar::State,
-    /// `Ctrl+K`, `Ctrl+M` or `E` showed the bar while it is off: it goes again with the
-    /// keyboard.
-    pub(super) temporary: bool,
-    /// `E` asked for the programs' list: it opens beside its row once the bar is drawn.
-    pub(super) list_after_draw: Option<ListKind>,
     /// The counts of *Visible photos* (rejected in the folder, deleted on screen), refreshed
     /// with the view and at most every 300 ms – the bar shows them every frame.
     counts: BarCounts,
@@ -67,8 +59,6 @@ impl MenuBar {
     pub(super) fn restore(db: &crate::db::Db) -> Self {
         Self {
             state: side_bar::State::restore(db.setting(SIDE_BAR_OPEN).as_deref()),
-            temporary: false,
-            list_after_draw: None,
             counts: BarCounts::default(),
         }
     }
@@ -120,7 +110,6 @@ pub(super) enum ConfirmAction {
 impl CernoApp {
     /// Opens a confirmation card. `from_models`: the models card comes back afterwards.
     pub(super) fn ask(&mut self, action: ConfirmAction, from_models: bool) {
-        self.leave_side_bar();
         self.layer = Layer::Confirm {
             action,
             back_to_models: from_models,
@@ -239,34 +228,24 @@ impl CernoApp {
                 self.layer.close_if(Layer::is_help);
             }
         }
-        // The list beside a row of the menu bar: a pick runs; Esc or a click beside it closes
-        // it, and the bar keeps the keyboard if it had it – unless `E` opened the list.
+        // The list beside a row of the menu bar or over the photo: a pick runs; Esc or a click
+        // beside it closes it.
         if self.layer.is_list()
             && let Layer::List(mut list) = std::mem::take(&mut self.layer)
         {
-            let by_key = list.by_key;
+            let placement = match list.at {
+                Some(row) => palette::Placement::Beside(row),
+                None => palette::Placement::Over(self.layout(window).area),
+            };
             let entries = match list.kind {
                 ListKind::Editors => self.editor_rows(),
                 ListKind::Languages => language_rows(),
             };
-            let out = palette::show(
-                ctx,
-                window,
-                &mut list.state,
-                &entries,
-                palette::Placement(list.at),
-            );
-            let picked = out.run.is_some() && out.close;
+            let out = palette::show(ctx, window, &mut list.state, &entries, placement);
             if !out.close {
                 self.layer = Layer::List(list);
-            } else if by_key && !picked {
-                self.leave_side_bar();
             }
             if let Some(action) = out.run {
-                // A program opens the photo elsewhere: the bar is done too.
-                if picked {
-                    self.leave_side_bar();
-                }
                 self.run(ctx, action, Source::Menu, frames);
             }
         }
@@ -377,6 +356,22 @@ impl CernoApp {
             }
         };
 
+        // The stars, like the filter bar's boxes: none, then 1–5 (the user's wish of
+        // 2026-10-10 – also here for completeness, beside the info bar's stars). A rejected
+        // photo has none of them on.
+        let mut stars = vec![Segment {
+            action: Command::SetRating(Rating::Unrated, Advance::No),
+            look: Look::NoStars,
+            tooltip: format!("{} (0)", t.filter_unrated),
+            on: rating == Rating::Unrated,
+        }];
+        stars.extend((1..=5).map(|n| Segment {
+            action: Command::SetRating(Rating::Stars(n), Advance::No),
+            look: Look::Text(format!("{n}★")),
+            tooltip: format!("{} ({n})", (t.filter_stars)(n)),
+            on: rating == Rating::Stars(n),
+        }));
+
         // "No colour" first, like the filter bar's colours; each with its key (purple has none).
         let mut colours = vec![Segment {
             action: Command::SetLabel(None, Advance::No),
@@ -437,6 +432,11 @@ impl CernoApp {
             Row::new(Command::Undo, t.cmd_undo, Some(i18n::with_ctrl("Z"))).disabled(rewrite)
         };
         vec![
+            Item::Segments(Segments {
+                label: t.bar_stars.to_owned(),
+                segments: stars,
+                disabled: mark,
+            }),
             Item::Segments(Segments {
                 label: t.bar_colour.to_owned(),
                 segments: colours,
@@ -625,39 +625,31 @@ impl CernoApp {
         rows
     }
 
-    /// `E` before a program is remembered: the bar on *Edit elsewhere*, its list open.
+    /// `E` before a program is remembered: the programs' list over the photo (the user's
+    /// decision of 2026-10-10 – the menu bar is for the mouse).
     pub(super) fn open_editors_list(&mut self) {
-        let index = self
-            .photo_items()
-            .iter()
-            .position(|item| matches!(item, Item::List(row) if row.action == Command::EditList));
-        self.open_side_bar_at(PHOTO, index);
-        self.menu_bar.list_after_draw = Some(ListKind::Editors);
-    }
-
-    /// `Ctrl+M`: the bar on *Visible photos* – copy, move, delete what the filter shows.
-    pub(super) fn open_visible_photos(&mut self) {
-        self.open_side_bar_at(VISIBLE, None);
+        self.open_row_list(ListKind::Editors, None);
     }
 
     /// The list beside a row of the bar. "Edit elsewhere" asks the system for its programs
     /// now, once per file type.
-    fn open_row_list(&mut self, kind: ListKind, at: Rect, by_key: bool) {
+    fn open_row_list(&mut self, kind: ListKind, at: Option<Rect>) {
         if kind == ListKind::Editors {
             self.prepare_editors();
         }
-        self.layer = Layer::List(RowList {
-            kind,
-            at,
-            state: palette::State::default(),
-            by_key,
-        });
+        // Opened by `E`: that press typed an "e" too, which is not the list's letter.
+        let state = if at.is_none() {
+            palette::State::opened_by_key()
+        } else {
+            palette::State::default()
+        };
+        self.layer = Layer::List(RowList { kind, at, state });
     }
 
     /// The language list, as from its row (tests: it asks the system for nothing).
     #[cfg(test)]
     pub(super) fn open_language_list(&mut self) {
-        self.open_row_list(ListKind::Languages, Rect::NOTHING, false);
+        self.open_row_list(ListKind::Languages, Some(Rect::NOTHING));
     }
 
     /// The menu bar, and what its rows ran.
@@ -670,36 +662,20 @@ impl CernoApp {
         let ctx = ui.ctx().clone();
         self.refresh_bar_counts();
         let bar = self.side_bar_content();
-        // Its keys only while it has the keyboard and nothing lies over it.
-        let listening = self.menu_bar.state.focus && !self.layer.is_open() && !self.modal_open();
-        let out = side_bar::show(ui, rect, &mut self.menu_bar.state, &bar, listening);
+        let out = side_bar::show(ui, rect, &mut self.menu_bar.state, &bar);
         if out.folded {
             self.db
                 .put_setting(SIDE_BAR_OPEN, &self.menu_bar.state.saved());
-        }
-        if let Some(kind) = self.menu_bar.list_after_draw.take()
-            && let Some(at) = out.cursor
-        {
-            self.open_row_list(kind, at, true);
-        }
-        if out.leave {
-            self.leave_side_bar();
         }
         let Some(action) = out.run else {
             return;
         };
         match (action, out.row) {
-            (Command::EditList, Some(at)) => self.open_row_list(ListKind::Editors, at, false),
+            (Command::EditList, Some(at)) => self.open_row_list(ListKind::Editors, Some(at)),
             (Command::LanguageList, Some(at)) => {
-                self.open_row_list(ListKind::Languages, at, false);
+                self.open_row_list(ListKind::Languages, Some(at));
             }
-            _ => {
-                // A plain command gives the keyboard back – and a bar shown only for it goes.
-                if !out.keep {
-                    self.leave_side_bar();
-                }
-                self.run(&ctx, action, Source::Menu, frames);
-            }
+            _ => self.run(&ctx, action, Source::Menu, frames),
         }
     }
 

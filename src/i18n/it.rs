@@ -181,6 +181,7 @@ pub static TEXTS: Texts = Texts {
     button_side_bar: "Barra dei menu",
     bar_rotate: "Ruota",
     bar_colour: "Colore",
+    bar_stars: "Stelle",
     bar_align_camera: "Allinea fotocamere",
     bar_overlay_sharpness: "Nitidezza",
     bar_overlay_exposure: "Esposizione",
@@ -558,7 +559,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "Prima scorrere veloce (Spazio) e rifiutare con X ciò che non va, senza pensarci troppo.",
                 "Poi «senza ×» nella barra dei filtri: le rifiutate spariscono, ora valutare da 1 a 5.",
-                "Infine barra dei menu › Foto visibili › «Elimina le rifiutate» (Ctrl+M).",
+                "Infine barra dei menu (F10) › Foto visibili › «Elimina le rifiutate».",
             ],
         ),
         (
@@ -611,7 +612,7 @@ pub static TEXTS: Texts = Texts {
                 "Trascina una cartella sulla finestra per aprirla. Tieni premuto → per scorrere le foto.",
                 "Nella griglia (F7) ↑ ↓ cambiano riga, + − la dimensione, Invio apre la foto.",
                 "Raddrizza (S): rotellina e frecce ruotano, Maiusc più fine. Ritaglio (R): traccia una cornice o spostala con le frecce, +/− ne cambia la dimensione, A il formato, X scambia orizzontale/verticale.",
-                "La barra dei menu (il pulsante in basso a destra) raccoglie ciò che agisce su questa foto, sulle foto visibili e sulla vista, più le impostazioni; Ctrl+K la raggiunge da tastiera, Esc la lascia.",
+                "La barra dei menu (F10 o il pulsante in basso a destra) raccoglie ciò che agisce su questa foto, sulle foto visibili e sulla vista, più le impostazioni – tutto con il mouse.",
                 "Nella descrizione, Invio porta il cursore nel campo delle parole chiave.",
             ],
         ),
@@ -622,12 +623,12 @@ pub static TEXTS: Texts = Texts {
         ("1 – 5", "Assegna le stelle"),
         ("X", "Rifiuta"),
         ("Canc", "Elimina – Esc la recupera"),
-        ("Ctrl+K", "Barra dei menu (in basso a destra)"),
+        ("F10", "Barra dei menu (in basso a destra)"),
     ],
     welcome_more: "Tutte le scorciatoie: H",
     setup_line: |exiftool, aesthetics| {
         format!(
-            "Configurazione: ExifTool {} · estetica {} – Ctrl+K › Impostazioni › Modelli e dati",
+            "Configurazione: ExifTool {} · estetica {} – Barra dei menu (F10) › Impostazioni › Modelli e dati",
             if exiftool { "pronto" } else { "manca" },
             if aesthetics { "pronta" } else { "manca" },
         )
@@ -683,10 +684,11 @@ pub static TEXTS: Texts = Texts {
         ("F, F11", "Schermo intero"),
     ],
     help_panels: [
+        ("F10", "Barra dei menu"),
         ("T", "Barra dei filtri"),
         ("Tab", "Pannello dettagli"),
         ("F6", "Striscia di miniature"),
-        ("Maiusc+Tab", "Tutti e tre i pannelli"),
+        ("Maiusc+Tab", "Tutti e quattro i pannelli"),
         ("Ctrl+Tab", "Scheda successiva dei dettagli"),
     ],
     help_edit: [
@@ -697,8 +699,6 @@ pub static TEXTS: Texts = Texts {
         ("E", "Modifica in un altro programma"),
     ],
     help_more: [
-        ("Ctrl+K", "Barra dei menu da tastiera"),
-        ("Ctrl+M", "Copia, sposta, elimina"),
         ("Ctrl+L", "Lingua"),
         ("H, F1, ?", "Questa guida"),
         ("Esc", "Torna indietro"),
