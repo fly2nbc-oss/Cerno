@@ -579,7 +579,7 @@ fn write_marks(
             return Ok(None);
         }
         // All the file's marks are cleared: an empty sidecar says so.
-        crate::sidecar::ensure(path)?;
+        crate::sidecar::ensure(&target)?;
         return Ok(Some(Written {
             rating: written_rating,
             label: written_label,
@@ -592,7 +592,7 @@ fn write_marks(
         None => exiftool.insert(ExifTool::spawn()?),
     };
     if sidecar {
-        crate::sidecar::ensure(path)?;
+        crate::sidecar::ensure(&target)?;
     }
 
     let snapshot = filetimes::Snapshot::capture(&target).context("cannot read file times")?;
@@ -1133,6 +1133,41 @@ mod tests {
         // Back to no stars: the sidecar says so, not the camera.
         write_marks(&mut exiftool, &raw, Some(Rating::Unrated), None, None).unwrap();
         assert_eq!(metadata::read_sidecar(&raw).rating.value, Rating::Unrated);
+        drop(exiftool);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A star on a video beside a RAW of its name goes into `IMG_4.MOV.xmp`; the RAW's
+    /// `IMG_4.xmp` keeps its own marks, and each reads back its own. Skipped without ExifTool.
+    #[test]
+    fn a_video_beside_a_raw_marks_its_own_sidecar() {
+        if crate::exiftool::locate().is_none() {
+            eprintln!("ExifTool not found – skipped");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("cerno-sidecar-v-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (video, raw) = (dir.join("IMG_4.MOV"), dir.join("IMG_4.CR3"));
+        std::fs::write(&video, b"not read").unwrap();
+        std::fs::write(&raw, b"II*\0 raw").unwrap();
+        let mut exiftool = None;
+
+        write_marks(&mut exiftool, &raw, Some(Rating::Stars(2)), None, None).unwrap();
+        write_marks(
+            &mut exiftool,
+            &video,
+            Some(Rating::Stars(5)),
+            Some(Some(Label::Red)),
+            None,
+        )
+        .unwrap();
+        assert!(dir.join("IMG_4.MOV.xmp").is_file());
+        let (video_meta, raw_meta) = (metadata::read_sidecar(&video), metadata::read_sidecar(&raw));
+        assert_eq!(video_meta.rating.value, Rating::Stars(5));
+        assert_eq!(video_meta.label, LabelInfo::Known(Label::Red));
+        assert_eq!(raw_meta.rating.value, Rating::Stars(2));
+        assert_eq!(raw_meta.label.known(), None);
         drop(exiftool);
         std::fs::remove_dir_all(&dir).unwrap();
     }
