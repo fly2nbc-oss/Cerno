@@ -49,12 +49,11 @@ pub fn load(_names: &[&str]) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
 
     /// A DLL that isn't there is named, one that is (System32's) loads.
-    #[cfg(windows)]
     #[test]
     fn a_missing_dll_is_named() {
         assert_eq!(load(&["kernel32.dll"]), Ok(()));
