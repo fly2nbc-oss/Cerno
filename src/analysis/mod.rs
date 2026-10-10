@@ -30,7 +30,7 @@ use eframe::egui;
 use crate::db::{Db, FileStamp, ImageRecord, Scores};
 use crate::filelock::FileLocks;
 use crate::metadata::{Label, Rating};
-use crate::{decode, library, metadata, paths, thumbs};
+use crate::{decode, jpeg_info, library, metadata, paths, thumbs};
 use aesthetic::{AestheticModel, V25Model};
 use faces::FaceDetector;
 use taste::TasteModel;
@@ -238,8 +238,10 @@ fn scores_complete(image: &ImageRecord, caps: Capabilities) -> bool {
 }
 
 /// Everything the current analysis would compute is already stored.
-fn is_complete(image: &ImageRecord, caps: Capabilities) -> bool {
-    scores_complete(image, caps) && image.metadata_version == metadata::VERSION
+fn is_complete(image: &ImageRecord, caps: Capabilities, jpeg: bool) -> bool {
+    scores_complete(image, caps)
+        && image.metadata_version == metadata::VERSION
+        && (!jpeg || image.scores.truncated.is_some())
 }
 
 /// What the index knows. For a photo whose marks live in a sidecar the sidecar has the last
@@ -620,6 +622,7 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
     let changed = || files.busy(path) || files.generation(path) != generation;
     let stamp = FileStamp::of(path)?;
     let key = path.to_string_lossy();
+    let jpeg = library::format_of(path) == Some(library::Format::Jpeg);
     let caps = Capabilities {
         clip: lock(&shared.clip_state).usable(),
         v25: lock(&shared.v25_state).usable(),
@@ -629,16 +632,19 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
     // Fast path: nothing to compute.
     if let Some(record) = shared.db.lookup(&key, stamp)? {
         remember_embedding(shared, path, record.image.embedding.as_deref());
-        if is_complete(&record.image, caps) {
+        if is_complete(&record.image, caps, jpeg) {
             shared
                 .board
                 .set(path, known_from(path, &record, &shared.board));
             return Ok(Outcome::Done);
         }
-        // Scores are done; only the capture time (and a fresh read of rating/label) is missing.
+        // Scores are done; only the capture time (and a fresh read of rating/label) or a
+        // JPEG's end check is missing: the file is read, not decoded.
         if scores_complete(&record.image, caps) {
             let bytes = files.read(path)?;
             let meta = metadata::read_for(path, &bytes);
+            let truncated = jpeg.then(|| !jpeg_info::is_complete(&bytes));
+            drop(bytes);
             if changed() {
                 return Ok(Outcome::Retry);
             }
@@ -655,6 +661,11 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
                 meta.camera.model.as_deref(),
                 metadata::VERSION,
             )?;
+            let mut scores = record.image.scores;
+            if let Some(truncated) = truncated {
+                shared.db.put_truncated(record.fingerprint, truncated)?;
+                scores.truncated = Some(truncated);
+            }
             shared.board.set(
                 path,
                 Known {
@@ -663,7 +674,7 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
                     taken_ms: meta.camera.taken_ms,
                     camera: shared.board.camera(meta.camera.model.as_deref()),
                     fingerprint: Some(record.fingerprint),
-                    scores: record.image.scores,
+                    scores,
                 },
             );
             // A write that slipped in between is repaired by the next try.
@@ -685,6 +696,7 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
     let format = library::format_of(path).context("unsupported file type")?;
     let bytes = files.read(path)?;
     let meta = metadata::read_for(path, &bytes);
+    let truncated = jpeg.then(|| !jpeg_info::is_complete(&bytes));
     let image = decode::decode_for_display(
         &bytes,
         format,
@@ -720,6 +732,12 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
     }
     if !shared.thumbs.contains(path) {
         shared.thumbs.insert(path, tw, th, &thumb);
+    }
+    if let Some(truncated) = truncated
+        && record.scores.truncated != Some(truncated)
+    {
+        shared.db.put_truncated(fingerprint, truncated)?;
+        record.scores.truncated = Some(truncated);
     }
 
     if record.scores.sharpness.is_none() || record.sharpness_version != sharpness::VERSION {
@@ -1003,7 +1021,7 @@ mod tests {
             v25: true,
             faces: true,
         };
-        assert!(is_complete(&complete_record(), all));
+        assert!(is_complete(&complete_record(), all, false));
         let missing: [fn(&mut ImageRecord); 8] = [
             |r| r.has_thumbnail = false,
             |r| r.scores.sharpness = None,
@@ -1017,13 +1035,18 @@ mod tests {
         for (i, strip) in missing.iter().enumerate() {
             let mut record = complete_record();
             strip(&mut record);
-            assert!(!is_complete(&record, all), "case {i}");
+            assert!(!is_complete(&record, all, false), "case {i}");
         }
         // Models that can't run are not required – the face detector included.
         let mut record = complete_record();
         record.aesthetic_model = None;
         record.aesthetic25_model = None;
         record.faces_version = 0;
-        assert!(is_complete(&record, Capabilities::default()));
+        assert!(is_complete(&record, Capabilities::default(), false));
+        // A JPEG's end is checked once; other formats have none to check.
+        let mut record = complete_record();
+        assert!(!is_complete(&record, all, true));
+        record.scores.truncated = Some(false);
+        assert!(is_complete(&record, all, true));
     }
 }

@@ -222,6 +222,9 @@ pub struct Texts {
     /// The later copy, not the first identical photo.
     pub filter_duplicate: &'static str,
     pub filter_duplicate_tooltip: &'static str,
+    /// The filter for JPEGs that end inside their image data (`jpeg_info::is_complete`).
+    pub filter_incomplete: &'static str,
+    pub filter_incomplete_tooltip: &'static str,
     /// People filter (a face found / none): the menu row and the icon chip's tooltip.
     pub filter_people: &'static str,
     pub filter_no_people: &'static str,
@@ -351,6 +354,9 @@ pub struct Texts {
     pub meter_sharpness: &'static str,
     pub meter_eyes: &'static str,
     pub probably_blurry: &'static str,
+    /// Beside the stars, and in a cell's tooltip: the JPEG ends inside its image data.
+    pub incomplete_fact: &'static str,
+    pub incomplete_tooltip: &'static str,
     pub analyzing: &'static str,
     pub saving: &'static str,
     /// Shown while auto-advance is on.
@@ -585,6 +591,10 @@ pub struct Texts {
     pub row_file_size: &'static str,
     pub row_jpeg_quality: &'static str,
     pub explain_jpeg_quality: &'static str,
+    /// Details › File, only for a JPEG that ends inside its image data; its value is
+    /// `incomplete_value`.
+    pub row_complete: &'static str,
+    pub incomplete_value: &'static str,
     pub explain_raw_preview: &'static str,
     /// The file section of a video (`playback::probe`).
     pub row_container: &'static str,

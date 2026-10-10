@@ -249,6 +249,7 @@ mod tests {
             current: false,
             rating: Rating::Unrated,
             blurry: None,
+            incomplete: false,
             pinned: false,
             label: None,
             series_id: None,

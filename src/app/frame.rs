@@ -124,6 +124,7 @@ impl CernoApp {
             current: i == self.current,
             rating,
             blurry,
+            incomplete: known.is_some_and(|k| k.scores.truncated == Some(true)),
             pinned: pinned == Some(i),
             label: self.label_of(path, None),
             series_id: place.map(|p| p.id),
@@ -268,6 +269,11 @@ impl CernoApp {
                 scores.and_then(|s| percentiles.subject(&s))
             },
             blurry: !comparing && scores.is_some_and(|s| percentiles.is_blurry(&s)),
+            // The loader knows at once, the index for a photo it hasn't decoded.
+            incomplete: image.as_ref().and_then(|image| image.jpeg).map_or_else(
+                || scores.is_some_and(|s| s.truncated == Some(true)),
+                |jpeg| !jpeg.complete,
+            ),
             saving: self.writer.status().pending > 0,
             zoom: self.zoom.scale.map(|s| s * 100.0),
             overlay: match self.overlay {
