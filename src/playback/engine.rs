@@ -261,7 +261,11 @@ impl Player {
     pub fn status(&self) -> Status {
         let inner = &self.inner;
         let pipeline = lock(&inner.pipeline).clone();
-        if let Some(bus) = pipeline.as_ref().and_then(|p| p.bus()) {
+        // While the start thread runs, the bus is its own: an error decides the next attempt
+        // (without sound, on the CPU). Taken here, a failing sound output's error ended the
+        // video instead (Windows CI, 2026-10-11). Messages left meanwhile are read later.
+        let started = inner.start_done.load(Ordering::Acquire);
+        if started && let Some(bus) = pipeline.as_ref().and_then(|p| p.bus()) {
             while let Some(message) = bus.pop() {
                 match message.view() {
                     gst::MessageView::Eos(..) => inner.ended.store(true, Ordering::Release),
