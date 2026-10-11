@@ -7,6 +7,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+## [1.12.1] – 2026-10-11
+
+A video that stayed black plays again.
+
+### Fixed
+
+- **A video no longer stays black** – on Windows a video starts on the graphics card. When the card shows no first picture within 10 seconds, Cerno now plays the video on the CPU, and the later videos of the session start there. Until now the video stayed black with its bar under it. So far this happened only on build machines without a graphics card; on the author's 162 phone videos the first picture came after 0.06–0.76 s.
+- **A sound output that fails without saying so** – when the sound output failed before the first picture and another part of the player reported the error, the video failed. It now plays on without sound, as it does when there is no sound device.
+
+### Under the hood
+
+- The tests that play videos take turns, and a manual CI run can repeat the tests to measure a flaky one. `cerno --check-video` names the pipeline that played.
+
 ## [1.12.0] – 2026-10-11
 
 `F10` for the menu bar, which is now for the mouse; stars in the menu bar; an update for an ExifTool Cerno downloaded; and a tidier inside.
