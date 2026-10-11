@@ -106,6 +106,31 @@ fn a_failing_sound_output_plays_on_without_sound() {
     drop(player);
 }
 
+/// The controls ask for the status every frame, also while the video starts. That must not
+/// take the start's messages off the bus: a failing sound output's error then ended the video
+/// instead of a start without sound (Windows CI, 1 of 10 rounds, 2026-10-11).
+#[test]
+fn asking_for_the_status_while_it_starts_takes_nothing_from_the_start() {
+    let _turn = test_lock();
+    let ctx = egui::Context::default();
+    for round in 0..10 {
+        let player = Player::start(&ctx, &fixture(), [320, 240], 0.5, false, Audio::Broken)
+            .expect("started");
+        let until = Instant::now() + Duration::from_secs(30);
+        let first = loop {
+            let status = player.status();
+            assert_eq!(status.error, None, "round {round}");
+            if status.frame_size.is_some() {
+                break status;
+            }
+            assert!(Instant::now() < until, "round {round}: {status:?}");
+            std::thread::yield_now();
+        };
+        assert!(first.silent, "round {round}: {first:?}");
+        drop(player);
+    }
+}
+
 #[test]
 fn a_missing_file_reports_an_error() {
     let _turn = test_lock();
