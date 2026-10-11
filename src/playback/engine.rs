@@ -17,35 +17,33 @@ use crate::sync::lock;
 
 static INIT: OnceLock<Result<(), String>> = OnceLock::new();
 
-/// How long the D3D12 pipeline gets for its first frame before the CPU one is tried. D3D12
-/// has stalled without an error – on CI's software device, never yet on a GPU – and the video
-/// then stayed black. Measured 2026-10-11 (`first_frame_times`): the author's 162 phone videos
-/// took at most 0.76 s on the GPU (median 0.06–0.09 s, a process's first 0.34–0.43 s); CI's
-/// software device once needed 8.7 s for its first, cold start.
-const GPU_FIRST_FRAME: Duration = Duration::from_secs(10);
+/// How long an attempt gets for its first frame. A pipeline has stalled before it – no frame,
+/// no error, no end – on CI only (D3D12 on Windows, the CPU on Linux, about once in 200 starts;
+/// never in 600 on the author's machine), and the video then stayed black. Measured 2026-10-11
+/// (`first_frame_times`): the author's 162 phone videos showed their first frame after at most
+/// 0.76 s on D3D12 (median 0.06–0.09 s, a process's first 0.34–0.43 s) and 0.99 s on the CPU
+/// (median 0.10–0.12 s); CI's software device once needed 8.7 s for its first, cold D3D12
+/// start.
+const FIRST_FRAME: Duration = Duration::from_secs(10);
 
-/// How long the CPU pipeline gets for its first frame; then the video fails.
-const FIRST_FRAME: Duration = Duration::from_secs(20);
-
-/// D3D12 showed no first frame in time once: the session's later videos start on the CPU.
-static GPU_STALLED: AtomicBool = AtomicBool::new(false);
-
-/// How a player starts: as Cerno does, or – in tests – with a D3D12 attempt that never shows
-/// a frame, a shorter limit and a stall remembered apart from the session's.
+/// How a player starts: as Cerno does, or – in tests – with a D3D12 attempt that never shows a
+/// frame (and a shorter limit for it), or on the CPU alone (to measure it).
 pub(super) struct Start {
     pub(super) gpu_limit: Duration,
-    pub(super) stalled: &'static AtomicBool,
     #[cfg(test)]
     pub(super) stall_gpu: bool,
+    #[cfg(test)]
+    pub(super) cpu_only: bool,
 }
 
 impl Default for Start {
     fn default() -> Self {
         Self {
-            gpu_limit: GPU_FIRST_FRAME,
-            stalled: &GPU_STALLED,
+            gpu_limit: FIRST_FRAME,
             #[cfg(test)]
             stall_gpu: false,
+            #[cfg(test)]
+            cpu_only: false,
         }
     }
 }
@@ -487,54 +485,49 @@ impl From<gst::glib::Error> for Failure {
     }
 }
 
-/// Builds the pipeline – on the GPU first where it exists – and starts it. A GPU pipeline
-/// that reports an error or shows no frame in time makes way for the CPU one; after such a
-/// stall the session's later videos start on the CPU. A sound output that fails (no device)
-/// makes way for none: the same pipeline again, without sound.
+/// Builds the pipeline – on the GPU first where it exists – and starts it. One stall before the
+/// first frame is survived: D3D12 makes way for the CPU, the CPU tries once more. A GPU
+/// pipeline that reports an error makes way for the CPU one. A sound output that fails (no
+/// device) makes way for none: the same pipeline again, without sound.
 fn run(inner: &Arc<Inner>) -> Result<()> {
     init()?;
-    let stalled_before = inner.start.stalled.load(Ordering::Acquire);
-    let gpu_first =
-        cfg!(windows) && !stalled_before && gst::ElementFactory::find("d3d12convert").is_some();
-    let attempts: &[bool] = if gpu_first { &[true, false] } else { &[false] };
-    let mut after_stall = stalled_before;
+    #[cfg(test)]
+    let cpu_only = inner.start.cpu_only;
+    #[cfg(not(test))]
+    let cpu_only = false;
+    let mut gpu = cfg!(windows) && !cpu_only && gst::ElementFactory::find("d3d12convert").is_some();
+    let mut stalled = false;
     let mut audio = inner.audio;
-    let mut last_error = None;
-    'pipelines: for &gpu in attempts {
-        loop {
-            if inner.stop.load(Ordering::Acquire) {
-                break 'pipelines;
+    loop {
+        if inner.stop.load(Ordering::Acquire) {
+            return Ok(());
+        }
+        let kind = match (gpu, stalled) {
+            (true, _) => Pipeline::Gpu,
+            (false, false) => Pipeline::Cpu,
+            (false, true) => Pipeline::CpuAfterStall,
+        };
+        match start_pipeline(inner, kind, audio) {
+            Ok(()) => return Ok(()),
+            Err(Failure::Audio(err)) if audio != Audio::Silent => {
+                log::warn!("video: no sound output ({err:#}) – playing without sound");
+                audio = Audio::Silent;
+                inner.silent.store(true, Ordering::Release);
             }
-            let kind = match (gpu, after_stall) {
-                (true, _) => Pipeline::Gpu,
-                (false, false) => Pipeline::Cpu,
-                (false, true) => Pipeline::CpuAfterStall,
-            };
-            match start_pipeline(inner, kind, audio) {
-                Ok(()) => return Ok(()),
-                Err(Failure::Audio(err)) if audio != Audio::Silent => {
-                    log::warn!("video: no sound output ({err:#}) – playing without sound");
-                    audio = Audio::Silent;
-                    inner.silent.store(true, Ordering::Release);
-                }
-                Err(Failure::Stalled(err)) if gpu => {
-                    log::warn!("video: D3D12 pipeline: {err:#} – the CPU from now on");
-                    inner.start.stalled.store(true, Ordering::Release);
-                    after_stall = true;
-                    last_error = Some(err);
-                    break;
-                }
-                Err(Failure::Audio(err) | Failure::Stalled(err) | Failure::Other(err)) => {
-                    log::warn!("video: {kind} pipeline failed: {err:#}");
-                    last_error = Some(err);
-                    break;
-                }
+            Err(Failure::Stalled(err)) if !stalled => {
+                log::warn!("video: {kind} pipeline: {err:#} – trying the CPU");
+                stalled = true;
+                gpu = false;
+            }
+            Err(Failure::Audio(err) | Failure::Other(err)) if gpu => {
+                log::warn!("video: {kind} pipeline failed: {err:#} – trying the CPU");
+                gpu = false;
+            }
+            Err(Failure::Audio(err) | Failure::Stalled(err) | Failure::Other(err)) => {
+                log::warn!("video: {kind} pipeline failed: {err:#}");
+                return Err(err);
             }
         }
-    }
-    match last_error {
-        Some(err) => Err(err),
-        None => Ok(()),
     }
 }
 
@@ -690,17 +683,26 @@ fn start_pipeline(inner: &Arc<Inner>, kind: Pipeline, audio: Audio) -> Result<()
             }
         }
     }
-    // No frame, no error, no end: the pipeline hangs (D3D12 did on CI's software device).
-    // Before, it counted as started and the video stayed black.
+    // No frame, no error, no end: the pipeline stalled (CI only, see `FIRST_FRAME`). Before,
+    // it counted as started and the video stayed black. The states go into the message, for
+    // the log; a sound output that failed its own state change makes it a sound failure.
     if lock(&inner.frame).size.is_none()
         && !inner.stop.load(Ordering::Acquire)
         && !inner.ended.load(Ordering::Acquire)
     {
+        let error = anyhow!(
+            "no first frame within {} s (pipeline {}, sound output {})",
+            limit.as_secs_f32(),
+            state_of(&playbin),
+            state_of(&audio_sink)
+        );
+        let failed = if sound_failed(&audio_sink) {
+            Failure::Audio(error)
+        } else {
+            Failure::Stalled(error)
+        };
         give_back(inner, &playbin);
-        return Err(Failure::Stalled(anyhow!(
-            "no first frame within {} s",
-            limit.as_secs_f32()
-        )));
+        return Err(failed);
     }
     // The sound output may fail after the first picture: playing is reached only once
     // every sink has its device. It counts only when the sound output itself failed – a
@@ -721,6 +723,16 @@ fn start_pipeline(inner: &Arc<Inner>, kind: Pipeline, audio: Audio) -> Result<()
         started.elapsed().as_millis(),
     );
     Ok(())
+}
+
+/// An element's state for the log: `Paused→Playing (Async)`.
+fn state_of(element: &gst::Element) -> String {
+    let (result, current, pending) = element.state(gst::ClockTime::ZERO);
+    let result = match result {
+        Ok(success) => format!("{success:?}"),
+        Err(_) => "failed".to_owned(),
+    };
+    format!("{current:?}→{pending:?} ({result})")
 }
 
 /// A failed attempt: down again, unless a stop took it already.

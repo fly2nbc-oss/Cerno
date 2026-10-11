@@ -9,11 +9,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [1.12.1] – 2026-10-11
 
-A video that stayed black plays again.
+Videos start more reliably: without a sound device, and after a rare stall before the first picture.
 
 ### Fixed
 
-- **A video no longer stays black** – on Windows a video starts on the graphics card. When the card shows no first picture within 10 seconds, Cerno now plays the video on the CPU, and the later videos of the session start there. Until now the video stayed black with its bar under it. So far this happened only on build machines without a graphics card; on the author's 162 phone videos the first picture came after 0.06–0.76 s.
+- **A video no longer stays black** – rarely, the player stopped before the first picture without an error, and the video stayed black with its bar under it. Seen only on build machines (on the graphics card under Windows, on the CPU under Linux), never on the author's 162 phone videos, whose first picture came after 0.06–0.99 s. Now the player waits 10 seconds for it and then starts again – after the graphics card on the CPU.
 - **A video without a sound device plays again** – when the sound output failed at the start (no device, a remote session), the video could fail instead of playing on without sound: the controls, which ask the player for its state every frame, took the start's error message away from it, or another part of the player reported the error instead of the sound output. Both are fixed; the video plays on without sound and a hint says so.
 
 ### Under the hood

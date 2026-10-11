@@ -108,7 +108,9 @@ fn a_failing_sound_output_plays_on_without_sound() {
 
 /// The controls ask for the status every frame, also while the video starts. That must not
 /// take the start's messages off the bus: a failing sound output's error then ended the video
-/// instead of a start without sound (Windows CI, 1 of 10 rounds, 2026-10-11).
+/// instead of a start without sound (Windows CI, 1 of 10 rounds, 2026-10-11). A stall before
+/// the first frame (CI, about once in 200 starts) is survived meanwhile, so each start has a
+/// minute.
 #[test]
 fn asking_for_the_status_while_it_starts_takes_nothing_from_the_start() {
     let _turn = test_lock();
@@ -116,7 +118,7 @@ fn asking_for_the_status_while_it_starts_takes_nothing_from_the_start() {
     for round in 0..10 {
         let player = Player::start(&ctx, &fixture(), [320, 240], 0.5, false, Audio::Broken)
             .expect("started");
-        let until = Instant::now() + Duration::from_secs(30);
+        let until = Instant::now() + Duration::from_secs(60);
         let first = loop {
             let status = player.status();
             assert_eq!(status.error, None, "round {round}");
@@ -206,7 +208,8 @@ fn probe_a_file() {
 /// `CERNO_VIDEO_DIR=<folder> cargo test --features video -- --ignored --nocapture
 /// first_frame_times` plays every video of a folder until its first frame, one after the
 /// other, and prints how long each took (only reads the files). GStreamer is loaded before;
-/// the first video of a process still pays for setting up D3D12.
+/// the first video of a process still pays for setting up D3D12. `CERNO_VIDEO_CPU=1` measures
+/// the CPU pipeline instead.
 #[test]
 #[ignore = "set CERNO_VIDEO_DIR"]
 fn first_frame_times() {
@@ -221,12 +224,17 @@ fn first_frame_times() {
         .filter(|path| crate::library::format_of(path) == Some(crate::library::Format::Video))
         .collect();
     videos.sort();
+    let cpu_only = std::env::var_os("CERNO_VIDEO_CPU").is_some();
     let ctx = egui::Context::default();
     let mut times = Vec::new();
     for path in &videos {
         let started = Instant::now();
-        let player =
-            Player::start(&ctx, path, [1920, 1080], 0.0, true, Audio::Silent).expect("started");
+        let start = engine::Start {
+            cpu_only,
+            ..engine::Start::default()
+        };
+        let player = Player::start_with(&ctx, path, [1920, 1080], 0.0, true, Audio::Silent, start)
+            .expect("started");
         let until = started + Duration::from_secs(30);
         let status = loop {
             let status = player.status();
@@ -264,9 +272,8 @@ fn first_frame_times() {
     }
 }
 
-/// On Windows the fixture plays on D3D12 – or on the CPU after D3D12 stalled (CI's software
-/// device), which the report says. A plain CPU pipeline there would mean D3D12 was never
-/// tried.
+/// On Windows the fixture plays on D3D12, on Linux on the CPU – or, after a stall (CI), on the
+/// CPU, which the report says. A plain CPU pipeline on Windows would mean D3D12 was never tried.
 #[test]
 fn the_self_test_plays_the_fixture() {
     let _turn = test_lock();
@@ -274,19 +281,19 @@ fn the_self_test_plays_the_fixture() {
     assert!(report.starts_with("video ok: 64x64"), "{report}");
     assert!(report.contains("closed true"), "{report}");
     assert!(report.contains("MP4, H.264"), "{report}");
-    if cfg!(windows) {
-        assert!(
-            report.contains("pipeline D3D12,")
-                || report.contains("pipeline CPU after D3D12 stalled,"),
-            "{report}"
-        );
+    let expected = if cfg!(windows) {
+        "pipeline D3D12,"
     } else {
-        assert!(report.contains("pipeline CPU,"), "{report}");
-    }
+        "pipeline CPU,"
+    };
+    assert!(
+        report.contains(expected) || report.contains("pipeline CPU after a stall,"),
+        "{report}"
+    );
 }
 
-/// D3D12 that shows no first frame makes way for the CPU, and the session's next video starts
-/// there at once (its D3D12 attempt would never show a frame either, and waits a minute).
+/// D3D12 that shows no first frame makes way for the CPU. Nothing is remembered: the next video
+/// tries D3D12 again – a stall has been a rare race on CI, not a broken GPU.
 #[cfg(windows)]
 #[test]
 fn a_stalled_gpu_makes_way_for_the_cpu() {
@@ -296,49 +303,32 @@ fn a_stalled_gpu_makes_way_for_the_cpu() {
         gstreamer::ElementFactory::find("d3d12convert").is_some(),
         "GStreamer without D3D12"
     );
-    let stalled: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(false)));
-    let stalling = |gpu_limit| engine::Start {
-        gpu_limit,
-        stalled,
+    let stalling = || engine::Start {
+        gpu_limit: Duration::from_secs(1),
         stall_gpu: true,
+        ..engine::Start::default()
     };
     let ctx = egui::Context::default();
-    let started = Instant::now();
-    let player = Player::start_with(
-        &ctx,
-        &fixture(),
-        [320, 240],
-        0.0,
-        true,
-        Audio::Silent,
-        stalling(Duration::from_secs(1)),
-    )
-    .expect("started");
-    let first = wait(&player, "first frame on the CPU", |s| {
-        s.frame_size.is_some()
-    });
-    assert_eq!(first.pipeline, Pipeline::CpuAfterStall);
-    assert!(
-        started.elapsed() >= Duration::from_secs(1),
-        "D3D12 had its second"
-    );
-    assert!(stalled.load(Ordering::Acquire));
-    let ended = wait(&player, "end", |s| s.ended);
-    assert_eq!(ended.error, None);
-    drop(player);
-
-    let player = Player::start_with(
-        &ctx,
-        &fixture(),
-        [320, 240],
-        0.0,
-        true,
-        Audio::Silent,
-        stalling(Duration::from_secs(60)),
-    )
-    .expect("started");
-    let first = wait(&player, "first frame, on the CPU at once", |s| {
-        s.frame_size.is_some()
-    });
-    assert_eq!(first.pipeline, Pipeline::CpuAfterStall);
+    for video in ["first", "second"] {
+        let started = Instant::now();
+        let player = Player::start_with(
+            &ctx,
+            &fixture(),
+            [320, 240],
+            0.0,
+            true,
+            Audio::Silent,
+            stalling(),
+        )
+        .expect("started");
+        let first = wait(&player, video, |s| s.frame_size.is_some());
+        assert_eq!(first.pipeline, Pipeline::CpuAfterStall, "{video}");
+        assert!(
+            started.elapsed() >= Duration::from_secs(1),
+            "{video}: D3D12 had its second"
+        );
+        let ended = wait(&player, "end", |s| s.ended);
+        assert_eq!(ended.error, None, "{video}");
+        drop(player);
+    }
 }
