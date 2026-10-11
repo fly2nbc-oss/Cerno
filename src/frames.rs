@@ -186,6 +186,7 @@ mod tests {
 
     #[test]
     fn a_frame_comes_from_the_fixture() {
+        let _turn = crate::playback::test_lock();
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/tiny.mp4");
         for seek in [Seek::Accurate, Seek::KeyUnit] {
             let frame = grab(&fixture, seek, Duration::from_secs(20)).expect("a frame");

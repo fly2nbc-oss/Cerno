@@ -155,6 +155,15 @@ pub fn self_test(path: &Path) -> Result<String, String> {
     }
 }
 
+/// Tests that build GStreamer pipelines take turns. On the Windows runners D3D12 runs on WARP,
+/// Windows' software device, and with pipelines started side by side the player test
+/// sometimes showed no first frame (2 of 4 runs at 1.12.0; never alone, never on a GPU).
+#[cfg(all(test, feature = "video"))]
+pub(crate) fn test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    crate::sync::lock(&LOCK)
+}
+
 #[cfg(feature = "video")]
 pub use engine::Player;
 

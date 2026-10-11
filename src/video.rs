@@ -428,6 +428,7 @@ mod tests {
     #[cfg(feature = "video")]
     #[test]
     fn the_helper_answers_with_a_fitted_frame() {
+        let _turn = crate::playback::test_lock();
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/tiny.mp4");
         let request = |max, path: &Path| Request {
             max,
