@@ -7,8 +7,8 @@
 //!
 //! On Windows the conversion runs on D3D12 (`d3d12convert`): on the CPU a 4K 10-bit HEVC clip
 //! from a phone reached only 21–26 fps (PoC 2026-10-03), on the GPU 30 fps at a quarter of a
-//! core. When that pipeline fails to start or shows no first frame in time, the CPU one is
-//! tried; after such a stall the session's later videos start on the CPU.
+//! core. When that pipeline fails or stalls before its first frame, the CPU one is tried; a
+//! CPU pipeline that stalls is tried once more.
 //!
 //! While a file plays Windows refuses to rename or move it, so a player is stopped before
 //! anything moves the file; [`Release`] says when it is closed. Without the feature
@@ -66,8 +66,7 @@ pub enum Pipeline {
     Gpu,
     /// The CPU: Linux, or D3D12 failed to start.
     Cpu,
-    /// The CPU, because D3D12 showed no first frame in time – for this video or an earlier
-    /// one of the session.
+    /// The CPU, after an attempt stalled before its first frame (D3D12, or the CPU itself).
     CpuAfterStall,
 }
 
@@ -77,7 +76,7 @@ impl std::fmt::Display for Pipeline {
             Self::None => "none",
             Self::Gpu => "D3D12",
             Self::Cpu => "CPU",
-            Self::CpuAfterStall => "CPU after D3D12 stalled",
+            Self::CpuAfterStall => "CPU after a stall",
         })
     }
 }
