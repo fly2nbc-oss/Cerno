@@ -36,6 +36,7 @@ fn wait(player: &Player, what: &str, done: impl Fn(&Status) -> bool) -> Status {
 /// 1 s, 64×64, H.264 + AAC: plays, fits (never enlarged), pauses, jumps, ends, closes.
 #[test]
 fn a_video_plays_pauses_seeks_ends_and_closes() {
+    let _turn = test_lock();
     let ctx = egui::Context::default();
     let player =
         Player::start(&ctx, &fixture(), [320, 240], 0.5, false, Audio::Silent).expect("started");
@@ -80,6 +81,7 @@ fn a_video_plays_pauses_seeks_ends_and_closes() {
 /// sound instead of failing, and the status says so.
 #[test]
 fn a_failing_sound_output_plays_on_without_sound() {
+    let _turn = test_lock();
     let ctx = egui::Context::default();
     let player =
         Player::start(&ctx, &fixture(), [320, 240], 0.5, false, Audio::Broken).expect("started");
@@ -106,6 +108,7 @@ fn a_failing_sound_output_plays_on_without_sound() {
 
 #[test]
 fn a_missing_file_reports_an_error() {
+    let _turn = test_lock();
     let ctx = egui::Context::default();
     let player = Player::start(
         &ctx,
@@ -132,6 +135,7 @@ fn a_missing_file_reports_an_error() {
 /// 1 s, 64×64 at 15 fps, H.264 + AAC (a 440 Hz sine, mono, 48 kHz) in MP4.
 #[test]
 fn the_probe_reads_streams_and_rates() {
+    let _turn = test_lock();
     let info = probe(&fixture()).expect("probed");
     assert!(
         info.duration
@@ -168,6 +172,7 @@ fn the_probe_reads_streams_and_rates() {
 #[test]
 #[ignore = "set CERNO_PROBE"]
 fn probe_a_file() {
+    let _turn = test_lock();
     if let Ok(path) = std::env::var("CERNO_PROBE") {
         println!("{:#?}", probe(Path::new(&path)));
     }
@@ -175,6 +180,7 @@ fn probe_a_file() {
 
 #[test]
 fn the_self_test_plays_the_fixture() {
+    let _turn = test_lock();
     let report = self_test(&fixture()).expect("self-test");
     assert!(report.starts_with("video ok: 64x64"), "{report}");
     assert!(report.contains("closed true"), "{report}");

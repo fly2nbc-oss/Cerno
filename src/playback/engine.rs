@@ -488,14 +488,29 @@ fn from_sound(err: &gst::message::Error, audio_sink: &gst::Element) -> bool {
     })
 }
 
-/// An error message as a failure of the sound output or of anything else.
-fn failure(err: &gst::message::Error, audio_sink: &gst::Element) -> Failure {
-    let error = anyhow!(
+/// Whether the sound output failed its own state change. A failing sink does not always post
+/// the error itself: a bin around it may report "some element failed to post a proper error
+/// message" instead (Linux CI, 1.12.0). Read before the attempt goes down – that resets it.
+fn sound_failed(audio_sink: &gst::Element) -> bool {
+    audio_sink.state(gst::ClockTime::ZERO).0.is_err()
+}
+
+fn describe(err: &gst::message::Error) -> anyhow::Error {
+    anyhow!(
         "{} ({})",
         err.error(),
         err.debug().map(|d| d.to_string()).unwrap_or_default()
-    );
-    if from_sound(err, audio_sink) {
+    )
+}
+
+/// A failure of the sound output (the error came from it, or it failed its state change) or
+/// of anything else.
+fn failure(
+    error: anyhow::Error,
+    message: Option<&gst::message::Error>,
+    audio_sink: &gst::Element,
+) -> Failure {
+    if message.is_some_and(|err| from_sound(err, audio_sink)) || sound_failed(audio_sink) {
         Failure::Audio(error)
     } else {
         Failure::Other(error)
@@ -555,11 +570,13 @@ fn start_pipeline(inner: &Arc<Inner>, gpu: bool, audio: Audio) -> Result<(), Fai
             gst::ClockTime::from_mseconds(500),
             &[gst::MessageType::Error],
         );
+        let err = match message.as_ref().map(|m| m.view()) {
+            Some(gst::MessageView::Error(err)) => Some(err),
+            _ => None,
+        };
+        let failed = failure(err.map_or(fallback, describe), err, &audio_sink);
         give_back(inner, &playbin);
-        match message.as_ref().map(|m| m.view()) {
-            Some(gst::MessageView::Error(err)) => failure(err, &audio_sink),
-            _ => Failure::Other(fallback),
-        }
+        failed
     };
     if let Err(err) = playbin.set_state(gst::State::Playing) {
         return Err(fail(err.into()));
@@ -577,8 +594,9 @@ fn start_pipeline(inner: &Arc<Inner>, gpu: bool, audio: Audio) -> Result<(), Fai
         ) {
             match message.view() {
                 gst::MessageView::Error(err) => {
+                    let failed = failure(describe(err), Some(err), &audio_sink);
                     give_back(inner, &playbin);
-                    return Err(failure(err, &audio_sink));
+                    return Err(failed);
                 }
                 _ => {
                     inner.ended.store(true, Ordering::Release);
