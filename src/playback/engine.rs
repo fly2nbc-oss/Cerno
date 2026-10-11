@@ -17,6 +17,39 @@ use crate::sync::lock;
 
 static INIT: OnceLock<Result<(), String>> = OnceLock::new();
 
+/// How long the D3D12 pipeline gets for its first frame before the CPU one is tried. D3D12
+/// has stalled without an error – on CI's software device, never yet on a GPU – and the video
+/// then stayed black. Measured 2026-10-11 (`first_frame_times`): the author's 162 phone videos
+/// took at most 0.76 s on the GPU (median 0.06–0.09 s, a process's first 0.34–0.43 s); CI's
+/// software device once needed 8.7 s for its first, cold start.
+const GPU_FIRST_FRAME: Duration = Duration::from_secs(10);
+
+/// How long the CPU pipeline gets for its first frame; then the video fails.
+const FIRST_FRAME: Duration = Duration::from_secs(20);
+
+/// D3D12 showed no first frame in time once: the session's later videos start on the CPU.
+static GPU_STALLED: AtomicBool = AtomicBool::new(false);
+
+/// How a player starts: as Cerno does, or – in tests – with a D3D12 attempt that never shows
+/// a frame, a shorter limit and a stall remembered apart from the session's.
+pub(super) struct Start {
+    pub(super) gpu_limit: Duration,
+    pub(super) stalled: &'static AtomicBool,
+    #[cfg(test)]
+    pub(super) stall_gpu: bool,
+}
+
+impl Default for Start {
+    fn default() -> Self {
+        Self {
+            gpu_limit: GPU_FIRST_FRAME,
+            stalled: &GPU_STALLED,
+            #[cfg(test)]
+            stall_gpu: false,
+        }
+    }
+}
+
 /// The folder of the plugins Cerno ships, beside the exe (Windows package).
 fn bundled_plugins() -> Option<PathBuf> {
     let dir = std::env::current_exe()
@@ -120,6 +153,7 @@ struct Inner {
     ctx: egui::Context,
     path: PathBuf,
     audio: Audio,
+    start: Start,
     pipeline: Mutex<Option<gst::Element>>,
     /// The video sink, for a new target size.
     sink: Mutex<Option<gst::Bin>>,
@@ -130,8 +164,8 @@ struct Inner {
     want_playing: AtomicBool,
     ended: AtomicBool,
     error: Mutex<Option<String>>,
-    /// The pipeline runs on D3D12 (else on the CPU).
-    gpu: AtomicBool,
+    /// The pipeline of the current attempt.
+    kind: Mutex<Pipeline>,
     /// The sound output failed; the video plays without it.
     silent: AtomicBool,
     /// Stop asked for: frames are no longer taken, a pipeline still being built is torn
@@ -160,10 +194,23 @@ impl Player {
         muted: bool,
         audio: Audio,
     ) -> Result<Self, String> {
+        Self::start_with(ctx, path, target, volume, muted, audio, Start::default())
+    }
+
+    pub(super) fn start_with(
+        ctx: &egui::Context,
+        path: &Path,
+        target: [u32; 2],
+        volume: f32,
+        muted: bool,
+        audio: Audio,
+        start: Start,
+    ) -> Result<Self, String> {
         let inner = Arc::new(Inner {
             ctx: ctx.clone(),
             path: path.to_owned(),
             audio,
+            start,
             pipeline: Mutex::new(None),
             sink: Mutex::new(None),
             texture: Mutex::new(None),
@@ -173,7 +220,7 @@ impl Player {
             want_playing: AtomicBool::new(true),
             ended: AtomicBool::new(false),
             error: Mutex::new(None),
-            gpu: AtomicBool::new(false),
+            kind: Mutex::new(Pipeline::None),
             silent: AtomicBool::new(false),
             stop: AtomicBool::new(false),
             start_done: AtomicBool::new(false),
@@ -244,6 +291,11 @@ impl Player {
             frame_size: frame.size,
             frame_time: frame.frame_time,
             silent: inner.silent.load(Ordering::Acquire),
+            pipeline: if frame.size.is_some() {
+                *lock(&inner.kind)
+            } else {
+                Pipeline::None
+            },
             error: lock(&inner.error).clone(),
         }
     }
@@ -314,7 +366,7 @@ impl Player {
         let fit = lock(&inner.sink)
             .as_ref()
             .and_then(|sink| sink.by_name("fit"));
-        let caps = sink_caps(inner.gpu.load(Ordering::Acquire), target);
+        let caps = sink_caps(*lock(&inner.kind) == Pipeline::Gpu, target);
         if let Some(fit) = fit
             && let Ok(caps) = caps.parse::<gst::Caps>()
         {
@@ -405,10 +457,11 @@ fn apply_volume(pipeline: &gst::Element, volume: f32, muted: bool) {
     pipeline.set_property("mute", muted);
 }
 
-/// Why an attempt failed: the sound output (the video can play on without sound), or
-/// anything else.
+/// Why an attempt failed: the sound output (the video can play on without sound), no first
+/// frame in time (D3D12 makes way for the CPU), or anything else.
 enum Failure {
     Audio(anyhow::Error),
+    Stalled(anyhow::Error),
     Other(anyhow::Error),
 }
 
@@ -431,12 +484,16 @@ impl From<gst::glib::Error> for Failure {
 }
 
 /// Builds the pipeline – on the GPU first where it exists – and starts it. A GPU pipeline
-/// that reports an error before its first frame makes way for the CPU one. A sound output
-/// that fails (no device) makes way for none: the same pipeline again, without sound.
+/// that reports an error or shows no frame in time makes way for the CPU one; after such a
+/// stall the session's later videos start on the CPU. A sound output that fails (no device)
+/// makes way for none: the same pipeline again, without sound.
 fn run(inner: &Arc<Inner>) -> Result<()> {
     init()?;
-    let gpu_first = cfg!(windows) && gst::ElementFactory::find("d3d12convert").is_some();
+    let stalled_before = inner.start.stalled.load(Ordering::Acquire);
+    let gpu_first =
+        cfg!(windows) && !stalled_before && gst::ElementFactory::find("d3d12convert").is_some();
     let attempts: &[bool] = if gpu_first { &[true, false] } else { &[false] };
+    let mut after_stall = stalled_before;
     let mut audio = inner.audio;
     let mut last_error = None;
     'pipelines: for &gpu in attempts {
@@ -444,16 +501,27 @@ fn run(inner: &Arc<Inner>) -> Result<()> {
             if inner.stop.load(Ordering::Acquire) {
                 break 'pipelines;
             }
-            let name = if gpu { "D3D12" } else { "CPU" };
-            match start_pipeline(inner, gpu, audio) {
+            let kind = match (gpu, after_stall) {
+                (true, _) => Pipeline::Gpu,
+                (false, false) => Pipeline::Cpu,
+                (false, true) => Pipeline::CpuAfterStall,
+            };
+            match start_pipeline(inner, kind, audio) {
                 Ok(()) => return Ok(()),
                 Err(Failure::Audio(err)) if audio != Audio::Silent => {
                     log::warn!("video: no sound output ({err:#}) – playing without sound");
                     audio = Audio::Silent;
                     inner.silent.store(true, Ordering::Release);
                 }
-                Err(Failure::Audio(err) | Failure::Other(err)) => {
-                    log::warn!("video: {name} pipeline failed: {err:#}");
+                Err(Failure::Stalled(err)) if gpu => {
+                    log::warn!("video: D3D12 pipeline: {err:#} – the CPU from now on");
+                    inner.start.stalled.store(true, Ordering::Release);
+                    after_stall = true;
+                    last_error = Some(err);
+                    break;
+                }
+                Err(Failure::Audio(err) | Failure::Stalled(err) | Failure::Other(err)) => {
+                    log::warn!("video: {kind} pipeline failed: {err:#}");
                     last_error = Some(err);
                     break;
                 }
@@ -519,14 +587,22 @@ fn failure(
 
 /// One attempt: the pipeline is playing and has shown its first frame (or failed). It is
 /// shared from the start, so the controls see it at once and a stop takes it down.
-fn start_pipeline(inner: &Arc<Inner>, gpu: bool, audio: Audio) -> Result<(), Failure> {
+fn start_pipeline(inner: &Arc<Inner>, kind: Pipeline, audio: Audio) -> Result<(), Failure> {
     let started = Instant::now();
+    let gpu = kind == Pipeline::Gpu;
     let uri = gst::glib::filename_to_uri(&inner.path, None).context("the file name is no URI")?;
     let playbin = gst::ElementFactory::make("playbin3")
         .property("uri", uri.as_str())
         .build()?;
     let target = *lock(&inner.target);
-    let sink = gst::parse::bin_from_description(&sink_description(gpu, target), true)?;
+    #[cfg_attr(not(test), allow(unused_mut))]
+    let mut description = sink_description(gpu, target);
+    #[cfg(test)]
+    if gpu && inner.start.stall_gpu {
+        // A D3D12 attempt that never shows a frame, like the stalls on CI.
+        description = description.replace("appsink", "valve drop=true ! appsink");
+    }
+    let sink = gst::parse::bin_from_description(&description, true)?;
     let appsink = sink
         .by_name("sink")
         .and_downcast::<gst_app::AppSink>()
@@ -561,7 +637,7 @@ fn start_pipeline(inner: &Arc<Inner>, gpu: bool, audio: Audio) -> Result<(), Fai
     let (volume, muted) = *lock(&inner.volume);
     apply_volume(&playbin, volume, muted);
     *lock(&inner.sink) = Some(sink);
-    inner.gpu.store(gpu, Ordering::Release);
+    *lock(&inner.kind) = kind;
     *lock(&inner.pipeline) = Some(playbin.clone());
     let bus = playbin.bus().context("no bus")?;
     // The error the bus holds, or `fallback`; the attempt is taken down either way.
@@ -583,7 +659,12 @@ fn start_pipeline(inner: &Arc<Inner>, gpu: bool, audio: Audio) -> Result<(), Fai
     }
 
     // Wait for the first frame, an error, or the end (a file shorter than its preroll).
-    let until = Instant::now() + Duration::from_secs(20);
+    let limit = if gpu {
+        inner.start.gpu_limit
+    } else {
+        FIRST_FRAME
+    };
+    let until = started + limit;
     while Instant::now() < until {
         if lock(&inner.frame).size.is_some() || inner.stop.load(Ordering::Acquire) {
             break;
@@ -605,6 +686,18 @@ fn start_pipeline(inner: &Arc<Inner>, gpu: bool, audio: Audio) -> Result<(), Fai
             }
         }
     }
+    // No frame, no error, no end: the pipeline hangs (D3D12 did on CI's software device).
+    // Before, it counted as started and the video stayed black.
+    if lock(&inner.frame).size.is_none()
+        && !inner.stop.load(Ordering::Acquire)
+        && !inner.ended.load(Ordering::Acquire)
+    {
+        give_back(inner, &playbin);
+        return Err(Failure::Stalled(anyhow!(
+            "no first frame within {} s",
+            limit.as_secs_f32()
+        )));
+    }
     // The sound output may fail after the first picture: playing is reached only once
     // every sink has its device. It counts only when the sound output itself failed – a
     // pause or a seek right after the first frame interrupts the pipeline's state change
@@ -619,10 +712,9 @@ fn start_pipeline(inner: &Arc<Inner>, gpu: bool, audio: Audio) -> Result<(), Fai
         return Err(Failure::Audio(anyhow!("the sound output: {err}")));
     }
     log::info!(
-        "video: {} first frame after {} ms ({})",
+        "video: {} first frame after {} ms ({kind})",
         inner.path.display(),
         started.elapsed().as_millis(),
-        if gpu { "D3D12" } else { "CPU" }
     );
     Ok(())
 }
@@ -859,8 +951,9 @@ pub(super) fn self_test(path: &Path) -> Result<String, String> {
     .collect::<Vec<_>>()
     .join(", ");
     Ok(format!(
-        "video ok: {w}x{h}, {:.1} s, decoders {}, closed {}; {streams}",
+        "video ok: {w}x{h}, {:.1} s, pipeline {}, decoders {}, closed {}; {streams}",
         first.duration.unwrap_or_default().as_secs_f64(),
+        first.pipeline,
         decoders.join(" "),
         release.done()
     ))

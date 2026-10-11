@@ -7,7 +7,8 @@
 //!
 //! On Windows the conversion runs on D3D12 (`d3d12convert`): on the CPU a 4K 10-bit HEVC clip
 //! from a phone reached only 21–26 fps (PoC 2026-10-03), on the GPU 30 fps at a quarter of a
-//! core. When that pipeline fails to start, the CPU one is tried.
+//! core. When that pipeline fails to start or shows no first frame in time, the CPU one is
+//! tried; after such a stall the session's later videos start on the CPU.
 //!
 //! While a file plays Windows refuses to rename or move it, so a player is stopped before
 //! anything moves the file; [`Release`] says when it is closed. Without the feature
@@ -49,7 +50,36 @@ pub struct Status {
     pub frame_time: Option<Duration>,
     /// The sound output failed: the video plays without sound.
     pub silent: bool,
+    /// What turns, converts and scales the frames, once the first one is there.
+    pub pipeline: Pipeline,
     pub error: Option<String>,
+}
+
+/// What converts and scales the frames of a video.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(not(feature = "video"), allow(dead_code))]
+pub enum Pipeline {
+    /// No frame yet.
+    #[default]
+    None,
+    /// D3D12 (Windows).
+    Gpu,
+    /// The CPU: Linux, or D3D12 failed to start.
+    Cpu,
+    /// The CPU, because D3D12 showed no first frame in time – for this video or an earlier
+    /// one of the session.
+    CpuAfterStall,
+}
+
+impl std::fmt::Display for Pipeline {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::None => "none",
+            Self::Gpu => "D3D12",
+            Self::Cpu => "CPU",
+            Self::CpuAfterStall => "CPU after D3D12 stalled",
+        })
+    }
 }
 
 /// What a video file holds, for the details panel ([`probe`]).
@@ -144,7 +174,7 @@ pub fn ready() -> Result<(), String> {
 }
 
 /// `cerno --check-video <file>`: plays a second of the file without a window and sound, jumps
-/// to its end and reports what decoded it. For the package tests.
+/// to its end and reports the pipeline and what decoded it. For the package tests.
 pub fn self_test(path: &Path) -> Result<String, String> {
     #[cfg(feature = "video")]
     return engine::self_test(path);

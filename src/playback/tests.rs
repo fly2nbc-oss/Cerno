@@ -178,6 +178,70 @@ fn probe_a_file() {
     }
 }
 
+/// `CERNO_VIDEO_DIR=<folder> cargo test --features video -- --ignored --nocapture
+/// first_frame_times` plays every video of a folder until its first frame, one after the
+/// other, and prints how long each took (only reads the files). GStreamer is loaded before;
+/// the first video of a process still pays for setting up D3D12.
+#[test]
+#[ignore = "set CERNO_VIDEO_DIR"]
+fn first_frame_times() {
+    let _turn = test_lock();
+    let Ok(dir) = std::env::var("CERNO_VIDEO_DIR") else {
+        return;
+    };
+    ready().expect("GStreamer");
+    let mut videos: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .expect("the folder")
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter(|path| crate::library::format_of(path) == Some(crate::library::Format::Video))
+        .collect();
+    videos.sort();
+    let ctx = egui::Context::default();
+    let mut times = Vec::new();
+    for path in &videos {
+        let started = Instant::now();
+        let player =
+            Player::start(&ctx, path, [1920, 1080], 0.0, true, Audio::Silent).expect("started");
+        let until = started + Duration::from_secs(30);
+        let status = loop {
+            let status = player.status();
+            if status.frame_size.is_some() || status.error.is_some() || Instant::now() > until {
+                break status;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        };
+        let ms = started.elapsed().as_millis();
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+        match (&status.error, status.frame_size) {
+            (None, Some(_)) => {
+                println!("{ms:>6} ms  {}  {name}", status.pipeline);
+                times.push(ms);
+            }
+            _ => println!("  none after {ms} ms  {name}: {status:?}"),
+        }
+        let release = player.stop();
+        while !release.done() {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+    if let Some(&first) = times.first() {
+        let mut sorted = times.clone();
+        sorted.sort_unstable();
+        let at = |share: f64| sorted[((sorted.len() - 1) as f64 * share).round() as usize];
+        println!(
+            "{} videos: first {first} ms, median {} ms, p90 {} ms, p99 {} ms, max {} ms",
+            sorted.len(),
+            at(0.5),
+            at(0.9),
+            at(0.99),
+            at(1.0)
+        );
+    }
+}
+
+/// On Windows the fixture plays on D3D12 – or on the CPU after D3D12 stalled (CI's software
+/// device), which the report says. A plain CPU pipeline there would mean D3D12 was never
+/// tried.
 #[test]
 fn the_self_test_plays_the_fixture() {
     let _turn = test_lock();
@@ -185,4 +249,71 @@ fn the_self_test_plays_the_fixture() {
     assert!(report.starts_with("video ok: 64x64"), "{report}");
     assert!(report.contains("closed true"), "{report}");
     assert!(report.contains("MP4, H.264"), "{report}");
+    if cfg!(windows) {
+        assert!(
+            report.contains("pipeline D3D12,")
+                || report.contains("pipeline CPU after D3D12 stalled,"),
+            "{report}"
+        );
+    } else {
+        assert!(report.contains("pipeline CPU,"), "{report}");
+    }
+}
+
+/// D3D12 that shows no first frame makes way for the CPU, and the session's next video starts
+/// there at once (its D3D12 attempt would never show a frame either, and waits a minute).
+#[cfg(windows)]
+#[test]
+fn a_stalled_gpu_makes_way_for_the_cpu() {
+    let _turn = test_lock();
+    ready().expect("GStreamer");
+    assert!(
+        gstreamer::ElementFactory::find("d3d12convert").is_some(),
+        "GStreamer without D3D12"
+    );
+    let stalled: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(false)));
+    let stalling = |gpu_limit| engine::Start {
+        gpu_limit,
+        stalled,
+        stall_gpu: true,
+    };
+    let ctx = egui::Context::default();
+    let started = Instant::now();
+    let player = Player::start_with(
+        &ctx,
+        &fixture(),
+        [320, 240],
+        0.0,
+        true,
+        Audio::Silent,
+        stalling(Duration::from_secs(1)),
+    )
+    .expect("started");
+    let first = wait(&player, "first frame on the CPU", |s| {
+        s.frame_size.is_some()
+    });
+    assert_eq!(first.pipeline, Pipeline::CpuAfterStall);
+    assert!(
+        started.elapsed() >= Duration::from_secs(1),
+        "D3D12 had its second"
+    );
+    assert!(stalled.load(Ordering::Acquire));
+    let ended = wait(&player, "end", |s| s.ended);
+    assert_eq!(ended.error, None);
+    drop(player);
+
+    let player = Player::start_with(
+        &ctx,
+        &fixture(),
+        [320, 240],
+        0.0,
+        true,
+        Audio::Silent,
+        stalling(Duration::from_secs(60)),
+    )
+    .expect("started");
+    let first = wait(&player, "first frame, on the CPU at once", |s| {
+        s.frame_size.is_some()
+    });
+    assert_eq!(first.pipeline, Pipeline::CpuAfterStall);
 }
