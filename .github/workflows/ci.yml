@@ -10,6 +10,10 @@ on:
     paths-ignore: ["**.md", "docs/**", "screenshots/**"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      test_rounds:
+        description: "How often the tests run (to measure a flaky test; every round counts)"
+        default: "1"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -40,8 +44,22 @@ jobs:
             gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets --features heic,video -- -D warnings
-      # The player tests play tests/fixtures/tiny.mp4 on the CPU, without sound.
-      - run: cargo test --features heic,video
+      # The player tests play tests/fixtures/tiny.mp4 on the CPU, without sound. A manual
+      # run can repeat them (`test_rounds`); the step fails when any round failed.
+      - name: Test
+        env:
+          ROUNDS: ${{ inputs.test_rounds || '1' }}
+        run: |
+          [[ "$ROUNDS" =~ ^[1-9][0-9]?$ ]] || { echo "::error::test_rounds must be 1-99"; exit 1; }
+          failed=0
+          for round in $(seq 1 "$ROUNDS"); do
+            if ! cargo test --features heic,video; then
+              failed=$((failed + 1))
+              echo "::warning::test round $round of $ROUNDS failed"
+            fi
+          done
+          echo "$failed of $ROUNDS test rounds failed"
+          if [ "$failed" -gt 0 ]; then exit 1; fi
       # The experimental WebGPU path for the models (Linux only; ort ships a prebuilt ONNX
       # Runtime with WebGPU for x86_64 Linux): it must keep compiling, warning-free.
       - run: cargo clippy --all-targets --features webgpu -- -D warnings
@@ -65,16 +83,29 @@ jobs:
       - run: cargo test
       - name: GStreamer
         run: ./packaging/windows/install-gstreamer.ps1
-      # A runner has no GPU: the player falls back from D3D12 to the CPU here.
+      # A runner has no GPU: D3D12 runs on WARP, Windows' software device. `test_rounds`
+      # repeats the tests like on Linux.
       - name: Lint & test (video)
+        env:
+          ROUNDS: ${{ inputs.test_rounds || '1' }}
         run: |
+          if ($env:ROUNDS -notmatch '^[1-9][0-9]?$') { Write-Output "::error::test_rounds must be 1-99"; exit 1 }
           $env:PKG_CONFIG = "$env:GSTREAMER_ROOT\bin\pkg-config.exe"
           $env:PKG_CONFIG_PATH = "$env:GSTREAMER_ROOT\lib\pkgconfig"
           $env:PATH = "$env:GSTREAMER_ROOT\bin;$env:PATH"
           cargo clippy --all-targets --features video -- -D warnings
           if ($LASTEXITCODE) { exit 1 }
-          cargo test --features video
-          if ($LASTEXITCODE) { exit 1 }
+          $rounds = [int]$env:ROUNDS
+          $failed = 0
+          for ($round = 1; $round -le $rounds; $round++) {
+            cargo test --features video
+            if ($LASTEXITCODE) {
+              $failed++
+              Write-Output "::warning::test round $round of $rounds failed"
+            }
+          }
+          Write-Output "$failed of $rounds test rounds failed"
+          if ($failed) { exit 1 }
       # Outside pull requests the packaging job builds the release (with HEIC and video).
       - if: github.event_name == 'pull_request'
         run: cargo build --release
