@@ -9,7 +9,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ### Fixed
 
-- **Cerno closes at once** – closing it could leave the window frozen for one to two seconds. Cerno waited for the prediction, which trains for almost three seconds after the start and after every rating, for the photo the analysis was working on, and for the analysis models to be released. Now the training and the analysis stop between their steps, and the models are left to the end of the process. Measured on the author's machine: 50 ms instead of 1–2.2 s, and 0.3–0.4 s instead of 1.1 s while the analysis runs. What the analysis had already stored stays; the next start computes only what is missing.
+- **Cerno closes at once** – closing it could leave the window frozen for one to two seconds. Cerno waited for the prediction, which trained for almost three seconds after the start and after every rating, for the photo the analysis was working on, and for the analysis models to be released. Now the training and the analysis stop between their steps, and the models are left to the end of the process. Measured on the author's machine: 50 ms instead of 1–2.2 s, and 0.3–0.4 s instead of 1.1 s while the analysis runs. What the analysis had already stored stays; the next start computes only what is missing.
+
+### Changed
+
+- **The prediction learns in a blink** – after the start and after every rating it trained for almost three seconds on one core; now it takes 30 ms with the author's 223 rated photos. The result is the same: it solves the same equations by a shorter path while there are fewer rated photos than the 768 values CLIP gives each photo.
 
 ## [1.12.1] – 2026-10-11
 
