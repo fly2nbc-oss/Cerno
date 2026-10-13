@@ -7,6 +7,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+## [1.12.3] – 2026-10-14
+
+A safer build: nothing changes in Cerno itself.
+
+### Under the hood
+
+- **Every GitHub Action the build uses is pinned to a fixed commit** instead of a version tag that its owner could move. Code that was not checked can't slip into the build that way, least of all into the step that signs the packages.
+
 ## [1.12.2] – 2026-10-13
 
 Cerno closes at once, and the prediction learns in a blink.
