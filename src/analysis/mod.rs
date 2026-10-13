@@ -50,7 +50,8 @@ const START_PAUSE: Duration = Duration::from_secs(2);
 const STOP_CHECK: Duration = Duration::from_millis(50);
 /// The taste model retrains this long after the last rating or deletion.
 const TASTE_DELAY: Duration = Duration::from_secs(2);
-/// The first training waits this long: it takes a core for about two seconds.
+/// The first training waits this long: the first photo, its neighbours and the GPU set-up come
+/// first (it takes ~30 ms for 223 examples since the dual form, 2.7 s before).
 const TASTE_START: Duration = Duration::from_secs(5);
 /// New results show within this long, and redraw the window at most this often.
 const RESULT_REPAINT: Duration = Duration::from_millis(100);
