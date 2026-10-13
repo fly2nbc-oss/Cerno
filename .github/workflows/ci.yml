@@ -3,6 +3,10 @@ name: CI
 # Pull requests: lint and tests only. Pushes to main, tags and manual runs also
 # build the four packages (kept 14 days as run artifacts); a `v*` tag turns them
 # into a draft release.
+#
+# Every action is pinned to a commit, its version as a comment: a tag that is moved
+# can't bring other code into this workflow, least of all into the job with the
+# SignPath token. Bumping one is by hand (CLAUDE.md, "Actions pinned by commit").
 on:
   push:
     branches: [main]
@@ -31,11 +35,12 @@ jobs:
     name: Lint & test (Linux, HEIC, video)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable branch, 2026-10-09
         with:
+          toolchain: stable
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: System packages
         run: |
           sudo apt-get update
@@ -65,7 +70,7 @@ jobs:
       - run: cargo clippy --all-targets --features webgpu -- -D warnings
       # Known vulnerabilities in the locked dependencies fail the run; warnings (unmaintained,
       # yanked) are listed only.
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         with:
           tool: cargo-audit
       - run: cargo audit
@@ -74,11 +79,12 @@ jobs:
     name: Test & build (Windows)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable branch, 2026-10-09
         with:
+          toolchain: stable
           components: clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
       - name: GStreamer
@@ -129,9 +135,11 @@ jobs:
       VCPKG_ROOT: ${{ github.workspace }}\target\vcpkg
       VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}\.vcpkg-cache,readwrite
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable branch, 2026-10-09
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       # The runner image is part of the key: vcpkg's package hashes include the compiler, so a
       # new image (2026-09-30: VS 2026) rebuilds everything, and only a new key saves the result.
       - name: vcpkg revision
@@ -140,7 +148,7 @@ jobs:
         run: |
           echo "rev=$(sed -n 's/^rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml)" >> "$GITHUB_OUTPUT"
           echo "image=${ImageOS:-windows}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .vcpkg-cache
           key: vcpkg-${{ steps.vcpkg.outputs.rev }}-x64-windows-libheif-core-${{ steps.vcpkg.outputs.image }}
@@ -186,7 +194,7 @@ jobs:
       - name: Upload cerno.exe for signing
         id: unsigned-exe
         if: env.SIGNING == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: unsigned-exe
           path: target/release/cerno.exe
@@ -194,7 +202,7 @@ jobs:
           retention-days: 1
       - name: Sign cerno.exe (SignPath, approved by hand)
         if: env.SIGNING == 'true'
-        uses: signpath/github-action-submit-signing-request@v3
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
@@ -216,7 +224,7 @@ jobs:
       - name: Upload the installer for signing
         id: unsigned-setup
         if: env.SIGNING == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: unsigned-setup
           path: dist/windows/cerno_*_x64-setup.exe
@@ -224,7 +232,7 @@ jobs:
           retention-days: 1
       - name: Sign the installer (SignPath, approved by hand)
         if: env.SIGNING == 'true'
-        uses: signpath/github-action-submit-signing-request@v3
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
@@ -263,13 +271,13 @@ jobs:
           -Setup (Get-Item dist/windows/cerno_*_x64-setup.exe).FullName
           -Photo (Resolve-Path tests/fixtures/tiny.jpg).Path
           -Video (Resolve-Path tests/fixtures/tiny.mp4).Path
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows-installer
           path: dist/windows/cerno_*_x64-setup.exe
           if-no-files-found: error
           retention-days: 14
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows-portable
           path: dist/windows/cerno_*_x64-portable.zip
@@ -287,9 +295,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable branch, 2026-10-09
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: System packages
         run: |
           sudo apt-get update
@@ -308,19 +318,19 @@ jobs:
           mkdir -p target/smoke
           heif-enc --quality 80 -o target/smoke/smoke.heic tests/fixtures/tiny.jpg
           cp tests/fixtures/tiny.mp4 target/smoke/
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-appimage
           path: dist/linux/cerno_*_x86_64.AppImage
           if-no-files-found: error
           retention-days: 14
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-deb
           path: dist/linux/cerno_*_amd64.deb
           if-no-files-found: error
           retention-days: 14
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: smoke-photo
           path: |
@@ -351,7 +361,7 @@ jobs:
       DEBIAN_FRONTEND: noninteractive
       RUST_LOG: info
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: "{linux-*,smoke-photo}"
           merge-multiple: true
@@ -396,8 +406,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable branch, 2026-10-09
+        with:
+          toolchain: stable
       - name: Tag matches Cargo.toml
         id: version
         run: |
@@ -407,7 +419,7 @@ jobs:
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: "{windows-*,linux-*}"
           merge-multiple: true
@@ -436,7 +448,7 @@ jobs:
 
           Code signing policy: what is signed, by whom and how – see [Code signing policy](https://github.com/fly2nbc-oss/Cerno#code-signing-policy) in the README.
           EOF
-      - uses: softprops/action-gh-release@v3
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           draft: true
           name: Cerno ${{ steps.version.outputs.version }}
