@@ -46,6 +46,8 @@ const NAVIGATION_PAUSE: Duration = Duration::from_millis(900);
 /// … and this long more at start-up: the first photo, its neighbours and the GPU set-up come
 /// first, and loading a model (a GB from disk, a DirectML session) waits for them.
 const START_PAUSE: Duration = Duration::from_secs(2);
+/// How often a worker waiting out a pause looks whether Cerno is ending.
+const STOP_CHECK: Duration = Duration::from_millis(50);
 /// The taste model retrains this long after the last rating or deletion.
 const TASTE_DELAY: Duration = Duration::from_secs(2);
 /// The first training waits this long: it takes a core for about two seconds.
@@ -474,6 +476,7 @@ impl Analyzer {
 
 impl Drop for Analyzer {
     fn drop(&mut self) {
+        let started = Instant::now();
         lock(&self.shared.state).shutdown = true;
         lock(&self.shared.taste_state).shutdown = true;
         self.shared.wake.notify_all();
@@ -481,6 +484,21 @@ impl Drop for Analyzer {
         for worker in self.workers.drain(..) {
             let _ = worker.join();
         }
+        // Only dropped when Cerno ends, and the window stays on screen until it is: releasing
+        // the DirectML sessions took ~0.25 s and ONNX Runtime's teardown after them ~0.15 s
+        // more (measured 2026-10-13). The process end frees them anyway.
+        std::mem::forget(std::mem::replace(
+            &mut *lock(&self.shared.clip),
+            Slot::NotLoaded,
+        ));
+        std::mem::forget(std::mem::replace(
+            &mut *lock(&self.shared.v25),
+            Slot::NotLoaded,
+        ));
+        log::info!(
+            "exit: analysis stopped after {} ms",
+            started.elapsed().as_millis()
+        );
     }
 }
 
@@ -538,11 +556,14 @@ fn worker(shared: &Shared) {
 
         // Let the display decode first while the user is browsing.
         loop {
+            if stopping(shared) {
+                return;
+            }
             let since = lock(&shared.last_navigation).elapsed();
             if since >= NAVIGATION_PAUSE {
                 break;
             }
-            std::thread::sleep(NAVIGATION_PAUSE - since);
+            std::thread::sleep((NAVIGATION_PAUSE - since).min(STOP_CHECK));
         }
 
         let outcome = decode::catch_panic(|| analyze(shared, &job.path)).unwrap_or_else(|err| {
@@ -560,6 +581,16 @@ fn worker(shared: &Shared) {
         // second, and each frame re-reads the board.
         shared.ctx.request_repaint_after(RESULT_REPAINT);
     }
+}
+
+/// Cerno is ending: a job stops between its steps. What it stored so far stays – the next
+/// start computes only what is missing.
+fn stopping(shared: &Shared) -> bool {
+    lock(&shared.state).shutdown
+}
+
+fn stopping_taste(shared: &Shared) -> bool {
+    lock(&shared.taste_state).shutdown
 }
 
 /// Marks the job done, or puts it back for a later try (a bounded number of times).
@@ -693,6 +724,9 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
         stage = Instant::now();
     };
 
+    if stopping(shared) {
+        return Ok(Outcome::Retry);
+    }
     let format = library::format_of(path).context("unsupported file type")?;
     let bytes = files.read(path)?;
     let meta = metadata::read_for(path, &bytes);
@@ -756,6 +790,9 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
         record.scores.highlights = Some(highlights);
         record.scores.shadows = Some(shadows);
     }
+    if stopping(shared) {
+        return Ok(Outcome::Retry);
+    }
     if caps.faces
         && record.faces_version != faces::VERSION
         && let Some(found) = run_model(
@@ -781,6 +818,9 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
         record.scores.faces = Some(count);
         lap("faces", &mut timings);
     }
+    if stopping(shared) {
+        return Ok(Outcome::Retry);
+    }
     if caps.clip
         && record.aesthetic_model.as_deref() != Some(aesthetic::MODEL_ID)
         && let Some((value, embedding)) = run_model(
@@ -800,6 +840,9 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
         lap("clip", &mut timings);
     }
     remember_embedding(shared, path, record.embedding.as_deref());
+    if stopping(shared) {
+        return Ok(Outcome::Retry);
+    }
     if caps.v25
         && record.aesthetic25_model.as_deref() != Some(aesthetic::V25_MODEL_ID)
         && let Some(value) = run_model(
@@ -887,7 +930,10 @@ fn taste_trainer(shared: &Shared) {
                 continue;
             }
         };
-        let model = TasteModel::train(&examples).map(Arc::new);
+        let model = TasteModel::train(&examples, &|| stopping_taste(shared)).map(Arc::new);
+        if stopping_taste(shared) {
+            return;
+        }
         match &model {
             Some(m) => log::info!(
                 "taste model: {} examples, error {:.2} stars, {} ms",

@@ -1,8 +1,9 @@
 //! Personal taste model: learns the user's star ratings from CLIP embeddings.
 //!
-//! Ridge regression on the L2-normalised embeddings; deleted photos count as 0 stars. The
-//! regularisation strength is picked by 5-fold cross-validation. Training takes a second or two
-//! in the background and runs again after ratings or deletions change.
+//! Ridge regression on the L2-normalised embeddings; rejected photos count as 0 stars. The
+//! regularisation strength is picked by 5-fold cross-validation. Training takes ~2.7 s in the
+//! background at 768 dimensions, with 17 examples as with 223 (measured 2026-10-13), and runs
+//! again after ratings change.
 
 /// Below this many examples (or with only one distinct label) there is no model.
 pub const MIN_EXAMPLES: usize = 15;
@@ -22,8 +23,10 @@ pub struct TasteModel {
 }
 
 impl TasteModel {
-    /// `None` until there are enough, and varied enough, examples.
-    pub fn train(examples: &[(Vec<f32>, f32)]) -> Option<Self> {
+    /// `None` until there are enough, and varied enough, examples – or when `stop` says so
+    /// between two of its solves (each is ~0.1 s at 768 dimensions, and Cerno waits for this
+    /// thread when it ends).
+    pub fn train(examples: &[(Vec<f32>, f32)], stop: &dyn Fn() -> bool) -> Option<Self> {
         let dim = examples.first()?.0.len();
         let data: Vec<(Vec<f64>, f64)> = examples
             .iter()
@@ -64,6 +67,9 @@ impl TasteModel {
                 let lambda = relative * scale;
                 let mut abs_error = 0.0;
                 for fold in 0..FOLDS {
+                    if stop() {
+                        return None;
+                    }
                     let a = subtract(&total_gram, &gram[fold]);
                     let b = subtract(&total_rhs, &rhs[fold]);
                     let Some(w) = solve_ridge(a, &b, lambda, dim) else {
@@ -82,6 +88,9 @@ impl TasteModel {
             }
         }
         let (error, lambda) = best.unwrap_or((f64::NAN, LAMBDAS[1] * scale));
+        if stop() {
+            return None;
+        }
         let weights = solve_ridge(total_gram, &total_rhs, lambda, dim)?;
         Some(Self {
             mean_x,
@@ -220,7 +229,7 @@ mod tests {
                 (x, y)
             })
             .collect();
-        let model = TasteModel::train(&examples).unwrap();
+        let model = TasteModel::train(&examples, &|| false).unwrap();
         assert_eq!(model.examples, 200);
         assert!(model.error < 0.3, "cross-validated error {}", model.error);
         for _ in 0..20 {
@@ -237,10 +246,26 @@ mod tests {
         let few: Vec<_> = (0..MIN_EXAMPLES - 1)
             .map(|i| (unit(&mut seed, 8), (i % 5) as f32))
             .collect();
-        assert!(TasteModel::train(&few).is_none());
+        assert!(TasteModel::train(&few, &|| false).is_none());
         let same: Vec<_> = (0..50).map(|_| (unit(&mut seed, 8), 3.0)).collect();
-        assert!(TasteModel::train(&same).is_none());
-        assert!(TasteModel::train(&[]).is_none());
+        assert!(TasteModel::train(&same, &|| false).is_none());
+        assert!(TasteModel::train(&[], &|| false).is_none());
+    }
+
+    #[test]
+    fn a_stop_ends_the_training() {
+        let mut seed = 3;
+        let examples: Vec<_> = (0..100)
+            .map(|i| (unit(&mut seed, 8), (i % 5) as f32))
+            .collect();
+        let asked = std::cell::Cell::new(0);
+        let stop = || {
+            asked.set(asked.get() + 1);
+            true
+        };
+        assert!(TasteModel::train(&examples, &stop).is_none());
+        assert_eq!(asked.get(), 1, "it stops at the first solve");
+        assert!(TasteModel::train(&examples, &|| false).is_some());
     }
 
     #[test]

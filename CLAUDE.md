@@ -222,6 +222,13 @@ packaging/linux/     build.sh (.deb, AppImage), AppRun, cerno.desktop
 - wgpu is restricted to one backend (DX12 on Windows, Vulkan + GL elsewhere) – probing all of them cost ~90 ms and opened an untitled OpenGL helper window. `WGPU_BACKEND` overrides.
 - `start-up: …` log lines (info level) report app-ready, first frame and first photo; re-measure after changes that touch start-up.
 
+### Exit (measured 2026-10-13, ticket CER-51: ~50 ms, 0.3–0.4 s while the analysis runs)
+
+- eframe calls `on_exit`, then drops `CernoApp` – and only after that the window. Everything `on_exit` does and every service's `Drop` joins (analysis, loader, thumbnails) happens with the window on screen, frozen: anything slow there is a visible hang.
+- Up to 1.12.1 the window froze for 1–2.2 s while the taste trainer ran (~2.7 s at 768 dimensions, whatever the number of examples; 2 s after start and after every rating) – it was joined to its end –, and for ~1.1 s while the analysis ran: the job finished its photo, then releasing the DirectML sessions and ONNX Runtime's teardown took ~0.4 s. Now `TasteModel::train` takes a `stop` checked before each ridge solve (~0.1 s apart), `analyze` stops between its steps (`stopping`: before the decode, the faces, CLIP and V2.5 – what it stored stays, the next start computes only what is missing), the worker's navigation pause looks every 50 ms, and `Analyzer::drop` leaves the CLIP and SigLIP sessions to the process end (`mem::forget`).
+- Still waited for: a model being loaded (~1–2 s, only in the first seconds after a folder with photos not analysed yet opens) and one inference in flight (~0.2–0.3 s).
+- `exit: …` log lines (info level) report `on_exit`'s work and the analysis stop. `pwsh tools/measure_exit.ps1` posts `WM_CLOSE` and times the window and the process (they go together) – on a copy of the index, keys only that don't write (`0x20` plays a video).
+
 ### Compare mode and deletion
 
 - `pinned` (a path) is the left photo, `current` the right one; `view::skip_pinned` keeps navigation off the pinned index. The loader keeps the pinned photo cached however far away it is and loads full resolution for both on-screen photos (`State::shown`: the other photos on screen, also the four-up view's three). Both sides share one `Zoom`, so they stay aligned.

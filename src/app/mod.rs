@@ -453,7 +453,10 @@ impl eframe::App for CernoApp {
         });
     }
 
+    /// eframe drops the app right after this, and only then the window: until every service has
+    /// stopped (`Drop` of the analysis, the loader …), the window stays on screen, frozen.
     fn on_exit(&mut self) {
+        let started = Instant::now();
         // A running ExifTool download stops; its `.part` waits for the next attempt.
         self.exiftool.cancel();
         // A rating given right before closing must still reach the file, and a deletion that
@@ -476,5 +479,9 @@ impl eframe::App for CernoApp {
             self.forget_deleted(&path, &aside);
         }
         self.finish_restores();
+        log::info!(
+            "exit: marks, copies and deletions done after {} ms",
+            started.elapsed().as_millis()
+        );
     }
 }
