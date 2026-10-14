@@ -3,14 +3,13 @@
 //! delete the models). Opened from the menu – the details panel stays about the current photo.
 
 use eframe::egui::{
-    Align, Button, Color32, Context, FontId, Id, Key, Label, Layout, Modifiers, Rect, RichText, Ui,
-    vec2,
+    Align, Context, FontId, Id, Key, Label, Layout, Modifiers, Rect, RichText, Ui, vec2,
 };
 
 use crate::analysis::Status;
 use crate::analysis::manifest::Pack;
 use crate::i18n;
-use crate::theme::{text, tokens};
+use crate::theme::{self, text, tokens};
 use crate::ui::details::model_note;
 use crate::ui::{icons, modal};
 
@@ -83,7 +82,7 @@ fn content(ui: &mut Ui, status: &Status, exiftool: &ExifToolRow) -> ModelsOutput
     let top_right = ui.max_rect().right_top() + vec2(8.0, -8.0);
     ui.label(
         RichText::new(t.menu_models)
-            .font(FontId::proportional(text::VALUE))
+            .font(theme::strong(text::VALUE))
             .color(tokens::TEXT),
     );
     out.close = modal::close_button(ui, top_right, t.btn_close);
@@ -139,25 +138,20 @@ fn content(ui: &mut Ui, status: &Status, exiftool: &ExifToolRow) -> ModelsOutput
         ui.spacing_mut().item_spacing.x = 8.0;
         if !missing.is_empty() {
             let (label, tooltip) = download_label(&missing);
-            let enable = Button::new(RichText::new(label).color(Color32::WHITE))
-                .fill(tokens::ACCENT)
-                .min_size(vec2(0.0, 32.0));
-            if ui.add(enable).on_hover_text(tooltip).clicked() {
+            if ui
+                .add(theme::primary_button(label))
+                .on_hover_text(tooltip)
+                .clicked()
+            {
                 out.download = true;
             }
         }
-        if ui
-            .add(Button::new(t.btn_reset_taste).min_size(vec2(0.0, 32.0)))
-            .clicked()
-        {
+        if ui.add(theme::secondary_button(t.btn_reset_taste)).clicked() {
             out.reset_taste = true;
         }
         if ui
             // Nothing to delete while files are being downloaded or removed.
-            .add_enabled(
-                !status.busy(),
-                Button::new(t.btn_delete_models).min_size(vec2(0.0, 32.0)),
-            )
+            .add_enabled(!status.busy(), theme::secondary_button(t.btn_delete_models))
             .clicked()
         {
             out.delete_models = true;
@@ -208,11 +202,8 @@ fn exiftool_row(ui: &mut Ui, exiftool: &ExifToolRow) -> bool {
     } else {
         (t.btn_exiftool)(&size)
     };
-    let button = Button::new(RichText::new(label).color(Color32::WHITE))
-        .fill(tokens::ACCENT)
-        .min_size(vec2(0.0, 28.0));
-    ui.add_space(2.0);
-    ui.add(button).clicked()
+    ui.add_space(4.0);
+    ui.add(theme::primary_button(&label)).clicked()
 }
 
 fn row(ui: &mut Ui, label: &str, value: &str) {
@@ -299,7 +290,7 @@ mod tests {
         exiftool: &ExifToolRow,
         events: Vec<Event>,
     ) -> (ModelsOutput, Vec<String>) {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 700.0));
         let mut out = ModelsOutput::default();
         // An area is invisible in its first frame (egui measures it); the second one paints.

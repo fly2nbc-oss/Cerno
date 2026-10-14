@@ -600,7 +600,7 @@ mod tests {
 
     /// The keys of one headless frame, read the way `handle_keys` reads them.
     fn read(events: Vec<Event>, modifiers: Modifiers) -> KeyInput {
-        let ctx = egui::Context::default();
+        let ctx = crate::theme::test_context();
         keep_zoom_keys(&ctx);
         let mut keys = None;
         let mut all = vec![Event::ModifiersChanged(modifiers)];
@@ -725,7 +725,7 @@ mod tests {
         let keys = read(vec![key(Key::Space, Key::Space, shift)], shift);
         assert!(keys.next && !keys.space && !keys.video.toggle);
         // Held down: egui marks the second press of a key still down as a repeat.
-        let ctx = egui::Context::default();
+        let ctx = crate::theme::test_context();
         let frame = |events: Vec<Event>| {
             let mut keys = None;
             let mut output = ctx.run_ui(

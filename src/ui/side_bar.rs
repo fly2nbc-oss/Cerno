@@ -15,7 +15,7 @@ use eframe::egui::{
     pos2, vec2,
 };
 
-use crate::theme::{text, tokens};
+use crate::theme::{self, radius, text, tokens};
 use crate::ui::palette::{self, Row};
 use crate::ui::{icons, stars};
 
@@ -293,22 +293,18 @@ fn run<A: Copy>(item: &Item<A>, segment: Option<usize>, out: &mut Output<A>) {
     }
 }
 
-/// A group's title: muted capitals behind a fold triangle. Returns whether it was clicked.
+/// A group's title: an overline behind a fold chevron. Returns whether it was clicked.
 fn title(ui: &mut Ui, area: Rect, id: Id, label: &str, open: bool) -> bool {
     let response = ui
         .interact(area, id, Sense::CLICK)
         .on_hover_cursor(CursorIcon::PointingHand);
     let painter = ui.painter();
     if response.hovered() {
-        painter.rect_filled(area, 5.0, tokens::ACCENT_SUBTLE);
+        painter.rect_filled(area, radius::MD, tokens::HOVER);
     }
     let y = area.center().y + 2.0;
     icons::chevron(painter, pos2(area.left() + 14.0, y), open, tokens::MUTED);
-    let mut job = LayoutJob::simple_singleline(
-        label.to_uppercase(),
-        FontId::proportional(text::SMALL),
-        tokens::MUTED,
-    );
+    let mut job = theme::overline_job(label, tokens::MUTED);
     job.wrap = TextWrapping::truncate_at_width(area.width() - 36.0);
     let galley = painter.layout_job(job);
     let size = galley.size();
@@ -337,7 +333,7 @@ fn draw_item<A>(ui: &mut Ui, area: Rect, id: Id, item: &Item<A>) -> Option<Click
 fn draw_segments<A>(ui: &mut Ui, area: Rect, id: Id, segments: &Segments<A>) -> Option<Clicked> {
     let disabled = segments.disabled.is_some();
     let colour = if disabled {
-        tokens::MUTED
+        tokens::DISABLED
     } else {
         tokens::TEXT
     };
@@ -358,10 +354,21 @@ fn draw_segments<A>(ui: &mut Ui, area: Rect, id: Id, segments: &Segments<A>) -> 
     } else {
         icon_rects(area, n)
     };
+    // One group with one faint frame; only the chosen segment is filled (the border rule).
+    let group = rects
+        .iter()
+        .fold(Rect::NOTHING, |all, rect| all.union(*rect))
+        .expand(GROUP_PAD);
+    painter.rect_stroke(
+        group,
+        radius::LG,
+        Stroke::new(1.0, tokens::LINE),
+        StrokeKind::Inside,
+    );
     let label_right = if text {
         area.right() - 10.0
     } else {
-        rects.first().map_or(area.right(), |r| r.left()) - 6.0
+        group.left() - LABEL_GAP
     };
     let mut job = LayoutJob::simple_singleline(
         segments.label.clone(),
@@ -395,27 +402,20 @@ fn draw_segments<A>(ui: &mut Ui, area: Rect, id: Id, segments: &Segments<A>) -> 
         if response.clicked() && !disabled {
             clicked = Some(Clicked::Segment(k));
         }
-        if hovered {
-            painter.rect_filled(*rect, 4.0, tokens::ACCENT_SUBTLE);
-        }
-        if text {
-            let stroke = if segment.on {
-                tokens::ACCENT
-            } else {
-                tokens::LINE
-            };
-            painter.rect_stroke(*rect, 4.0, Stroke::new(1.0, stroke), StrokeKind::Inside);
-        } else if segment.on {
-            painter.rect_stroke(
+        if segment.on {
+            painter.rect(
                 *rect,
-                4.0,
-                Stroke::new(1.2, tokens::ACCENT),
+                radius::MD,
+                tokens::ACCENT_SUBTLE,
+                Stroke::new(1.0, tokens::ACCENT),
                 StrokeKind::Inside,
             );
+        } else if hovered {
+            painter.rect_filled(*rect, radius::MD, tokens::HOVER);
         }
         let c = rect.center();
         let ink = if disabled {
-            tokens::MUTED
+            tokens::DISABLED
         } else if segment.on || hovered {
             tokens::ACCENT_STRONG
         } else {
@@ -442,7 +442,7 @@ fn draw_segments<A>(ui: &mut Ui, area: Rect, id: Id, segments: &Segments<A>) -> 
                 painter.circle_filled(c, 5.5, fill);
             }
             Look::NoColour => {
-                painter.circle_stroke(c, 5.0, Stroke::new(1.2, tokens::MUTED));
+                painter.circle_stroke(c, 5.0, Stroke::new(1.0, tokens::MUTED));
             }
             Look::Turn(clockwise) => icons::turn(&painter, c, *clockwise, ink),
             Look::NoStars => stars::paint_star(&painter, c, 6.5, false, ink),
@@ -453,6 +453,11 @@ fn draw_segments<A>(ui: &mut Ui, area: Rect, id: Id, segments: &Segments<A>) -> 
 
 /// Room around a text segment's label.
 const SEGMENT_PAD: f32 = 10.0;
+
+/// The segments' group frame lies this far outside them.
+const GROUP_PAD: f32 = 2.0;
+/// Between a label and the group of icon segments beside it.
+const LABEL_GAP: f32 = 6.0;
 
 /// Where a label starts in its row: after the tick or icon column.
 const LABEL_LEFT: f32 = 30.0;
@@ -561,7 +566,7 @@ mod tests {
 
     /// A click at `at` (moved there, pressed, released): what ran, and the context.
     fn click(state: &mut State, bar: &Bar<u8>, at: Pos2) -> (Option<u8>, Context) {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let mut ran = None;
         for events in [
             vec![Event::PointerMoved(at)],
@@ -627,12 +632,12 @@ mod tests {
     /// UI (about as wide on the screenshots), with 5 % to spare.
     #[test]
     fn the_segment_labels_fit_in_every_language() {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let mut output = ctx.run_ui(RawInput::default(), |ui| {
             let painter = ui.painter();
             let row = Rect::from_min_size(pos2(4.0, 0.0), vec2(WIDTH - 9.0, ROW + SEGMENT));
             let dots = icon_rects(row, 6);
-            let room = dots[0].left() - 6.0 - row.left() - LABEL_LEFT;
+            let room = dots[0].left() - GROUP_PAD - LABEL_GAP - row.left() - LABEL_LEFT;
             for lang in crate::i18n::Lang::ALL {
                 let t = lang.texts();
                 let colour = text_width(painter, t.bar_colour, text::BODY) * 1.05;

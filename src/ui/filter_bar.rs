@@ -12,7 +12,7 @@ use eframe::egui::{
 
 use crate::analysis::{ModelState, Status};
 use crate::i18n;
-use crate::theme::{self, tokens};
+use crate::theme::{self, radius, tokens};
 use crate::ui::{icons, stars};
 use crate::view::{FilterKind, Media, Scope, SortKey, TOP_LEVELS, ViewOptions};
 
@@ -75,6 +75,8 @@ pub fn toolbar(
             .layout(Layout::left_to_right(Align::Center)),
         |ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
+            // Combo boxes and buttons in a bar are compact, as high as the chips.
+            ui.spacing_mut().interact_size.y = theme::COMPACT;
             // One line. The groups scroll sideways when they no longer fit; the first box and
             // the whole right side never do. Nothing changes its width while it is used, so
             // nothing moves away under the pointer.
@@ -156,7 +158,7 @@ pub fn toolbar(
                             });
                         if info.stale
                             && ui
-                                .button(t.refresh_order)
+                                .add(theme::secondary_button(t.refresh_order).compact())
                                 .on_hover_text(t.refresh_order_tooltip)
                                 .clicked()
                         {
@@ -381,11 +383,17 @@ fn chip_with(ui: &mut Ui, on: bool, face: Face<'_>, enabled: bool) -> Response {
     let (fill, line) = if on {
         (tokens::ACCENT_SUBTLE, tokens::ACCENT)
     } else if response.hovered() && enabled {
-        (tokens::SURFACE_MUTED, tokens::MUTED)
+        (tokens::HOVER, tokens::LINE)
     } else {
         (Color32::TRANSPARENT, tokens::LINE)
     };
-    painter.rect(rect, 5.0, fill, Stroke::new(1.0, line), StrokeKind::Inside);
+    painter.rect(
+        rect,
+        radius::MD,
+        fill,
+        Stroke::new(1.0, line),
+        StrokeKind::Inside,
+    );
     match (face, galley) {
         (Face::Text(_), Some(galley)) => {
             let at = rect.center() - galley.size() / 2.0;
@@ -499,7 +507,8 @@ fn count_badge(ui: &mut Ui, shown: usize, total: usize, filtered: bool) -> (bool
     let mut clear_clicked = false;
     if filtered {
         let pill = Rect::from_min_max(pos2(at.x - PAD, slot.top()), slot.max);
-        ui.painter().rect_filled(pill, 4.0, tokens::ACCENT_SUBTLE);
+        ui.painter()
+            .rect_filled(pill, radius::MD, tokens::ACCENT_SUBTLE);
         let clear_rect = Rect::from_center_size(
             pos2(slot.right() - PAD - CLEAR / 2.0, slot.center().y),
             vec2(CLEAR, CLEAR),
@@ -509,8 +518,11 @@ fn count_badge(ui: &mut Ui, shown: usize, total: usize, filtered: bool) -> (bool
             .on_hover_cursor(CursorIcon::PointingHand)
             .on_hover_text(t.filter_clear);
         if clear.hovered() {
-            ui.painter()
-                .rect_filled(clear_rect, 3.0, tokens::ACCENT.gamma_multiply(0.35));
+            ui.painter().rect_filled(
+                clear_rect,
+                radius::SM,
+                tokens::ACCENT_STRONG.gamma_multiply(0.3),
+            );
         }
         let c = clear_rect.center();
         let stroke = Stroke::new(1.5, tokens::TEXT);
@@ -583,18 +595,23 @@ fn colour_box(ui: &mut Ui, on: &mut bool, colour: Color32, name: &str) -> Respon
     let painter = ui.painter();
     let square = Rect::from_center_size(rect.center(), vec2(14.0, 14.0));
     if *on {
-        painter.rect_filled(square, 3.0, colour);
+        painter.rect_filled(square, radius::SM, colour);
         let c = square.center();
         let stroke = Stroke::new(1.8, tokens::BG);
         painter.line_segment([c + vec2(-3.5, 0.0), c + vec2(-1.0, 2.8)], stroke);
         painter.line_segment([c + vec2(-1.0, 2.8), c + vec2(3.8, -3.2)], stroke);
     } else {
-        painter.rect_stroke(square, 3.0, Stroke::new(1.5, colour), StrokeKind::Inside);
+        painter.rect_stroke(
+            square,
+            radius::SM,
+            Stroke::new(1.0, colour),
+            StrokeKind::Inside,
+        );
     }
     if response.hovered() {
         painter.rect_stroke(
             square.expand(2.0),
-            4.0,
+            radius::MD,
             Stroke::new(1.0, tokens::ACCENT),
             StrokeKind::Outside,
         );
@@ -644,7 +661,11 @@ fn aesthetics_status(ui: &mut Ui, status: &Status, out: &mut ToolbarOutput) {
     let missing = status.missing();
     if !missing.is_empty() {
         let (label, tooltip) = crate::ui::models::download_label(&missing);
-        if ui.button(label).on_hover_text(tooltip).clicked() {
+        if ui
+            .add(theme::secondary_button(label).compact())
+            .on_hover_text(tooltip)
+            .clicked()
+        {
             out.download_model = true;
         }
         return;
@@ -665,7 +686,7 @@ fn aesthetics_status(ui: &mut Ui, status: &Status, out: &mut ToolbarOutput) {
 mod tests {
     use super::*;
     use crate::analysis::TasteStatus;
-    use eframe::egui::{self, Context, RawInput, Shape, pos2};
+    use eframe::egui::{self, RawInput, Shape, pos2};
 
     fn status(done: usize, total: usize) -> Status {
         Status {
@@ -695,7 +716,7 @@ mod tests {
         similar_to: Option<&str>,
         (shown, total): (usize, usize),
     ) -> (Vec<(String, Rect)>, Rect) {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(1800.0, TOOLBAR_HEIGHT));
         let mut last = None;
         // Twice: the side-scrolling boxes know their size from the frame before.
@@ -766,7 +787,7 @@ mod tests {
     /// are for – the list may be wider than the box.
     #[test]
     fn the_scope_list_shows_every_choice_on_one_line() {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(1800.0, 900.0));
         let bar = Rect::from_min_size(pos2(0.0, 0.0), vec2(1800.0, TOOLBAR_HEIGHT));
         let done = status(1, 1);
@@ -835,7 +856,7 @@ mod tests {
     /// The × in the count shows everything again – Top N, similar photos and the boxes.
     #[test]
     fn the_cross_in_the_count_shows_all() {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(1800.0, TOOLBAR_HEIGHT));
         let mut options = ViewOptions {
             top: Some(50),

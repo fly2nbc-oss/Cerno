@@ -133,6 +133,8 @@ assets = [
     ["assets/icon.png", "usr/share/icons/hicolor/256x256/apps/cerno.png", "644"],
     ["NOTICE", "usr/share/doc/cerno/", "644"],
     ["THIRD_PARTY.md", "usr/share/doc/cerno/", "644"],
+    ["licenses/lucide.txt", "usr/share/doc/cerno/", "644"],
+    ["licenses/egui-fonts.txt", "usr/share/doc/cerno/", "644"],
 ]
 
 # Decoding and resizing are painfully slow unoptimised; keep only our own code debuggable.

@@ -10,7 +10,7 @@ use eframe::egui::{
 
 use crate::i18n;
 use crate::metadata::{Label, Rating};
-use crate::theme::{text, tokens};
+use crate::theme::{self, radius, text, tokens};
 use crate::ui::icons;
 use crate::ui::stars;
 
@@ -55,6 +55,9 @@ pub struct Empty<'a> {
     pub name: Option<&'a str>,
 }
 
+/// The selection frame lies this far outside the picture.
+const FRAME_GAP: f32 = 2.0;
+
 /// Draws the cell into `cell` (the picture's box; the stars go below it, into
 /// [`STARS_ROW`]) and returns its click response.
 pub fn paint(
@@ -70,7 +73,7 @@ pub fn paint(
         .interact(cell, id, Sense::click())
         .on_hover_cursor(CursorIcon::PointingHand);
 
-    painter.rect_filled(cell, 4.0, tokens::SURFACE_MUTED);
+    painter.rect_filled(cell, radius::MD, tokens::SURFACE_MUTED);
     match texture {
         Some(texture) => {
             let size = texture.size_vec2();
@@ -90,7 +93,7 @@ pub fn paint(
                     cell.center(),
                     Align2::CENTER_CENTER,
                     name,
-                    FontId::proportional(text::LABEL),
+                    FontId::proportional(text::OVERLINE),
                     tokens::MUTED,
                 );
             }
@@ -108,36 +111,39 @@ pub fn paint(
 
     // Rejects and deleted photos are dimmed – below the selection frame.
     if info.rating == Rating::Rejected || info.deleted {
-        painter.rect_filled(cell, 4.0, Color32::from_black_alpha(150));
+        painter.rect_filled(cell, radius::MD, tokens::PHOTO_VEIL);
     }
+    // The selection frame 2 px outside the picture, concentric with its corners.
+    let frame = cell.expand(FRAME_GAP);
+    let frame_radius = radius::MD + FRAME_GAP as u8;
     if info.current {
         painter.rect_stroke(
-            cell,
-            4.0,
+            frame,
+            frame_radius,
             Stroke::new(2.0, tokens::ACCENT),
             StrokeKind::Outside,
         );
     } else if info.pinned {
         // Compare mode: the left photo, marked in the neutral text colour with an "L".
         painter.rect_stroke(
-            cell,
-            4.0,
+            frame,
+            frame_radius,
             Stroke::new(2.0, tokens::TEXT),
             StrokeKind::Outside,
         );
         let badge = Rect::from_min_size(cell.min + vec2(4.0, 4.0), vec2(16.0, 16.0));
-        painter.rect_filled(badge, 3.0, tokens::TEXT);
+        painter.rect_filled(badge, radius::SM, tokens::TEXT);
         painter.text(
             badge.center(),
             Align2::CENTER_CENTER,
             i18n::t().compare_left_badge,
-            FontId::proportional(text::LABEL),
+            theme::strong(text::OVERLINE),
             tokens::BG,
         );
     } else if response.hovered() {
         painter.rect_stroke(
             cell,
-            4.0,
+            radius::MD,
             Stroke::new(1.0, tokens::MUTED),
             StrokeKind::Outside,
         );
@@ -172,7 +178,7 @@ pub fn paint(
             pos2(cell.right() - right - 18.0, cell.top() + 1.0),
             vec2(18.0, 18.0),
         );
-        painter.rect_filled(badge, 3.0, tokens::SURFACE);
+        painter.rect_filled(badge, radius::SM, tokens::SURFACE_RAISED);
         icons::torn_file(painter, badge.center(), tokens::STATUS_WARN);
         tooltip.push(i18n::t().incomplete_fact.to_owned());
     }
@@ -185,7 +191,7 @@ pub fn paint(
             pos2(cell.left() + 4.0, cell.bottom() - 24.0),
             vec2(20.0, 20.0),
         );
-        painter.rect_filled(badge, 3.0, tokens::SURFACE);
+        painter.rect_filled(badge, radius::SM, tokens::SURFACE_RAISED);
         icons::trash(painter, badge.center(), 0.9, tokens::TEXT);
         tooltip.push(i18n::t().deleted_mark.to_owned());
     }
@@ -208,7 +214,7 @@ pub fn paint(
         };
         let tag = painter.layout_no_wrap(
             i18n::t().pair_badge.to_owned(),
-            FontId::proportional(text::LABEL),
+            theme::strong(text::OVERLINE),
             colour,
         );
         let size = tag.size() + vec2(8.0, 2.0);
@@ -216,14 +222,14 @@ pub fn paint(
             pos2(cell.right() - 4.0 - size.x, cell.bottom() - 6.0 - size.y),
             size,
         );
-        painter.rect_filled(badge, 3.0, tokens::SURFACE.gamma_multiply(0.9));
+        painter.rect_filled(badge, radius::SM, tokens::SURFACE_RAISED);
         painter.galley(badge.min + vec2(4.0, 1.0), tag, colour);
         tooltip.push(note.clone());
     }
     if let Some(original) = &info.duplicate_of {
         if !info.pinned {
             let badge = Rect::from_min_size(cell.min + vec2(4.0, 4.0), vec2(18.0, 18.0));
-            painter.rect_filled(badge, 3.0, tokens::SURFACE);
+            painter.rect_filled(badge, radius::SM, tokens::SURFACE_RAISED);
             icons::copy(painter, badge.center(), tokens::TEXT);
         }
         tooltip.push((i18n::t().duplicate_of)(original));

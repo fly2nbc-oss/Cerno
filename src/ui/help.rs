@@ -11,7 +11,7 @@ use eframe::egui::{
 };
 
 use crate::i18n::{self, HelpRow, Texts, TipSection};
-use crate::theme::{self, text, tokens};
+use crate::theme::{self, radius, text, tokens};
 use crate::ui::icons;
 use crate::ui::tabs::{self, Widths};
 
@@ -82,8 +82,7 @@ pub fn overlay(
         .fixed_pos(window.min)
         .show(ctx, |ui| {
             let backdrop = ui.allocate_rect(window, Sense::click());
-            ui.painter()
-                .rect_filled(window, 0.0, Color32::from_black_alpha(170));
+            ui.painter().rect_filled(window, 0.0, tokens::SCRIM);
             let extra = Extra {
                 setup: Setup::READY,
                 update: Some(update),
@@ -163,14 +162,7 @@ fn card_with_content(
     );
     // Swallows clicks on the card, so only the backdrop closes the page.
     ui.interact(card, Id::new(("help-card", welcome)), Sense::click());
-    let painter = ui.painter();
-    painter.rect_filled(card, 10.0, tokens::SURFACE);
-    painter.rect_stroke(
-        card,
-        10.0,
-        Stroke::new(1.0, tokens::LINE),
-        StrokeKind::Inside,
-    );
+    theme::paint_card(ui.painter(), card, radius::XL);
     let mut inner = ui.new_child(
         UiBuilder::new()
             .max_rect(card.shrink2(vec2(PAD, MARGIN_Y)))
@@ -205,11 +197,7 @@ fn content(
     let mut y = top.y + 4.0;
 
     // Header: "Cerno 0.7.0 · Help", language flag and (over the photos) a close button.
-    let title = painter.layout_no_wrap(
-        "Cerno".into(),
-        FontId::proportional(text::TITLE),
-        tokens::TEXT,
-    );
+    let title = painter.layout_no_wrap("Cerno".into(), theme::strong(text::TITLE), tokens::TEXT);
     let title_height = title.size().y;
     let title_width = title.size().x;
     painter.galley(pos2(left, y), title, tokens::TEXT);
@@ -322,11 +310,14 @@ fn content(
     y += intro_height + 18.0;
 
     if welcome {
-        let button = Rect::from_center_size(pos2(left + width / 2.0, y + 19.0), vec2(200.0, 38.0));
+        let button = Rect::from_center_size(
+            pos2(left + width / 2.0, y + theme::CONTROL / 2.0),
+            vec2(200.0, theme::CONTROL),
+        );
         out.open_folder = ui
             .put(button, theme::primary_button(t.open_folder))
             .clicked();
-        y += 46.0;
+        y += theme::CONTROL + 8.0;
         painter.text(
             pos2(left + width / 2.0, y),
             Align2::CENTER_TOP,
@@ -413,11 +404,7 @@ fn about(ui: &mut Ui, out: &mut HelpOutput, t: &Texts, update: Option<&UpdateLin
     let paragraph = |ui: &mut Ui, text: &str| ui.add(Label::new(body(text, tokens::TEXT)).wrap());
     let heading = |ui: &mut Ui, title: &str| {
         ui.add_space(14.0);
-        ui.label(
-            RichText::new(title.to_uppercase())
-                .font(FontId::proportional(text::LABEL))
-                .color(tokens::MUTED),
-        );
+        ui.label(theme::overline(title));
     };
     ui.spacing_mut().item_spacing.y = 6.0;
     paragraph(ui, t.about_intro);
@@ -447,7 +434,7 @@ fn about(ui: &mut Ui, out: &mut HelpOutput, t: &Texts, update: Option<&UpdateLin
         ui.horizontal(|ui| {
             ui.label(body(&update.status, tokens::TEXT));
             ui.add_space(18.0);
-            let button = eframe::egui::Button::new(t.update_check_now);
+            let button = theme::secondary_button(t.update_check_now);
             if ui.add_enabled(!update.checking, button).clicked() {
                 out.check_updates = true;
             }
@@ -467,7 +454,11 @@ fn about(ui: &mut Ui, out: &mut HelpOutput, t: &Texts, update: Option<&UpdateLin
         let folder = crate::paths::data_dir()
             .map(|dir| dir.display().to_string())
             .unwrap_or_default();
-        if ui.button(t.about_open_data).on_hover_text(folder).clicked() {
+        if ui
+            .add(theme::secondary_button(t.about_open_data))
+            .on_hover_text(folder)
+            .clicked()
+        {
             out.open_data_folder = true;
         }
     });
@@ -549,13 +540,8 @@ fn tips(painter: &Painter, left: f32, y: f32, width: f32, sections: &[TipSection
         let x = left + i as f32 * (column_width + gap);
         let mut cy = y;
         for (title, paragraphs) in column.iter() {
-            painter.text(
-                pos2(x, cy),
-                Align2::LEFT_TOP,
-                title.to_uppercase(),
-                FontId::proportional(text::LABEL),
-                tokens::MUTED,
-            );
+            let galley = painter.layout_job(theme::overline_job(title, tokens::MUTED));
+            painter.galley(pos2(x, cy), galley, tokens::MUTED);
             cy += 22.0;
             for paragraph in paragraphs.iter() {
                 let galley = painter.layout(
@@ -605,13 +591,8 @@ fn balanced(sections: &[TipSection], columns: usize) -> Vec<&[TipSection]> {
 fn section(painter: &Painter, x: f32, y: f32, width: f32, title: &str, rows: &[HelpRow]) -> f32 {
     let mut y = y;
     if !title.is_empty() {
-        painter.text(
-            pos2(x, y),
-            Align2::LEFT_TOP,
-            title.to_uppercase(),
-            FontId::proportional(text::LABEL),
-            tokens::MUTED,
-        );
+        let galley = painter.layout_job(theme::overline_job(title, tokens::MUTED));
+        painter.galley(pos2(x, y), galley, tokens::MUTED);
         y += 22.0;
     }
     let keys_width = (width * 0.38).min(190.0);
@@ -690,7 +671,7 @@ mod tests {
     fn start_screen_fits_a_small_window() {
         let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 720.0));
         for lang in i18n::Lang::ALL {
-            let ctx = Context::default();
+            let ctx = crate::theme::test_context();
             // The card takes the content height of the previous frame.
             for _ in 0..2 {
                 let mut output = ctx.run_ui(
@@ -752,7 +733,7 @@ mod tests {
         let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(1920.0, 1080.0));
         for lang in i18n::Lang::ALL {
             for page in Page::ALL {
-                let ctx = Context::default();
+                let ctx = crate::theme::test_context();
                 for _ in 0..2 {
                     let mut output = ctx.run_ui(
                         RawInput {

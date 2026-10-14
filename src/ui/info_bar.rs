@@ -12,7 +12,7 @@ use crate::analysis::aesthetic;
 use crate::i18n;
 use crate::loader::LoadedImage;
 use crate::metadata::{Label, Rating};
-use crate::theme::{text, tokens};
+use crate::theme::{self, radius, text, tokens};
 use crate::ui::icons::{self, Panel};
 use crate::ui::stars;
 
@@ -642,16 +642,15 @@ fn buttons(ui: &Ui, rect: Rect, panels: Panels, views: Views, out: &mut InfoBarO
     places.switcher.left() - 2.0
 }
 
-/// Photo · grid · faces: one of them is always the current one, lit on the accent's subtle
-/// fill. The faces part carries how many faces the grid would show, and is greyed out – with
-/// the reason – when it would show none.
+/// Photo · grid · faces: one group with a faint frame, the current part on the accent's subtle
+/// fill with an accent border. The faces part carries how many faces the grid would show, and
+/// is greyed out – with the reason – when it would show none.
 fn view_switcher(ui: &Ui, places: &Block, views: Views, out: &mut InfoBarOutput) {
     let t = i18n::t();
     let painter = ui.painter();
-    painter.rect_filled(places.switcher, 7.0, tokens::CANVAS);
     painter.rect_stroke(
         places.switcher,
-        7.0,
+        radius::LG,
         Stroke::new(1.0, tokens::LINE),
         StrokeKind::Inside,
     );
@@ -680,12 +679,18 @@ fn view_switcher(ui: &Ui, places: &Block, views: Views, out: &mut InfoBarOutput)
         let hovered = response.hovered() && !disabled;
         let painter = ui.painter();
         if active {
-            painter.rect_filled(cell, 5.0, tokens::ACCENT_SUBTLE);
+            painter.rect(
+                cell,
+                radius::MD,
+                tokens::ACCENT_SUBTLE,
+                Stroke::new(1.0, tokens::ACCENT),
+                StrokeKind::Inside,
+            );
         } else if hovered {
-            painter.rect_filled(cell, 5.0, tokens::SURFACE_MUTED);
+            painter.rect_filled(cell, radius::MD, tokens::HOVER);
         }
         let color = if disabled && !active {
-            DISABLED
+            tokens::DISABLED
         } else if active || hovered {
             tokens::ACCENT_STRONG
         } else {
@@ -723,16 +728,12 @@ fn current_view(views: Views) -> View {
 
 /// How many faces, on the accent at the top right of the faces part.
 fn count_badge(painter: &Painter, cell: Rect, n: usize) {
-    let galley =
-        painter.layout_no_wrap(n.to_string(), FontId::proportional(text::LABEL), tokens::BG);
+    let galley = painter.layout_no_wrap(n.to_string(), theme::strong(text::OVERLINE), tokens::BG);
     let size = vec2((galley.size().x + 6.0).max(14.0), 14.0);
     let badge = Rect::from_min_size(pos2(cell.right() - size.x + 3.0, cell.top() - 4.0), size);
-    painter.rect_filled(badge, 7.0, tokens::ACCENT);
+    painter.rect_filled(badge, radius::PILL, tokens::ACCENT);
     painter.galley(badge.center() - galley.size() / 2.0, galley, tokens::BG);
 }
-
-/// An icon that can't be used right now.
-const DISABLED: Color32 = Color32::from_rgb(0x5A, 0x5A, 0x5A);
 
 /// A square icon button with tooltip; returns whether it was clicked. It takes no keyboard
 /// focus (`Sense::CLICK`), so `Space` – the next photo – never clicks it again.
@@ -747,9 +748,9 @@ fn icon_button(
     let response = ui.interact(area, ui.id().with(("icon", tooltip)), Sense::CLICK);
     let hovered = response.hovered() && !disabled;
     let painter = ui.painter();
-    icons::button_background(painter, area, hovered, false);
+    icons::button_background(painter, area, hovered, active && !disabled);
     let color = if disabled {
-        DISABLED
+        tokens::DISABLED
     } else if active || hovered {
         tokens::ACCENT_STRONG
     } else {
@@ -795,23 +796,25 @@ fn layout_meters(painter: &Painter, meters: &[Meter]) -> LaidMeters {
     let items: Vec<LaidMeter> = meters
         .iter()
         .map(|m| {
-            let label = painter.layout_no_wrap(
-                m.label.to_uppercase(),
-                FontId::proportional(text::LABEL),
+            let label = painter.layout_job(theme::overline_job(
+                &m.label,
                 if m.color == tokens::ACCENT {
                     tokens::MUTED
                 } else {
                     m.color
                 },
-            );
+            ));
             let value_color = if m.color == tokens::MUTED {
                 tokens::MUTED
             } else {
                 tokens::TEXT
             };
-            let size = if m.small { text::SMALL } else { text::VALUE };
-            let value =
-                painter.layout_no_wrap(m.value.clone(), FontId::proportional(size), value_color);
+            let font = if m.small {
+                FontId::proportional(text::SMALL)
+            } else {
+                theme::strong(text::VALUE)
+            };
+            let value = painter.layout_no_wrap(m.value.clone(), font, value_color);
             LaidMeter {
                 label,
                 value,
@@ -868,12 +871,12 @@ fn paint_meters(
         if let Some(fraction) = meter.fraction {
             x += METER_GAP;
             let track = Rect::from_min_size(pos2(x, y - METER_BAR.y / 2.0), METER_BAR);
-            painter.rect_filled(track, 3.0, tokens::LINE);
+            painter.rect_filled(track, radius::SM, tokens::LINE);
             let fill = Rect::from_min_size(
                 track.min,
                 vec2(METER_BAR.x * fraction.clamp(0.0, 1.0), METER_BAR.y),
             );
-            painter.rect_filled(fill, 3.0, meter.color);
+            painter.rect_filled(fill, radius::SM, meter.color);
         }
         areas.push((
             Rect::from_min_max(pos2(start, y - 11.0), pos2(start + width, y + 11.0)),
@@ -887,10 +890,10 @@ fn paint_meters(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use eframe::egui::{Context, RawInput, Shape};
+    use eframe::egui::{RawInput, Shape};
 
     fn shapes_of(bar: &InfoBar<'_>, width: f32) -> Vec<Shape> {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(width, INFO_HEIGHT));
         let mut output = ctx.run_ui(
             RawInput {
@@ -958,7 +961,7 @@ mod tests {
 
     fn click(bar: &InfoBar<'_>, at: Pos2) -> (Vec<Reported>, bool) {
         use eframe::egui::{Event, Key, Modifiers, PointerButton};
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let press = |pressed| Event::PointerButton {
             pos: at,
             button: PointerButton::Primary,

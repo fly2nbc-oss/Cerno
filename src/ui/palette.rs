@@ -13,7 +13,7 @@ use eframe::egui::{
 
 use eframe::egui::text::{LayoutJob, TextWrapping};
 
-use crate::theme::{text, tokens};
+use crate::theme::{self, radius, text, tokens};
 use crate::ui::icons;
 
 /// A list beside a row is as wide as its longest row needs, between these two (a program's
@@ -163,9 +163,8 @@ pub fn show<A: Copy>(
         .fixed_pos(window.min)
         .show(ctx, |ui| {
             let backdrop = ui.allocate_rect(window, Sense::click());
-            ui.painter()
-                .rect_filled(window, 0.0, Color32::from_black_alpha(80));
-            paint_card(ui.painter(), card);
+            ui.painter().rect_filled(window, 0.0, tokens::SCRIM_LIGHT);
+            theme::paint_card(ui.painter(), card, radius::LG);
             for (index, item) in rows.iter().enumerate() {
                 let row = Rect::from_min_size(
                     pos2(
@@ -286,16 +285,6 @@ pub(crate) fn jump(labels: &[&str], cursor: Option<usize>, letter: char) -> Opti
         })
 }
 
-fn paint_card(painter: &eframe::egui::Painter, rect: Rect) {
-    painter.rect_filled(rect, 8.0, tokens::SURFACE);
-    painter.rect_stroke(
-        rect,
-        8.0,
-        Stroke::new(1.0, tokens::LINE),
-        StrokeKind::Inside,
-    );
-}
-
 /// As wide as the longest row needs, between `MIN_WIDTH` and `MAX_WIDTH`. The row's label
 /// starts 30 pt in and keeps 10 pt free on the right, inside a card with 4 pt on each side.
 fn list_width<A>(ctx: &Context, rows: &[Row<A>]) -> f32 {
@@ -351,13 +340,14 @@ fn row_button<A>(
         response.on_hover_cursor(CursorIcon::PointingHand)
     };
     let text_colour = if row.disabled.is_some() {
-        tokens::MUTED
+        tokens::DISABLED
     } else {
         tokens::TEXT
     };
     let painter = ui.painter();
-    if response.hovered() || lit {
-        painter.rect_filled(rect, 5.0, tokens::ACCENT_SUBTLE);
+    let highlighted = response.hovered() || lit;
+    if highlighted {
+        painter.rect_filled(rect, radius::MD, tokens::ACCENT_SUBTLE);
     }
     let y = rect.center().y;
     let c = pos2(rect.left() + 16.0, y);
@@ -368,11 +358,19 @@ fn row_button<A>(
     };
     match row.mark {
         Mark::Toggle(on) => {
-            let square = Rect::from_center_size(c, vec2(13.0, 13.0));
+            // A box: its border is the element, so the strong line (the border rule).
+            let square = Rect::from_center_size(c, vec2(14.0, 14.0));
             painter.rect_stroke(
                 square,
-                3.0,
-                Stroke::new(1.0, if on { tokens::ACCENT } else { tokens::MUTED }),
+                radius::SM,
+                Stroke::new(
+                    1.0,
+                    if on {
+                        tokens::ACCENT
+                    } else {
+                        tokens::LINE_STRONG
+                    },
+                ),
                 StrokeKind::Inside,
             );
             if on {
@@ -391,7 +389,11 @@ fn row_button<A>(
             Align2::RIGHT_CENTER,
             shortcut,
             FontId::proportional(text::SMALL),
-            tokens::MUTED,
+            if highlighted {
+                tokens::TEXT
+            } else {
+                tokens::MUTED
+            },
         );
         label_right = shown.left() - 12.0;
     }
@@ -433,7 +435,7 @@ mod tests {
     /// `MAX_WIDTH`.
     #[test]
     fn a_list_grows_with_its_longest_row() {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let mut widths = (0.0, 0.0, 0.0);
         let mut output = ctx.run_ui(RawInput::default(), |_| {
             let row = |label: &str| vec![Row::new(0u8, label, None)];
@@ -468,7 +470,7 @@ mod tests {
     }
 
     fn frame(state: &mut State, rows: &[Row<u8>], events: Vec<Event>) -> Output<u8> {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 700.0));
         let mut result = None;
         let mut output = ctx.run_ui(

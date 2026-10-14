@@ -9,7 +9,7 @@ use eframe::egui::{
 use crate::analysis::aesthetic;
 use crate::i18n::{self, Lang};
 use crate::metadata::Rating;
-use crate::theme::{text, tokens};
+use crate::theme::{self, radius, text, tokens};
 use crate::ui::{icons, stars};
 
 /// How long the browse arrows stay after the pointer last moved, and how long they fade.
@@ -46,15 +46,11 @@ pub fn browse_arrows(ui: &Ui, area: Rect, prev: bool, next: bool) -> Option<isiz
             .interact(button, Id::new(("browse-arrow", step)), Sense::click())
             .on_hover_cursor(CursorIcon::PointingHand);
         let (shade, arrow) = if response.hovered() {
-            (170.0, tokens::ACCENT)
+            (tokens::PHOTO_VEIL, tokens::ACCENT_STRONG)
         } else {
-            (110.0, tokens::TEXT)
+            (tokens::PHOTO_VEIL_LIGHT, tokens::TEXT)
         };
-        painter.circle_filled(
-            centre,
-            ARROW_RADIUS,
-            Color32::from_black_alpha((shade * alpha) as u8),
-        );
+        painter.circle_filled(centre, ARROW_RADIUS, shade.gamma_multiply(alpha));
         icons::side_chevron(
             &painter,
             centre,
@@ -95,8 +91,12 @@ pub fn video_badge(ui: &Ui, area: Rect, slot: usize) -> Response {
         .interact(button, Id::new(("video-play", slot)), Sense::click())
         .on_hover_cursor(CursorIcon::PointingHand)
         .on_hover_text(i18n::t().video_play_hint);
-    let shade = if response.hovered() { 220 } else { 160 };
-    painter.circle_filled(centre, radius, Color32::from_black_alpha(shade));
+    let sign = if response.hovered() {
+        tokens::ACCENT_STRONG
+    } else {
+        tokens::TEXT
+    };
+    painter.circle_filled(centre, radius, tokens::PHOTO_VEIL);
     // The triangle's centre of mass sits on the circle's centre: it looks centred.
     let c = centre + vec2(3.0, 0.0);
     painter.add(eframe::egui::Shape::convex_polygon(
@@ -105,7 +105,7 @@ pub fn video_badge(ui: &Ui, area: Rect, slot: usize) -> Response {
             c + vec2(13.0, 0.0),
             c + vec2(-9.0, 13.0),
         ],
-        tokens::TEXT,
+        sign,
         Stroke::NONE,
     ));
     response
@@ -114,11 +114,7 @@ pub fn video_badge(ui: &Ui, area: Rect, slot: usize) -> Response {
 /// Compare mode: `LEFT  name  ★★★  A keeps this` in the top left corner of a photo.
 pub fn compare_label(ui: &Ui, area: Rect, side: &str, name: &str, rating: Rating, hint: &str) {
     let painter = ui.painter().with_clip_rect(area);
-    let side = painter.layout_no_wrap(
-        side.to_uppercase(),
-        FontId::proportional(text::LABEL),
-        tokens::MUTED,
-    );
+    let side = painter.layout_job(theme::overline_job(side, tokens::MUTED));
     let name = painter.layout_no_wrap(
         name.to_owned(),
         FontId::proportional(text::BODY),
@@ -138,14 +134,8 @@ pub fn compare_label(ui: &Ui, area: Rect, side: &str, name: &str, rating: Rating
     let height = 28.0;
     let width =
         12.0 + side.size().x + 10.0 + name.size().x + stars_width + 12.0 + hint.size().x + 12.0;
-    let pill = Rect::from_min_size(area.min + vec2(10.0, 10.0), vec2(width, height));
-    painter.rect_filled(pill, 6.0, tokens::SURFACE.gamma_multiply(0.92));
-    painter.rect_stroke(
-        pill,
-        6.0,
-        Stroke::new(1.0, tokens::LINE),
-        StrokeKind::Inside,
-    );
+    let pill = Rect::from_min_size(area.min + vec2(12.0, 12.0), vec2(width, height));
+    theme::paint_card(&painter, pill, radius::MD);
 
     let y = pill.center().y;
     let mut x = pill.left() + 12.0;
@@ -206,16 +196,10 @@ pub fn compare_scores(
         tokens::TEXT,
     );
     let pill = Rect::from_min_size(
-        area.min + vec2(10.0, 44.0),
-        vec2(galley.size().x + 24.0, 26.0),
+        area.min + vec2(12.0, 48.0),
+        vec2(galley.size().x + 24.0, 28.0),
     );
-    painter.rect_filled(pill, 6.0, tokens::SURFACE.gamma_multiply(0.92));
-    painter.rect_stroke(
-        pill,
-        6.0,
-        Stroke::new(1.0, tokens::LINE),
-        StrokeKind::Inside,
-    );
+    theme::paint_card(&painter, pill, radius::MD);
     let y = pill.center().y;
     painter.galley(
         pos2(pill.left() + 12.0, y - galley.size().y / 2.0),
@@ -248,8 +232,7 @@ fn bar_pill(ui: &Ui, centre: Pos2, text: String, share: f32, colour: Color32) {
     let galley = painter.layout_no_wrap(text, FontId::proportional(text::BODY), tokens::TEXT);
     let width = (galley.size().x + 32.0).max(300.0);
     let pill = Rect::from_center_size(centre, vec2(width, 48.0));
-    painter.rect_filled(pill, 8.0, tokens::SURFACE);
-    painter.rect_stroke(pill, 8.0, Stroke::new(1.0, colour), StrokeKind::Inside);
+    theme::paint_raised(painter, pill, radius::LG, tokens::SURFACE_RAISED, colour);
     painter.galley(
         pos2(pill.center().x - galley.size().x / 2.0, pill.top() + 9.0),
         galley,
@@ -257,15 +240,15 @@ fn bar_pill(ui: &Ui, centre: Pos2, text: String, share: f32, colour: Color32) {
     );
     let track = Rect::from_min_size(
         pos2(pill.left() + 16.0, pill.bottom() - 14.0),
-        vec2(pill.width() - 32.0, 5.0),
+        vec2(pill.width() - 32.0, 4.0),
     );
-    painter.rect_filled(track, 3.0, tokens::LINE);
+    painter.rect_filled(track, radius::PILL, tokens::LINE);
     painter.rect_filled(
         Rect::from_min_size(
             track.min,
             vec2(track.width() * share.clamp(0.0, 1.0), track.height()),
         ),
-        3.0,
+        radius::PILL,
         colour,
     );
 }
@@ -293,10 +276,9 @@ pub fn notices(ui: &Ui, rect: Rect, message: Option<(&str, bool, f32)>) -> bool 
     let (fill, border) = if is_error {
         (tokens::STATUS_ERROR_BG, tokens::STATUS_ERROR)
     } else {
-        (tokens::SURFACE, tokens::LINE)
+        (tokens::SURFACE_RAISED, tokens::LINE)
     };
-    painter.rect_filled(pill, 6.0, fill);
-    painter.rect_stroke(pill, 6.0, Stroke::new(1.0, border), StrokeKind::Inside);
+    theme::paint_raised(&painter, pill, radius::MD, fill, border);
     painter.galley(pill.min + vec2(12.0, 7.0), galley, tokens::TEXT);
     ui.interact(pill, ui.id().with("notice"), Sense::click())
         .on_hover_cursor(CursorIcon::PointingHand)
@@ -308,10 +290,10 @@ pub fn drop_hint(ui: &Ui, rect: Rect) {
         return;
     }
     let painter = ui.painter();
-    painter.rect_filled(rect, 0.0, Color32::from_black_alpha(150));
+    painter.rect_filled(rect, 0.0, tokens::SCRIM);
     painter.rect_stroke(
-        rect.shrink(10.0),
-        8.0,
+        rect.shrink(12.0),
+        radius::LG,
         Stroke::new(2.0, tokens::ACCENT),
         StrokeKind::Inside,
     );
@@ -341,7 +323,7 @@ pub fn language_flash(painter: &Painter, area: Rect, lang: Lang, opacity: f32) {
     painter.set_opacity(opacity);
     let name = painter.layout_no_wrap(
         lang.name().to_owned(),
-        FontId::proportional(text::TITLE),
+        theme::strong(text::TITLE),
         tokens::TEXT,
     );
     let flag = vec2(96.0, 64.0);
@@ -350,13 +332,7 @@ pub fn language_flash(painter: &Painter, area: Rect, lang: Lang, opacity: f32) {
         flag.y + name.size().y + 44.0,
     );
     let card = Rect::from_center_size(area.center(), size);
-    painter.rect_filled(card, 10.0, tokens::SURFACE.gamma_multiply(0.96));
-    painter.rect_stroke(
-        card,
-        10.0,
-        Stroke::new(1.0, tokens::LINE),
-        StrokeKind::Inside,
-    );
+    theme::paint_card(&painter, card, radius::XL);
     let flag_rect = Rect::from_min_size(
         pos2(card.center().x - flag.x / 2.0, card.top() + 18.0),
         flag,
@@ -375,13 +351,13 @@ pub fn language_flash(painter: &Painter, area: Rect, lang: Lang, opacity: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use eframe::egui::{Context, Event, Modifiers, PointerButton, RawInput, Shape};
+    use eframe::egui::{Event, Modifiers, PointerButton, RawInput, Shape};
 
     /// The arrows come with the pointer, a click on one steps, at the first photo there is no
     /// left one, and once the pointer rests they fade – unless it rests on one.
     #[test]
     fn browse_arrows_come_with_the_pointer_and_fade() {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let area = Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
         let (middle, right) = (pos2(400.0, 300.0), pos2(800.0 - ARROW_INSET, 300.0));
         let frame = |time: f64, prev: bool, events: Vec<Event>| {
@@ -427,7 +403,7 @@ mod tests {
     /// in the accent as far as it is.
     #[test]
     fn the_copy_progress_sits_above_and_fills_its_share() {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let area = Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
         let mut output = ctx.run_ui(
             RawInput {

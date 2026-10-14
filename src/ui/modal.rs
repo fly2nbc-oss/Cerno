@@ -3,11 +3,11 @@
 //! the content height remembered from the previous frame.
 
 use eframe::egui::{
-    Align, Area, Color32, Context, CursorIcon, Id, Layout, Order, Painter, Pos2, Rect, Sense,
-    Stroke, StrokeKind, Ui, UiBuilder, pos2, vec2,
+    Align, Area, Context, CursorIcon, Id, Layout, Order, Painter, Pos2, Rect, Sense, Stroke, Ui,
+    UiBuilder, pos2, vec2,
 };
 
-use crate::theme::tokens;
+use crate::theme::{self, radius, tokens};
 use crate::ui::icons;
 
 const PAD: f32 = 24.0;
@@ -32,8 +32,7 @@ pub fn show<R>(
         .fixed_pos(window.min)
         .show(ctx, |ui| {
             let backdrop = ui.allocate_rect(window, Sense::click());
-            ui.painter()
-                .rect_filled(window, 0.0, Color32::from_black_alpha(170));
+            ui.painter().rect_filled(window, 0.0, tokens::SCRIM);
             let height_id = id.with("height");
             let max_height = (window.height() - 48.0).max(120.0);
             let height = ui
@@ -49,13 +48,7 @@ pub fn show<R>(
             );
             // Swallows clicks on the card, so only the backdrop counts as "outside".
             ui.interact(card, id.with("card"), Sense::click());
-            ui.painter().rect_filled(card, 10.0, tokens::SURFACE);
-            ui.painter().rect_stroke(
-                card,
-                10.0,
-                Stroke::new(1.0, tokens::LINE),
-                StrokeKind::Inside,
-            );
+            theme::paint_card(ui.painter(), card, radius::XL);
             let mut inner = ui.new_child(
                 UiBuilder::new()
                     .max_rect(card.shrink(PAD))

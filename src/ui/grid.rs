@@ -201,7 +201,7 @@ pub fn draw(
                     painter.vline(
                         cell.left() - GAP / 2.0,
                         cell.y_range().shrink(6.0),
-                        Stroke::new(1.5, tokens::MUTED),
+                        Stroke::new(1.0, tokens::MUTED),
                     );
                 }
             }
@@ -241,7 +241,7 @@ fn zoom_steps(ui: &Ui, rect: Rect) -> i32 {
 mod tests {
     use super::*;
     use crate::metadata::Rating;
-    use eframe::egui::{Context, Event, Modifiers, PointerButton, RawInput};
+    use eframe::egui::{Event, Modifiers, PointerButton, RawInput};
     use std::sync::Arc;
 
     fn plain_cell() -> CellInfo {
@@ -264,7 +264,7 @@ mod tests {
     /// A click on a cell picks it, a double click opens it; only the rows on screen are drawn.
     #[test]
     fn a_click_picks_a_cell_a_double_click_opens_it() {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let db = Arc::new(crate::db::Db::open_in_memory().unwrap());
         let thumbs = Thumbs::new(ctx.clone(), db);
         let paths: Vec<PathBuf> = (0..60).map(|i| PathBuf::from(format!("{i}.jpg"))).collect();
