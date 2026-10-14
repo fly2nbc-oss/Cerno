@@ -76,6 +76,9 @@ pub struct InfoBar<'a> {
     pub time_offset: Option<i64>,
     /// A RAW + JPG pair: `RAW+JPG`, and the RAW's marks where they differ.
     pub pair: Option<String>,
+    /// A filter hides photos while the filter bar is hidden: how many photos there are. The
+    /// position then says so (ticket CER-55, U8).
+    pub filtered: Option<usize>,
     /// Which bars show: their buttons at the right end are lit.
     pub panels: Panels,
     /// What the photo area shows: the view switcher.
@@ -133,6 +136,8 @@ pub struct InfoBarOutput {
     pub panel: Option<Panel>,
     /// A part of the view switcher that isn't the current view.
     pub view: Option<View>,
+    /// The filtered position was clicked: show the filter bar.
+    pub show_filters: bool,
 }
 
 /// Two rows: name / position · date · size (left), stars / scores (centre), exposure / camera
@@ -201,7 +206,37 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     );
     // Size and load time live in the details panel. What doesn't fit is left out whole, the
     // capture date first.
-    let mut facts = vec![format!("{} / {}", bar.position.0, bar.position.1)];
+    let font = FontId::proportional(text::SMALL);
+    let separator = "   ·   ";
+    let mut facts_left = x;
+    let mut facts = Vec::new();
+    match bar.filtered {
+        // A filter hides photos while the filter bar is hidden – the boxes are saved, so it may
+        // be yesterday's: the position says so in the accent, and a click shows the bar.
+        Some(total) => {
+            let (position, shown) = bar.position;
+            let label = format!(
+                "{}  {}",
+                theme::icon::FILTER,
+                (t.filtered_position)(position, shown, total)
+            );
+            let galley = painter.layout_no_wrap(label, font.clone(), tokens::ACCENT);
+            let area = Rect::from_min_size(pos2(x, row2 - galley.size().y / 2.0), galley.size());
+            let response = ui
+                .interact(area.expand(2.0), ui.id().with("filtered"), Sense::CLICK)
+                .on_hover_cursor(CursorIcon::PointingHand)
+                .on_hover_text(t.filtered_hint);
+            let colour = if response.hovered() {
+                tokens::ACCENT_STRONG
+            } else {
+                tokens::ACCENT
+            };
+            left.galley_with_override_text_color(area.min, galley, colour);
+            out.show_filters = response.clicked();
+            facts_left = area.right();
+        }
+        None => facts.push(format!("{} / {}", bar.position.0, bar.position.1)),
+    }
     if bar.deleted {
         facts.push(t.deleted_mark.to_owned());
     }
@@ -248,11 +283,21 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
             _ => facts.push(i18n::date(taken)),
         }
     }
-    let font = FontId::proportional(text::SMALL);
-    let room = (centre - centre_half - 12.0 - x).max(0.0);
-    let text = fit_parts(painter, facts, "   ·   ", &font, room, Drop::Back);
+    let lead = if bar.filtered.is_some() {
+        painter
+            .layout_no_wrap(separator.to_owned(), font.clone(), tokens::MUTED)
+            .size()
+            .x
+    } else {
+        0.0
+    };
+    let room = (centre - centre_half - 12.0 - facts_left - lead).max(0.0);
+    let mut text = fit_parts(painter, facts, separator, &font, room, Drop::Back);
+    if bar.filtered.is_some() && !text.is_empty() {
+        text.insert_str(0, separator);
+    }
     let line = left.text(
-        pos2(x, row2),
+        pos2(facts_left, row2),
         Align2::LEFT_CENTER,
         text,
         font,
@@ -948,6 +993,7 @@ mod tests {
             similarity: None,
             time_offset: None,
             pair: None,
+            filtered: None,
             panels: Panels::default(),
             views: Views::default(),
         }
@@ -956,8 +1002,9 @@ mod tests {
     /// What each frame reported – the bar a button switched, the view a switcher part asked
     /// for – while the pointer moves to `at`, presses and lets go, and then `Space` is pressed
     /// and let go; and whether egui gave anything the keyboard focus.
-    /// One frame's report: the bar a button switched, the view the switcher asked for.
-    type Reported = (Option<Panel>, Option<View>);
+    /// One frame's report: the bar a button switched, the view the switcher asked for, and
+    /// whether the filtered position asked for the filter bar.
+    type Reported = (Option<Panel>, Option<View>, bool);
 
     fn click(bar: &InfoBar<'_>, at: Pos2) -> (Vec<Reported>, bool) {
         use eframe::egui::{Event, Key, Modifiers, PointerButton};
@@ -991,7 +1038,7 @@ mod tests {
                 },
                 |ui| {
                     let out = info_bar(ui, bar_rect(), bar);
-                    seen.push((out.panel, out.view));
+                    seen.push((out.panel, out.view, out.show_filters));
                 },
             );
             output.textures_delta.clear();
@@ -1009,8 +1056,41 @@ mod tests {
     fn a_clicked_button_keeps_no_focus() {
         let menu_bar = block(bar_rect()).panels[3].center();
         let (seen, focused) = click(&bar(false), menu_bar);
-        let panels: Vec<_> = seen.iter().map(|(panel, _)| *panel).collect();
+        let panels: Vec<_> = seen.iter().map(|(panel, _, _)| *panel).collect();
         assert_eq!(panels, [None, None, Some(Panel::Left), None, None]);
+        assert!(!focused);
+    }
+
+    /// While a filter hides photos and the filter bar is hidden, the position says so – with
+    /// how many photos there are – and a click on it asks for the filter bar, once, without
+    /// taking the keyboard focus (ticket CER-55, U8).
+    #[test]
+    fn a_hidden_filter_shows_in_the_position() {
+        let plain = texts_of(&bar(false), 1400.0);
+        assert!(plain.iter().any(|(text, _)| text.starts_with("3 / 120")));
+        assert!(!plain.iter().any(|(text, _)| text.contains("of 340")));
+
+        let filtered = InfoBar {
+            filtered: Some(340),
+            ..bar(false)
+        };
+        let texts = texts_of(&filtered, 1400.0);
+        let (_, at) = texts
+            .iter()
+            .find(|(text, _)| text.contains("3 / 120 of 340"))
+            .expect("the filtered position");
+        // The other facts follow it on the same line.
+        assert!(
+            texts
+                .iter()
+                .any(|(text, rect)| text.contains("Auto advance")
+                    && rect.left() > at.right()
+                    && (rect.center().y - at.center().y).abs() < 2.0)
+        );
+
+        let (seen, focused) = click(&filtered, at.center());
+        let asked: Vec<bool> = seen.iter().map(|(_, _, filters)| *filters).collect();
+        assert_eq!(asked, [false, false, true, false, false]);
         assert!(!focused);
     }
 
@@ -1049,7 +1129,7 @@ mod tests {
             click(&bar, places.views[part].center())
                 .0
                 .iter()
-                .find_map(|(_, view)| *view)
+                .find_map(|(_, view, _)| *view)
         };
         let photo = Views::default();
         assert_eq!(asked(photo, 1), Some(View::Grid));
@@ -1088,10 +1168,13 @@ mod tests {
             click(&in_grid, filmstrip)
                 .0
                 .iter()
-                .all(|(panel, _)| panel.is_none())
+                .all(|(panel, _, _)| panel.is_none())
         );
         let (seen, _) = click(&bar(false), filmstrip);
-        assert!(seen.iter().any(|(panel, _)| *panel == Some(Panel::Bottom)));
+        assert!(
+            seen.iter()
+                .any(|(panel, _, _)| *panel == Some(Panel::Bottom))
+        );
     }
 
     /// The facts line leaves out whole parts instead of running under the scores.

@@ -126,6 +126,8 @@ pub(super) enum Command {
     EditRemembered,
     EditWithOther,
     EditWithChooser,
+    /// *Show in Explorer*: the file selected in the file manager.
+    Reveal,
 
     // The view.
     /// `F7`.
@@ -354,6 +356,7 @@ impl CernoApp {
             Command::EditElsewhere => self.edit_elsewhere(),
             // The lists beside the bar's rows open where the bar draws them.
             Command::EditList => self.open_editors_list(),
+            Command::Reveal => self.reveal_current(),
             Command::LanguageList => {}
             // Opening another program closes the list.
             Command::EditWith(index) => {

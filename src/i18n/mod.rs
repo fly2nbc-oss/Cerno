@@ -347,6 +347,10 @@ pub struct Texts {
     /// The filter bar's count without a filter.
     pub photos_count: fn(usize) -> String,
     pub photos_badge_tooltip: &'static str,
+    /// The info bar's position while a filter hides photos and the filter bar is hidden: the photo, how many show, how many there are.
+    pub filtered_position: fn(usize, usize, usize) -> String,
+    /// Its tooltip.
+    pub filtered_hint: &'static str,
     pub label_red: &'static str,
     pub label_yellow: &'static str,
     pub label_green: &'static str,
@@ -444,6 +448,10 @@ pub struct Texts {
     pub external_chooser: &'static str,
     /// Linux, instead of `external_chooser`: `xdg-open` starts the default program, it shows no choice.
     pub external_default: &'static str,
+    /// Shows the photo's file selected in Windows Explorer.
+    pub reveal_explorer: &'static str,
+    /// Linux: opens the photo's folder in the file manager.
+    pub reveal_file_manager: &'static str,
     /// Title of the file dialog for another program.
     pub external_pick_title: &'static str,
     /// The photo is open in another program.
@@ -765,6 +773,17 @@ pub struct Texts {
     pub help_more: [HelpRow; 3],
 }
 
+impl Texts {
+    /// *Show in Explorer* on Windows; elsewhere the folder opens in the file manager.
+    pub fn reveal(&self) -> &'static str {
+        if cfg!(windows) {
+            self.reveal_explorer
+        } else {
+            self.reveal_file_manager
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -870,6 +889,11 @@ mod tests {
             assert!((t.photos_shown)(12, 340).contains("12"), "{name}");
             assert!((t.top_photos)(50).contains("50"), "{name}");
             assert!((t.photos_shown)(12, 340).contains("340"), "{name}");
+            let filtered = (t.filtered_position)(3, 12, 340);
+            assert!(
+                filtered.starts_with("3 / 12") && filtered.ends_with("340"),
+                "{name}"
+            );
             assert!((t.deleting)(3).contains(".originals"), "{name}");
             let series = (t.series_position)(3, 7);
             assert!(series.contains('3') && series.contains('7'), "{name}");

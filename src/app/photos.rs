@@ -12,7 +12,7 @@ use crate::loader::{LoadedImage, Lookup};
 use crate::metadata::Rating;
 use crate::overlay;
 use crate::theme::tokens;
-use crate::ui::{overlays, viewer};
+use crate::ui::{navigator, overlays, viewer};
 use crate::view;
 
 use super::CernoApp;
@@ -398,6 +398,38 @@ impl CernoApp {
                     },
                 );
             }
+            self.draw_navigator(ui, slot);
+        }
+    }
+
+    /// The navigator while the single photo is zoomed beyond the view (ticket CER-55, U2):
+    /// never for a video, which has no zoom. Its thumbnail – mipmapped, so it shrinks cleanly –
+    /// else the display image.
+    fn draw_navigator(&mut self, ui: &egui::Ui, slot: &Slot) {
+        if !self.viewer.zoom.is_zoomed() || self.slot_is_video(slot) {
+            return;
+        }
+        let Some(frame) = self.frame_of(ui.ctx(), slot) else {
+            return;
+        };
+        let Some(visible) = viewer::visible_part(&frame, &self.viewer.zoom) else {
+            return;
+        };
+        let thumbnail = self
+            .view
+            .get(slot.index)
+            .and_then(|path| self.thumbs.get_or_request(path))
+            .map(|texture| texture.id());
+        let texture = thumbnail.or_else(|| match self.loader.get(slot.index) {
+            Lookup::Ready(image) => Some(image.texture.id()),
+            _ => None,
+        });
+        let Some(texture) = texture else {
+            return;
+        };
+        let aspect = frame.image_size[0] as f32 / frame.image_size[1].max(1) as f32;
+        if let Some(point) = navigator::navigator(ui, slot.area, texture, aspect, visible) {
+            self.viewer.zoom.centre_on(&frame, point);
         }
     }
 

@@ -144,6 +144,8 @@ pub static TEXTS: Texts = Texts {
     photos_shown: |shown, total| format!("{shown} de {total} fotos"),
     photos_count: |n| format!("{n} {}", if n == 1 { "foto" } else { "fotos" }),
     photos_badge_tooltip: "Cuántas fotos muestra ahora el filtro – «Fotos visibles» de la barra de menú actúa exactamente sobre estas.",
+    filtered_position: |pos, shown, total| format!("{pos} / {shown} de {total}"),
+    filtered_hint: "Un filtro oculta fotos. Haz clic o pulsa T para mostrar la barra de filtros.",
     label_red: "Rojo",
     label_yellow: "Amarillo",
     label_green: "Verde",
@@ -228,6 +230,8 @@ pub static TEXTS: Texts = Texts {
     external_other: "Otro programa …",
     external_chooser: "«Abrir con» del sistema …",
     external_default: "Abrir con el programa predeterminado",
+    reveal_explorer: "Mostrar en el Explorador",
+    reveal_file_manager: "Mostrar en el gestor de archivos",
     external_pick_title: "Elegir un programa para editar",
     external_opened: |name| {
         format!(

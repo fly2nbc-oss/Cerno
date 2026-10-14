@@ -94,6 +94,34 @@ impl CernoApp {
         }
     }
 
+    /// *Show in Explorer* (ticket CER-55, U6): the current photo's file selected in the file
+    /// manager – with the RAW riding along, which is the same photo here.
+    pub(super) fn reveal_current(&mut self) {
+        let Some(path) = self.view.get(self.current).cloned() else {
+            return;
+        };
+        if let Some(reason) = self.reveal_block(Some(&path)) {
+            self.notice = Some(Notice::hint(reason));
+            return;
+        }
+        if let Err(err) = external::reveal(&self.reveal_targets(&path)) {
+            self.notice = Some(Notice::error(format!("{err:#}")));
+        }
+    }
+
+    /// The photo's file, and a RAW that rides along with it (also when both are deleted).
+    pub(super) fn reveal_targets(&self, path: &Path) -> Vec<PathBuf> {
+        let rider = self
+            .folder
+            .pairs
+            .companion(path)
+            .or_else(|| self.deleted.companion(path));
+        std::iter::once(path)
+            .chain(rider)
+            .map(Path::to_path_buf)
+            .collect()
+    }
+
     /// Asks the system for the current photo's programs on a thread, a moment after the first
     /// photo shows: the shell can take a while, and the first menu or `E` would wait for it.
     pub(super) fn poll_editors(&mut self, ctx: &egui::Context) {

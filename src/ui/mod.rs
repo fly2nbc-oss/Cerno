@@ -16,6 +16,7 @@ pub mod info_bar;
 pub mod modal;
 pub mod models;
 pub mod name_list;
+pub mod navigator;
 pub mod overlays;
 pub mod palette;
 pub mod side_bar;
