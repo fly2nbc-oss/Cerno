@@ -27,6 +27,7 @@ A calmer, clearer look across the whole window, a navigator while zoomed, a hint
 ### Under the hood
 
 - The licence texts of the Lucide icons and of the fonts egui brings along ship with every package (`licenses/`), and `tools/make_lucide_subset.py` rebuilds the icon font from the npm package.
+- **rustls 0.23.46** for the downloads (models, ExifTool, the update check) – it fixes four advisories of 0.23.45 (RUSTSEC-2026-0346 to 0349, low to medium).
 
 ## [1.12.3] – 2026-10-14
 
