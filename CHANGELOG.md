@@ -7,6 +7,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+A calmer, clearer look across the whole window, a navigator while zoomed, a hint when a filter hides photos, and *Show in Explorer*.
+
+### Added
+
+- **A navigator while you zoom in** – while the photo is larger than the window, the whole photo shows small in the bottom right corner with the part on screen framed. Click or drag there to move the view.
+- **You see when a filter hides photos** – the filter bar is off by default and its boxes are saved, so yesterday's filter could hide photos without anyone noticing. While the filter bar is hidden, the info bar now reads `3 / 12 of 340` in blue with a filter sign; a click shows the filter bar. Nothing is reset.
+- **Show in Explorer** – *This photo ▸ Show in Explorer* and the folder button in Details › File open the photo's folder with the file selected – with its RAW, when it rides along. On Linux the folder opens in the file manager.
+
+### Changed
+
+- **A new look, the same Cerno** – Cerno follows the new version 2.0 of the author's design system: cards, lists and messages lie on a lighter grey with a soft shadow; titles and values are set in Segoe UI Semibold; buttons are all the same height; corners and lines follow one scale; blue means "on" and no longer "under the pointer"; the rows of stars, colours and turns in the menu bar are one quiet group each. Everything stays where it was, and the keys don't change.
+- **New icons** – the painted icons give way to [Lucide](https://lucide.dev)'s, drawn as text, so they are equally sharp at every size. The bars' buttons show which bar is on by their blue fill. Stars, colour marks, flags and the play button over a video stay painted.
+
+### Fixed
+
+- **Dragging a zoomed photo past its edge** no longer runs on unseen – before, the photo only moved again once the pointer had come all the way back.
+
+### Under the hood
+
+- The licence texts of the Lucide icons and of the fonts egui brings along ship with every package (`licenses/`), and `tools/make_lucide_subset.py` rebuilds the icon font from the npm package.
+
 ## [1.12.3] – 2026-10-14
 
 A safer build: nothing changes in Cerno itself.
