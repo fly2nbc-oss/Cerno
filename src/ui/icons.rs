@@ -1,13 +1,15 @@
-//! Small painted symbols: language flags, panel toggles, help. Painted instead of
-//! taken from a font – egui has no flag emoji and no Lucide icons.
+//! The interface's icons: Lucide glyphs of the embedded subset (`theme::icon`), drawn as text
+//! so they take any colour and size. Painted stay only what must be filled to read on a
+//! photo or is the mark itself: the language flags, the play button over a video (`play`),
+//! the stars (`ui/stars.rs`) and the colour labels.
 
 use eframe::egui::{
     Align2, Color32, CursorIcon, FontId, Id, Painter, Pos2, Rect, Sense, Shape, Stroke, StrokeKind,
-    Ui, Vec2, pos2, vec2,
+    Ui, Vec2, vec2,
 };
 
 use crate::i18n::Lang;
-use crate::theme::{text, tokens};
+use crate::theme::{icon, radius, tokens};
 
 /// The flag of `lang` filling `rect` (3:2 looks right). English uses the Union Jack.
 pub fn flag(painter: &Painter, rect: Rect, lang: Lang) {
@@ -109,183 +111,89 @@ pub enum Panel {
     Bottom,
 }
 
-/// Window outline with the panel's strip, filled while the panel shows: the info bar's panel
-/// buttons. The left strip is the menu bar and carries three menu lines, so the one button
-/// reads as both "left panel" and "menu".
-pub fn panel(painter: &Painter, center: Pos2, panel: Panel, shown: bool, color: Color32) {
-    let frame = Rect::from_center_size(center, vec2(16.0, 13.0));
-    let strip = match panel {
-        Panel::Left => Rect::from_min_max(frame.min, pos2(frame.min.x + 5.5, frame.max.y)),
-        Panel::Top => Rect::from_min_max(frame.min, pos2(frame.max.x, frame.min.y + 4.5)),
-        Panel::Right => Rect::from_min_max(pos2(frame.max.x - 5.5, frame.min.y), frame.max),
-        Panel::Bottom => Rect::from_min_max(pos2(frame.min.x, frame.max.y - 4.5), frame.max),
+/// Text sizes of the icons: inline beside text, and in the bars' buttons (Lucide draws about
+/// 20 px there, the design system's size).
+pub const INLINE: f32 = 14.0;
+pub const BAR: f32 = 17.0;
+
+/// A Lucide icon centred on `center`, at the text size `size`.
+pub fn glyph(painter: &Painter, center: Pos2, glyph: char, size: f32, color: Color32) {
+    painter.text(
+        center,
+        Align2::CENTER_CENTER,
+        glyph,
+        FontId::proportional(size),
+        color,
+    );
+}
+
+/// The window with the panel's side, for the info bar's panel buttons; whether the panel
+/// shows is the button's fill (`button_background`).
+pub fn panel(painter: &Painter, center: Pos2, panel: Panel, color: Color32) {
+    let glyph_of = match panel {
+        Panel::Left => icon::PANEL_LEFT,
+        Panel::Top => icon::PANEL_TOP,
+        Panel::Right => icon::PANEL_RIGHT,
+        Panel::Bottom => icon::PANEL_BOTTOM,
     };
-    if shown {
-        painter.rect_filled(strip, 1.5, color);
-    } else {
-        let line = match panel {
-            Panel::Left => [
-                pos2(strip.max.x, frame.min.y),
-                pos2(strip.max.x, frame.max.y),
-            ],
-            Panel::Top => [
-                pos2(frame.min.x, strip.max.y),
-                pos2(frame.max.x, strip.max.y),
-            ],
-            Panel::Right => [
-                pos2(strip.min.x, frame.min.y),
-                pos2(strip.min.x, frame.max.y),
-            ],
-            Panel::Bottom => [
-                pos2(frame.min.x, strip.min.y),
-                pos2(frame.max.x, strip.min.y),
-            ],
-        };
-        painter.line_segment(line, Stroke::new(1.3, color));
-    }
-    if panel == Panel::Left {
-        // Cut out of the filled strip, drawn into the empty one.
-        let ink = if shown { tokens::SURFACE } else { color };
-        for dy in [-3.0, 0.0, 3.0] {
-            let y = strip.center().y + dy;
-            painter.line_segment(
-                [pos2(strip.min.x + 1.4, y), pos2(strip.max.x - 1.3, y)],
-                Stroke::new(1.1, ink),
-            );
-        }
-    }
-    painter.rect_stroke(frame, 2.0, Stroke::new(1.3, color), StrokeKind::Inside);
+    glyph(painter, center, glyph_of, BAR, color);
 }
 
-/// A landscape in a frame: the view switcher's single photo.
+/// The view switcher's single photo.
 pub fn photo(painter: &Painter, center: Pos2, color: Color32) {
-    let frame = Rect::from_center_size(center, vec2(16.0, 13.0));
-    let stroke = Stroke::new(1.3, color);
-    painter.rect_stroke(frame, 2.0, stroke, StrokeKind::Inside);
-    let points = vec![
-        pos2(frame.min.x + 1.5, frame.max.y - 2.0),
-        pos2(frame.min.x + 6.0, frame.min.y + 6.5),
-        pos2(frame.min.x + 9.5, frame.min.y + 9.5),
-        pos2(frame.min.x + 12.0, frame.min.y + 7.5),
-        pos2(frame.max.x - 1.5, frame.max.y - 2.0),
-    ];
-    painter.add(Shape::line(points, stroke));
-    painter.circle_filled(pos2(frame.max.x - 4.5, frame.min.y + 3.8), 1.4, color);
+    glyph(painter, center, icon::IMAGE, BAR, color);
 }
 
-/// Four squares: the view switcher's grid.
+/// The view switcher's grid.
 pub fn grid(painter: &Painter, center: Pos2, color: Color32) {
-    let stroke = Stroke::new(1.3, color);
-    for (dx, dy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
-        let cell = Rect::from_center_size(center + vec2(dx * 4.0, dy * 4.0), vec2(6.4, 6.4));
-        painter.rect_stroke(cell, 1.3, stroke, StrokeKind::Inside);
-    }
+    glyph(painter, center, icon::LAYOUT_GRID, BAR, color);
 }
 
-/// A face in the corners of a viewfinder: the view switcher's faces.
+/// The view switcher's faces: a face in a viewfinder.
 pub fn face_frame(painter: &Painter, center: Pos2, color: Color32) {
-    let stroke = Stroke::new(1.3, color);
-    let (d, arm) = (7.5, 3.2);
-    for (sx, sy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
-        let corner = center + vec2(sx * d, sy * d);
-        painter.line_segment([corner, corner - vec2(sx * arm, 0.0)], stroke);
-        painter.line_segment([corner, corner - vec2(0.0, sy * arm)], stroke);
-    }
-    painter.circle_stroke(center + vec2(0.0, -1.6), 2.4, stroke);
-    let shoulders = center + vec2(0.0, 5.6);
-    let points = (0..=10)
-        .map(|i| {
-            let angle = std::f32::consts::PI * (1.0 + i as f32 / 10.0);
-            shoulders + vec2(angle.cos() * 4.2, angle.sin() * 3.0)
-        })
-        .collect();
-    painter.add(Shape::line(points, stroke));
+    glyph(painter, center, icon::SCAN_FACE, BAR, color);
 }
 
-/// The "rejected" cross.
+/// The "rejected" cross, about `size` wide.
 pub fn reject_mark(painter: &Painter, center: Pos2, size: f32, color: Color32) {
-    let d = size / 2.0;
-    let stroke = Stroke::new((size / 6.0).max(1.4), color);
-    painter.line_segment([center + vec2(-d, -d), center + vec2(d, d)], stroke);
-    painter.line_segment([center + vec2(-d, d), center + vec2(d, -d)], stroke);
+    glyph(painter, center, icon::X, size * 1.8, color);
 }
 
-/// A person – head and shoulders – for the people filter. `crossed`: struck through ("without
-/// people"), the stroke cut free from the figure in that background colour.
-pub fn person(painter: &Painter, center: Pos2, color: Color32, crossed: Option<Color32>) {
-    painter.circle_filled(center + vec2(0.0, -3.6), 2.8, color);
-    let shoulders = center + vec2(0.0, 6.4);
-    let radius = 5.4;
-    let points = (0..=12)
-        .map(|i| {
-            let angle = std::f32::consts::PI * (1.0 + i as f32 / 12.0);
-            shoulders + vec2(angle.cos(), angle.sin()) * radius
-        })
-        .collect();
-    painter.add(Shape::convex_polygon(points, color, Stroke::NONE));
-    if let Some(background) = crossed {
-        let line = [center + vec2(-6.5, -6.5), center + vec2(6.5, 6.5)];
-        painter.line_segment(line, Stroke::new(3.6, background));
-        painter.line_segment(line, Stroke::new(1.5, color));
-    }
+/// A person – head and shoulders – for the people filter; `crossed`: "without people".
+pub fn person(painter: &Painter, center: Pos2, color: Color32, crossed: bool) {
+    let glyph_of = if crossed { icon::USER_X } else { icon::USER };
+    glyph(painter, center, glyph_of, INLINE + 1.0, color);
 }
 
-/// A waste bin – lid with its handle, a body narrowing downwards with two grooves – for the
-/// deleted photos (which lie in `.originals`, not in the system's trash). About 12 × 14 px at
-/// `size` 1.0.
+/// A waste bin for the deleted photos (which lie in `.originals`, not in the system's
+/// trash); `size` 1.0 beside text.
 pub fn trash(painter: &Painter, center: Pos2, size: f32, color: Color32) {
-    let s = |x: f32, y: f32| center + vec2(x, y) * size;
-    let stroke = Stroke::new(1.3 * size.max(0.8), color);
-    // Lid and handle.
-    painter.line_segment([s(-6.0, -4.5), s(6.0, -4.5)], stroke);
-    painter.line_segment([s(-2.0, -4.5), s(-2.0, -6.5)], stroke);
-    painter.line_segment([s(-2.0, -6.5), s(2.0, -6.5)], stroke);
-    painter.line_segment([s(2.0, -6.5), s(2.0, -4.5)], stroke);
-    // Body.
-    let body = vec![s(-4.6, -2.8), s(4.6, -2.8), s(3.6, 6.5), s(-3.6, 6.5)];
-    painter.add(Shape::closed_line(body, stroke));
-    for x in [-1.4, 1.4] {
-        painter.line_segment([s(x, -0.8), s(x * 0.85, 4.6)], stroke);
-    }
+    glyph(painter, center, icon::TRASH, (INLINE + 1.0) * size, color);
 }
 
-/// "Probably blurry": a status-coloured disc with a painted exclamation mark (a 9 px text "!"
-/// was below the design system's 12 px minimum for icons).
+/// "Probably blurry" on a thumbnail or a face: the warning triangle on a small raised badge,
+/// like the other marks on a cell, so it reads on any photo.
 pub fn warning(painter: &Painter, center: Pos2) {
-    painter.circle_filled(center, 6.5, tokens::STATUS_WARN);
-    let stroke = Stroke::new(1.8, Color32::BLACK);
-    painter.line_segment([center + vec2(0.0, -3.6), center + vec2(0.0, 1.0)], stroke);
-    painter.circle_filled(center + vec2(0.0, 3.4), 1.0, Color32::BLACK);
+    let badge = Rect::from_center_size(center, vec2(18.0, 18.0));
+    painter.rect_filled(badge, radius::SM, tokens::SURFACE_RAISED);
+    glyph(
+        painter,
+        center,
+        icon::TRIANGLE_ALERT,
+        INLINE - 1.0,
+        tokens::STATUS_WARN,
+    );
 }
 
-/// "File incomplete": a page whose lower edge is torn off – a JPEG that ends inside its image
-/// data. About 11 × 13 px.
+/// "File incomplete": a JPEG that ends inside its image data.
 pub fn torn_file(painter: &Painter, center: Pos2, color: Color32) {
-    let p = |x: f32, y: f32| center + vec2(x, y);
-    let stroke = Stroke::new(1.4, color);
-    // Top edge with the folded corner, the sides, and a zig-zag where the rest is missing.
-    let outline = vec![
-        p(-5.0, 3.5),
-        p(-5.0, -6.0),
-        p(2.0, -6.0),
-        p(5.0, -3.0),
-        p(5.0, 3.5),
-        p(3.3, 5.5),
-        p(1.7, 3.5),
-        p(0.0, 5.5),
-        p(-1.7, 3.5),
-        p(-3.3, 5.5),
-        p(-5.0, 3.5),
-    ];
-    painter.add(Shape::line(outline, stroke));
-    painter.line_segment([p(2.0, -6.0), p(2.0, -3.0)], stroke);
-    painter.line_segment([p(2.0, -3.0), p(5.0, -3.0)], stroke);
+    glyph(painter, center, icon::FILE_WARNING, INLINE, color);
 }
 
 /// A video's play button: a light triangle on a dark disc, both see-through so the frame
-/// shows beneath.
+/// shows beneath – painted, a filled triangle reads on any frame.
 pub fn play(painter: &Painter, center: Pos2, radius: f32) {
-    painter.circle_filled(center, radius, Color32::from_black_alpha(110));
+    painter.circle_filled(center, radius, tokens::PHOTO_VEIL_LIGHT);
     let r = radius * 0.5;
     // Pushed right by the triangle's centroid, so it looks centred in the disc.
     let c = center + vec2(r * 0.2, 0.0);
@@ -303,112 +211,63 @@ pub fn play(painter: &Painter, center: Pos2, radius: f32) {
 
 /// Two overlapping sheets, the "copy" mark.
 pub fn copy(painter: &Painter, center: Pos2, color: Color32) {
-    let stroke = Stroke::new(1.2, color);
-    let back = Rect::from_center_size(center + vec2(1.6, -1.6), vec2(8.0, 9.0));
-    let front = Rect::from_center_size(center + vec2(-1.6, 1.6), vec2(8.0, 9.0));
-    painter.rect_stroke(back, 1.0, stroke, StrokeKind::Inside);
-    painter.rect_filled(front, 1.0, tokens::SURFACE);
-    painter.rect_stroke(front, 1.0, stroke, StrokeKind::Inside);
+    glyph(painter, center, icon::COPY, INLINE - 1.0, color);
 }
 
 /// Circled question mark.
 pub fn help(painter: &Painter, center: Pos2, color: Color32) {
-    painter.circle_stroke(center, 7.5, Stroke::new(1.3, color));
-    painter.text(
-        center + vec2(0.0, 0.5),
-        Align2::CENTER_CENTER,
-        "?",
-        FontId::proportional(text::OVERLINE),
-        color,
-    );
+    glyph(painter, center, icon::CIRCLE_HELP, BAR, color);
 }
 
-/// A stroked chevron pointing left or right (`‹` / `›`), `size` high: the photo's browse
-/// arrows.
+/// A chevron pointing left or right, about `size` high: the photo's browse arrows.
 pub fn side_chevron(painter: &Painter, center: Pos2, right: bool, size: f32, color: Color32) {
-    let s = if right { 1.0 } else { -1.0 };
-    let d = size / 2.0;
-    let points = vec![
-        center + vec2(-s * d * 0.4, -d),
-        center + vec2(s * d * 0.4, 0.0),
-        center + vec2(-s * d * 0.4, d),
-    ];
-    painter.add(Shape::line(points, Stroke::new(size / 7.0, color)));
-}
-
-/// A quarter turn (`↺` / `↻`): three quarters of a circle with an arrow head at its end, about
-/// 13 px wide – the menu bar's turn buttons (Segoe UI's arrows are not sure to be there).
-pub fn turn(painter: &Painter, center: Pos2, clockwise: bool, color: Color32) {
-    let r = 5.0;
-    let s = if clockwise { 1.0 } else { -1.0 };
-    // From the top, the long way round, ending just right (left) of the top.
-    let start = -std::f32::consts::FRAC_PI_2 + s * 0.35;
-    let sweep = s * 1.5 * std::f32::consts::PI;
-    let points: Vec<Pos2> = (0..=16)
-        .map(|k| {
-            let a = start + sweep * k as f32 / 16.0;
-            center + vec2(r * a.cos(), r * a.sin())
-        })
-        .collect();
-    let end = points[points.len() - 1];
-    let before = points[points.len() - 2];
-    painter.add(Shape::line(points, Stroke::new(1.4, color)));
-    // The arrow head along the direction the arc runs at its end.
-    let dir = (end - before).normalized();
-    let side = vec2(-dir.y, dir.x);
-    let tip = end + dir * 2.6;
-    painter.add(Shape::convex_polygon(
-        vec![
-            tip,
-            end - dir * 0.6 + side * 2.6,
-            end - dir * 0.6 - side * 2.6,
-        ],
-        color,
-        Stroke::NONE,
-    ));
-}
-
-/// Small triangle for fold rows in the details panel (`open` = expanded).
-pub fn chevron(painter: &Painter, center: Pos2, open: bool, color: Color32) {
-    let d = 4.0;
-    let points = if open {
-        [
-            center + vec2(-d, d * 0.35),
-            center + vec2(d, d * 0.35),
-            center + vec2(0.0, -d * 0.9),
-        ]
+    let glyph_of = if right {
+        icon::CHEVRON_RIGHT
     } else {
-        [
-            center + vec2(-d * 0.55, -d),
-            center + vec2(-d * 0.55, d),
-            center + vec2(d * 0.85, 0.0),
-        ]
+        icon::CHEVRON_LEFT
     };
-    painter.add(Shape::convex_polygon(points.to_vec(), color, Stroke::NONE));
+    glyph(painter, center, glyph_of, size * 1.7, color);
 }
 
-/// An eye: show these values on the photo (the check overlay). The pupil is filled while on.
-pub fn eye(painter: &Painter, center: Pos2, on: bool, color: Color32) {
-    let (half_width, half_height) = (7.5, 4.5);
-    let stroke = Stroke::new(1.4, color);
-    for side in [-1.0, 1.0] {
-        let lid = (0..=12)
-            .map(|i| {
-                let t = i as f32 / 6.0 - 1.0;
-                center + vec2(t * half_width, side * half_height * (1.0 - t * t))
-            })
-            .collect();
-        painter.add(Shape::line(lid, stroke));
-    }
-    if on {
-        painter.circle_filled(center, 2.6, color);
+/// A quarter turn: the menu bar's turn buttons.
+pub fn turn(painter: &Painter, center: Pos2, clockwise: bool, color: Color32) {
+    let glyph_of = if clockwise {
+        icon::ROTATE_CW
     } else {
-        painter.circle_stroke(center, 2.2, stroke);
-    }
+        icon::ROTATE_CCW
+    };
+    glyph(painter, center, glyph_of, INLINE, color);
+}
+
+/// The chevron of a row that folds (`open`: pointing down) or opens a list beside it.
+pub fn chevron(painter: &Painter, center: Pos2, open: bool, color: Color32) {
+    let glyph_of = if open {
+        icon::CHEVRON_DOWN
+    } else {
+        icon::CHEVRON_RIGHT
+    };
+    glyph(painter, center, glyph_of, INLINE - 1.0, color);
+}
+
+/// An eye: show these values on the photo (the check overlay). Whether it is on, its colour
+/// says.
+pub fn eye(painter: &Painter, center: Pos2, color: Color32) {
+    glyph(painter, center, icon::EYE, INLINE, color);
+}
+
+/// A tick: a chosen row, a ticked box.
+pub fn check(painter: &Painter, center: Pos2, size: f32, color: Color32) {
+    glyph(painter, center, icon::CHECK, size, color);
+}
+
+/// A cross: close a card, clear the filters.
+pub fn close(painter: &Painter, center: Pos2, size: f32, color: Color32) {
+    glyph(painter, center, icon::X, size, color);
 }
 
 /// A button with the copy mark that puts `text` on the clipboard. For a moment after a click
-/// it stays lit and its tooltip says `done` instead of `tip`; `id` keeps that moment.
+/// it stays lit with a tick in the sheets, and its tooltip says `done` instead of `tip`; `id`
+/// keeps that moment.
 pub fn copy_button(ui: &mut Ui, size: Vec2, id: Id, text: &str, tip: &str, done: &str) {
     let now = ui.input(|i| i.time);
     let copied = ui
@@ -416,12 +275,13 @@ pub fn copy_button(ui: &mut Ui, size: Vec2, id: Id, text: &str, tip: &str, done:
         .is_some_and(|until| until > now);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     let color = if copied || response.hovered() {
-        tokens::ACCENT
+        tokens::ACCENT_STRONG
     } else {
         tokens::MUTED
     };
     button_background(ui.painter(), rect, response.hovered(), copied);
-    copy(ui.painter(), rect.center(), color);
+    let glyph_of = if copied { icon::COPY_CHECK } else { icon::COPY };
+    glyph(ui.painter(), rect.center(), glyph_of, INLINE - 1.0, color);
     let response = response
         .on_hover_cursor(CursorIcon::PointingHand)
         .on_hover_text(if copied { done } else { tip });

@@ -351,11 +351,7 @@ fn row_button<A>(
     }
     let y = rect.center().y;
     let c = pos2(rect.left() + 16.0, y);
-    let tick = |colour: Color32| {
-        let stroke = Stroke::new(1.6, colour);
-        painter.line_segment([c + vec2(-4.5, 0.0), c + vec2(-1.5, 3.5)], stroke);
-        painter.line_segment([c + vec2(-1.5, 3.5), c + vec2(4.5, -4.0)], stroke);
-    };
+    let tick = |colour: Color32| icons::check(painter, c, icons::INLINE - 2.0, colour);
     match row.mark {
         Mark::Toggle(on) => {
             // A box: its border is the element, so the strong line (the border rule).

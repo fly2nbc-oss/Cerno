@@ -5,13 +5,11 @@
 
 use std::time::Duration;
 
-use eframe::egui::{
-    Align2, Color32, CursorIcon, FontId, Id, Pos2, Rect, Sense, Shape, Stroke, Ui, pos2, vec2,
-};
+use eframe::egui::{Align2, Color32, CursorIcon, FontId, Id, Pos2, Rect, Sense, Ui, pos2, vec2};
 
 use crate::i18n;
-use crate::theme::{text, tokens};
-use crate::ui::overlays;
+use crate::theme::{icon, text, tokens};
+use crate::ui::{icons, overlays};
 
 const HEIGHT: f32 = 40.0;
 const MAX_WIDTH: f32 = 760.0;
@@ -207,7 +205,13 @@ pub fn show(ui: &Ui, area: Rect, controls: &Controls, id: Id) -> ControlsOutput 
     } else {
         tokens::TEXT
     };
-    paint_speaker(&painter, parts.speaker.center(), controls.muted, colour);
+    paint_speaker(
+        &painter,
+        parts.speaker.center(),
+        controls.muted,
+        controls.volume,
+        colour,
+    );
     out.mute = speaker.clicked();
 
     // Volume.
@@ -230,7 +234,7 @@ pub fn show(ui: &Ui, area: Rect, controls: &Controls, id: Id) -> ControlsOutput 
     painter.rect_filled(track, crate::theme::radius::PILL, tokens::LINE);
     painter.rect_filled(
         Rect::from_min_size(track.min, vec2(track.width() * level, track.height())),
-        2.0,
+        crate::theme::radius::PILL,
         tokens::ACCENT,
     );
     painter.circle_filled(
@@ -242,58 +246,26 @@ pub fn show(ui: &Ui, area: Rect, controls: &Controls, id: Id) -> ControlsOutput 
     out
 }
 
-/// A triangle, or two bars while it plays.
+/// Play, or pause while it plays.
 fn paint_play(painter: &eframe::egui::Painter, c: Pos2, playing: bool, colour: Color32) {
-    if playing {
-        for dx in [-4.5, 4.5] {
-            painter.rect_filled(
-                Rect::from_center_size(c + vec2(dx, 0.0), vec2(4.0, 14.0)),
-                1.0,
-                colour,
-            );
-        }
-    } else {
-        painter.add(Shape::convex_polygon(
-            vec![
-                c + vec2(-5.0, -8.0),
-                c + vec2(8.0, 0.0),
-                c + vec2(-5.0, 8.0),
-            ],
-            colour,
-            Stroke::NONE,
-        ));
-    }
+    let glyph = if playing { icon::PAUSE } else { icon::PLAY };
+    icons::glyph(painter, c, glyph, icons::BAR, colour);
 }
 
-/// A speaker with a wave, or with a cross when muted.
-fn paint_speaker(painter: &eframe::egui::Painter, c: Pos2, muted: bool, colour: Color32) {
-    let o = c + vec2(-3.0, 0.0);
-    painter.add(Shape::convex_polygon(
-        vec![
-            o + vec2(-6.0, -3.0),
-            o + vec2(-2.0, -3.0),
-            o + vec2(3.0, -7.0),
-            o + vec2(3.0, 7.0),
-            o + vec2(-2.0, 3.0),
-            o + vec2(-6.0, 3.0),
-        ],
-        colour,
-        Stroke::NONE,
-    ));
-    let stroke = Stroke::new(1.6, colour);
-    if muted {
-        let x = c + vec2(6.5, 0.0);
-        painter.line_segment([x + vec2(-3.0, -3.0), x + vec2(3.0, 3.0)], stroke);
-        painter.line_segment([x + vec2(-3.0, 3.0), x + vec2(3.0, -3.0)], stroke);
-    } else {
-        let points: Vec<Pos2> = (0..=8)
-            .map(|i| {
-                let a = -0.9 + 1.8 * i as f32 / 8.0;
-                c + vec2(2.5 + 5.0 * a.cos(), 5.0 * a.sin())
-            })
-            .collect();
-        painter.add(Shape::line(points, stroke));
-    }
+/// A speaker with one wave or two by the volume, or with a cross when muted.
+fn paint_speaker(
+    painter: &eframe::egui::Painter,
+    c: Pos2,
+    muted: bool,
+    volume: f32,
+    colour: Color32,
+) {
+    let glyph = match (muted, volume) {
+        (true, _) => icon::VOLUME_X,
+        (false, v) if v < 0.5 => icon::VOLUME_1,
+        _ => icon::VOLUME_2,
+    };
+    icons::glyph(painter, c, glyph, icons::BAR, colour);
 }
 
 #[cfg(test)]

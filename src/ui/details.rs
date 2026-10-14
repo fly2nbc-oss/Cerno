@@ -4,8 +4,8 @@
 use std::path::Path;
 
 use eframe::egui::{
-    Align, Align2, Color32, CursorIcon, FontId, Hyperlink, Id, Label, Layout, Rect, Response,
-    RichText, ScrollArea, Sense, Stroke, Ui, UiBuilder, vec2,
+    Align, Color32, CursorIcon, FontId, Hyperlink, Id, Label, Layout, Rect, Response, RichText,
+    ScrollArea, Sense, Stroke, Ui, UiBuilder, vec2,
 };
 
 use crate::analysis::{ModelState, Status, aesthetic, exposure};
@@ -545,7 +545,7 @@ fn section_with_eye(ui: &mut Ui, title: &str, on: bool) -> bool {
         } else {
             tokens::MUTED
         };
-        icons::eye(ui.painter(), rect.center(), on, colour);
+        icons::eye(ui.painter(), rect.center(), colour);
         response
             .on_hover_cursor(CursorIcon::PointingHand)
             .on_hover_text(i18n::t().overlay_show_on_photo)
@@ -559,11 +559,11 @@ fn reveal_button(ui: &mut Ui) -> bool {
     let (rect, response) = ui.allocate_exact_size(vec2(22.0, 16.0), Sense::CLICK);
     let hovered = response.hovered();
     icons::button_background(ui.painter(), rect, hovered, false);
-    ui.painter().text(
+    icons::glyph(
+        ui.painter(),
         rect.center(),
-        Align2::CENTER_CENTER,
         theme::icon::FOLDER_OPEN,
-        FontId::proportional(text::BODY),
+        icons::INLINE,
         if hovered {
             tokens::ACCENT_STRONG
         } else {

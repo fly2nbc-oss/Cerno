@@ -149,6 +149,7 @@ pub fn toolbar(
                         clear = cleared;
                         count_rect = Some(slot);
                         ComboBox::from_id_salt("sort")
+                            .icon(combo_chevron)
                             .width(sort_width(ui))
                             .selected_text((t.sort)(sort.label()))
                             .show_ui(ui, |ui| {
@@ -195,6 +196,7 @@ fn scope_box(ui: &mut Ui, options: &mut ViewOptions, has_videos: bool) {
     let t = i18n::t();
     let current = Scope::of(options);
     let response = ComboBox::from_id_salt("scope")
+        .icon(combo_chevron)
         .width(scope_width(ui))
         .selected_text(current.label())
         .show_ui(ui, |ui| {
@@ -227,6 +229,11 @@ fn scope_box(ui: &mut Ui, options: &mut ViewOptions, has_videos: bool) {
             StrokeKind::Inside,
         );
     }
+}
+
+/// The combo boxes' chevron: Lucide's, like the menu bar's, instead of egui's triangle.
+fn combo_chevron(ui: &Ui, rect: Rect, _: &eframe::egui::style::WidgetVisuals, _open: bool) {
+    icons::chevron(ui.painter(), rect.center(), true, tokens::MUTED);
 }
 
 /// The first box is as wide as its longest choice, like the sort box.
@@ -414,18 +421,7 @@ fn chip_with(ui: &mut Ui, on: bool, face: Face<'_>, enabled: bool) -> Response {
         }
         (Face::Person { crossed }, _) => {
             let colour = if on { tokens::TEXT } else { tokens::MUTED };
-            // The stroke is cut free in the chip's own colour.
-            let background = if fill == Color32::TRANSPARENT {
-                tokens::SURFACE
-            } else {
-                fill
-            };
-            icons::person(
-                painter,
-                rect.center(),
-                colour,
-                crossed.then_some(background),
-            );
+            icons::person(painter, rect.center(), colour, crossed);
         }
         (Face::Deleted, _) => {
             let colour = match (on, enabled) {
@@ -524,12 +520,12 @@ fn count_badge(ui: &mut Ui, shown: usize, total: usize, filtered: bool) -> (bool
                 tokens::ACCENT_STRONG.gamma_multiply(0.3),
             );
         }
-        let c = clear_rect.center();
-        let stroke = Stroke::new(1.5, tokens::TEXT);
-        ui.painter()
-            .line_segment([c + vec2(-3.5, -3.5), c + vec2(3.5, 3.5)], stroke);
-        ui.painter()
-            .line_segment([c + vec2(-3.5, 3.5), c + vec2(3.5, -3.5)], stroke);
+        icons::close(
+            ui.painter(),
+            clear_rect.center(),
+            icons::INLINE - 1.0,
+            tokens::TEXT,
+        );
         clear_clicked = clear.clicked();
     }
     ui.painter().galley(at, galley, colour);
@@ -596,10 +592,7 @@ fn colour_box(ui: &mut Ui, on: &mut bool, colour: Color32, name: &str) -> Respon
     let square = Rect::from_center_size(rect.center(), vec2(14.0, 14.0));
     if *on {
         painter.rect_filled(square, radius::SM, colour);
-        let c = square.center();
-        let stroke = Stroke::new(1.8, tokens::BG);
-        painter.line_segment([c + vec2(-3.5, 0.0), c + vec2(-1.0, 2.8)], stroke);
-        painter.line_segment([c + vec2(-1.0, 2.8), c + vec2(3.8, -3.2)], stroke);
+        icons::check(painter, square.center(), icons::INLINE - 3.0, tokens::BG);
     } else {
         painter.rect_stroke(
             square,

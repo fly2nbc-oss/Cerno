@@ -112,10 +112,6 @@ pub const COMPACT: f32 = 24.0;
 /// Lucide icons (ISC, https://lucide.dev) of the embedded subset (`assets/lucide`, made by
 /// `tools/make_lucide_subset.py`). They are characters of the proportional font: they take the
 /// text's colour and size.
-#[allow(
-    dead_code,
-    reason = "taken into use as the painted icons give way to Lucide (CER-56)"
-)]
 pub mod icon {
     pub const CHECK: char = '\u{E070}';
     pub const CHEVRON_DOWN: char = '\u{E071}';
