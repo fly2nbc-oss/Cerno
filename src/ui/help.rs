@@ -218,10 +218,7 @@ fn content(
         let area = Rect::from_min_size(pos2(x - 28.0, y), vec2(28.0, 28.0));
         x -= 34.0;
         if header_button(ui, area, t.help_close, |p, c, color| {
-            let d = 5.5;
-            for (a, b) in [(vec2(-d, -d), vec2(d, d)), (vec2(-d, d), vec2(d, -d))] {
-                p.line_segment([c + a, c + b], Stroke::new(1.6, color));
-            }
+            icons::close(p, c, icons::BAR, color);
         }) {
             out.close = true;
         }

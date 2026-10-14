@@ -3,8 +3,8 @@
 //! the content height remembered from the previous frame.
 
 use eframe::egui::{
-    Align, Area, Context, CursorIcon, Id, Layout, Order, Painter, Pos2, Rect, Sense, Stroke, Ui,
-    UiBuilder, pos2, vec2,
+    Align, Area, Context, CursorIcon, Id, Layout, Order, Painter, Pos2, Rect, Sense, Ui, UiBuilder,
+    pos2, vec2,
 };
 
 use crate::theme::{self, radius, tokens};
@@ -83,9 +83,6 @@ pub fn close_button(ui: &Ui, top_right: Pos2, tooltip: &str) -> bool {
     } else {
         tokens::MUTED
     };
-    let (c, d) = (area.center(), 5.5);
-    for (a, b) in [(vec2(-d, -d), vec2(d, d)), (vec2(-d, d), vec2(d, -d))] {
-        painter.line_segment([c + a, c + b], Stroke::new(1.6, color));
-    }
+    icons::close(painter, area.center(), icons::BAR, color);
     response.on_hover_text(tooltip).clicked()
 }

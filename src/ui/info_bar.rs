@@ -565,7 +565,7 @@ pub fn corner_buttons(ui: &Ui, window: Rect, side_bar: bool) -> InfoBarOutput {
         side_bar,
         false,
         |p, c, color| {
-            icons::panel(p, c, Panel::Left, side_bar, color);
+            icons::panel(p, c, Panel::Left, color);
         },
     ) {
         out.panel = Some(Panel::Left);
@@ -678,7 +678,7 @@ fn buttons(ui: &Ui, rect: Rect, panels: Panels, views: Views, out: &mut InfoBarO
             ),
         };
         if icon_button(ui, area, &tooltip, shown, disabled, |p, c, color| {
-            icons::panel(p, c, panel, shown, color);
+            icons::panel(p, c, panel, color);
         }) {
             out.panel = Some(panel);
         }

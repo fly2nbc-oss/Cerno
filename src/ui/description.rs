@@ -139,7 +139,7 @@ fn fields(
                 ui.set_max_width(width);
                 for (index, keyword) in current.keywords.iter().enumerate() {
                     let chip = Button::new(
-                        RichText::new(format!("{keyword}  ×"))
+                        RichText::new(format!("{keyword}  {}", theme::icon::X))
                             .font(FontId::proportional(text::SMALL)),
                     )
                     .fill(tokens::SURFACE_MUTED)
