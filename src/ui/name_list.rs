@@ -3,7 +3,7 @@
 //! Cancel (`Esc`). The matching itself is `name_list`.
 
 use eframe::egui::{
-    Align, Button, Context, FontId, Id, Key, Layout, Modifiers, Rect, RichText, TextEdit, vec2,
+    Align, Context, FontId, Id, Key, Layout, Modifiers, Rect, RichText, TextEdit, vec2,
 };
 
 use crate::i18n;
@@ -41,19 +41,21 @@ pub fn show(ctx: &Context, window: Rect, text: &mut String, preview: &Preview<'_
         let top_right = ui.max_rect().right_top() + vec2(8.0, -8.0);
         ui.label(
             RichText::new(t.name_list_title)
-                .font(FontId::proportional(text::VALUE))
+                .font(theme::strong(text::VALUE))
                 .color(tokens::TEXT),
         );
         out.close = modal::close_button(ui, top_right, t.btn_close);
         ui.add_space(8.0);
         ui.label(RichText::new(i18n::keep_together(t.name_list_intro)).color(tokens::MUTED));
-        ui.add_space(10.0);
-        let field = ui.add(
-            TextEdit::multiline(text)
-                .desired_rows(8)
-                .desired_width(f32::INFINITY)
-                .hint_text(t.name_list_hint),
-        );
+        ui.add_space(12.0);
+        let field = theme::field_scope(ui, |ui| {
+            ui.add(
+                TextEdit::multiline(text)
+                    .desired_rows(8)
+                    .desired_width(f32::INFINITY)
+                    .hint_text(t.name_list_hint),
+            )
+        });
         // The cursor goes into the field when the card opens.
         let focused_id = Id::new("name-list-focused");
         if !ui.data(|d| d.get_temp::<bool>(focused_id).unwrap_or(false)) {
@@ -92,7 +94,7 @@ pub fn show(ctx: &Context, window: Rect, text: &mut String, preview: &Preview<'_
             if apply.clicked() {
                 out.apply = true;
             }
-            if ui.add(Button::new(t.btn_cancel)).clicked() {
+            if ui.add(theme::secondary_button(t.btn_cancel)).clicked() {
                 out.close = true;
             }
         });
@@ -113,7 +115,7 @@ mod tests {
     use eframe::egui::{Event, RawInput, pos2};
 
     fn press(key: Key, modifiers: Modifiers, found: usize) -> (Output, String) {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 700.0));
         let mut text = "IMG_1".to_owned();
         let preview = Preview {

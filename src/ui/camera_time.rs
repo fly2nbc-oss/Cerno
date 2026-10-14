@@ -3,8 +3,7 @@
 //! camera, Apply (`Enter`) and Cancel (`Esc`).
 
 use eframe::egui::{
-    Align, Button, Context, FontId, Grid, Id, Key, Layout, Modifiers, Rect, RichText, TextEdit,
-    vec2,
+    Align, Context, FontId, Grid, Id, Key, Layout, Modifiers, Rect, RichText, TextEdit, vec2,
 };
 
 use crate::camera_time;
@@ -47,7 +46,7 @@ pub fn show(ctx: &Context, window: Rect, rows: &mut [Row]) -> Output {
         let top_right = ui.max_rect().right_top() + vec2(8.0, -8.0);
         ui.label(
             RichText::new(t.camera_time_title)
-                .font(FontId::proportional(text::VALUE))
+                .font(theme::strong(text::VALUE))
                 .color(tokens::TEXT),
         );
         out.close = modal::close_button(ui, top_right, t.btn_close);
@@ -74,11 +73,13 @@ pub fn show(ctx: &Context, window: Rect, rows: &mut [Row]) -> Output {
                         field = field.text_color(tokens::STATUS_ERROR);
                     }
                     // A grid cell would squeeze the field to its first frame's width.
-                    ui.add_sized(vec2(FIELD_WIDTH, 22.0), field);
+                    theme::field_scope(ui, |ui| {
+                        ui.add_sized(vec2(FIELD_WIDTH, theme::CONTROL), field)
+                    });
                     if ui
                         .add_enabled(
                             !row.text.trim().is_empty(),
-                            Button::new(t.camera_time_reset),
+                            theme::secondary_button(t.camera_time_reset),
                         )
                         .clicked()
                     {
@@ -106,7 +107,7 @@ pub fn show(ctx: &Context, window: Rect, rows: &mut [Row]) -> Output {
             if apply.clicked() {
                 out.apply = true;
             }
-            if ui.add(Button::new(t.btn_cancel)).clicked() {
+            if ui.add(theme::secondary_button(t.btn_cancel)).clicked() {
                 out.close = true;
             }
         });
@@ -124,7 +125,7 @@ mod tests {
     use eframe::egui::{Event, RawInput, pos2};
 
     fn press(key: Key, text: &str) -> Output {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 700.0));
         let mut rows = vec![Row {
             name: "Pixel 7a".into(),

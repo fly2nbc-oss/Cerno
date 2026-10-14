@@ -15,7 +15,7 @@ use crate::i18n;
 use crate::metadata;
 use crate::overlay;
 use crate::playback::MediaInfo;
-use crate::theme::{text, tokens};
+use crate::theme::{self, text, tokens};
 use crate::ui::{icons, video_controls};
 use crate::view::is_blurry;
 
@@ -482,7 +482,7 @@ fn histogram(ui: &mut Ui, hist: &RgbHistogram, raw_preview: bool) {
     let (rect, _) = ui.allocate_exact_size(vec2(width, HIST_HEIGHT), Sense::hover());
     let rect = rect.translate(vec2(PAD, 0.0));
     let painter = ui.painter().with_clip_rect(rect);
-    painter.rect_filled(rect, 2.0, tokens::SURFACE_MUTED);
+    painter.rect_filled(rect, crate::theme::radius::SM, tokens::SURFACE_MUTED);
     let max = hist
         .iter()
         .flat_map(|channel| channel.iter())
@@ -520,11 +520,7 @@ fn section(ui: &mut Ui, title: &str) {
     ui.add_space(6.0);
     ui.horizontal(|ui| {
         ui.add_space(PAD);
-        ui.label(
-            RichText::new(title.to_uppercase())
-                .font(FontId::proportional(text::LABEL))
-                .color(tokens::MUTED),
-        );
+        ui.label(theme::overline(title));
     });
     ui.add_space(2.0);
 }
@@ -555,11 +551,7 @@ fn section_with<R>(ui: &mut Ui, title: &str, button: impl FnOnce(&mut Ui) -> R) 
     let inner = ui
         .horizontal(|ui| {
             ui.add_space(PAD);
-            ui.label(
-                RichText::new(title.to_uppercase())
-                    .font(FontId::proportional(text::LABEL))
-                    .color(tokens::MUTED),
-            );
+            ui.label(theme::overline(title));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.add_space(PAD);
                 button(ui)
@@ -783,7 +775,7 @@ fn value_bar(ui: &mut Ui, value: &Value) {
     let track = rect.translate(vec2(PAD, 2.0)).shrink2(vec2(0.0, 0.0));
     let track = Rect::from_min_size(track.min, vec2(track.width(), BAR_HEIGHT));
     let painter = ui.painter();
-    painter.rect_filled(track, 2.0, tokens::LINE);
+    painter.rect_filled(track, crate::theme::radius::PILL, tokens::LINE);
     let bar_colour = if value.warn {
         tokens::STATUS_WARN
     } else {
@@ -794,7 +786,7 @@ fn value_bar(ui: &mut Ui, value: &Value) {
             track.min,
             vec2(track.width() * fill.clamp(0.0, 1.0), BAR_HEIGHT),
         ),
-        2.0,
+        crate::theme::radius::PILL,
         bar_colour,
     );
 }
@@ -835,7 +827,7 @@ mod tests {
     }
     use crate::analysis::TasteStatus;
     use eframe::egui::{
-        Context, Event, Modifiers, OutputCommand, PointerButton, RawInput, Shape, pos2, vec2,
+        Event, Modifiers, OutputCommand, PointerButton, RawInput, Shape, pos2, vec2,
     };
 
     fn status() -> Status {
@@ -909,7 +901,7 @@ mod tests {
         let details = details_with_scores(&status);
         let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 1200.0));
         let shows_quality = |mut open: bool| {
-            let ctx = Context::default();
+            let ctx = crate::theme::test_context();
             let mut output = ctx.run_ui(
                 RawInput {
                     screen_rect: Some(screen),
@@ -935,7 +927,7 @@ mod tests {
     /// scores are percentages on the fixed scale.
     #[test]
     fn values_stay_inside_the_panel() {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let status = status();
         let details = details_with_scores(&status);
         let panel = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 2400.0));
@@ -971,7 +963,7 @@ mod tests {
     /// Nothing folds out under a value any more: the explanation is the row's tooltip.
     #[test]
     fn a_row_explains_itself_on_hover() {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         ctx.all_styles_mut(|style| style.interaction.tooltip_delay = 0.0);
         let status = status();
         let details = details_with_scores(&status);
@@ -1019,7 +1011,7 @@ mod tests {
     /// browser with that map (egui reports it, nothing is opened in a test).
     #[test]
     fn file_section_links_the_position_to_both_maps() {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let status = status();
         let position = (48.5216, -9.0576);
         let details = Details {
@@ -1105,7 +1097,7 @@ mod tests {
     /// The button at the right of the File section's title copies the photo's path.
     #[test]
     fn the_file_title_copies_the_path() {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let status = status();
         let details = Details {
             file: Some(([6000, 4000], 120)),
@@ -1155,7 +1147,7 @@ mod tests {
     /// The eye next to "Sharpness" turns the sharpness overlay on, and off again when lit.
     #[test]
     fn the_eye_switches_the_overlay() {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let status = status();
         let panel = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 1200.0));
         let run = |mode: overlay::Mode, events: Vec<Event>| {
@@ -1292,7 +1284,7 @@ mod tests {
     /// A video is never analysed: no score section waits for values, only File shows.
     #[test]
     fn a_video_shows_only_its_file() {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let status = status();
         let media = MediaInfo {
             container: Some("MP4".into()),

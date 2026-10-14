@@ -3,13 +3,10 @@
 //! Enter confirms, Esc cancels. It replaces the system message boxes, which appeared light in
 //! the dark window and blocked it.
 
-use eframe::egui::{
-    Align, Button, Color32, Context, FontId, Id, Key, Label, Layout, Modifiers, Rect, RichText,
-    vec2,
-};
+use eframe::egui::{Align, Context, FontId, Id, Key, Label, Layout, Modifiers, Rect, RichText};
 
 use crate::i18n;
-use crate::theme::{text, tokens};
+use crate::theme::{self, text, tokens};
 use crate::ui::modal;
 
 pub struct Confirm<'a> {
@@ -33,10 +30,10 @@ pub fn show(ctx: &Context, window: Rect, confirm: &Confirm<'_>) -> Option<bool> 
     let modal = modal::show(ctx, window, Id::new("confirm"), 460.0, |ui| {
         ui.label(
             RichText::new(confirm.title)
-                .font(FontId::proportional(text::VALUE))
+                .font(theme::strong(text::VALUE))
                 .color(tokens::TEXT),
         );
-        ui.add_space(10.0);
+        ui.add_space(12.0);
         ui.add(
             Label::new(
                 RichText::new(i18n::keep_together(&confirm.text))
@@ -45,23 +42,20 @@ pub fn show(ctx: &Context, window: Rect, confirm: &Confirm<'_>) -> Option<bool> 
             )
             .wrap(),
         );
-        ui.add_space(20.0);
+        ui.add_space(24.0);
         let mut answer = None;
         ui.horizontal(|ui| {
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let fill = if confirm.danger {
-                    tokens::STATUS_ERROR
+                let yes = if confirm.danger {
+                    theme::danger_button(confirm.confirm)
                 } else {
-                    tokens::ACCENT
+                    theme::primary_button(confirm.confirm)
                 };
-                let yes = Button::new(RichText::new(confirm.confirm).color(Color32::WHITE))
-                    .fill(fill)
-                    .min_size(vec2(120.0, 32.0));
                 if ui.add(yes).clicked() {
                     answer = Some(true);
                 }
                 if ui
-                    .add(Button::new(confirm.cancel).min_size(vec2(100.0, 32.0)))
+                    .add(theme::secondary_button(confirm.cancel).min_width(100.0))
                     .clicked()
                 {
                     answer = Some(false);
@@ -82,10 +76,10 @@ pub fn show(ctx: &Context, window: Rect, confirm: &Confirm<'_>) -> Option<bool> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use eframe::egui::{Event, RawInput, pos2};
+    use eframe::egui::{Event, RawInput, pos2, vec2};
 
     fn answer(key: Key) -> Option<bool> {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 700.0));
         let confirm = Confirm {
             title: "Delete?",

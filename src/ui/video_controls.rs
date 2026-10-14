@@ -130,7 +130,7 @@ pub fn show(ui: &Ui, area: Rect, controls: &Controls, id: Id) -> ControlsOutput 
     let parts = layout(area, time_width);
     let mut painter = ui.painter().with_clip_rect(area);
     painter.set_opacity(controls.opacity);
-    painter.rect_filled(parts.bar, 8.0, Color32::from_black_alpha(190));
+    painter.rect_filled(parts.bar, crate::theme::radius::LG, tokens::PHOTO_VEIL);
     let t = i18n::t();
 
     let bar = ui.interact(parts.bar, id.with("bar"), Sense::hover());
@@ -183,7 +183,7 @@ pub fn show(ui: &Ui, area: Rect, controls: &Controls, id: Id) -> ControlsOutput 
         }
     }
     let shown = shown.clamp(0.0, 1.0);
-    painter.rect_filled(track, 2.0, tokens::LINE);
+    painter.rect_filled(track, crate::theme::radius::PILL, tokens::LINE);
     painter.rect_filled(
         Rect::from_min_size(track.min, vec2(track.width() * shown, track.height())),
         2.0,
@@ -227,7 +227,7 @@ pub fn show(ui: &Ui, area: Rect, controls: &Controls, id: Id) -> ControlsOutput 
         out.volume = Some(level);
     }
     let track = Rect::from_center_size(parts.volume.center(), vec2(parts.volume.width(), 4.0));
-    painter.rect_filled(track, 2.0, tokens::LINE);
+    painter.rect_filled(track, crate::theme::radius::PILL, tokens::LINE);
     painter.rect_filled(
         Rect::from_min_size(track.min, vec2(track.width() * level, track.height())),
         2.0,

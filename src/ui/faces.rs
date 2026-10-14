@@ -32,7 +32,7 @@ pub enum Shown<'a> {
 /// A crop fitted into `area`, keeping its shape, on a muted ground.
 fn paint_crop(ui: &Ui, area: Rect, texture: &TextureHandle) {
     let painter = ui.painter();
-    painter.rect_filled(area, 4.0, tokens::SURFACE_MUTED);
+    painter.rect_filled(area, crate::theme::radius::MD, tokens::SURFACE_MUTED);
     let size = texture.size_vec2();
     let scale = (area.width() / size.x).min(area.height() / size.y);
     let shown = Rect::from_center_size(area.center(), size * scale);
@@ -155,7 +155,11 @@ pub fn grid(ctx: &Context, area: Rect, shown: &Shown<'_>) -> GridOutput {
                     ui.painter()
                         .rect_stroke(cell, 4.0, stroke, StrokeKind::Outside);
                     let badge = Rect::from_min_size(cell.min + vec2(6.0, 6.0), vec2(22.0, 20.0));
-                    ui.painter().rect_filled(badge, 4.0, tokens::SURFACE);
+                    ui.painter().rect_filled(
+                        badge,
+                        crate::theme::radius::SM,
+                        tokens::SURFACE_RAISED,
+                    );
                     ui.painter().text(
                         badge.center(),
                         Align2::CENTER_CENTER,

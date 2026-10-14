@@ -53,7 +53,7 @@ impl Harness {
 
     fn with(photos: usize, update_asked: bool) -> Self {
         static RUN: AtomicUsize = AtomicUsize::new(0);
-        let ctx = egui::Context::default();
+        let ctx = crate::theme::test_context();
         keys::keep_zoom_keys(&ctx);
         let db = Db::open_in_memory().expect("an index in memory");
         if update_asked {

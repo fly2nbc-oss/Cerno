@@ -198,7 +198,7 @@ pub fn banner(painter: &Painter, area: Rect, primary: &str, hint: &str) {
     );
     let width = primary_galley.size().x.max(hint_galley.size().x) + 28.0;
     let bar = Rect::from_center_size(pos2(area.center().x, area.top() + 28.0), vec2(width, 40.0));
-    painter.rect_filled(bar, 8.0, Color32::from_black_alpha(180));
+    painter.rect_filled(bar, crate::theme::radius::LG, tokens::PHOTO_VEIL);
     painter.galley(
         pos2(
             bar.center().x - primary_galley.size().x / 2.0,
@@ -231,7 +231,7 @@ pub fn cursor(gesture: Gesture) -> eframe::egui::CursorIcon {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use eframe::egui::{Context, Event, Modifiers, PointerButton, RawInput};
+    use eframe::egui::{Event, Modifiers, PointerButton, RawInput};
 
     fn frame() -> Rect {
         Rect::from_min_size(pos2(100.0, 100.0), vec2(600.0, 400.0))
@@ -272,7 +272,7 @@ mod tests {
     /// the pointer's new place – inside, a move – and the whole-photo frame didn't change.
     #[test]
     fn a_quick_pull_from_a_corner_takes_the_corner() {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let area = Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
         let crop = area;
         let corner = crop.right_bottom() - vec2(2.0, 2.0);

@@ -1,9 +1,10 @@
 //! A strip of tabs – the details panel (values | description) and the help page (shortcuts |
-//! tips): the active one in the text colour with an accent line under it, the others muted.
+//! tips): the active one in Semibold and the text colour with an accent line under it, the
+//! others muted.
 
 use eframe::egui::{Align2, CursorIcon, FontId, Id, Rect, Sense, Stroke, Ui, pos2, vec2};
 
-use crate::theme::{text, tokens};
+use crate::theme::{self, text, tokens};
 
 /// How the tabs share the strip.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,6 +27,8 @@ pub fn strip(
     const PAD: f32 = 18.0;
     let painter = ui.painter().with_clip_rect(rect);
     let font = FontId::proportional(text::BODY);
+    // Measured in Semibold, the wider face: a tab keeps its width when it becomes active.
+    let strong = theme::strong(text::BODY);
     let mut x = rect.left();
     let mut clicked = None;
     for (i, label) in labels.iter().enumerate() {
@@ -33,7 +36,7 @@ pub fn strip(
             Widths::Equal => rect.width() / labels.len().max(1) as f32,
             Widths::Natural => {
                 painter
-                    .layout_no_wrap((*label).to_owned(), font.clone(), tokens::TEXT)
+                    .layout_no_wrap((*label).to_owned(), strong.clone(), tokens::TEXT)
                     .size()
                     .x
                     + 2.0 * PAD
@@ -54,7 +57,7 @@ pub fn strip(
             cell.center(),
             Align2::CENTER_CENTER,
             label,
-            font.clone(),
+            if active { strong.clone() } else { font.clone() },
             colour,
         );
         if active {

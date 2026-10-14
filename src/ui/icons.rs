@@ -318,7 +318,7 @@ pub fn help(painter: &Painter, center: Pos2, color: Color32) {
         center + vec2(0.0, 0.5),
         Align2::CENTER_CENTER,
         "?",
-        FontId::proportional(text::LABEL),
+        FontId::proportional(text::OVERLINE),
         color,
     );
 }
@@ -435,12 +435,13 @@ pub fn copy_button(ui: &mut Ui, size: Vec2, id: Id, text: &str, tip: &str, done:
 
 /// Hover/active background shared by all icon buttons.
 pub fn button_background(painter: &Painter, rect: Rect, hovered: bool, active: bool) {
+    // Blue means "on"; under the pointer the fill is neutral.
     let fill = match (hovered, active) {
-        (true, _) => Some(tokens::ACCENT_SUBTLE),
-        (false, true) => Some(tokens::SURFACE_MUTED),
+        (_, true) => Some(tokens::ACCENT_SUBTLE),
+        (true, false) => Some(tokens::HOVER),
         (false, false) => None,
     };
     if let Some(fill) = fill {
-        painter.rect_filled(rect, 4.0, fill);
+        painter.rect_filled(rect, crate::theme::radius::MD, fill);
     }
 }

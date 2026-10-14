@@ -10,6 +10,8 @@ Cerno's own code is licensed under Apache-2.0 (see [LICENSE](./LICENSE)). It use
 | [YuNet face detector](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet) (`face_detection_yunet_2023mar.onnx`) | Finds faces and eyes for the eye-sharpness measure | MIT, © Shiqi Yu and contributors (OpenCV Zoo) |
 | CLIP prompt vectors (`src/analysis/clip_prompts.bin`) | Text embeddings of 12 prompts for the zero-shot attributes, computed once by `tools/make_clip_prompts.py` with the [CLIP ViT-L/14](https://github.com/openai/CLIP) text model ([Xenova](https://huggingface.co/Xenova/clip-vit-large-patch14) ONNX export) | MIT (OpenAI CLIP) |
 | [ONNX Runtime](https://github.com/microsoft/onnxruntime) via the [`ort`](https://github.com/pykeio/ort) crate | Runs all models | MIT |
+| [Lucide](https://lucide.dev) icons: a subset of the icon font of `lucide-static` 0.460.0 (`assets/lucide/lucide-subset.ttf`, cut out by `tools/make_lucide_subset.py`) | The interface's icons | ISC, © Lucide Contributors, portions © Cole Bemis (Feather, MIT) – see [licenses/lucide.txt](licenses/lucide.txt) |
+| egui's bundled fonts (`epaint_default_fonts`): Ubuntu-Light, Noto Emoji, emoji-icon-font, Hack | Fallback for characters the system font lacks, such as ★ | Ubuntu Font Licence 1.0, OFL-1.1, MIT, MIT + Bitstream Vera License – see [licenses/egui-fonts.txt](licenses/egui-fonts.txt) |
 | Rust crates (egui, wgpu, zune-jpeg, fast_image_resize, rusqlite/SQLite, …) | See `Cargo.lock` | MIT / Apache-2.0 / public domain (SQLite) |
 
 ## Shipped next to the binary

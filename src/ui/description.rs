@@ -13,7 +13,7 @@ use eframe::egui::{
 
 use crate::i18n;
 use crate::metadata::Description;
-use crate::theme::{text, tokens};
+use crate::theme::{self, text, tokens};
 
 const PAD: f32 = 16.0;
 
@@ -116,13 +116,15 @@ fn fields(
 
     section(ui, t.section_comment);
     let comment = indented(ui, |ui| {
-        ui.add(
-            TextEdit::multiline(&mut drafts.comment)
-                .id(comment_id())
-                .hint_text(t.comment_hint)
-                .desired_rows(4)
-                .desired_width(width),
-        )
+        theme::field_scope(ui, |ui| {
+            ui.add(
+                TextEdit::multiline(&mut drafts.comment)
+                    .id(comment_id())
+                    .hint_text(t.comment_hint)
+                    .desired_rows(4)
+                    .desired_width(width),
+            )
+        })
     });
     if comment.lost_focus() && drafts.comment.trim() != current.comment {
         next.comment = drafts.comment.trim().to_owned();
@@ -140,7 +142,8 @@ fn fields(
                         RichText::new(format!("{keyword}  ×"))
                             .font(FontId::proportional(text::SMALL)),
                     )
-                    .fill(tokens::SURFACE_MUTED);
+                    .fill(tokens::SURFACE_MUTED)
+                    .min_size(vec2(0.0, theme::COMPACT));
                     if ui.add(chip).on_hover_text(t.keyword_remove).clicked() {
                         removed = Some(index);
                     }
@@ -152,12 +155,14 @@ fn fields(
         next.keywords.remove(index);
     }
     let field = indented(ui, |ui| {
-        ui.add(
-            TextEdit::singleline(&mut drafts.keyword)
-                .id(keyword_id())
-                .hint_text(t.keyword_hint)
-                .desired_width(width),
-        )
+        theme::field_scope(ui, |ui| {
+            ui.add(
+                TextEdit::singleline(&mut drafts.keyword)
+                    .id(keyword_id())
+                    .hint_text(t.keyword_hint)
+                    .desired_width(width),
+            )
+        })
     });
     if field.lost_focus() {
         if ui.input(|i| i.key_pressed(Key::Enter)) {
@@ -189,11 +194,7 @@ fn indented<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
 fn section(ui: &mut Ui, title: &str) {
     ui.add_space(4.0);
     indented(ui, |ui| {
-        ui.label(
-            RichText::new(title.to_uppercase())
-                .font(FontId::proportional(text::LABEL))
-                .color(tokens::MUTED),
-        );
+        ui.label(theme::overline(title));
     });
 }
 
@@ -262,7 +263,7 @@ mod tests {
     /// twice) and the cursor stays for the next one.
     #[test]
     fn enter_adds_keywords_and_keeps_the_cursor() {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let current = photo("alt", &["Urlaub"]);
         let mut drafts = Drafts::default();
         drafts.reset(PathBuf::from("a.jpg"), Some(&current));
@@ -290,7 +291,7 @@ mod tests {
     /// Nothing is written while typing a comment; leaving the field takes it.
     #[test]
     fn the_comment_is_taken_when_its_field_is_left() {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let current = photo("", &["Urlaub"]);
         let mut drafts = Drafts::default();
         drafts.reset(PathBuf::from("a.jpg"), Some(&current));
@@ -314,7 +315,7 @@ mod tests {
     /// not known yet.
     #[test]
     fn nothing_to_edit_while_loading() {
-        let ctx = Context::default();
+        let ctx = crate::theme::test_context();
         let mut drafts = Drafts {
             focus_keyword: true,
             ..Drafts::default()
