@@ -234,40 +234,44 @@ mod platform {
     pub fn reveal(folder: &Path, files: &[PathBuf]) -> Result<()> {
         let (folder, files) = (folder.to_owned(), files.to_vec());
         std::thread::spawn(move || {
-            let shown = folder.clone();
-            let result = with_com(move || {
-                let id = |path: &Path| {
-                    // SAFETY: the string outlives the call; a null result is checked below.
-                    unsafe { ILCreateFromPathW(&HSTRING::from(path.as_os_str())) }
-                };
-                let parent = id(&folder);
-                if parent.is_null() {
-                    bail!("{} not found", folder.display());
-                }
-                let items: Vec<*mut ITEMIDLIST> = files
-                    .iter()
-                    .map(|file| id(file))
-                    .filter(|item| !item.is_null())
-                    .collect();
-                let selected: Vec<*const ITEMIDLIST> =
-                    items.iter().map(|item| item.cast_const()).collect();
-                // SAFETY: every id came from `ILCreateFromPathW` and lives until it is freed
-                // below, after the call.
-                let result = unsafe { SHOpenFolderAndSelectItems(parent, Some(&selected), 0) };
-                for item in items.into_iter().chain([parent]) {
-                    // SAFETY: each id is freed once, and nothing uses it afterwards.
-                    unsafe { ILFree(Some(item.cast_const())) };
-                }
-                result.map_err(Into::into)
-            });
-            if let Err(err) = result {
+            if let Err(err) = select_in_explorer(&folder, &files) {
                 log::info!("show in Explorer: {err:#}");
-                if let Err(err) = super::open_folder(&shown) {
+                if let Err(err) = super::open_folder(&folder) {
                     log::info!("open folder: {err:#}");
                 }
             }
         });
         Ok(())
+    }
+
+    /// The shell call itself; waits for it.
+    pub(super) fn select_in_explorer(folder: &Path, files: &[PathBuf]) -> Result<()> {
+        let (folder, files) = (folder.to_owned(), files.to_vec());
+        with_com(move || {
+            let id = |path: &Path| {
+                // SAFETY: the string outlives the call; a null result is checked below.
+                unsafe { ILCreateFromPathW(&HSTRING::from(path.as_os_str())) }
+            };
+            let parent = id(&folder);
+            if parent.is_null() {
+                bail!("{} not found", folder.display());
+            }
+            let items: Vec<*mut ITEMIDLIST> = files
+                .iter()
+                .map(|file| id(file))
+                .filter(|item| !item.is_null())
+                .collect();
+            let selected: Vec<*const ITEMIDLIST> =
+                items.iter().map(|item| item.cast_const()).collect();
+            // SAFETY: every id came from `ILCreateFromPathW` and lives until it is freed
+            // below, after the call.
+            let result = unsafe { SHOpenFolderAndSelectItems(parent, Some(&selected), 0) };
+            for item in items.into_iter().chain([parent]) {
+                // SAFETY: each id is freed once, and nothing uses it afterwards.
+                unsafe { ILFree(Some(item.cast_const())) };
+            }
+            result.map_err(Into::into)
+        })
     }
 
     /// Windows' "Open with" dialog, on a thread of its own so the window keeps drawing. The
@@ -574,5 +578,22 @@ mod tests {
         let editors = editors_for(Path::new("x.jpg"));
         eprintln!("programs for .jpg: {editors:?}");
         assert!(editors_for(Path::new("no-extension")).is_empty());
+    }
+
+    /// `CERNO_REVEAL=<file>[;<file>] cargo test -- --ignored reveal_a_file` shows the files in
+    /// the file manager – a window opens on the desktop, so never in the normal run.
+    #[test]
+    #[ignore = "set CERNO_REVEAL"]
+    fn reveal_a_file() {
+        if let Ok(files) = std::env::var("CERNO_REVEAL") {
+            let files: Vec<PathBuf> = files.split(';').map(PathBuf::from).collect();
+            #[cfg(windows)]
+            {
+                let folder = files[0].parent().expect("a folder");
+                platform::select_in_explorer(folder, &files).expect("Explorer shows the files");
+            }
+            #[cfg(not(windows))]
+            reveal(&files).expect("the file manager starts");
+        }
     }
 }
