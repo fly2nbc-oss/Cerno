@@ -170,8 +170,42 @@ impl Zoom {
     /// Moves the image by `delta` points (dragging).
     pub fn pan(&mut self, frame: &Frame, delta: Vec2) {
         let size = self.image_rect(frame).size();
-        self.center = (self.center - delta / size).clamp(Vec2::ZERO, Vec2::splat(1.0));
+        self.center = self.reachable(frame, self.center - delta / size);
     }
+
+    /// Puts the image point `point` (0..1) in the middle of the view, as far as the image's
+    /// edges allow: the navigator's click and drag.
+    pub fn centre_on(&mut self, frame: &Frame, point: Vec2) {
+        self.center = self.reachable(frame, point);
+    }
+
+    /// `center` as far as it can go: half the view from each edge of the image, the middle
+    /// where the image is no larger than the view. Clamped to 0..1 only, a drag past an edge
+    /// ran on unseen and had to come all the way back before the image moved again.
+    fn reachable(&self, frame: &Frame, center: Vec2) -> Vec2 {
+        let size = self.image_rect(frame).size();
+        let half = frame.area.size() / size / 2.0;
+        let axis = |c: f32, half: f32| {
+            if half >= 0.5 {
+                0.5
+            } else {
+                c.clamp(half, 1.0 - half)
+            }
+        };
+        vec2(axis(center.x, half.x), axis(center.y, half.y))
+    }
+}
+
+/// The part of the image the view shows, in 0..1 of the image – `None` while all of it shows.
+pub fn visible_part(frame: &Frame, zoom: &Zoom) -> Option<Rect> {
+    let image = zoom.image_rect(frame);
+    let shown = image.intersect(frame.area);
+    // A pixel of rounding is no hidden part.
+    if shown.width() >= image.width() - 1.0 && shown.height() >= image.height() - 1.0 {
+        return None;
+    }
+    let point = |p: Pos2| ((p - image.min) / image.size()).to_pos2();
+    Some(Rect::from_min_max(point(shown.min), point(shown.max)))
 }
 
 /// The check overlay of one photo, as far as it is computed: over the display image and tile
@@ -324,6 +358,46 @@ mod tests {
         // An image decoded for another area (being decoded again) is scaled to fit meanwhile.
         let [_, _, w, _] = pixels(Zoom::default().image_rect(&scaled_frame([3830, 2160])));
         assert!((w - 4000.0 * 1156.0 / 2256.0).abs() < 0.01, "{w}");
+    }
+
+    /// At 100 % the view shows a quarter of the 4000 px width and the middle of the height;
+    /// fitted, nothing is hidden.
+    #[test]
+    fn the_visible_part_is_what_the_view_shows() {
+        let frame = frame();
+        assert_eq!(visible_part(&frame, &Zoom::default()), None);
+        let zoom = Zoom {
+            scale: Some(1.0),
+            center: vec2(0.5, 0.5),
+        };
+        let part = visible_part(&frame, &zoom).expect("a part is hidden");
+        assert!((part.left() - 0.375).abs() < 1e-3, "{part:?}");
+        assert!((part.right() - 0.625).abs() < 1e-3, "{part:?}");
+        assert!((part.top() - 0.375).abs() < 1e-3, "{part:?}");
+        assert!((part.bottom() - 0.625).abs() < 1e-3, "{part:?}");
+    }
+
+    /// Centring on a corner stops where the image's corner meets the view's: the part shown
+    /// is the corner, and `center` sits where dragging back moves the image at once.
+    #[test]
+    fn centring_stops_at_the_image_edges() {
+        let frame = frame();
+        let mut zoom = Zoom {
+            scale: Some(1.0),
+            center: vec2(0.5, 0.5),
+        };
+        zoom.centre_on(&frame, vec2(0.0, 1.0));
+        assert!(
+            (zoom.center - vec2(0.125, 0.875)).length() < 1e-4,
+            "{zoom:?}"
+        );
+        let part = visible_part(&frame, &zoom).expect("a part is hidden");
+        assert!(part.left().abs() < 1e-3 && (part.bottom() - 1.0).abs() < 1e-3);
+        // Dragging further right does nothing, dragging back moves the image at once.
+        zoom.pan(&frame, vec2(300.0, 0.0));
+        assert!((zoom.center.x - 0.125).abs() < 1e-4, "{zoom:?}");
+        zoom.pan(&frame, vec2(-400.0, 0.0));
+        assert!((zoom.center.x - 0.225).abs() < 1e-4, "{zoom:?}");
     }
 
     #[test]

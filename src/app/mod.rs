@@ -385,7 +385,7 @@ impl CernoApp {
             self.draw_filmstrip(ui, rect);
         }
         if let Some(rect) = layout.info {
-            self.draw_info_bar(ui, rect, layout.details);
+            self.draw_info_bar(ui, rect, layout.details, layout.toolbar.is_some());
         } else {
             self.draw_corner_buttons(ui, window);
         }

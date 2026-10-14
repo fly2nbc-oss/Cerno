@@ -214,6 +214,13 @@ impl CernoApp {
     pub(super) fn menu_block(&self, change: Change, path: Option<&Path>) -> Option<&'static str> {
         self.blocked_for(change, path).map(Blocked::hint)
     }
+
+    /// *Show in Explorer* changes nothing, so it is no `Change`: only a file being moved away
+    /// has no place to be shown.
+    pub(super) fn reveal_block(&self, path: Option<&Path>) -> Option<&'static str> {
+        let moving = path.is_some_and(|p| self.transfers.involves(p) == Some(TransferMode::Move));
+        moving.then(|| Blocked::Moving.hint())
+    }
 }
 
 #[cfg(test)]

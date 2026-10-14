@@ -11,6 +11,7 @@ use crate::library;
 use crate::loader::Lookup;
 use crate::theme::tokens;
 use crate::ui::details::{self, DetailsMode, DetailsTab};
+use crate::ui::icons::Panel;
 use crate::ui::{cells, filmstrip, filter_bar, grid, help, info_bar, overlays, side_bar};
 use crate::view;
 
@@ -249,11 +250,14 @@ impl CernoApp {
         }
     }
 
+    /// `toolbar`: whether the filter bar is on screen – also while it is only held there by
+    /// the pointer, or shown because a filter hides everything.
     pub(super) fn draw_info_bar(
         &mut self,
         ui: &mut egui::Ui,
         rect: Rect,
         details_rect: Option<Rect>,
+        toolbar: bool,
     ) {
         let ctx = ui.ctx().clone();
         let Some(path) = self.view.get(self.current).cloned() else {
@@ -320,6 +324,7 @@ impl CernoApp {
             raw_preview: library::format_of(&path).is_some_and(library::Format::is_raw),
             time_offset: self.time_offset_of(&path),
             pair: self.pair_note(&path).map(|(note, _)| note),
+            filtered: (!toolbar && self.options.is_filtered()).then(|| self.library_total()),
             panels: info_bar::Panels {
                 side_bar: self.side_bar_shown(),
                 toolbar: self.bars.toolbar,
@@ -347,6 +352,9 @@ impl CernoApp {
         if let Some(view) = out.view {
             self.click(&ctx, Command::ShowView(view));
         }
+        if out.show_filters {
+            self.click(&ctx, Command::TogglePanel(Panel::Top));
+        }
         let Some(rect) = details_rect else {
             // The panel is closed: a comment still being typed is written now.
             self.commit_comment();
@@ -363,7 +371,7 @@ impl CernoApp {
         let status = self.analyzer.status();
         let video = library::format_of(&path) == Some(library::Format::Video);
         let media = video.then(|| self.media_info(&ctx, &path)).flatten();
-        let overlay = details::draw(
+        let out = details::draw(
             ui,
             body,
             &details::Details {
@@ -386,9 +394,22 @@ impl CernoApp {
             },
             &mut self.bars.attributes_open,
         );
-        if let Some(mode) = overlay {
+        if let Some(mode) = out.overlay {
             self.click(&ctx, Command::SetOverlay(mode));
         }
+        if out.reveal {
+            self.click(&ctx, Command::Reveal);
+        }
+    }
+
+    /// How many photos the filters choose from. Photos waiting to be deleted have left the
+    /// view already; they don't count. The deleted ones do while the 🗑 box shows them.
+    pub(super) fn library_total(&self) -> usize {
+        self.folder
+            .library
+            .iter()
+            .filter(|p| !self.deletions.is_hidden(p))
+            .count()
     }
 
     /// The filter bar: sort, filters, analysis status and the "Action" button.
@@ -407,14 +428,7 @@ impl CernoApp {
             status: &status,
             similar_to: similar_to.as_deref(),
             shown: self.view.len(),
-            // Photos waiting to be deleted have left the view already; they don't count. The
-            // deleted ones do while the 🗑 box shows them.
-            total: self
-                .folder
-                .library
-                .iter()
-                .filter(|p| !self.deletions.is_hidden(p))
-                .count(),
+            total: self.library_total(),
             has_videos,
             has_deleted: self.has_deleted(),
             name_list: self.name_list.counts(),

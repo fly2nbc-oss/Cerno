@@ -149,6 +149,8 @@ pub static TEXTS: Texts = Texts {
     photos_shown: |shown, total| format!("{shown} of {total} photos"),
     photos_count: |n| format!("{n} {}", if n == 1 { "photo" } else { "photos" }),
     photos_badge_tooltip: "How many photos the filter shows now – the menu bar's “Photos on screen” works on exactly these.",
+    filtered_position: |pos, shown, total| format!("{pos} / {shown} of {total}"),
+    filtered_hint: "A filter hides photos. Click or press T to show the filter bar.",
     label_red: "Red",
     label_yellow: "Yellow",
     label_green: "Green",
@@ -233,6 +235,8 @@ pub static TEXTS: Texts = Texts {
     external_other: "Other program …",
     external_chooser: "System “Open with” …",
     external_default: "Open with the default program",
+    reveal_explorer: "Show in Explorer",
+    reveal_file_manager: "Show in file manager",
     external_pick_title: "Choose a program to edit with",
     external_opened: |name| {
         format!(

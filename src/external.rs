@@ -3,7 +3,7 @@
 //! chooser. Cerno only starts them; the file stays where it is, and the caller keeps the first
 //! original and reloads the photo once it changes.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use anyhow::{Context as _, Result, bail};
@@ -100,19 +100,31 @@ pub fn open_folder(dir: &Path) -> Result<()> {
         .with_context(|| format!("cannot start {}", program.display()))
 }
 
+/// Shows files in the file manager (ticket CER-55, U6): Explorer opens the folder of the first
+/// with all of them selected – a JPEG and the RAW riding along with it; on Linux the folder
+/// opens (selecting needs a file manager's own D-Bus interface). Returns at once.
+pub fn reveal(files: &[PathBuf]) -> Result<()> {
+    let Some(folder) = files.first().and_then(|file| file.parent()) else {
+        bail!("no file to show");
+    };
+    platform::reveal(folder, files)
+}
+
 #[cfg(windows)]
 mod platform {
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     use anyhow::{Result, anyhow, bail};
     use windows::Win32::System::Com::{
         COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE, CoInitializeEx, CoTaskMemFree,
         CoUninitialize, IDataObject,
     };
+    use windows::Win32::UI::Shell::Common::ITEMIDLIST;
     use windows::Win32::UI::Shell::{
-        ASSOC_FILTER_RECOMMENDED, BHID_DataObject, IAssocHandler, IShellItem, OAIF_EXEC,
-        OAIF_HIDE_REGISTRATION, OPEN_AS_INFO_FLAGS, OPENASINFO, SHAssocEnumHandlers,
-        SHCreateItemFromParsingName, SHOpenWithDialog,
+        ASSOC_FILTER_RECOMMENDED, BHID_DataObject, IAssocHandler, ILCreateFromPathW, ILFree,
+        IShellItem, OAIF_EXEC, OAIF_HIDE_REGISTRATION, OPEN_AS_INFO_FLAGS, OPENASINFO,
+        SHAssocEnumHandlers, SHCreateItemFromParsingName, SHOpenFolderAndSelectItems,
+        SHOpenWithDialog,
     };
     use windows::core::{HSTRING, PCWSTR, PWSTR};
 
@@ -214,6 +226,48 @@ mod platform {
             }
             Ok(false)
         })
+    }
+
+    /// Explorer with `files` selected in `folder`, through the shell – not `explorer /select,`,
+    /// whose argument Explorer reads wrongly once it is quoted. On a thread of its own so the
+    /// window keeps drawing; when the shell refuses, the folder opens plainly.
+    pub fn reveal(folder: &Path, files: &[PathBuf]) -> Result<()> {
+        let (folder, files) = (folder.to_owned(), files.to_vec());
+        std::thread::spawn(move || {
+            let shown = folder.clone();
+            let result = with_com(move || {
+                let id = |path: &Path| {
+                    // SAFETY: the string outlives the call; a null result is checked below.
+                    unsafe { ILCreateFromPathW(&HSTRING::from(path.as_os_str())) }
+                };
+                let parent = id(&folder);
+                if parent.is_null() {
+                    bail!("{} not found", folder.display());
+                }
+                let items: Vec<*mut ITEMIDLIST> = files
+                    .iter()
+                    .map(|file| id(file))
+                    .filter(|item| !item.is_null())
+                    .collect();
+                let selected: Vec<*const ITEMIDLIST> =
+                    items.iter().map(|item| item.cast_const()).collect();
+                // SAFETY: every id came from `ILCreateFromPathW` and lives until it is freed
+                // below, after the call.
+                let result = unsafe { SHOpenFolderAndSelectItems(parent, Some(&selected), 0) };
+                for item in items.into_iter().chain([parent]) {
+                    // SAFETY: each id is freed once, and nothing uses it afterwards.
+                    unsafe { ILFree(Some(item.cast_const())) };
+                }
+                result.map_err(Into::into)
+            });
+            if let Err(err) = result {
+                log::info!("show in Explorer: {err:#}");
+                if let Err(err) = super::open_folder(&shown) {
+                    log::info!("open folder: {err:#}");
+                }
+            }
+        });
+        Ok(())
     }
 
     /// Windows' "Open with" dialog, on a thread of its own so the window keeps drawing. The
@@ -319,6 +373,11 @@ mod platform {
             .spawn()
             .with_context(|| format!("cannot start {program}"))?;
         Ok(true)
+    }
+
+    /// The folder in the file manager; which file is meant, the menu row said.
+    pub fn reveal(folder: &Path, _files: &[PathBuf]) -> Result<()> {
+        super::open_folder(folder)
     }
 
     /// No chooser here: the default program.

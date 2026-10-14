@@ -468,6 +468,9 @@ impl CernoApp {
                     .disabled(self.menu_block(Change::External, current)),
             ),
             Item::Row(
+                Row::new(Command::Reveal, t.reveal(), None).disabled(self.reveal_block(current)),
+            ),
+            Item::Row(
                 Row::new(Command::AlignCamera, t.bar_align_camera, None)
                     .hint(t.align_camera_hint)
                     .disabled(self.align_block()),

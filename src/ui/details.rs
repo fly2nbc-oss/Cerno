@@ -4,8 +4,8 @@
 use std::path::Path;
 
 use eframe::egui::{
-    Align, Color32, CursorIcon, FontId, Hyperlink, Id, Label, Layout, Rect, Response, RichText,
-    ScrollArea, Sense, Stroke, Ui, UiBuilder, vec2,
+    Align, Align2, Color32, CursorIcon, FontId, Hyperlink, Id, Label, Layout, Rect, Response,
+    RichText, ScrollArea, Sense, Stroke, Ui, UiBuilder, vec2,
 };
 
 use crate::analysis::{ModelState, Status, aesthetic, exposure};
@@ -169,14 +169,18 @@ impl Value {
     }
 }
 
+/// What a click in the panel asks for.
+#[derive(Default)]
+pub struct Output {
+    /// The overlay an eye asks for (a lit eye turns it off).
+    pub overlay: Option<overlay::Mode>,
+    /// The File title's folder button: show the file in the file manager.
+    pub reveal: bool,
+}
+
 /// Draws the panel. `attributes_open`: the CLIP attributes are folded out (a click on their
-/// row toggles it). Returns the overlay an eye asks for (a lit eye turns it off).
-pub fn draw(
-    ui: &mut Ui,
-    rect: Rect,
-    d: &Details<'_>,
-    attributes_open: &mut bool,
-) -> Option<overlay::Mode> {
+/// row toggles it).
+pub fn draw(ui: &mut Ui, rect: Rect, d: &Details<'_>, attributes_open: &mut bool) -> Output {
     let painter = ui.painter().with_clip_rect(rect);
     painter.rect_filled(rect, 0.0, tokens::SURFACE);
     painter.vline(
@@ -196,22 +200,22 @@ pub fn draw(
                 histogram(ui, hist, d.raw_preview);
                 ui.add_space(8.0);
             }
-            let overlay = content(ui, d, attributes_open);
+            let out = content(ui, d, attributes_open);
             ui.add_space(PAD);
-            overlay
+            out
         })
         .inner
 }
 
-fn content(ui: &mut Ui, d: &Details<'_>, attributes_open: &mut bool) -> Option<overlay::Mode> {
+fn content(ui: &mut Ui, d: &Details<'_>, attributes_open: &mut bool) -> Output {
     // A video is never analysed: its score rows would wait for values that never come.
     let overlay = if d.video {
         None
     } else {
         analysis(ui, d, attributes_open)
     };
-    file(ui, d);
-    overlay
+    let reveal = file(ui, d);
+    Output { overlay, reveal }
 }
 
 /// Aesthetics, For you, sharpness and exposure. Returns the overlay an eye asks for.
@@ -335,12 +339,14 @@ fn analysis(ui: &mut Ui, d: &Details<'_>, attributes_open: &mut bool) -> Option<
 }
 
 /// Size and load time, or a video's streams; the GPS position with its map links. The title
-/// carries a button that copies the file's path – the tooltip shows which.
-fn file(ui: &mut Ui, d: &Details<'_>) {
+/// carries a button that copies the file's path – the tooltip shows which – and one that
+/// shows the file in the file manager (`true` when clicked).
+fn file(ui: &mut Ui, d: &Details<'_>) -> bool {
     let t = i18n::t();
+    let mut reveal = false;
     if d.file.is_some() || d.media.is_some() {
         let path = d.path.display().to_string();
-        section_with(ui, t.section_file, |ui| {
+        reveal = section_with(ui, t.section_file, |ui| {
             icons::copy_button(
                 ui,
                 vec2(22.0, 16.0),
@@ -349,6 +355,7 @@ fn file(ui: &mut Ui, d: &Details<'_>) {
                 &format!("{}\n{path}", t.copy_path),
                 t.path_copied,
             );
+            reveal_button(ui)
         });
         match (d.media, d.file) {
             (Some(media), _) => {
@@ -394,6 +401,7 @@ fn file(ui: &mut Ui, d: &Details<'_>) {
             map_links(ui, (lat, lon));
         }
     }
+    reveal
 }
 
 /// A video's file rows: container, duration, the video stream (codec and HDR, size, frame
@@ -543,6 +551,29 @@ fn section_with_eye(ui: &mut Ui, title: &str, on: bool) -> bool {
             .on_hover_text(i18n::t().overlay_show_on_photo)
             .clicked()
     })
+}
+
+/// The folder button left of the copy button: the file in the file manager. It takes no
+/// keyboard focus (`Sense::CLICK`), so `Space` never clicks it again.
+fn reveal_button(ui: &mut Ui) -> bool {
+    let (rect, response) = ui.allocate_exact_size(vec2(22.0, 16.0), Sense::CLICK);
+    let hovered = response.hovered();
+    icons::button_background(ui.painter(), rect, hovered, false);
+    ui.painter().text(
+        rect.center(),
+        Align2::CENTER_CENTER,
+        theme::icon::FOLDER_OPEN,
+        FontId::proportional(text::BODY),
+        if hovered {
+            tokens::ACCENT_STRONG
+        } else {
+            tokens::MUTED
+        },
+    );
+    response
+        .on_hover_cursor(CursorIcon::PointingHand)
+        .on_hover_text(i18n::t().reveal())
+        .clicked()
 }
 
 /// A section title with a small button at the right, like the values below it.
@@ -1144,6 +1175,70 @@ mod tests {
         assert_eq!(copied, ["D:/Fotos/IMG_1.jpg"]);
     }
 
+    /// The folder button left of the copy button asks to show the file in the file manager –
+    /// once, without copying anything or keeping the keyboard focus (ticket CER-55, U6).
+    #[test]
+    fn the_file_title_shows_the_file_in_the_file_manager() {
+        let ctx = crate::theme::test_context();
+        let status = status();
+        let details = Details {
+            file: Some(([6000, 4000], 120)),
+            ..details_with_scores(&status)
+        };
+        let panel = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 1200.0));
+        let frame = |events: Vec<Event>| {
+            let mut reveal = false;
+            let mut output = ctx.run_ui(
+                RawInput {
+                    screen_rect: Some(panel),
+                    events,
+                    ..Default::default()
+                },
+                |ui| reveal = draw(ui, panel, &details, &mut false).reveal,
+            );
+            output.textures_delta.clear();
+            (output, reveal)
+        };
+        let title = texts(&frame(Vec::new()).0)
+            .into_iter()
+            .find(|(text, _)| text == "FILE")
+            .map(|(_, rect)| rect)
+            .expect("the File section is drawn");
+        // Right of it the copy button (22 wide), then egui's item spacing.
+        let spacing = ctx.global_style().spacing.item_spacing.x;
+        let at = pos2(
+            panel.right() - PAD - 22.0 - spacing - 11.0,
+            title.center().y,
+        );
+        let button = |pressed| Event::PointerButton {
+            pos: at,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        };
+        let asked: Vec<bool> = [
+            vec![Event::PointerMoved(at)],
+            vec![button(true)],
+            vec![button(false)],
+            Vec::new(),
+        ]
+        .into_iter()
+        .map(|events| {
+            let (output, reveal) = frame(events);
+            assert!(
+                !output
+                    .platform_output
+                    .commands
+                    .iter()
+                    .any(|command| matches!(command, OutputCommand::CopyText(_)))
+            );
+            reveal
+        })
+        .collect();
+        assert_eq!(asked, [false, false, true, false]);
+        assert!(ctx.memory(|m| m.focused().is_none()));
+    }
+
     /// The eye next to "Sharpness" turns the sharpness overlay on, and off again when lit.
     #[test]
     fn the_eye_switches_the_overlay() {
@@ -1176,7 +1271,7 @@ mod tests {
                     events,
                     ..Default::default()
                 },
-                |ui| chosen = draw(ui, panel, &details, &mut false),
+                |ui| chosen = draw(ui, panel, &details, &mut false).overlay,
             );
             output.textures_delta.clear();
             (output, chosen)
