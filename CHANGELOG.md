@@ -7,6 +7,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+## [1.13.0] – 2026-10-15
+
 A calmer, clearer look across the whole window, a navigator while zoomed, a hint when a filter hides photos, and *Show in Explorer*.
 
 ### Added

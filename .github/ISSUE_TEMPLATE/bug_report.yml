@@ -12,7 +12,7 @@ body:
     attributes:
       label: Cerno version
       description: Help (`H`) ▸ About Cerno shows it.
-      placeholder: "1.12.3"
+      placeholder: "1.13.0"
     validations:
       required: true
   - type: input
