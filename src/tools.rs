@@ -141,7 +141,9 @@ fn unpack(archive: impl Read + Seek, dest: &Path, limits: Limits) -> Result<()> 
     let mut total = 0u64;
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index)?;
-        let name = entry.name().to_owned();
+        let name = entry
+            .name()
+            .map_or_else(|_| String::from("<invalid name>"), |name| name.into_owned());
         let path = entry
             .enclosed_name()
             .filter(|path| plain(path))
