@@ -276,13 +276,13 @@ jobs:
           name: windows-installer
           path: dist/windows/cerno_*_x64-setup.exe
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows-portable
           path: dist/windows/cerno_*_x64-portable.zip
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
       # Keeps vcpkg out of rust-cache, which saves target\ after the last step.
       - name: Drop vcpkg from the target cache
         if: always()
@@ -323,13 +323,13 @@ jobs:
           name: linux-appimage
           path: dist/linux/cerno_*_x86_64.AppImage
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-deb
           path: dist/linux/cerno_*_amd64.deb
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: smoke-photo
