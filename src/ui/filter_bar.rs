@@ -49,7 +49,8 @@ pub struct ToolbarInfo<'a> {
 
 /// One place of the filter mode's frame, in the bar's reading order: the first box, the
 /// camera box, "without ✕", every filter box, "similar photos", the file list's chip (while a
-/// list filters), *Refresh order* (while it shows) and the sort.
+/// list filters), the keyword chip (while keywords filter), *Refresh order* (while it shows)
+/// and the sort.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Slot {
     Scope,
@@ -58,13 +59,17 @@ pub enum Slot {
     Filter(FilterKind),
     Similar,
     NameList,
+    /// The keyword filter's chip: `Space` / `Enter` open its card (`Visible photos ▸ By
+    /// keyword …`) to change the pick – the chip's click, for the mouse, ends the filter.
+    Keywords,
     Refresh,
     Sort,
 }
 
 /// The slots the bar shows now, left to right. `name_list`: the file list's chip is there (a
-/// list filters); `stale`: *Refresh order* is.
-pub fn slots(name_list: bool, stale: bool) -> Vec<Slot> {
+/// list filters); `keywords`: the keyword chip is (keywords filter); `stale`: *Refresh order*
+/// is.
+pub fn slots(name_list: bool, keywords: bool, stale: bool) -> Vec<Slot> {
     let mut out = vec![Slot::Scope, Slot::Camera, Slot::WithoutRejected];
     out.extend(
         FilterKind::GROUPS
@@ -74,6 +79,9 @@ pub fn slots(name_list: bool, stale: bool) -> Vec<Slot> {
     out.push(Slot::Similar);
     if name_list {
         out.push(Slot::NameList);
+    }
+    if keywords {
+        out.push(Slot::Keywords);
     }
     if stale {
         out.push(Slot::Refresh);
@@ -113,7 +121,7 @@ pub fn settle(slots: &[Slot], cursor: Slot) -> Slot {
     if slots.contains(&cursor) {
         return cursor;
     }
-    let all = self::slots(true, true);
+    let all = self::slots(true, true, true);
     let rank = |slot: Slot| all.iter().position(|&s| s == slot).unwrap_or(0);
     slots
         .iter()
@@ -307,11 +315,13 @@ pub fn toolbar(
                                     // The keywords picked; a click shows every photo again.
                                     if let Some((label, tooltip)) =
                                         info.keywords.filter(|_| options.keywords)
-                                        && chip(ui, true, Face::Text(label))
-                                            .on_hover_text(tooltip)
-                                            .clicked()
                                     {
-                                        options.keywords = false;
+                                        let words = chip(ui, true, Face::Text(label))
+                                            .on_hover_text(tooltip);
+                                        left.place(ui, Slot::Keywords, &words);
+                                        if words.clicked() {
+                                            options.keywords = false;
+                                        }
                                     }
                                 });
                             });
@@ -1454,7 +1464,7 @@ mod tests {
     /// only while they show, the sort last.
     #[test]
     fn the_slots_follow_the_bar() {
-        let plain = slots(false, false);
+        let plain = slots(false, false, false);
         assert_eq!(
             plain[..3],
             [Slot::Scope, Slot::Camera, Slot::WithoutRejected]
@@ -1462,17 +1472,23 @@ mod tests {
         assert_eq!(plain[3], Slot::Filter(FilterKind::Rejected));
         assert_eq!(plain.len(), 3 + FilterKind::ALL.len() + 2);
         assert_eq!(plain[plain.len() - 2..], [Slot::Similar, Slot::Sort]);
-        let all = slots(true, true);
+        let all = slots(true, true, true);
         assert_eq!(
-            all[all.len() - 4..],
-            [Slot::Similar, Slot::NameList, Slot::Refresh, Slot::Sort]
+            all[all.len() - 5..],
+            [
+                Slot::Similar,
+                Slot::NameList,
+                Slot::Keywords,
+                Slot::Refresh,
+                Slot::Sort
+            ]
         );
     }
 
     /// The frame stops at the bar's ends, and `Home` / `End` reach them.
     #[test]
     fn the_frame_stops_at_the_ends() {
-        let all = slots(false, false);
+        let all = slots(false, false, false);
         assert_eq!(step(&all, Slot::Scope, Step::Prev), Slot::Scope);
         assert_eq!(step(&all, Slot::Scope, Step::Next), Slot::Camera);
         assert_eq!(step(&all, Slot::Sort, Step::Next), Slot::Sort);
@@ -1489,9 +1505,12 @@ mod tests {
     /// before it; from there the arrows go on as usual.
     #[test]
     fn a_box_that_goes_takes_the_frame_back_one() {
-        let now = slots(false, false);
+        let now = slots(false, false, false);
         assert_eq!(settle(&now, Slot::Refresh), Slot::Similar);
         assert_eq!(settle(&now, Slot::NameList), Slot::Similar);
+        assert_eq!(settle(&now, Slot::Keywords), Slot::Similar);
+        let list = slots(true, false, false);
+        assert_eq!(settle(&list, Slot::Keywords), Slot::NameList);
         assert_eq!(settle(&now, Slot::Sort), Slot::Sort);
         assert_eq!(step(&now, Slot::Refresh, Step::Next), Slot::Sort);
         assert_eq!(

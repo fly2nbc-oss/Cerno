@@ -92,10 +92,12 @@ impl CernoApp {
     }
 
     /// The filter bar's boxes as they are now: the file list's chip only while a list
-    /// filters, *Refresh order* only while it shows.
-    fn filter_slots(&self) -> Vec<Slot> {
+    /// filters, the keyword chip only while keywords filter, *Refresh order* only while it
+    /// shows.
+    pub(super) fn filter_slots(&self) -> Vec<Slot> {
         filter_bar::slots(
             self.options.name_list && self.name_list.counts().is_some(),
+            self.options.keywords && self.keywords.chip().is_some(),
             self.order_stale(),
         )
     }
@@ -197,6 +199,9 @@ impl CernoApp {
             Slot::Filter(kind) => self.change_options(ctx, |o| o.toggle_filter(kind)),
             Slot::Similar => self.toggle_similar(ctx),
             Slot::NameList => self.change_options(ctx, |o| o.name_list = false),
+            // The keyword chip opens its card: the pick can be changed there, and an empty
+            // pick ends the filter.
+            Slot::Keywords => self.open_keywords(),
             Slot::Refresh => self.refresh_order(ctx),
         }
     }
@@ -282,6 +287,11 @@ impl CernoApp {
                     let chip = (t.name_list_chip)(found, total);
                     chip.trim_end_matches('×').trim_end().to_owned()
                 })
+                .unwrap_or_default(),
+            Slot::Keywords => self
+                .keywords
+                .chip()
+                .map(|(label, _)| label.trim_end_matches('×').trim_end().to_owned())
                 .unwrap_or_default(),
             Slot::Refresh => t.refresh_order.to_owned(),
             Slot::Sort => (t.sort)(self.options.sort.label()),

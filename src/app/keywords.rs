@@ -331,4 +331,57 @@ mod tests {
             "no longer in the folder"
         );
     }
+
+    /// In the filter mode (`Ctrl+F`) the keyword chip is a box while it shows, after the file
+    /// list's place: `Space` opens the card, whose `Esc` closes only the card – the mode goes
+    /// on. Without a keyword filter there is no chip and no box.
+    #[test]
+    fn the_keyword_chip_is_a_box_of_the_filter_mode() {
+        use eframe::egui::{Key, Modifiers};
+
+        use crate::ui::filter_bar::Slot;
+
+        let mut h = Harness::new(3);
+        let a = h.app.folder.all[0].clone();
+        h.app.board.set_keywords(&a, words(&["Familie"]));
+        for path in &h.app.folder.all[1..] {
+            h.app.board.set_keywords(path, Vec::new());
+        }
+        h.settle();
+        h.press(Key::F, Modifiers::COMMAND);
+        assert!(!h.app.filter_slots().contains(&Slot::Keywords));
+        h.press(Key::F, Modifiers::COMMAND);
+
+        h.app.open_keywords();
+        if let Layer::Keywords(card) = &mut h.app.layer {
+            card.toggle(card_ui::Row::Word(0));
+        }
+        h.press(Key::Enter, Modifiers::COMMAND | Modifiers::CTRL);
+        assert!(h.app.options.keywords);
+        h.press(Key::F, Modifiers::COMMAND);
+        let slots = h.app.filter_slots();
+        assert_eq!(
+            slots[slots.len() - 3..],
+            [Slot::Similar, Slot::Keywords, Slot::Sort]
+        );
+        h.app.filter_mode.cursor = Some(Slot::Keywords);
+        let caption = h.app.filter_mode_caption().expect("a caption");
+        assert!(
+            caption.contains("Familie") && !caption.contains('×'),
+            "{caption}"
+        );
+        h.press(Key::Space, Modifiers::NONE);
+        h.settle();
+        assert_eq!(h.layer(), "keywords");
+        assert!(
+            h.app.options.keywords,
+            "the box opens the card, nothing ends"
+        );
+        h.press(Key::Escape, Modifiers::NONE);
+        h.settle();
+        assert_eq!(h.layer(), "none");
+        assert!(h.app.filter_mode.is_on(), "Esc closed only the card");
+        assert!(h.app.options.keywords);
+        assert_eq!(h.app.filter_mode.cursor, Some(Slot::Keywords));
+    }
 }
