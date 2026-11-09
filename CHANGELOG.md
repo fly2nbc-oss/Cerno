@@ -15,7 +15,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ### Under the hood
 
-- **The build scripts are checked** – CI lints the workflow (actionlint), the shell scripts (shellcheck) and the PowerShell scripts (PSScriptAnalyzer) and validates the desktop file and the AppStream metadata, on every run. The Windows package checks that every program file is 64-bit and `cerno.exe` a windowed program, and each package must answer `--version` before it ships.
+- **The build scripts are checked** – CI lints the workflow (actionlint), the shell scripts (shellcheck) and the PowerShell scripts (PSScriptAnalyzer) and validates the desktop file and the AppStream metadata, on every run. The Windows package checks that every program file is 64-bit and `cerno.exe` a windowed program, and the Windows folder, the AppImage and the `.deb` must answer `--version` before they ship.
 
 ## [1.14.0] – 2026-11-09
 

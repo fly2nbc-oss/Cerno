@@ -208,7 +208,7 @@ try {
     $out = New-TemporaryFile
     $run = Start-Process -FilePath "$stage\cerno.exe" -ArgumentList "--version" -Wait -PassThru `
         -NoNewWindow -RedirectStandardOutput $out
-    $said = (Get-Content -Raw $out).Trim()
+    $said = "$(Get-Content -Raw $out)".Trim()
     Remove-Item $out
     if ($run.ExitCode -or $said -ne "cerno $version") {
         throw "cerno --version said '$said' (exit $($run.ExitCode)), expected 'cerno $version'"

@@ -370,7 +370,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libheif-dev libheif-plugin-libde265 libxkbcommon-dev libwayland-dev \
-            patchelf zsync libheif-examples libheif-plugin-x265 \
+            patchelf desktop-file-utils zsync libheif-examples libheif-plugin-x265 \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
       - name: cargo-deb
         run: cargo install cargo-deb --version 3.8.0 --locked
