@@ -116,6 +116,7 @@ impl CernoApp {
                 if wanted != self.target.start
                     && self.viewer.pinned.is_none()
                     && self.viewer.quad.is_none()
+                    && !self.viewer.split
                 {
                     self.target.start = wanted;
                     self.db

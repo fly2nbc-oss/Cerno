@@ -341,6 +341,184 @@ mod tests {
         assert!(h.app.viewer.pinned.is_none());
     }
 
+    /// The session's mark of `path`.
+    fn mark_of(h: &Harness, path: &Path) -> Option<Rating> {
+        h.app.marks.ratings.get(path).copied()
+    }
+
+    /// `A` keeps the left photo and ends the comparison on it.
+    #[test]
+    fn a_keeps_the_left_photo_and_ends_the_comparison() {
+        let mut h = Harness::new(3);
+        h.settle();
+        let paths = h.app.view.paths.clone();
+        h.press(Key::C, NONE);
+        h.press(Key::A, NONE);
+        assert!(h.app.viewer.pinned.is_none());
+        assert_eq!(h.app.view.get(h.app.current), Some(&paths[0]));
+        assert_eq!(mark_of(&h, &paths[1]), Some(Rating::Rejected));
+    }
+
+    /// `Shift+A` rejects the right photo: the left one stays pinned and the next comes in on
+    /// the right, at the same zoom. `Shift+D` rejects the left one: the right one moves to the
+    /// left. At the end of the view the comparison ends on the winner, with a hint (CER-64).
+    #[test]
+    fn shift_a_and_shift_d_keep_the_winner_and_bring_the_next() {
+        let shift = Modifiers::SHIFT;
+        let mut h = Harness::new(4);
+        h.settle();
+        let paths = h.app.view.paths.clone();
+        h.press(Key::C, NONE);
+        assert_eq!(h.app.viewer.pinned.as_ref(), Some(&paths[0]));
+        assert_eq!(h.app.current, 1);
+        h.app.viewer.zoom.scale = Some(1.0);
+
+        h.press(Key::A, shift);
+        assert_eq!(mark_of(&h, &paths[1]), Some(Rating::Rejected));
+        assert_eq!(
+            h.app.viewer.pinned.as_ref(),
+            Some(&paths[0]),
+            "the winner stays"
+        );
+        assert_eq!(h.app.view.get(h.app.current), Some(&paths[2]));
+        assert_eq!(h.app.viewer.zoom.scale, Some(1.0), "the shared zoom stays");
+
+        h.press(Key::D, shift);
+        assert_eq!(mark_of(&h, &paths[0]), Some(Rating::Rejected));
+        assert_eq!(
+            h.app.viewer.pinned.as_ref(),
+            Some(&paths[2]),
+            "the right one moves left"
+        );
+        assert_eq!(h.app.view.get(h.app.current), Some(&paths[3]));
+        assert_eq!(h.app.viewer.zoom.scale, Some(1.0));
+
+        // Nothing follows the last photo: the comparison ends on the winner.
+        h.press(Key::A, shift);
+        assert_eq!(mark_of(&h, &paths[3]), Some(Rating::Rejected));
+        assert!(h.app.viewer.pinned.is_none());
+        assert_eq!(h.app.view.get(h.app.current), Some(&paths[2]));
+        assert!(
+            h.app
+                .notice
+                .as_ref()
+                .is_some_and(|notice| notice.text == "No more photos – the comparison ends")
+        );
+        // `Ctrl+Z` takes the last rejection back; compare mode stays ended.
+        h.press(Key::Z, Modifiers::COMMAND);
+        assert_eq!(mark_of(&h, &paths[3]), Some(Rating::Unrated));
+        assert!(h.app.viewer.pinned.is_none());
+    }
+
+    /// A photo already rejected is out of the running: `Shift+A` passes over it.
+    #[test]
+    fn shift_a_passes_over_rejected_photos() {
+        let mut h = Harness::new(4);
+        h.settle();
+        let paths = h.app.view.paths.clone();
+        h.press(Key::End, NONE);
+        h.press(Key::ArrowLeft, NONE);
+        h.press(Key::X, NONE);
+        assert_eq!(mark_of(&h, &paths[2]), Some(Rating::Rejected));
+        h.press(Key::Home, NONE);
+        h.press(Key::C, NONE);
+        h.press(Key::A, Modifiers::SHIFT);
+        assert_eq!(h.app.viewer.pinned.as_ref(), Some(&paths[0]));
+        assert_eq!(h.app.view.get(h.app.current), Some(&paths[3]));
+    }
+
+    /// Frames until the loader has decoded the current photo (at most a few seconds).
+    fn wait_for_photo(h: &mut Harness) {
+        for _ in 0..500 {
+            h.frame(Vec::new());
+            if matches!(
+                h.app.loader.get(h.app.current),
+                crate::loader::Lookup::Ready(_)
+            ) {
+                h.frame(Vec::new());
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        panic!("the photo was not decoded");
+    }
+
+    /// `Shift+Z` shows the photo whole and at 100 %: both sides follow the arrows, marks act on
+    /// the one photo, the 100 % side is aimed at each new photo and keeps its scale. `Esc`
+    /// ends it before the zoom, and the single photo is whole again (CER-49).
+    #[test]
+    fn shift_z_shows_the_photo_whole_and_at_100_percent() {
+        let shift = Modifiers::SHIFT;
+        let mut h = Harness::new(3);
+        wait_for_photo(&mut h);
+        let paths = h.app.view.paths.clone();
+        h.press(Key::Z, shift);
+        assert!(h.app.viewer.split);
+        assert_eq!(h.app.viewer.zoom.scale, Some(1.0));
+        let area = Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
+        let slots = h.app.slots(area);
+        assert_eq!(slots.len(), 2, "the same photo twice");
+        assert!(
+            !slots[0].zooms() && slots[1].zooms(),
+            "whole left, 100 % right"
+        );
+        wait_for_photo(&mut h);
+        assert_eq!(h.app.viewer.split_aim.as_ref(), Some(&paths[0]), "aimed");
+
+        h.press(Key::ArrowRight, NONE);
+        assert!(h.app.viewer.split, "it follows the arrows");
+        assert_eq!(h.app.current, 1);
+        assert_eq!(h.app.viewer.zoom.scale, Some(1.0), "the scale stays");
+        wait_for_photo(&mut h);
+        assert_eq!(
+            h.app.viewer.split_aim.as_ref(),
+            Some(&paths[1]),
+            "aimed again"
+        );
+
+        h.press(Key::X, NONE);
+        assert_eq!(mark_of(&h, &paths[1]), Some(Rating::Rejected));
+        assert!(h.app.viewer.split);
+
+        h.press(Key::Escape, NONE);
+        assert!(!h.app.viewer.split, "Esc ends it first");
+        assert_eq!(h.app.viewer.zoom.scale, None, "whole again");
+        assert_eq!(h.app.slots(area).len(), 1);
+    }
+
+    /// The split view, compare mode, the four-up view and the grid exclude each other; the
+    /// menu bar's row switches it like `Shift+Z`.
+    #[test]
+    fn the_split_view_makes_way_and_takes_over() {
+        let shift = Modifiers::SHIFT;
+        let mut h = Harness::new(5);
+        h.settle();
+        h.press(Key::Z, shift);
+        h.press(Key::C, NONE);
+        assert!(!h.app.viewer.split && h.app.viewer.pinned.is_some());
+        h.press(Key::Z, shift);
+        assert!(h.app.viewer.split && h.app.viewer.pinned.is_none());
+        h.press(Key::C, shift);
+        assert!(!h.app.viewer.split && h.app.viewer.quad.is_some());
+        h.press(Key::Z, shift);
+        assert!(h.app.viewer.split && h.app.viewer.quad.is_none());
+        h.press(Key::F7, NONE);
+        assert!(!h.app.viewer.split && h.app.viewer.grid);
+        h.press(Key::Z, shift);
+        assert!(
+            h.app.viewer.split && !h.app.viewer.grid,
+            "the grid steps aside"
+        );
+        let ctx = h.ctx.clone();
+        h.app.run(&ctx, Command::Straighten, Source::Menu, &[]);
+        assert!(!h.app.viewer.split, "straightening needs the photo alone");
+        h.press(Key::Escape, NONE);
+        h.app.run(&ctx, Command::Split, Source::Menu, &[]);
+        assert!(h.app.viewer.split);
+        h.app.run(&ctx, Command::Split, Source::Menu, &[]);
+        assert!(!h.app.viewer.split);
+    }
+
     /// A deletion counting down comes first: `Esc` brings the photo back.
     #[test]
     fn escape_brings_a_deletion_back_first() {

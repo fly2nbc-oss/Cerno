@@ -241,6 +241,7 @@ pub static TEXTS: Texts = Texts {
     cmd_compare: "Vergleichen",
     cmd_quad: "Viereransicht",
     cmd_zoom: "Ganzes Foto ↔ 100 %",
+    cmd_split: "Ganz und 100 %",
     menu_overlay: "Overlay",
     overlay_off: "Aus",
     overlay_sharpness: "Scharfe Kanten",
@@ -292,6 +293,7 @@ pub static TEXTS: Texts = Texts {
     compare_left_badge: "L",
     keeps_this: |key| format!("{key} behält dieses"),
     compare_needs_two: "Zum Vergleichen braucht es mindestens zwei Fotos",
+    compare_last: "Keine weiteren Fotos – der Vergleich endet",
     deleting: |n| {
         if n == 1 {
             "1 Foto wird in den versteckten Ordner .originals verschoben   ·   Esc macht es rückgängig".to_owned()
@@ -734,6 +736,10 @@ pub static TEXTS: Texts = Texts {
     help_cull: [
         ("C", "Zwei Fotos vergleichen"),
         ("A, D", "Links / rechts behalten"),
+        (
+            "Umschalt+A, Umschalt+D",
+            "Behalten, mit dem nächsten weiter",
+        ),
         ("Umschalt+C", "Vier Fotos auf einmal"),
         ("M", "Nur ähnliche Fotos"),
         ("Entf", "Löschen (nach .originals)"),
@@ -749,6 +755,7 @@ pub static TEXTS: Texts = Texts {
     help_view: [
         ("Z, Doppelklick", "Ganzes Foto ↔ 100 %"),
         ("Strg+0, Strg+1", "Ganzes Foto / 100 %"),
+        ("Umschalt+Z", "Ganzes Foto und 100 % nebeneinander"),
         ("+, −, Mausrad", "Hinein- / herauszoomen"),
         ("Ziehen", "Gezoomtes Foto verschieben"),
         ("O", "Prüfen: Kanten, Belichtung"),

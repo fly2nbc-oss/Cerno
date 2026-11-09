@@ -242,6 +242,7 @@ pub static TEXTS: Texts = Texts {
     cmd_compare: "Compare",
     cmd_quad: "Four-up view",
     cmd_zoom: "Whole photo ↔ 100 %",
+    cmd_split: "Whole and 100 %",
     menu_overlay: "Overlay",
     overlay_off: "Off",
     overlay_sharpness: "Sharp edges",
@@ -293,6 +294,7 @@ pub static TEXTS: Texts = Texts {
     compare_left_badge: "L",
     keeps_this: |key| format!("{key} keeps this"),
     compare_needs_two: "Comparing needs at least two photos",
+    compare_last: "No more photos – the comparison ends",
     deleting: |n| {
         if n == 1 {
             "Moving 1 photo into the hidden .originals folder   ·   Esc to undo".to_owned()
@@ -718,6 +720,7 @@ pub static TEXTS: Texts = Texts {
     help_cull: [
         ("C", "Compare two photos"),
         ("A, D", "Keep left / right"),
+        ("Shift+A, Shift+D", "Keep, then compare the next"),
         ("Shift+C", "Four photos at once"),
         ("M", "Only similar photos"),
         ("Del", "Delete (into .originals)"),
@@ -733,6 +736,7 @@ pub static TEXTS: Texts = Texts {
     help_view: [
         ("Z, Double-click", "Whole photo ↔ 100 %"),
         ("Ctrl+0, Ctrl+1", "Whole photo / 100 %"),
+        ("Shift+Z", "Whole photo and 100 % side by side"),
         ("+, −, Mouse wheel", "Zoom in / out"),
         ("Drag", "Move the zoomed photo"),
         ("O", "Check: sharp edges, clipping"),

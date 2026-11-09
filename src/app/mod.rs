@@ -377,7 +377,7 @@ impl CernoApp {
         } else {
             self.slots(layout.area)
                 .iter()
-                .filter(|slot| !self.slot_is_video(slot))
+                .filter(|slot| slot.zooms() && !self.slot_is_video(slot))
                 .filter_map(|slot| self.frame_of(&ctx, slot))
                 .collect()
         };

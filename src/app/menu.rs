@@ -502,7 +502,7 @@ impl CernoApp {
         items
     }
 
-    /// "View": zoom, the check overlay's three modes, the grid, the faces, full screen. The
+    /// "View": zoom, the split view, the check overlay's three modes, full screen. The
     /// bars' switches are buttons in the info bar.
     fn view_items(&self) -> Vec<Item<Command>> {
         use crate::overlay::Mode;
@@ -534,6 +534,10 @@ impl CernoApp {
             Item::Row(
                 Row::new(Command::Zoom(ZOOM_TOGGLE), t.cmd_zoom, key("Z"))
                     .toggle(self.viewer.zoom.is_zoomed()),
+            ),
+            Item::Row(
+                Row::new(Command::Split, t.cmd_split, Some(i18n::with_shift("Z")))
+                    .toggle(self.viewer.split),
             ),
             Item::Segments(overlay),
             Item::Row(Row::new(Command::Fullscreen, t.cmd_fullscreen, key("F"))),

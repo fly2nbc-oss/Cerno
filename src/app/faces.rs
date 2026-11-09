@@ -53,8 +53,32 @@ pub(super) struct Faces {
     /// The faces button's number: the photo being counted, and the last count – `None` when
     /// the index has no rows for it yet (analysed before 1.7).
     counting: Option<PathBuf>,
-    count_rx: Option<mpsc::Receiver<(PathBuf, Option<usize>)>>,
-    counted: Option<(PathBuf, Option<usize>)>,
+    count_rx: Option<mpsc::Receiver<(PathBuf, Option<Judged>)>>,
+    counted: Option<(PathBuf, Option<Judged>)>,
+}
+
+/// The faces the grid would show, from the index's rows: how many, and between whose eyes the
+/// split view's 100 % side looks – the largest face's, the one the eye sharpness measures.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct Judged {
+    count: usize,
+    /// 0..1 of the upright photo.
+    eyes: Option<[f32; 2]>,
+}
+
+impl Judged {
+    fn of(rows: &[FaceRow]) -> Self {
+        let largest = rows
+            .iter()
+            .max_by(|a, b| (a.bbox[2] * a.bbox[3]).total_cmp(&(b.bbox[2] * b.bbox[3])));
+        Self {
+            count: rows.len(),
+            eyes: largest.map(|face| {
+                let [[rx, ry], [lx, ly], ..] = face.landmarks;
+                [(rx + lx) / 2.0, (ry + ly) / 2.0]
+            }),
+        }
+    }
 }
 
 /// What is known about the current photo's faces right now.
@@ -110,30 +134,68 @@ impl CernoApp {
         {
             return shown(Some(found.crops.len()));
         }
-        if let Some(rx) = &self.viewer.faces.count_rx
-            && let Ok(counted) = rx.try_recv()
-        {
-            self.viewer.faces.count_rx = None;
-            self.viewer.faces.counted = Some(counted);
+        match self.judged_faces(ctx, &path) {
+            Some(judged) => shown(judged.map(|judged| judged.count)),
+            None => FaceButton::Found(None),
         }
-        if let Some((counted, count)) = &self.viewer.faces.counted
-            && *counted == path
-        {
-            return shown(*count);
+    }
+
+    /// The current photo's faces by the grid's rules, from the index's rows: `None` while they
+    /// are counted (or the photo is not decoded yet), `Some(None)` without rows (analysed
+    /// before 1.7). Counted on a thread once per photo.
+    fn judged_faces(&mut self, ctx: &egui::Context, path: &Path) -> Option<Option<Judged>> {
+        if let Some(rx) = &self.viewer.faces.count_rx {
+            match rx.try_recv() {
+                Ok(counted) => {
+                    self.viewer.faces.count_rx = None;
+                    self.viewer.faces.counted = Some(counted);
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+                // The thread is gone without an answer: no rows, rather than waiting forever.
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.viewer.faces.count_rx = None;
+                    if let Some(counting) = self.viewer.faces.counting.clone() {
+                        self.viewer.faces.counted = Some((counting, None));
+                    }
+                }
+            }
         }
-        if self.viewer.faces.counting.as_ref() != Some(&path)
+        if let Some((counted, judged)) = &self.viewer.faces.counted
+            && counted == path
+        {
+            return Some(*judged);
+        }
+        if self.viewer.faces.counting.as_deref() != Some(path)
             && let Lookup::Ready(image) = self.loader.get(self.current)
         {
-            self.viewer.faces.counting = Some(path.clone());
+            self.viewer.faces.counting = Some(path.to_path_buf());
             self.viewer.faces.count_rx = Some(count_faces(
                 ctx.clone(),
                 Arc::clone(&self.db),
-                path,
-                known.and_then(|k| k.fingerprint),
+                path.to_path_buf(),
+                self.board.get(path).and_then(|k| k.fingerprint),
                 image.original_size,
             ));
         }
-        FaceButton::Found(None)
+        None
+    }
+
+    /// Between whose eyes the split view's 100 % side looks on the current photo: `None` while
+    /// that is not known yet, `Some(None)` when it has no face to look at (a video, none found,
+    /// not analysed yet, only faces too small to judge).
+    pub(super) fn split_eyes(&mut self, ctx: &egui::Context) -> Option<Option<[f32; 2]>> {
+        let Some(path) = self.view.get(self.current).cloned() else {
+            return Some(None);
+        };
+        if library::format_of(&path) == Some(library::Format::Video) {
+            return Some(None);
+        }
+        match self.board.get(&path).and_then(|k| k.scores.faces) {
+            None | Some(0) => Some(None),
+            Some(_) => self
+                .judged_faces(ctx, &path)
+                .map(|judged| judged.and_then(|judged| judged.eyes)),
+        }
     }
 
     /// The current photo's faces: from what the analysis knows, the cut-out pictures once
@@ -223,6 +285,10 @@ impl CernoApp {
     /// The photo was changed (an edit, another program's save): its faces are looked for
     /// again the next time they show.
     pub(super) fn forget_faces(&mut self, path: &Path) {
+        // Turned or saved by another program: the split view looks at it anew.
+        if self.viewer.split_aim.as_deref() == Some(path) {
+            self.viewer.split_aim = None;
+        }
         if self.viewer.faces.path.as_deref() == Some(path) {
             self.viewer.faces = Faces {
                 grid_open: self.viewer.faces.grid_open,
@@ -232,15 +298,15 @@ impl CernoApp {
     }
 }
 
-/// How many faces the grid would show for `path` (upright, `size` at full size), from the
-/// index's rows on a thread: the grid's rules without decoding the photo. `None` without rows.
+/// The faces the grid would show for `path` (upright, `size` at full size), from the index's
+/// rows on a thread: the grid's rules without decoding the photo. `None` without rows.
 fn count_faces(
     ctx: egui::Context,
     db: Arc<Db>,
     path: PathBuf,
     fingerprint: Option<u64>,
     size: [u32; 2],
-) -> mpsc::Receiver<(PathBuf, Option<usize>)> {
+) -> mpsc::Receiver<(PathBuf, Option<Judged>)> {
     let (tx, rx) = mpsc::channel();
     let spawned = std::thread::Builder::new()
         .name("cerno-face-count".into())
@@ -252,8 +318,8 @@ fn count_faces(
                     None
                 }
             });
-            let count = rows.map(|rows| judged(rows, size).len());
-            let _ = tx.send((path, count));
+            let judged = rows.map(|rows| Judged::of(&judged(rows, size)));
+            let _ = tx.send((path, judged));
             ctx.request_repaint();
         });
     if let Err(err) = spawned {
@@ -401,6 +467,37 @@ mod tests {
         );
         // Upright, the same boxes are half as wide at the analysis size: 20 px, too small.
         assert!(judged(vec![mother, child], [2000, 4000]).is_empty());
+    }
+
+    /// The split view looks between the eyes of the largest face; without faces nowhere.
+    #[test]
+    fn the_split_view_looks_between_the_largest_faces_eyes() {
+        let face = |x: f32, side: f32| FaceRow {
+            score: 0.9,
+            bbox: [x, 0.2, side, side],
+            landmarks: [
+                [x + 0.3 * side, 0.3],
+                [x + 0.7 * side, 0.32],
+                [0.0; 2],
+                [0.0; 2],
+                [0.0; 2],
+            ],
+            eyes: Some(100.0),
+        };
+        let judged = Judged::of(&[face(0.1, 0.1), face(0.5, 0.2)]);
+        assert_eq!(judged.count, 2);
+        let [x, y] = judged.eyes.expect("eyes");
+        assert!(
+            (x - 0.6).abs() < 1e-5 && (y - 0.31).abs() < 1e-5,
+            "{x}, {y}"
+        );
+        assert_eq!(
+            Judged::of(&[]),
+            Judged {
+                count: 0,
+                eyes: None
+            }
+        );
     }
 
     fn image(width: u32, height: u32) -> decode::DecodedImage {

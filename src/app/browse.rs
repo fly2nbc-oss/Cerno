@@ -161,6 +161,7 @@ impl CernoApp {
         self.scan_deleted();
         self.viewer.pinned = None;
         self.viewer.quad = None;
+        self.end_split();
         // A filter set aside lapses with its folder (`Shift+T`, the user's decision): every
         // photo of the new one shows, and that is what is saved from now on.
         if self.browse.filter_aside.take().is_some() {
@@ -481,9 +482,10 @@ impl CernoApp {
 
     /// Another photo is current: in the single view it starts whole, not at the zoom the last
     /// one had (the user's wish of 2026-10-05). Compare mode and the four-up view keep their
-    /// shared zoom – it is what lines the photos up.
+    /// shared zoom – it is what lines the photos up. The split view keeps its scale and aims
+    /// its 100 % side at the new photo once that is decoded (`aim_split`).
     fn start_whole(&mut self) {
-        if self.viewer.pinned.is_none() && self.viewer.quad.is_none() {
+        if self.viewer.pinned.is_none() && self.viewer.quad.is_none() && !self.viewer.split {
             self.viewer.zoom = viewer::Zoom::default();
         }
         // A face zoom asked for the last photo does not apply to this one.

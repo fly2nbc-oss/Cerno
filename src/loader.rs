@@ -12,7 +12,8 @@
 //!
 //! While the check overlay is on (`O`), the photos on screen and the current one's neighbours
 //! also get it, computed from the same decode – or from a new one, since a texture can't be
-//! read back.
+//! read back. Every photo's display decode also finds where it is sharpest (sampled, a few
+//! milliseconds): where the split view's 100 % side looks.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -58,6 +59,10 @@ pub struct LoadedImage {
     pub file_bytes: u64,
     /// A JPEG's estimated quality and its chroma subsampling.
     pub jpeg: Option<crate::jpeg_info::JpegInfo>,
+    /// Where the photo is sharpest (`overlay::sharpest_point`, 0..1 of the upright photo):
+    /// where the split view's 100 % side looks without a face. `None` for a video or a photo
+    /// without a sharp edge.
+    pub focus: Option<[f32; 2]>,
 }
 
 /// What the file itself says, besides its pixels: its size and, for a JPEG, its compression.
@@ -719,6 +724,9 @@ fn load_display(shared: &Shared, job: &Job) -> Result<(LoadedImage, Option<Textu
         TextureOptions::LINEAR,
     );
     let overlay = display_overlay(shared, job, &decoded);
+    let focus = (library::format_of(&job.path) != Some(library::Format::Video))
+        .then(|| overlay::sharpest_point(&decoded.rgb, decoded.width, decoded.height))
+        .flatten();
 
     let image = LoadedImage {
         texture,
@@ -732,6 +740,7 @@ fn load_display(shared: &Shared, job: &Job) -> Result<(LoadedImage, Option<Textu
         load_ms: started.elapsed().as_millis(),
         file_bytes: facts.bytes,
         jpeg: facts.jpeg,
+        focus,
     };
     Ok((image, overlay))
 }
@@ -919,6 +928,7 @@ mod tests {
             load_ms: 0,
             file_bytes: 0,
             jpeg: None,
+            focus: None,
         }))
     }
 
@@ -1157,5 +1167,63 @@ mod tests {
         let mut s = state(20, 10, None);
         s.prefetch = false;
         assert_eq!(order(&mut s), [(10, false)]);
+    }
+
+    /// What the split view costs per step on a 20 MP JPEG (ticket CER-49): the display
+    /// decode for half of a 2560 × 1156 px photo area, where the photo is sharpest, the
+    /// histogram the same decode already pays for, and the full resolution its 100 % side
+    /// needs. A generated photo; medians of five runs:
+    /// `cargo test --release -- --ignored --nocapture split_view_costs`.
+    #[test]
+    #[ignore = "a measurement"]
+    fn split_view_costs() {
+        let (w, h) = (5472u32, 3648u32);
+        let rgb: Vec<u8> = (0..h)
+            .flat_map(|y| {
+                (0..w).flat_map(move |x| {
+                    let grain = (x.wrapping_mul(7919) ^ y.wrapping_mul(104_729))
+                        .wrapping_mul(2_654_435_761)
+                        >> 26;
+                    let base = ((x / 40 + y / 40) % 2 * 70 + 70) as u8;
+                    [base + grain as u8, base + grain as u8 / 2, base]
+                })
+            })
+            .collect();
+        let mut jpeg = Vec::new();
+        jpeg_encoder::Encoder::new(&mut jpeg, 90)
+            .encode(&rgb, w as u16, h as u16, jpeg_encoder::ColorType::Rgb)
+            .expect("encoded");
+        drop(rgb);
+        let median = |run: &mut dyn FnMut()| {
+            let mut times: Vec<u128> = (0..5)
+                .map(|_| {
+                    let started = Instant::now();
+                    run();
+                    started.elapsed().as_micros()
+                })
+                .collect();
+            times.sort_unstable();
+            times[2] as f64 / 1000.0
+        };
+        let jpg = library::Format::Jpeg;
+        let display = decode::decode_for_screen(&jpeg, jpg, 1, [1277, 1156]).expect("display");
+        let decode_ms = median(&mut || {
+            decode::decode_for_screen(&jpeg, jpg, 1, [1277, 1156]).expect("display");
+        });
+        let focus_ms = median(&mut || {
+            overlay::sharpest_point(&display.rgb, display.width, display.height);
+        });
+        let histogram_ms = median(&mut || {
+            histogram::compute(&display.rgb);
+        });
+        let full_ms = median(&mut || {
+            decode::decode_for_screen(&jpeg, jpg, 1, [u32::MAX; 2]).expect("full");
+        });
+        println!(
+            "{} MB JPEG, display {}x{}: decode {decode_ms:.1} ms, sharpest point {focus_ms:.1} ms, histogram {histogram_ms:.1} ms; full resolution {full_ms:.1} ms",
+            jpeg.len() / 1_000_000,
+            display.width,
+            display.height
+        );
     }
 }

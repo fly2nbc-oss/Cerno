@@ -1,5 +1,5 @@
-//! The photo area: one photo, two side by side (compare mode) or four (the four-up view), mouse
-//! zoom and pan.
+//! The photo area: one photo, two side by side (compare mode), four (the four-up view) or one
+//! photo twice – whole and at 100 % (the split view) –, mouse zoom and pan.
 
 use std::path::{Path, PathBuf};
 
@@ -29,6 +29,12 @@ pub(super) struct Viewer {
     pub(super) pinned: Option<PathBuf>,
     /// The four-up view (`Shift+C`): the view index of the first of its four photos.
     pub(super) quad: Option<usize>,
+    /// The split view (`Shift+Z`, ticket CER-49): the current photo whole on the left and at
+    /// `zoom` on the right.
+    pub(super) split: bool,
+    /// The photo the split view's 100 % side was last aimed at (its eyes or sharpest spot):
+    /// another current photo is aimed at once it is known where to look.
+    pub(super) split_aim: Option<PathBuf>,
     pub(super) zoom: viewer::Zoom,
     /// The check overlay over the photos (`O`).
     pub(super) overlay: overlay::Mode,
@@ -50,6 +56,8 @@ impl Default for Viewer {
         Self {
             pinned: None,
             quad: None,
+            split: false,
+            split_aim: None,
             zoom: viewer::Zoom::default(),
             overlay: overlay::Mode::Off,
             grid: false,
@@ -77,6 +85,18 @@ enum Side {
     Right,
     /// One of the four-up view.
     Quad,
+    /// The split view's left side: the whole photo, never zoomed.
+    Whole,
+    /// The split view's right side: the same photo at 100 % (the shared zoom).
+    Detail,
+}
+
+impl Slot {
+    /// The slot's zoom keys and mouse act on the shared zoom: every one but the split view's
+    /// whole photo.
+    pub(super) fn zooms(&self) -> bool {
+        self.side != Side::Whole
+    }
 }
 
 impl CernoApp {
@@ -99,8 +119,9 @@ impl CernoApp {
             return;
         }
         let right = self.neighbour(self.current, &[&path]);
-        // From the four-up view: the framed photo is pinned.
+        // From the four-up view: the framed photo is pinned. The split view makes way.
         self.viewer.quad = None;
+        self.end_split();
         self.viewer.pinned = Some(path);
         self.rebuild_view(ctx, right);
     }
@@ -117,6 +138,7 @@ impl CernoApp {
             return;
         }
         self.viewer.pinned = None;
+        self.end_split();
         if self.viewer.grid {
             self.set_grid(false);
         }
@@ -146,17 +168,82 @@ impl CernoApp {
             .collect()
     }
 
+    /// `Shift+Z`: the current photo whole on the left and at 100 % on the right, where Cerno
+    /// measured the sharpness – or the single photo again (ticket CER-49). Compare mode and
+    /// the four-up view make way; not for a video, not during a straighten or crop session.
+    pub(super) fn toggle_split(&mut self) {
+        if self.viewer.split {
+            self.end_split();
+            return;
+        }
+        if self.edits.session.is_some() {
+            return;
+        }
+        let Some(path) = self.view.get(self.current) else {
+            return;
+        };
+        if library::format_of(path) == Some(library::Format::Video) {
+            self.notice = Some(Notice::hint(i18n::t().video_no_zoom));
+            return;
+        }
+        if self.viewer.pinned.take().is_some() || self.viewer.quad.take().is_some() {
+            self.loader.set_shown(Vec::new());
+        }
+        self.viewer.split = true;
+        self.viewer.split_aim = None;
+        self.viewer.zoom = viewer::Zoom {
+            scale: Some(1.0),
+            ..viewer::Zoom::default()
+        };
+    }
+
+    /// The single photo again, whole – the split view's 100 % is not kept.
+    pub(super) fn end_split(&mut self) {
+        if self.viewer.split {
+            self.viewer.split = false;
+            self.viewer.split_aim = None;
+            self.viewer.zoom = viewer::Zoom::default();
+        }
+    }
+
+    /// Aims the split view's 100 % side at the current photo once it is known where to look:
+    /// between the eyes of its largest face, else its sharpest spot (`LoadedImage::focus`),
+    /// else its middle. The zoom's scale stays. False while the faces are still being looked
+    /// up – the side waits rather than jump under the eye.
+    fn aim_split(
+        &mut self,
+        ctx: &egui::Context,
+        frame: &viewer::Frame,
+        image: &LoadedImage,
+    ) -> bool {
+        let Some(path) = self.view.get(self.current).cloned() else {
+            return false;
+        };
+        if self.viewer.split_aim.as_ref() == Some(&path) {
+            return true;
+        }
+        let Some(eyes) = self.split_eyes(ctx) else {
+            return false;
+        };
+        let [x, y] = eyes.or(image.focus).unwrap_or([0.5, 0.5]);
+        self.viewer.zoom.centre_on(frame, vec2(x, y));
+        self.viewer.split_aim = Some(path);
+        true
+    }
+
     /// `A`: the left photo wins – the right one is rejected, compare mode ends on the left one.
-    pub(super) fn keep_left(&mut self, ctx: &egui::Context) {
+    /// `Shift+A` (`next`): the left one stays pinned and the next photo comes in on the right.
+    pub(super) fn keep_left(&mut self, ctx: &egui::Context, next: bool) {
         if let Some((left, right)) = self.compared() {
-            self.choose(ctx, left, right);
+            self.choose(ctx, left, right, next);
         }
     }
 
     /// `D`: the right photo wins – the left one is rejected, compare mode ends on the right one.
-    pub(super) fn keep_right(&mut self, ctx: &egui::Context) {
+    /// `Shift+D` (`next`): the right one is pinned on the left, the next photo comes in.
+    pub(super) fn keep_right(&mut self, ctx: &egui::Context, next: bool) {
         if let Some((left, right)) = self.compared() {
-            self.choose(ctx, right, left);
+            self.choose(ctx, right, left, next);
         }
     }
 
@@ -170,13 +257,48 @@ impl CernoApp {
 
     /// Rejects `loser`, leaves compare mode and shows `winner` alone. A photo that takes no
     /// mark right now (it is being moved) keeps the comparison open.
-    fn choose(&mut self, ctx: &egui::Context, winner: PathBuf, loser: PathBuf) {
+    ///
+    /// With `next` (`Shift+A` / `Shift+D`, ticket CER-64) the winner stays – or goes – on the
+    /// left and the next photo of the view after the right one comes in on the right, at the
+    /// same zoom: the pinned photo stays pinned throughout, so the loader keeps it and the
+    /// shared zoom is not reset. At the end of the view the comparison ends with a hint and
+    /// the winner shows alone.
+    fn choose(&mut self, ctx: &egui::Context, winner: PathBuf, loser: PathBuf, next: bool) {
         if !self.allowed(Change::Mark, Some(&loser)) {
             return;
         }
-        self.viewer.pinned = None;
+        if !next {
+            self.viewer.pinned = None;
+            self.rate(ctx, loser, Rating::Rejected, false);
+            self.rebuild_view(ctx, Some(winner));
+            return;
+        }
+        // Before the mark: it may move the loser (capture-time order puts rejected photos last
+        // in their series) or take it out of the view.
+        let contender = self.next_contender(&winner, &loser);
+        self.viewer.pinned = Some(winner.clone());
         self.rate(ctx, loser, Rating::Rejected, false);
-        self.rebuild_view(ctx, Some(winner));
+        if contender.is_none() {
+            self.viewer.pinned = None;
+            self.notice = Some(Notice::hint(i18n::t().compare_last));
+        }
+        self.rebuild_view(ctx, contender.or(Some(winner)));
+    }
+
+    /// The photo that comes in on the right after `Shift+A` / `Shift+D`: the first one after
+    /// the right photo in the view that is neither of the two compared nor already rejected –
+    /// a rejected photo is out of the running, and in capture-time order it would come round
+    /// again at the end of its series. Never one before: the comparison ends at the end.
+    fn next_contender(&self, winner: &Path, loser: &Path) -> Option<PathBuf> {
+        let after = self.view.get(self.current + 1..).unwrap_or_default();
+        after
+            .iter()
+            .find(|path| {
+                path.as_path() != winner
+                    && path.as_path() != loser
+                    && self.rating_of(path, None) != Rating::Rejected
+            })
+            .cloned()
     }
 
     /// `O` and View ▸ Overlay: sharp edges, clipped highlights and shadows, or nothing. A hint
@@ -199,9 +321,13 @@ impl CernoApp {
         if on && (self.edits.session.is_some() || self.view.is_empty()) {
             return;
         }
-        // The grid replaces the four-up view, like every other photo on screen.
+        // The grid replaces the four-up view and the split view, like every other photo on
+        // screen.
         if on && self.viewer.quad.take().is_some() {
             self.loader.set_shown(Vec::new());
+        }
+        if on {
+            self.end_split();
         }
         self.viewer.grid = on;
         self.viewer.grid_shown = None;
@@ -264,11 +390,31 @@ impl CernoApp {
             slots.sort_by_key(|slot| slot.index == self.current);
             return slots;
         }
+        let half = (area.width() - COMPARE_GUTTER) / 2.0;
+        let left = Rect::from_min_size(area.min, vec2(half, area.height()));
+        let right = Rect::from_min_max(pos2(area.max.x - half, area.min.y), area.max);
+        // The split view: the same photo twice – a video shows alone.
+        if self.viewer.split
+            && self
+                .view
+                .get(self.current)
+                .is_some_and(|p| library::format_of(p) != Some(library::Format::Video))
+        {
+            return vec![
+                Slot {
+                    index: self.current,
+                    area: left,
+                    side: Side::Whole,
+                },
+                Slot {
+                    index: self.current,
+                    area: right,
+                    side: Side::Detail,
+                },
+            ];
+        }
         match self.pinned_index() {
             Some(pinned) if pinned != self.current => {
-                let half = (area.width() - COMPARE_GUTTER) / 2.0;
-                let left = Rect::from_min_size(area.min, vec2(half, area.height()));
-                let right = Rect::from_min_max(pos2(area.max.x - half, area.min.y), area.max);
                 vec![
                     Slot {
                         index: pinned,
@@ -297,7 +443,8 @@ impl CernoApp {
         }
     }
 
-    /// The photo areas on screen, for the decode size: one, or the two halves of compare mode.
+    /// The photo areas on screen, for the decode size: one, or the two halves of compare mode
+    /// and the split view.
     pub(super) fn photo_areas(&self, area: Rect) -> Vec<Rect> {
         self.slots(area).iter().map(|slot| slot.area).collect()
     }
@@ -400,6 +547,37 @@ impl CernoApp {
             }
             self.draw_navigator(ui, slot);
         }
+        self.draw_split_part(ui, slots);
+    }
+
+    /// The split view: on the whole photo, the part the 100 % side shows, framed in the
+    /// accent like the navigator's – once that side is aimed at this photo.
+    fn draw_split_part(&self, ui: &egui::Ui, slots: &[Slot]) {
+        let [whole, detail] = slots else {
+            return;
+        };
+        if whole.side != Side::Whole
+            || self.viewer.split_aim.as_ref() != self.view.get(self.current)
+            || self.edits.session.is_some()
+        {
+            return;
+        }
+        let Lookup::Ready(image) = self.loader.get(whole.index) else {
+            return;
+        };
+        let ppp = ui.ctx().pixels_per_point();
+        let detail = frame_for(detail.area, &image, ppp);
+        let Some(part) = viewer::visible_part(&detail, &self.viewer.zoom) else {
+            return;
+        };
+        let photo = viewer::Zoom::default().image_rect(&frame_for(whole.area, &image, ppp));
+        let at = |p: egui::Pos2| photo.min + p.to_vec2() * photo.size();
+        ui.painter().with_clip_rect(photo).rect_stroke(
+            Rect::from_min_max(at(part.min), at(part.max)),
+            0.0,
+            Stroke::new(2.0, tokens::ACCENT),
+            StrokeKind::Inside,
+        );
     }
 
     /// The navigator while the single photo is zoomed beyond the view (ticket CER-55, U2):
@@ -437,13 +615,24 @@ impl CernoApp {
     /// pixels, then the edit overlay or the compare labels.
     fn draw_photo(&mut self, ui: &egui::Ui, slot: &Slot, image: &LoadedImage) {
         let frame = frame_for(slot.area, image, ui.ctx().pixels_per_point());
+        // The split view's 100 % side waits until it knows where to look.
+        if slot.side == Side::Detail && !self.aim_split(ui.ctx(), &frame, image) {
+            overlays::centred_message(ui, slot.area, i18n::t().loading, tokens::MUTED);
+            return;
+        }
         let covered = self.layer.is_open() || self.modal_open();
         let editing = self.edits.session.is_some();
         let is_video = self.slot_is_video(slot);
+        // The whole photo of the split view is never zoomed.
+        let zoom = if slot.zooms() {
+            self.viewer.zoom
+        } else {
+            viewer::Zoom::default()
+        };
         if !covered {
             if editing && slot.side == Side::Single {
                 self.handle_edit_pointer(ui, &frame);
-            } else if !editing && !is_video {
+            } else if !editing && !is_video && slot.zooms() {
                 self.handle_mouse(ui, &frame, slot);
             } else if !editing && slot.side == Side::Quad {
                 // A video in the four-up view has no zoom, but a click frames it.
@@ -466,7 +655,7 @@ impl CernoApp {
         let needs_full = viewer::draw(
             ui.painter(),
             &frame,
-            &self.viewer.zoom,
+            &zoom,
             image,
             full.as_deref(),
             viewer::Overlay {
@@ -491,7 +680,7 @@ impl CernoApp {
                 self.startup.started.elapsed().as_millis()
             );
         }
-        if slot.side != Side::Single {
+        if matches!(slot.side, Side::Left | Side::Right | Side::Quad) {
             self.draw_compare_labels(ui, slot, image);
         }
         // The four-up view's frame: the current photo, which marks and keys act on.
