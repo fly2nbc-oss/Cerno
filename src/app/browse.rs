@@ -654,18 +654,18 @@ mod tests {
         h.app.go_to(&ctx, 1, 1);
         assert_eq!(h.app.startup.step.map(|(index, _)| index), Some(1));
 
-        h.press(Key::F7, Modifiers::NONE);
+        h.press(Key::F3, Modifiers::NONE);
         assert!(h.app.viewer.grid);
         assert!(h.app.startup.step.is_none(), "dropped when the grid opens");
         h.app.go_to(&ctx, 2, 1);
         assert!(h.app.startup.step.is_none(), "the grid");
-        h.press(Key::F7, Modifiers::NONE);
+        h.press(Key::F3, Modifiers::NONE);
 
-        h.press(Key::F8, Modifiers::NONE);
+        h.press(Key::F4, Modifiers::NONE);
         assert!(h.app.viewer.scenes);
         h.app.go_to(&ctx, 3, 1);
         assert!(h.app.startup.step.is_none(), "the scene view");
-        h.press(Key::F8, Modifiers::NONE);
+        h.press(Key::F4, Modifiers::NONE);
 
         h.press(Key::C, Modifiers::SHIFT);
         assert!(h.app.viewer.quad.is_some());
