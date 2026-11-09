@@ -76,6 +76,8 @@ struct KeyInput {
     toggle_fullscreen: bool,
     escape: bool,
     toggle_toolbar: bool,
+    /// `Shift+T`: the whole filter aside – every photo – or back.
+    filter_aside: bool,
     toggle_filmstrip: bool,
     /// `F7`: the grid.
     toggle_grid: bool,
@@ -224,6 +226,7 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         toggle_fullscreen: i.key_pressed(Key::F11) || (plain && i.key_pressed(Key::F)),
         escape: i.key_pressed(Key::Escape),
         toggle_toolbar: plain && i.key_pressed(Key::T),
+        filter_aside: i.modifiers.shift_only() && i.key_pressed(Key::T),
         toggle_filmstrip: i.key_pressed(Key::F6),
         toggle_grid: i.key_pressed(Key::F7),
         help: i.key_pressed(Key::F1)
@@ -336,6 +339,7 @@ impl KeyInput {
             );
         }
         push(self.toggle_toolbar, Command::TogglePanel(Panel::Top));
+        push(self.filter_aside, Command::FilterAside);
         push(self.toggle_filmstrip, Command::TogglePanel(Panel::Bottom));
         push(self.toggle_side_bar, Command::TogglePanel(Panel::Left));
         push(self.overlay, Command::NextOverlay);
@@ -927,6 +931,22 @@ mod tests {
         assert!(four.quad && !four.compare);
         let two = read(vec![key(Key::C, Key::C, plain)], plain);
         assert!(two.compare && !two.quad);
+    }
+
+    /// `T` is the filter bar, `Shift+T` sets the filter aside (or brings it back); with Ctrl
+    /// neither.
+    #[test]
+    fn shift_t_sets_the_filter_aside() {
+        let (plain, shift, ctrl) = (Modifiers::NONE, Modifiers::SHIFT, Modifiers::COMMAND);
+        let aside = read(vec![key(Key::T, Key::T, shift)], shift);
+        assert!(aside.filter_aside && !aside.toggle_toolbar);
+        assert_eq!(aside.commands(&[]).last(), Some(&Command::FilterAside));
+        let bar = read(vec![key(Key::T, Key::T, plain)], plain);
+        assert!(bar.toggle_toolbar && !bar.filter_aside);
+        assert_eq!(
+            read(vec![key(Key::T, Key::T, ctrl)], ctrl),
+            KeyInput::default()
+        );
     }
 
     /// `G` alone shows every face; with Shift it is nothing any more.

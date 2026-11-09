@@ -50,6 +50,15 @@ impl NameList {
         self.applied = None;
     }
 
+    /// `Shift+T`: the list goes aside with the filter, and comes back with it.
+    pub(super) fn take_applied(&mut self) -> Option<Matched> {
+        self.applied.take()
+    }
+
+    pub(super) fn put_applied(&mut self, applied: Option<Matched>) {
+        self.applied = applied;
+    }
+
     /// Cerno moved a listed photo: it stays on the list.
     pub(super) fn follow(&mut self, from: &Path, to: &Path) {
         if let Some(applied) = &mut self.applied

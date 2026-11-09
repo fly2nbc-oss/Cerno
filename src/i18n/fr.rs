@@ -167,6 +167,13 @@ pub static TEXTS: Texts = Texts {
     photos_badge_tooltip: "Le nombre de photos que le filtre affiche – « Photos affichées » de la barre de menu agit sur exactement celles-ci.",
     filtered_position: |pos, shown, total| format!("{pos} / {shown} sur {total}"),
     filtered_hint: "Un filtre masque des photos. Cliquez ou appuyez sur T pour afficher la barre de filtres.",
+    filter_aside_mark: |key| format!("Filtre désactivé – {key}"),
+    filter_aside_hint: |key| {
+        format!(
+            "Le filtre est mis de côté : toutes les photos s'affichent. Cliquez ou appuyez sur {key} pour le rétablir."
+        )
+    },
+    filter_aside_none: |key| format!("Aucun filtre actif – {key} n'a rien à désactiver."),
     label_red: "Rouge",
     label_yellow: "Jaune",
     label_green: "Vert",
@@ -738,6 +745,7 @@ pub static TEXTS: Texts = Texts {
     help_panels: [
         ("F10", "Barre de menu"),
         ("T", "Barre de filtres"),
+        ("Maj+T", "Filtre coupé un instant / rétabli"),
         ("Tab", "Panneau de détails"),
         ("F6", "Pellicule"),
         ("Maj+Tab", "Les quatre panneaux"),

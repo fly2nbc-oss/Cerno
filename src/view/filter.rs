@@ -199,10 +199,6 @@ impl PhotoFilter {
         self.set(kind, on);
     }
 
-    pub fn clear(&mut self) {
-        *self = Self::default();
-    }
-
     /// A photo matches every group with a ticked box: its rating is ticked, its colour is
     /// ticked, it is blurry, a copy or incomplete when one of those boxes is ticked, and it has
     /// faces or none (`faces`: `None` until the face detection ran – then neither box takes

@@ -150,6 +150,13 @@ pub static TEXTS: Texts = Texts {
     photos_badge_tooltip: "So viele Fotos zeigt der Filter gerade – auf genau diese wirkt „Sichtbare Fotos“ in der Menüleiste.",
     filtered_position: |pos, shown, total| format!("{pos} / {shown} von {total}"),
     filtered_hint: "Ein Filter blendet Fotos aus. Ein Klick oder T zeigt die Filterleiste.",
+    filter_aside_mark: |key| format!("Filter aus – {key}"),
+    filter_aside_hint: |key| {
+        format!(
+            "Der Filter ist beiseitegelegt: alle Fotos sind zu sehen. Ein Klick oder {key} holt ihn zurück."
+        )
+    },
+    filter_aside_none: |key| format!("Kein Filter aktiv – {key} hat nichts auszuschalten."),
     label_red: "Rot",
     label_yellow: "Gelb",
     label_green: "Grün",
@@ -717,6 +724,7 @@ pub static TEXTS: Texts = Texts {
     help_panels: [
         ("F10", "Menüleiste"),
         ("T", "Filterleiste"),
+        ("Umschalt+T", "Filter kurz aus / wieder an"),
         ("Tab", "Detailansicht"),
         ("F6", "Filmstreifen"),
         ("Umschalt+Tab", "Alle vier Leisten"),

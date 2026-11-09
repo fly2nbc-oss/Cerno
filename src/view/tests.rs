@@ -943,3 +943,77 @@ fn ids_round_trip() {
     }
     assert_eq!(PhotoFilter::from_stored(&filter.id()), filter);
 }
+
+/// `Shift+T` sets the whole filter aside and brings back exactly that one; the sort is no
+/// filter and stays as it is now. Every field but the sort is a filter: a field added to
+/// `ViewOptions` must be named in `everything` below (the literal has no `..`, so it won't
+/// compile without it) – and then it counts for `is_filtered`, "Show all" and the aside
+/// without a line of its own, or this test fails.
+#[test]
+fn the_whole_filter_goes_aside_and_comes_back() {
+    let mut filter = PhotoFilter::default();
+    filter.set(FilterKind::Stars(4), true);
+    filter.set(FilterKind::Blurry, true);
+    let everything = ViewOptions {
+        sort: SortKey::Taken,
+        filter,
+        similar: true,
+        media: Media::Photos,
+        top: Some(50),
+        hide_rejected: true,
+        name_list: true,
+    };
+    let unfiltered = ViewOptions {
+        sort: SortKey::Taken,
+        ..ViewOptions::default()
+    };
+    assert!(!unfiltered.is_filtered(), "the sort is no filter");
+    // Each filter alone counts.
+    let single = [
+        ViewOptions {
+            filter,
+            ..unfiltered
+        },
+        ViewOptions {
+            similar: true,
+            ..unfiltered
+        },
+        ViewOptions {
+            media: Media::Videos,
+            ..unfiltered
+        },
+        ViewOptions {
+            top: Some(10),
+            ..unfiltered
+        },
+        ViewOptions {
+            hide_rejected: true,
+            ..unfiltered
+        },
+        ViewOptions {
+            name_list: true,
+            ..unfiltered
+        },
+    ];
+    for options in single {
+        assert!(options.is_filtered(), "{options:?}");
+        let mut cleared = options;
+        cleared.clear_filters();
+        assert_eq!(cleared, unfiltered, "Show all ends {options:?}");
+    }
+
+    let mut options = everything;
+    let aside = options.set_filters_aside();
+    assert_eq!(aside, everything);
+    assert_eq!(options, unfiltered, "every filter off, the sort stays");
+    // The sort changed meanwhile: it stays; everything else is what was set aside.
+    options.sort = SortKey::Rating;
+    options.restore_filters(aside);
+    assert_eq!(
+        options,
+        ViewOptions {
+            sort: SortKey::Rating,
+            ..everything
+        }
+    );
+}

@@ -351,6 +351,11 @@ pub struct Texts {
     pub filtered_position: fn(usize, usize, usize) -> String,
     /// Its tooltip.
     pub filtered_hint: &'static str,
+    /// The info bar's mark while `Shift+T` has set the filter aside (the key, named in this
+    /// language), its tooltip, and the hint when there is no filter to set aside.
+    pub filter_aside_mark: fn(&str) -> String,
+    pub filter_aside_hint: fn(&str) -> String,
+    pub filter_aside_none: fn(&str) -> String,
     pub label_red: &'static str,
     pub label_yellow: &'static str,
     pub label_green: &'static str,
@@ -768,7 +773,7 @@ pub struct Texts {
     pub help_cull: [HelpRow; 6],
     pub help_video: [HelpRow; 5],
     pub help_view: [HelpRow; 8],
-    pub help_panels: [HelpRow; 6],
+    pub help_panels: [HelpRow; 7],
     pub help_edit: [HelpRow; 5],
     pub help_more: [HelpRow; 3],
 }
@@ -894,6 +899,13 @@ mod tests {
                 filtered.starts_with("3 / 12") && filtered.ends_with("340"),
                 "{name}"
             );
+            for aside in [
+                t.filter_aside_mark,
+                t.filter_aside_hint,
+                t.filter_aside_none,
+            ] {
+                assert!(aside("Shift+T").contains("Shift+T"), "{name}");
+            }
             assert!((t.deleting)(3).contains(".originals"), "{name}");
             let series = (t.series_position)(3, 7);
             assert!(series.contains('3') && series.contains('7'), "{name}");

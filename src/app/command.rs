@@ -155,6 +155,8 @@ pub(super) enum Command {
     ZoomToFace(usize),
     /// `M`: only photos like this one, or all again.
     Similar,
+    /// `Shift+T`, the info bar's mark: the whole filter aside – every photo – or back.
+    FilterAside,
     /// The filter bar's *Refresh order*.
     RefreshOrder,
 
@@ -387,6 +389,7 @@ impl CernoApp {
             Command::FaceGrid => self.toggle_face_grid(),
             Command::ZoomToFace(index) => self.zoom_to_face(index),
             Command::Similar => self.toggle_similar(ctx),
+            Command::FilterAside => self.toggle_filter_aside(ctx),
             Command::RefreshOrder => self.refresh_order(ctx),
             Command::Copy => self.begin_transfer(ctx, TransferMode::Copy),
             Command::Move => self.begin_transfer(ctx, TransferMode::Move),

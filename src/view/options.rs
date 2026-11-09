@@ -150,24 +150,39 @@ impl ViewOptions {
     }
 
     /// Whether anything hides photos: a box, "without ✕", "similar photos", photos / videos
-    /// only or Top N.
+    /// only, the file list or Top N – every field but the sort is a filter, so one added later
+    /// counts without a line here.
     pub fn is_filtered(&self) -> bool {
-        !self.filter.is_all()
-            || self.hide_rejected
-            || self.name_list
-            || self.similar
-            || self.media != Media::All
-            || self.top.is_some()
+        *self != self.unfiltered()
     }
 
     /// "Show all": every filter off, the sort stays.
     pub fn clear_filters(&mut self) {
-        self.filter.clear();
-        self.hide_rejected = false;
-        self.name_list = false;
-        self.similar = false;
-        self.media = Media::All;
-        self.top = None;
+        *self = self.unfiltered();
+    }
+
+    /// The same sort without any filter.
+    fn unfiltered(&self) -> Self {
+        Self {
+            sort: self.sort,
+            ..Self::default()
+        }
+    }
+
+    /// `Shift+T`: the whole filter set aside – every field but the sort, so a filter added
+    /// later goes along – and every filter off. It comes back with [`Self::restore_filters`].
+    pub fn set_filters_aside(&mut self) -> ViewOptions {
+        let aside = *self;
+        self.clear_filters();
+        aside
+    }
+
+    /// The filter set aside comes back, exactly; the sort stays as it is now.
+    pub fn restore_filters(&mut self, aside: ViewOptions) {
+        *self = Self {
+            sort: self.sort,
+            ..aside
+        };
     }
 
     /// A box ticked or unticked. Ticking ✕ ends "without ✕" – both at once would hide every

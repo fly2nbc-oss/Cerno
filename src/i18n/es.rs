@@ -146,6 +146,15 @@ pub static TEXTS: Texts = Texts {
     photos_badge_tooltip: "Cuántas fotos muestra ahora el filtro – «Fotos visibles» de la barra de menú actúa exactamente sobre estas.",
     filtered_position: |pos, shown, total| format!("{pos} / {shown} de {total}"),
     filtered_hint: "Un filtro oculta fotos. Haz clic o pulsa T para mostrar la barra de filtros.",
+    filter_aside_mark: |key| format!("Filtro desactivado – {key}"),
+    filter_aside_hint: |key| {
+        format!(
+            "El filtro está apartado: se ven todas las fotos. Haz clic o pulsa {key} para recuperarlo."
+        )
+    },
+    filter_aside_none: |key| {
+        format!("No hay ningún filtro activo – {key} no tiene nada que apartar.")
+    },
     label_red: "Rojo",
     label_yellow: "Amarillo",
     label_green: "Verde",
@@ -713,6 +722,7 @@ pub static TEXTS: Texts = Texts {
     help_panels: [
         ("F10", "Barra de menú"),
         ("T", "Barra de filtros"),
+        ("Mayús+T", "Filtro fuera un momento / de vuelta"),
         ("Tab", "Panel de detalles"),
         ("F6", "Tira de miniaturas"),
         ("Mayús+Tab", "Los cuatro paneles"),
