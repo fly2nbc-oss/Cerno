@@ -491,11 +491,7 @@ fn camera_button(ui: &mut Ui, row: &CameraRow) -> bool {
         colour,
     );
     let tooltip = match row.blocked {
-        Some(reason) => format!(
-            "{}
-{reason}",
-            t.camera_only_this
-        ),
+        Some(reason) => format!("{}\n{reason}", t.camera_only_this),
         None if row.on => t.camera_show_all.to_owned(),
         None => t.camera_only_this.to_owned(),
     };

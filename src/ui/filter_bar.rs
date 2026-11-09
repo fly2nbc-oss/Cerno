@@ -1,7 +1,7 @@
 //! The filter bar at the top. Left, what is shown: photos, videos or the best N photos, one
-//! camera or all, then the filter groups (rating, colour, blurry / duplicates) and "similar photos". Right, what
-//! comes of it: the analysis status, the sort, the count with its reset. What acts on the
-//! photos shown is the menu bar's *Visible photos* (since 1.11).
+//! camera or all, then the filter groups (rating, colour, blurry / duplicates) and "similar
+//! photos". Right, what comes of it: the analysis status, the sort, the count with its reset.
+//! What acts on the photos shown is the menu bar's *Visible photos* (since 1.11).
 
 use eframe::egui::containers::scroll_area::ScrollBarVisibility;
 use eframe::egui::{
@@ -302,11 +302,7 @@ fn camera_box(
     };
     let response = response
         .on_disabled_hover_text(reason)
-        .on_hover_text(format!(
-            "{label}
-{}",
-            t.camera_tooltip
-        ));
+        .on_hover_text(format!("{label}\n{}", t.camera_tooltip));
     if options.camera.is_some() {
         ui.painter().rect_stroke(
             response.rect,
