@@ -7,6 +7,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **Only one camera's photos** – with a second shooter or two bodies in one folder, the filter bar's new camera box shows only one camera's photos, together with the other filters; the list names each camera with its number of photos. Two bodies of the same model are listed apart by the last digits of their serial number when the photos state it. In Details › File a button beside the camera does the same for the photo shown, and a second click shows every camera again. The choice is not saved and ends when another folder opens. Every photo is read once more after the update (without decoding it) to learn its serial number.
+- **Filter off for a moment (`Shift+T`)** – every photo of the folder shows; `Shift+T` again, or a click on the grey *Filter off – Shift+T* at the start of the info bar's second row, brings back exactly the same filter: the boxes, *without ✕*, photos / videos, similar photos, the file list, the camera and Top N with the photos it had picked. The photo on screen stays where the filter shows it. Setting a filter meanwhile drops the one set aside; it is never saved.
+- **A RAW preview too small to judge sharpness says so** – some cameras put only a small JPEG into their RAW files (Sony ARW about 1616 px, early CR3). When the preview is below 3000 px on its long side, the info bar's *Zoom 100 % of the preview* turns orange while you zoom and names the preview's size on hover, with the tip to shoot RAW+JPG; Details › File adds *Sharpness check: preview too small* under the size. Cerno still doesn't develop RAW files.
+
+### Fixed
+
+- **Marks that could not be written are no longer lost** – a star, ✕, colour, comment or keywords that couldn't go into the file (locked by another program, read-only, a network drive or card briefly gone) used to show in Cerno while the file never got it, and the error vanished with the next star. Cerno now keeps them and tries again after 5 s, 30 s and 2 min, when a folder opens, before copying, moving or deleting the photo, and before closing. The info bar says *2 marks not saved* in orange; a click names the files and the reason, with *Try again* (Enter). Closing Cerno with marks still not written asks first (*Try again* / *Quit anyway*).
+
+### Under the hood
+
+- **rustls-webpki, webpki-roots and zip 9** updated for six advisories (RUSTSEC-2026-0367/68/69/81/82/83).
+
 ## [1.13.0] – 2026-10-15
 
 A calmer, clearer look across the whole window, a navigator while zoomed, a hint when a filter hides photos, and *Show in Explorer*.

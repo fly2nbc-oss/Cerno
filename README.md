@@ -59,6 +59,7 @@ The Windows files are not signed yet: SmartScreen asks once (*More info* → *Ru
 | `C` | Compare: this photo stays on the left, browse on the right |
 | `Shift+C` | Four photos at once – the frame is the current photo, `↑`/`↓` a row |
 | `F10` / `T` / `Tab` / `F6` / `F7` | Menu bar / filter bar / details / filmstrip / grid |
+| `Shift+T` | Filter off for a moment – again: the same filter back |
 | `Ctrl+Tab` | The details panel's tabs: values, description |
 | `G` | All faces large – a click zooms to one |
 | `Ctrl+U` | Include subfolders (on / off) |
