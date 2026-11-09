@@ -91,6 +91,14 @@ impl Notice {
 }
 
 impl CernoApp {
+    /// The notice's text while it is on screen (it is drawn at the top of the photo area).
+    pub(super) fn notice_on_screen(&self) -> Option<&str> {
+        self.notice
+            .as_ref()
+            .filter(|notice| notice.opacity(Instant::now()).is_some())
+            .map(|notice| notice.text.as_str())
+    }
+
     /// The deletion countdown and the copy progress – stacked above a video's play button –
     /// then the notice. Marks that could not be written show in the info bar
     /// (`app::unsaved`).

@@ -220,6 +220,10 @@ impl CernoApp {
             grouped,
             step: self.viewer.grid_step,
             follow,
+            // A notice stands where the floating date would: the date goes below it.
+            notice_bottom: self
+                .notice_on_screen()
+                .map(|text| overlays::notice_rect(ui.painter(), rect, text).bottom()),
         };
         // The floating date follows a camera set right, like the info bar.
         let taken_ms = |i: usize| {

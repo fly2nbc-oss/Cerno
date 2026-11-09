@@ -26,8 +26,10 @@ const ZOOM_PER_STEP: f32 = 0.18;
 /// the browse arrows over the photo.
 const DATE_SHOWN: f32 = 1.2;
 const DATE_FADE: f32 = 0.4;
-/// The date pill's top this far below the grid's top edge.
+/// The date pill's top this far below the grid's top edge – or below a notice standing there.
 const DATE_INSET: f32 = 12.0;
+/// The gap between a notice at the top (`overlays::notices`) and the date pill below it.
+const DATE_BELOW_NOTICE: f32 = 8.0;
 
 /// Where the cells go, in content coordinates (0, 0 is the top left of the scrolled content).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -134,6 +136,9 @@ pub struct GridOutput {
     /// The floating date this frame and its opacity – only while the grid scrolls in
     /// capture-time order.
     pub date: Option<(String, f32)>,
+    /// Where the floating date was painted (tests).
+    #[cfg(test)]
+    pub date_rect: Option<Rect>,
 }
 
 /// The floating date's text: the day (`12.09.2026`), or *no date* for photos without a capture
@@ -201,6 +206,9 @@ pub struct Shown<'a> {
     /// Scroll the current photo into view – when it moved by the keyboard, not while the user
     /// scrolls with the wheel.
     pub follow: bool,
+    /// The bottom of a notice at the top of the grid (`overlays::notice_rect`) while one shows:
+    /// the floating date goes below it instead of under it.
+    pub notice_bottom: Option<f32>,
 }
 
 /// Draws the grid into `rect`, with `info` for each cell on screen.
@@ -218,6 +226,7 @@ pub fn draw(
         grouped,
         step,
         follow,
+        notice_bottom,
     } = *shown;
     ui.painter().rect_filled(rect, 0.0, tokens::CANVAS);
     let layout = Layout::new(rect.width(), step, ui.ctx().pixels_per_point());
@@ -298,7 +307,12 @@ pub fn draw(
             let alpha = date_alpha(rest);
             if alpha > 0.01 {
                 let label = date_label(i18n::t(), taken_ms(cell));
-                date_pill(ui, rect, &label, alpha);
+                let top = date_top(rect, notice_bottom);
+                let _pill = date_pill(ui, rect, top, &label, alpha);
+                #[cfg(test)]
+                {
+                    out.date_rect = Some(_pill);
+                }
                 out.date = Some((label, alpha));
             }
             // Fade out without waiting for the next input: woken when the fade begins, then
@@ -319,17 +333,21 @@ pub fn draw(
     out
 }
 
+/// The floating date's top: [`DATE_INSET`] below the grid's top edge, or below a notice that
+/// stands there (it is drawn at the same place, `overlays::notices`).
+fn date_top(rect: Rect, notice_bottom: Option<f32>) -> f32 {
+    let top = rect.top() + DATE_INSET;
+    notice_bottom.map_or(top, |bottom| top.max(bottom + DATE_BELOW_NOTICE))
+}
+
 /// The floating date: a pill at the top centre of the grid, above the scrolled cells. Only
-/// painted, never `interact`ed – the cell under it keeps its click.
-fn date_pill(ui: &Ui, rect: Rect, label: &str, alpha: f32) {
+/// painted, never `interact`ed – the cell under it keeps its click. Where it was painted.
+fn date_pill(ui: &Ui, rect: Rect, top: f32, label: &str, alpha: f32) -> Rect {
     let mut painter = ui.painter().with_clip_rect(rect);
     painter.set_opacity(alpha);
     let galley = painter.layout_no_wrap(label.to_owned(), theme::strong(text::BODY), tokens::TEXT);
     let size = galley.size() + vec2(28.0, 12.0);
-    let pill = Rect::from_min_size(
-        pos2(rect.center().x - size.x / 2.0, rect.top() + DATE_INSET),
-        size,
-    );
+    let pill = Rect::from_min_size(pos2(rect.center().x - size.x / 2.0, top), size);
     theme::paint_raised(
         &painter,
         pill,
@@ -338,6 +356,7 @@ fn date_pill(ui: &Ui, rect: Rect, label: &str, alpha: f32) {
         tokens::LINE,
     );
     painter.galley(pill.min + vec2(14.0, 6.0), galley, tokens::TEXT);
+    pill
 }
 
 /// Size steps from Ctrl + mouse wheel over the grid (egui turns it into zoom). Fractions carry
@@ -402,6 +421,7 @@ mod tests {
                 grouped: false,
                 step: 1,
                 follow: false,
+                notice_bottom: None,
             };
             let mut output = ctx.run_ui(
                 RawInput {
@@ -460,6 +480,7 @@ mod tests {
                 grouped,
                 step: 1,
                 follow: true,
+                notice_bottom: None,
             };
             let mut output = ctx.run_ui(
                 RawInput {
@@ -497,6 +518,72 @@ mod tests {
         for _ in 0..40 {
             assert_eq!(frame(0, false, 0.05).date, None);
         }
+    }
+
+    /// A notice stands where the floating date would (`overlays::notices`, 12 px below the
+    /// top, centred): while one shows, the date goes below it instead of under it.
+    #[test]
+    fn the_floating_date_goes_below_a_notice() {
+        let ctx = crate::theme::test_context();
+        let db = Arc::new(crate::db::Db::open_in_memory().unwrap());
+        let thumbs = Thumbs::new(ctx.clone(), db);
+        let paths: Vec<PathBuf> = (0..80).map(|i| PathBuf::from(format!("{i}.jpg"))).collect();
+        let rect = Rect::from_min_size(pos2(0.0, 40.0), vec2(1000.0, 600.0));
+        let mut time = 0.0;
+        let mut pill = |notice_bottom: Option<f32>| {
+            let mut found = None;
+            // The cursor far down: the grid scrolls it into view, and the date floats.
+            for current in [0, 30] {
+                for _ in 0..20 {
+                    time += 0.05;
+                    let mut out = GridOutput::default();
+                    let shown = Shown {
+                        paths: &paths,
+                        current,
+                        grouped: true,
+                        step: 1,
+                        follow: true,
+                        notice_bottom,
+                    };
+                    let mut output = ctx.run_ui(
+                        RawInput {
+                            screen_rect: Some(Rect::from_min_size(
+                                pos2(0.0, 0.0),
+                                vec2(1000.0, 700.0),
+                            )),
+                            time: Some(time),
+                            ..Default::default()
+                        },
+                        |ui| {
+                            out = draw(
+                                ui,
+                                rect,
+                                &shown,
+                                &thumbs,
+                                |_| plain_cell(),
+                                |_| Some(1_789_171_200_000),
+                            )
+                        },
+                    );
+                    output.textures_delta.clear();
+                    found = found.or(out.date_rect);
+                }
+            }
+            found.expect("the date floats")
+        };
+        let alone = pill(None);
+        assert_eq!(alone.top(), rect.top() + DATE_INSET);
+        let notice = crate::ui::overlays::notice_rect(
+            &ctx.layer_painter(eframe::egui::LayerId::background()),
+            rect,
+            "A notice of a line",
+        );
+        assert_eq!(notice.top(), alone.top(), "the same place");
+        let below = pill(Some(notice.bottom()));
+        assert!(below.top() >= notice.bottom() + DATE_BELOW_NOTICE - 0.01);
+        assert!(!below.intersects(notice), "{below:?} {notice:?}");
+        assert_eq!(below.center().x, alone.center().x, "still centred");
+        assert_eq!(date_top(rect, Some(rect.top())), rect.top() + DATE_INSET);
     }
 
     #[test]

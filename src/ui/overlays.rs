@@ -1,8 +1,10 @@
 //! Drawn over the photo area: compare labels, the deletion countdown, the copy progress,
 //! notices, the drop hint, placeholder text and the language flag.
 
+use std::sync::Arc;
+
 use eframe::egui::{
-    Align2, Color32, CursorIcon, FontId, Id, Painter, Pos2, Rect, Response, Sense, Stroke,
+    Align2, Color32, CursorIcon, FontId, Galley, Id, Painter, Pos2, Rect, Response, Sense, Stroke,
     StrokeKind, Ui, pos2, vec2,
 };
 
@@ -288,17 +290,11 @@ fn bar_pill(ui: &Ui, centre: Pos2, text: String, share: f32, colour: Color32) {
     );
 }
 
-/// A message at the top of the photo area: `(text, is_error, opacity)`. Returns whether it was
-/// clicked (which dismisses it).
-pub fn notices(ui: &Ui, rect: Rect, message: Option<(&str, bool, f32)>) -> bool {
-    let Some((text, is_error, opacity)) = message else {
-        return false;
-    };
-    let text = text.to_owned();
-    let mut painter = ui.painter().clone();
-    painter.set_opacity(opacity);
+/// A notice's text laid out for the photo area `rect`, and where its card stands: centred,
+/// 12 px below the top.
+fn notice_layout(painter: &Painter, rect: Rect, text: &str) -> (Arc<Galley>, Rect) {
     let galley = painter.layout(
-        text,
+        text.to_owned(),
         FontId::proportional(text::BODY),
         tokens::TEXT,
         (rect.width() - 64.0).max(120.0),
@@ -308,6 +304,24 @@ pub fn notices(ui: &Ui, rect: Rect, message: Option<(&str, bool, f32)>) -> bool 
         pos2(rect.center().x - size.x / 2.0, rect.top() + 12.0),
         size,
     );
+    (galley, pill)
+}
+
+/// Where [`notices`] puts a notice of `text` over `rect` – the grid's floating date goes
+/// below it.
+pub fn notice_rect(painter: &Painter, rect: Rect, text: &str) -> Rect {
+    notice_layout(painter, rect, text).1
+}
+
+/// A message at the top of the photo area: `(text, is_error, opacity)`. Returns whether it was
+/// clicked (which dismisses it).
+pub fn notices(ui: &Ui, rect: Rect, message: Option<(&str, bool, f32)>) -> bool {
+    let Some((text, is_error, opacity)) = message else {
+        return false;
+    };
+    let mut painter = ui.painter().clone();
+    painter.set_opacity(opacity);
+    let (galley, pill) = notice_layout(&painter, rect, text);
     let (fill, border) = if is_error {
         (tokens::STATUS_ERROR_BG, tokens::STATUS_ERROR)
     } else {
