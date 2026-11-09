@@ -153,8 +153,13 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
+      # The installer (527 MB) is kept between runs: its server sometimes cuts transfers off.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/gstreamer-download
+          key: gstreamer-installer-1.28.7
       - name: GStreamer
-        run: ./packaging/windows/install-gstreamer.ps1
+        run: ./packaging/windows/install-gstreamer.ps1 -Download "${{ runner.temp }}/gstreamer-download"
       # A runner has no GPU: D3D12 runs on WARP, Windows' software device. `test_rounds`
       # repeats the tests like on Linux.
       - name: Lint & test (video)
@@ -237,8 +242,12 @@ jobs:
         run: cargo install cargo-packager --version 0.11.8 --locked
       # GStreamer to build against and to ship; never on PATH here, so the package's own
       # self-test (build.ps1) and the installed exe find only what they bring along.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/gstreamer-download
+          key: gstreamer-installer-1.28.7
       - name: GStreamer
-        run: ./packaging/windows/install-gstreamer.ps1
+        run: ./packaging/windows/install-gstreamer.ps1 -Download "${{ runner.temp }}/gstreamer-download"
       - name: Build (release, HEIC, video)
         run: |
           $env:PKG_CONFIG = "$env:GSTREAMER_ROOT\bin\pkg-config.exe"
