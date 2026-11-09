@@ -75,12 +75,13 @@ winresource = "0.1.34"
 
 # Windows: `cargo install cargo-vcpkg && cargo vcpkg build` builds libheif into target/vcpkg.
 # Dynamic triplet so libheif and libde265 (LGPL-3.0) stay replaceable DLLs next to the exe.
-# `core` leaves out the default x265 *encoder* (GPL); decoding uses libde265.
+# `core` leaves out the default x265 *encoder* (GPL); `libde265` is the HEVC decoder – since
+# libheif 1.23.6 the port builds it only as this feature (a default one, which `core` turns off).
 # `VCPKGRS_DYNAMIC=1` is set in `.cargo/config.toml`; `build.rs` copies the DLLs.
 [package.metadata.vcpkg]
 git = "https://github.com/microsoft/vcpkg"
-rev = "b30c88338f4ec47a322a81f4113d7385702e03a7" # master 2026-09-22: libheif 1.23.5, libde265 1.1.3 (no vcpkg tag since 2026.07.29)
-dependencies = ["libheif[core]"]
+rev = "d7b4974a4199586fda8201d74f80cacaaa27368d" # master 2026-10-26: libheif 1.23.7, libde265 1.1.3 (the newest tag, 2026.10.16, has 1.23.5)
+dependencies = ["libheif[core,libde265]"]
 
 [package.metadata.vcpkg.target]
 x86_64-pc-windows-msvc = { triplet = "x64-windows" }

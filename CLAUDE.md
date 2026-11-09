@@ -12,7 +12,7 @@ cargo fmt --all -- --check
 cargo clippy --all-targets --features heic,video -- -D warnings  # also run once without features
 cargo test --features heic,video
 cargo test natural_order                                   # single test
-CERNO_TEST_HEIC=<file.heic> cargo test --features heic -- --include-ignored   # + HEIC rating round trip
+CERNO_TEST_HEIC=<file.heic> cargo test --features heic -- --ignored --nocapture heic   # HEIC decode (prints the libheif version) + rating round trip
 ```
 
 `--features video` needs GStreamer. Windows: `pwsh packaging/windows/install-gstreamer.ps1` once (the pinned official MSVC build, per user, no admin), then set `PKG_CONFIG` and `PKG_CONFIG_PATH` – and `PATH` for `cargo test` – as its help text shows. `cerno.exe` itself finds that installation without `PATH` (`engine::use_installed`), also when started from Explorer. Linux: `apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav`.
@@ -26,10 +26,12 @@ HEIC on Windows needs libheif from vcpkg in `target/vcpkg` (dynamic triplet `x64
 ```bash
 cargo install cargo-vcpkg && cargo vcpkg build     # clones target/vcpkg, then fails at bootstrap
 target\vcpkg\bootstrap-vcpkg.bat -disableMetrics
-target\vcpkg\vcpkg.exe install "libheif[core]:x64-windows"
+target\vcpkg\vcpkg.exe install "libheif[core,libde265]:x64-windows"
 cargo clean -p libheif-sys
 cargo build --release --features heic
 ```
+
+The pin (`[package.metadata.vcpkg] rev` in `Cargo.toml`) is a vcpkg master commit – libheif **1.23.7**, libde265 1.1.3 since ticket CER-41 (vcpkg `d7b4974`, 2026-10-26; the newest vcpkg tag, 2026.10.16, still has 1.23.5). **Since libheif 1.23.6 the port's HEVC decoder is its own feature**, `libde265` (a default one, which `core` turns off): `libheif[core]` alone builds a `heif.dll` without `libde265.dll` that opens every HEIC and decodes none, so `build.rs` stops when `libde265.dll` is missing. Raising the pin: the comment beside it and `licenses/heic.txt` (versions, source links, revision); CI's vcpkg cache key reads the revision from `Cargo.toml`, so CI builds libheif once more by itself. A local `target/vcpkg` moves to the new revision with `git -C target/vcpkg fetch --depth 1 https://github.com/microsoft/vcpkg <rev>`, `git -C target/vcpkg checkout FETCH_HEAD` and the bootstrap again; then `target\vcpkg\vcpkg.exe remove --outdated --recurse` (vcpkg keeps an installed package as it is otherwise), the install above, `cargo clean -p libheif-sys` and the build. `heif.dll` carries no version resource – the HEIC test above prints the version it loaded.
 
 Packages (what CI's `package-windows` / `package-linux` jobs run, after the HEIC release build):
 

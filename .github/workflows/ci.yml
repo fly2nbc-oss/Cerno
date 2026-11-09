@@ -217,8 +217,8 @@ jobs:
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .vcpkg-cache
-          key: vcpkg-${{ steps.vcpkg.outputs.rev }}-x64-windows-libheif-core-${{ steps.vcpkg.outputs.image }}
-          restore-keys: vcpkg-${{ steps.vcpkg.outputs.rev }}-x64-windows-libheif-core-
+          key: vcpkg-${{ steps.vcpkg.outputs.rev }}-x64-windows-libheif-core-libde265-${{ steps.vcpkg.outputs.image }}
+          restore-keys: vcpkg-${{ steps.vcpkg.outputs.rev }}-x64-windows-libheif-core-libde265-
       - name: libheif (vcpkg, dynamic triplet)
         env:
           REV: ${{ steps.vcpkg.outputs.rev }}
@@ -232,7 +232,7 @@ jobs:
           git -C target/vcpkg checkout -q FETCH_HEAD
           New-Item -ItemType Directory -Force .vcpkg-cache | Out-Null
           target\vcpkg\bootstrap-vcpkg.bat -disableMetrics
-          target\vcpkg\vcpkg.exe install "libheif[core]:x64-windows"
+          target\vcpkg\vcpkg.exe install "libheif[core,libde265]:x64-windows"
       - name: cargo-packager
         run: cargo install cargo-packager --version 0.11.8 --locked
       # GStreamer to build against and to ship; never on PATH here, so the package's own

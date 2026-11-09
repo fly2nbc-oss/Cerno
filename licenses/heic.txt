@@ -10,17 +10,17 @@ You may replace heif.dll and libde265.dll with other builds that keep a
 compatible interface. Cerno then uses the versions you supply.
 
     Component    Version    License
-    libheif      1.23.5     LGPL-3.0-only
+    libheif      1.23.7     LGPL-3.0-only
     libde265     1.1.3      LGPL-3.0-only
 
 Corresponding source of these versions:
 
-    https://github.com/strukturag/libheif/archive/refs/tags/v1.23.5.tar.gz
+    https://github.com/strukturag/libheif/archive/refs/tags/v1.23.7.tar.gz
     https://github.com/strukturag/libde265/archive/refs/tags/v1.1.3.tar.gz
 
-Built with vcpkg revision b30c88338f4ec47a322a81f4113d7385702e03a7
-(master of 2026-09-22), port feature libheif[core]. That feature set does not
-include the x265 encoder (GPL).
+Built with vcpkg revision d7b4974a4199586fda8201d74f80cacaaa27368d
+(master of 2026-10-26), port features libheif[core,libde265]. That feature
+set does not include the x265 encoder (GPL).
 
 On Linux, Cerno links the system's libheif. The .deb package depends on
 the distribution's libheif and libde265 packages. The AppImage bundles

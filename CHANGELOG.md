@@ -26,6 +26,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 - **A removed keyword stays removed in Lightroom** – Lightroom keeps keyword hierarchies (`Places|Lake Constance`) in a field of its own. Removing a keyword in Cerno now also removes the hierarchy entries that end in it, in the photo and in a RAW's `.xmp` file, so Lightroom's *Read Metadata from File* no longer brings it back. Keywords added in Cerno stay plain; a photo without a hierarchy gets none.
 
+### Security
+
+- On Windows, HEIC photos are decoded with libheif 1.23.7 instead of 1.23.5 (libde265 stays 1.1.3). It fixes flaws a crafted HEIC file could trigger, among them a deadlock while a grid photo decodes – the way phones store their photos – and files of a few kilobytes that kept the processor busy for more than a minute; such a file is now refused with an error. Every step of the colour conversion is checked as well. The Linux packages use the distribution's libheif.
+
 ### Under the hood
 
 - **The build scripts are checked** – CI lints the workflow (actionlint), the shell scripts (shellcheck) and the PowerShell scripts (PSScriptAnalyzer) and validates the desktop file and the AppStream metadata, on every run. The Windows package checks that every program file is 64-bit and `cerno.exe` a windowed program, and the Windows folder, the AppImage and the `.deb` must answer `--version` before they ship.
