@@ -215,9 +215,12 @@ pub static TEXTS: Texts = Texts {
     button_help: "Hilfe",
     view_photo: "Foto",
     view_grid: "Raster",
+    view_scenes: "Szenen",
     view_faces: "Gesichter",
     faces_video: "Videos werden nicht nach Gesichtern durchsucht",
     filmstrip_in_grid: "Im Raster nicht nötig – F7 zurück zum Foto",
+    filmstrip_in_scenes: "In den Szenen nicht nötig – F8 zurück zum Foto",
+    scene_untimed: "Ohne Aufnahmezeit",
     faces_button: |n| {
         if n == 1 {
             "1 Gesicht groß zeigen (G)".to_owned()
@@ -683,6 +686,7 @@ pub static TEXTS: Texts = Texts {
                 "Das Mausrad über dem Filmstreifen blättert durch die Fotos, über dem Foto zoomt es.",
                 "Einen Ordner aufs Fenster ziehen öffnet ihn. → gedrückt halten läuft durch die Fotos.",
                 "Im Raster (F7) rücken ↑ ↓ eine Reihe, + − ändern die Größe, Enter öffnet das Foto.",
+                "In den Szenen (F8) beginnt jede Szene eine neue Reihe; Bild↑ Bild↓ springen von Szene zu Szene.",
                 "Ausrichten (S): Mausrad und Pfeile drehen, Umschalt feiner. Ausschnitt (R): Rahmen aufziehen oder mit den Pfeilen schieben, +/− ändern die Größe, A wechselt das Format, X dreht Quer/Hoch.",
                 "Die Menüleiste (F10 oder der Knopf unten rechts) hält, was auf dieses Foto, die sichtbaren Fotos und die Ansicht wirkt, dazu die Einstellungen – alles mit der Maus.",
                 "In der Beschreibung setzt Enter den Cursor ins Stichwortfeld.",
@@ -752,6 +756,7 @@ pub static TEXTS: Texts = Texts {
         ("Ziehen", "Gezoomtes Foto verschieben"),
         ("O", "Prüfen: Kanten, Belichtung"),
         ("F7", "Raster aller Fotos"),
+        ("F8", "Szenen: ähnliche Fotos gruppiert"),
         ("G", "Alle Gesichter groß"),
         ("F, F11", "Vollbild"),
     ],

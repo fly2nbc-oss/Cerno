@@ -236,9 +236,12 @@ pub static TEXTS: Texts = Texts {
     button_help: "Aide",
     view_photo: "Photo",
     view_grid: "Grille",
+    view_scenes: "Scènes",
     view_faces: "Visages",
     faces_video: "Les vidéos ne sont pas analysées pour les visages",
     filmstrip_in_grid: "Inutile dans la grille – F7 revient à la photo",
+    filmstrip_in_scenes: "Inutile dans les scènes – F8 revient à la photo",
+    scene_untimed: "Sans heure de prise de vue",
     faces_button: |n| {
         if n == 1 {
             "Afficher 1 visage en grand (G)".to_owned()
@@ -706,6 +709,7 @@ pub static TEXTS: Texts = Texts {
                 "La molette sur la pellicule fait défiler les photos ; sur la photo, elle zoome.",
                 "Déposez un dossier sur la fenêtre pour l'ouvrir. Maintenez → pour faire défiler les photos.",
                 "Dans la grille (F7), ↑ ↓ changent de ligne, + − la taille, Entrée ouvre la photo.",
+                "Dans les scènes (F8), chaque scène commence une ligne ; Pg préc et Pg suiv sautent de scène en scène.",
                 "Redresser (S) : la molette et les flèches tournent, Maj plus fin. Recadrer (R) : tracez un cadre ou déplacez-le avec les flèches, +/− change sa taille, A le format, X bascule paysage/portrait.",
                 "La barre de menu (F10 ou le bouton en bas à droite) réunit ce qui agit sur cette photo, les photos affichées et la vue, plus les réglages – tout à la souris.",
                 "Dans la description, Entrée place le curseur dans le champ des mots-clés.",
@@ -775,6 +779,7 @@ pub static TEXTS: Texts = Texts {
         ("Glisser", "Déplacer la photo zoomée"),
         ("O", "Contrôle : netteté, écrêtage"),
         ("F7", "Grille de toutes les photos"),
+        ("F8", "Scènes : photos semblables groupées"),
         ("G", "Tous les visages en grand"),
         ("F, F11", "Plein écran"),
     ],

@@ -72,10 +72,10 @@ pub(super) enum Command {
     // Going through the photos.
     Next,
     Prev,
-    /// Page Down / Page Up: one photo on, in the grid one screen.
+    /// Page Down / Page Up: one photo on, in the grid one screen, in the scene view a scene.
     PageDown,
     PageUp,
-    /// `↓` (`down`) or `↑`: a row in the grid and the four-up view.
+    /// `↓` (`down`) or `↑`: a row in the grid, the scene view and the four-up view.
     Row {
         down: bool,
     },
@@ -132,7 +132,9 @@ pub(super) enum Command {
     // The view.
     /// `F7`.
     ToggleGrid,
-    /// The view switcher: the photo, the grid or the faces.
+    /// `F8`: the scene view.
+    ToggleScenes,
+    /// The view switcher: the photo, the grid, the scenes or the faces.
     ShowView(View),
     /// Ctrl + wheel over the grid.
     ResizeGrid(i32),
@@ -286,6 +288,8 @@ impl CernoApp {
         match command {
             Command::Next => self.go_to(ctx, self.current.saturating_add(1), 1),
             Command::Prev => self.go_to(ctx, self.current.saturating_sub(1), -1),
+            Command::PageDown if self.viewer.scenes => self.scene_jump(ctx, true),
+            Command::PageUp if self.viewer.scenes => self.scene_jump(ctx, false),
             Command::PageDown => self.go_to(ctx, self.current.saturating_add(self.page()), 1),
             Command::PageUp => self.go_to(ctx, self.current.saturating_sub(self.page()), -1),
             Command::Row { down } => self.step_row(ctx, down),
@@ -373,7 +377,9 @@ impl CernoApp {
             }
             Command::EditWithOther => self.pick_editor(),
             Command::EditWithChooser => self.edit_with_chooser(),
-            Command::ToggleGrid => self.set_grid(!self.viewer.grid),
+            // From the scene view `F7` goes to the grid, from the grid `F8` to the scenes.
+            Command::ToggleGrid => self.set_grid(!self.viewer.grid || self.viewer.scenes),
+            Command::ToggleScenes => self.set_scenes(!self.viewer.scenes),
             Command::ShowView(view) => self.show_view(view),
             Command::ResizeGrid(steps) => self.resize_grid(steps),
             Command::Compare => self.toggle_compare(ctx),
@@ -437,9 +443,11 @@ impl CernoApp {
         }
     }
 
-    /// `↓`/`↑`: a row in the grid; the four-up view's rows hold two photos.
+    /// `↓`/`↑`: a row in the grid and the scene view; the four-up view's rows hold two photos.
     fn step_row(&mut self, ctx: &egui::Context, down: bool) {
-        if self.viewer.grid {
+        if self.viewer.scenes {
+            self.scene_row(ctx, down);
+        } else if self.viewer.grid {
             let target = crate::ui::grid::row_step(
                 self.viewer.grid_columns,
                 self.current,

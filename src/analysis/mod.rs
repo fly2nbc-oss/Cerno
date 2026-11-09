@@ -156,6 +156,16 @@ impl ScoreBoard {
         self.set(path, known);
     }
 
+    /// Tests: a photo taken at `taken_ms`, as the analysis would find it.
+    #[cfg(test)]
+    pub fn put_taken(&self, path: &Path, taken_ms: i64) {
+        let known = Known {
+            taken_ms: Some(taken_ms),
+            ..self.get(path).unwrap_or_default()
+        };
+        self.set(path, known);
+    }
+
     /// Only a real change bumps the version (the analysis re-confirms known values).
     fn set(&self, path: &Path, known: Known) {
         let previous = self

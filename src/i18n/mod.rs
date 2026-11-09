@@ -421,11 +421,16 @@ pub struct Texts {
     /// The view switcher in the info bar: the photo, the grid, the faces of the photo.
     pub view_photo: &'static str,
     pub view_grid: &'static str,
+    pub view_scenes: &'static str,
     pub view_faces: &'static str,
     /// Why the faces button is greyed out on a video.
     pub faces_video: &'static str,
     /// Why the filmstrip button is greyed out in the grid.
     pub filmstrip_in_grid: &'static str,
+    /// Why the filmstrip button is greyed out in the scene view.
+    pub filmstrip_in_scenes: &'static str,
+    /// The scene view's header over the photos without a capture time (they come last).
+    pub scene_untimed: &'static str,
     /// The faces button's tooltip while the photo has faces large enough to judge.
     pub faces_button: fn(usize) -> String,
     /// The menu button's name: it switches the menu bar on the left.
@@ -812,7 +817,7 @@ pub struct Texts {
     pub help_rate: [HelpRow; 6],
     pub help_cull: [HelpRow; 6],
     pub help_video: [HelpRow; 5],
-    pub help_view: [HelpRow; 8],
+    pub help_view: [HelpRow; 9],
     pub help_panels: [HelpRow; 7],
     pub help_edit: [HelpRow; 5],
     pub help_more: [HelpRow; 3],

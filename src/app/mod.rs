@@ -41,6 +41,7 @@ mod notice;
 mod pairs;
 mod panels;
 mod photos;
+mod scenes;
 mod target;
 mod undo;
 mod unsaved;
@@ -363,6 +364,7 @@ impl CernoApp {
             );
         }
         self.poll_background(&ctx);
+        self.sync_scene_order(&ctx);
 
         let layout = self.layout(window);
         // The grid shows no photo, so it keeps the decode size.
@@ -383,6 +385,7 @@ impl CernoApp {
         };
         self.apply_face_zoom(&frames);
         self.guarded(&ctx, "key", |app| app.handle_keys(&ctx, &frames));
+        self.sync_scene_order(&ctx);
         self.update_video(&ctx);
         // Again: a key can empty the view (a mark took the last photo the filter showed), and
         // the bars of the old layout would then draw cells of photos that are gone.

@@ -25,7 +25,7 @@ const STAR_GAP: f32 = 6.0;
 const BUTTON: f32 = 32.0;
 /// The panel buttons beside help are smaller: they are switched less often.
 const PANEL_BUTTON: f32 = 26.0;
-/// One part of the view switcher (photo, grid, faces): as wide as a button, it is used at
+/// One part of the view switcher (photo, grid, scenes, faces): as wide as a button, it is used at
 /// every pass.
 const SEGMENT: f32 = 32.0;
 const SEGMENT_HEIGHT: f32 = 30.0;
@@ -98,11 +98,13 @@ pub struct InfoBar<'a> {
     pub views: Views,
 }
 
-/// What the photo area shows – the photo, the grid or the faces of the photo – for the view
-/// switcher (the user's choice of option A on 2026-10-10).
+/// What the photo area shows – the photo, the grid, the scenes or the faces of the photo – for
+/// the view switcher (the user's choice of option A on 2026-10-10; the scenes since CER-6).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Views {
     pub grid: bool,
+    /// The grid shows the scene view (`F8`).
+    pub scenes: bool,
     pub faces_open: bool,
     pub faces: FaceButton,
 }
@@ -127,6 +129,7 @@ pub enum FaceButton {
 pub enum View {
     Photo,
     Grid,
+    Scenes,
     Faces,
 }
 
@@ -776,9 +779,9 @@ struct Block {
     separators: [f32; 2],
     /// The bars' buttons, right to left: filmstrip, details, filter bar, menu bar.
     panels: [Rect; 4],
-    /// The view switcher's frame and its parts: photo, grid, faces.
+    /// The view switcher's frame and its parts: photo, grid, scenes, faces.
     switcher: Rect,
-    views: [Rect; 3],
+    views: [Rect; 4],
 }
 
 /// The bars right to left as their buttons stand, so on screen they read left, top, right,
@@ -800,13 +803,13 @@ fn block(rect: Rect) -> Block {
         area
     });
     let second_line = panels[3].left() - GROUP_GAP / 2.0;
-    let width = 3.0 * SEGMENT + 4.0 * SEGMENT_PAD;
+    let width = 4.0 * SEGMENT + 5.0 * SEGMENT_PAD;
     let height = SEGMENT_HEIGHT + 2.0 * SEGMENT_PAD;
     let switcher = Rect::from_min_size(
         pos2(panels[3].left() - GROUP_GAP - width, y - height / 2.0),
         vec2(width, height),
     );
-    let views = [0, 1, 2].map(|k| {
+    let views = [0, 1, 2, 3].map(|k| {
         Rect::from_min_size(
             switcher.min
                 + vec2(
@@ -857,7 +860,15 @@ fn buttons(ui: &Ui, rect: Rect, panels: Panels, views: Views, out: &mut InfoBarO
         let (shown, tooltip, disabled) = match panel {
             Panel::Bottom if views.grid => (
                 false,
-                format!("{} – {}", t.button_filmstrip, t.filmstrip_in_grid),
+                format!(
+                    "{} – {}",
+                    t.button_filmstrip,
+                    if views.scenes {
+                        t.filmstrip_in_scenes
+                    } else {
+                        t.filmstrip_in_grid
+                    }
+                ),
                 true,
             ),
             Panel::Bottom => (
@@ -883,7 +894,7 @@ fn buttons(ui: &Ui, rect: Rect, panels: Panels, views: Views, out: &mut InfoBarO
     places.switcher.left() - 2.0
 }
 
-/// Photo · grid · faces: one group with a faint frame, the current part on the accent's subtle
+/// Photo · grid · scenes · faces: one group with a faint frame, the current part on the accent's subtle
 /// fill with an accent border. The faces part carries how many faces the grid would show, and
 /// is greyed out – with the reason – when it would show none.
 fn view_switcher(ui: &Ui, places: &Block, views: Views, out: &mut InfoBarOutput) {
@@ -897,7 +908,7 @@ fn view_switcher(ui: &Ui, places: &Block, views: Views, out: &mut InfoBarOutput)
     );
     let current = current_view(views);
     let faces_tip = |reason: &str| format!("{} – {reason}", t.view_faces);
-    for (k, (view, cell)) in [View::Photo, View::Grid, View::Faces]
+    for (k, (view, cell)) in [View::Photo, View::Grid, View::Scenes, View::Faces]
         .into_iter()
         .zip(places.views)
         .enumerate()
@@ -906,6 +917,7 @@ fn view_switcher(ui: &Ui, places: &Block, views: Views, out: &mut InfoBarOutput)
             View::Photo if current != View::Photo => (format!("{} (Esc)", t.view_photo), false),
             View::Photo => (t.view_photo.to_owned(), false),
             View::Grid => (format!("{} (F7)", t.view_grid), false),
+            View::Scenes => (format!("{} (F8)", t.view_scenes), false),
             View::Faces => match views.faces {
                 FaceButton::Unknown => (faces_tip(t.faces_unknown), true),
                 FaceButton::Video => (faces_tip(t.faces_video), true),
@@ -940,6 +952,7 @@ fn view_switcher(ui: &Ui, places: &Block, views: Views, out: &mut InfoBarOutput)
         match view {
             View::Photo => icons::photo(painter, cell.center(), color),
             View::Grid => icons::grid(painter, cell.center(), color),
+            View::Scenes => icons::scenes(painter, cell.center(), color),
             View::Faces => icons::face_frame(painter, cell.center(), color),
         }
         if let (View::Faces, FaceButton::Found(Some(n))) = (view, views.faces) {
@@ -956,10 +969,12 @@ fn view_switcher(ui: &Ui, places: &Block, views: Views, out: &mut InfoBarOutput)
     }
 }
 
-/// The faces grid lies over everything, the grid replaces the photo.
+/// The faces grid lies over everything, the grid and the scene view replace the photo.
 fn current_view(views: Views) -> View {
     if views.faces_open {
         View::Faces
+    } else if views.grid && views.scenes {
+        View::Scenes
     } else if views.grid {
         View::Grid
     } else {
@@ -1442,7 +1457,10 @@ mod tests {
         }
         assert!(places.switcher.right() + GROUP_GAP <= places.panels[3].left() + 0.01);
         assert!(places.panels[0].right() + GROUP_GAP <= places.help.left() + 0.01);
-        assert!(places.views[2].right() <= places.switcher.right());
+        assert!(places.views[3].right() <= places.switcher.right());
+        for pair in places.views.windows(2) {
+            assert!(pair[0].right() < pair[1].left(), "left to right, apart");
+        }
         assert!(places.views[0].left() >= places.switcher.left());
         assert!(places.help.right() <= bar_rect().right());
         // The parts people use at every pass are larger than the bars' buttons.
@@ -1466,24 +1484,33 @@ mod tests {
         };
         let photo = Views::default();
         assert_eq!(asked(photo, 1), Some(View::Grid));
+        assert_eq!(asked(photo, 2), Some(View::Scenes));
         assert_eq!(asked(photo, 0), None, "already the photo");
-        assert_eq!(asked(photo, 2), None, "not analysed: greyed out");
+        assert_eq!(asked(photo, 3), None, "not analysed: greyed out");
         let faces = Views {
             faces: FaceButton::Found(Some(3)),
             ..photo
         };
-        assert_eq!(asked(faces, 2), Some(View::Faces));
+        assert_eq!(asked(faces, 3), Some(View::Faces));
         let grid = Views {
             grid: true,
             ..faces
         };
         assert_eq!(asked(grid, 0), Some(View::Photo));
         assert_eq!(asked(grid, 1), None, "already the grid");
+        assert_eq!(asked(grid, 2), Some(View::Scenes));
+        let scenes = Views {
+            scenes: true,
+            ..grid
+        };
+        assert_eq!(asked(scenes, 2), None, "already the scenes");
+        assert_eq!(asked(scenes, 1), Some(View::Grid));
+        assert_eq!(asked(scenes, 0), Some(View::Photo));
         let small = Views {
             faces: FaceButton::OnlySmall,
             ..photo
         };
-        assert_eq!(asked(small, 2), None, "the grid would show no face");
+        assert_eq!(asked(small, 3), None, "the grid would show no face");
     }
 
     /// In the grid the filmstrip has no place: its button is greyed out and does nothing.

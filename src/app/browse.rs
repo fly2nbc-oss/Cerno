@@ -185,7 +185,7 @@ impl CernoApp {
         self.thumbs.clear();
         // Only needed when the view depends on scores; the analysis fills the board anyway,
         // and on big folders the lookups would delay the first frame.
-        if self.options.depends_on_scores() {
+        if self.view_options().depends_on_scores() {
             self.analyzer.preload(&self.folder.all);
         }
         self.analyzer
@@ -238,7 +238,7 @@ impl CernoApp {
     pub(super) fn build_view(&self) -> View {
         view::build(
             &self.folder.library,
-            self.options,
+            self.view_options(),
             |p| self.facts(p),
             &self.marks.ratings,
             &self.marks.labels,
@@ -303,7 +303,9 @@ impl CernoApp {
     /// would restart the loader (discarding decodes in flight) and pause the analysis.
     pub(super) fn refresh_marks(&mut self, ctx: &egui::Context) {
         const EVERY: Duration = Duration::from_secs(2);
-        if self.options.depends_on_scores() || self.board.version() == self.browse.view_version {
+        if self.view_options().depends_on_scores()
+            || self.board.version() == self.browse.view_version
+        {
             return;
         }
         let since = self.browse.view_built.elapsed();
@@ -516,7 +518,7 @@ impl CernoApp {
 
     /// What sorting, filtering and the UI know about a photo. A deleted photo the analysis
     /// hasn't reached yet is known to be deleted, which is all the 🗑 box needs.
-    fn facts(&self, path: &Path) -> Option<Facts> {
+    pub(super) fn facts(&self, path: &Path) -> Option<Facts> {
         let deleted = self.is_deleted(path);
         let listed = self.is_listed(path);
         let Some(known) = self.board.get(path) else {

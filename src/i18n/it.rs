@@ -206,9 +206,12 @@ pub static TEXTS: Texts = Texts {
     button_help: "Aiuto",
     view_photo: "Foto",
     view_grid: "Griglia",
+    view_scenes: "Scene",
     view_faces: "Volti",
     faces_video: "Nei video non si cercano volti",
     filmstrip_in_grid: "Non serve nella griglia – F7 torna alla foto",
+    filmstrip_in_scenes: "Non serve nelle scene – F8 torna alla foto",
+    scene_untimed: "Senza ora di scatto",
     faces_button: |n| {
         if n == 1 {
             "Mostra 1 volto in grande (G)".to_owned()
@@ -667,6 +670,7 @@ pub static TEXTS: Texts = Texts {
                 "La rotellina sopra la striscia di miniature scorre le foto; sopra la foto ingrandisce e riduce.",
                 "Trascina una cartella sulla finestra per aprirla. Tieni premuto → per scorrere le foto.",
                 "Nella griglia (F7) ↑ ↓ cambiano riga, + − la dimensione, Invio apre la foto.",
+                "Nelle scene (F8) ogni scena inizia una riga; Pag su e Pag giù saltano da una scena all'altra.",
                 "Raddrizza (S): rotellina e frecce ruotano, Maiusc più fine. Ritaglio (R): traccia una cornice o spostala con le frecce, +/− ne cambia la dimensione, A il formato, X scambia orizzontale/verticale.",
                 "La barra dei menu (F10 o il pulsante in basso a destra) raccoglie ciò che agisce su questa foto, sulle foto visibili e sulla vista, più le impostazioni – tutto con il mouse.",
                 "Nella descrizione, Invio porta il cursore nel campo delle parole chiave.",
@@ -736,6 +740,7 @@ pub static TEXTS: Texts = Texts {
         ("Trascina", "Sposta la foto ingrandita"),
         ("O", "Controllo: nitidezza, tagli"),
         ("F7", "Griglia di tutte le foto"),
+        ("F8", "Scene: foto simili raggruppate"),
         ("G", "Tutti i volti in grande"),
         ("F, F11", "Schermo intero"),
     ],

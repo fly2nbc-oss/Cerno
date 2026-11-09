@@ -1,6 +1,6 @@
 # Lucide subset
 
-`lucide-subset.ttf` holds the 30 [Lucide](https://lucide.dev) icons Cerno draws, cut
+`lucide-subset.ttf` holds the 31 [Lucide](https://lucide.dev) icons Cerno draws, cut
 out of `lucide-static@0.460.0/font/lucide.ttf` (npm, SHA-1 `3d6b70c74cc5e180ac773f684494eef770d95731`) by
 `tools/make_lucide_subset.py`. Licence: ISC, see [LICENSE](LICENSE).
 
@@ -19,6 +19,7 @@ out of `lucide-static@0.460.0/font/lucide.ttf` (npm, SHA-1 `3d6b70c74cc5e180ac77
 | `folder-open` | `U+E247` |
 | `image` | `U+E0F9` |
 | `layout-grid` | `U+E105` |
+| `layout-panel-top` | `U+E476` |
 | `panel-bottom` | `U+E431` |
 | `panel-left` | `U+E12E` |
 | `panel-right` | `U+E436` |

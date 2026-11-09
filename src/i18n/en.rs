@@ -216,9 +216,12 @@ pub static TEXTS: Texts = Texts {
     button_help: "Help",
     view_photo: "Photo",
     view_grid: "Grid",
+    view_scenes: "Scenes",
     view_faces: "Faces",
     faces_video: "Videos are not searched for faces",
     filmstrip_in_grid: "Not needed in the grid – F7 back to the photo",
+    filmstrip_in_scenes: "Not needed in the scenes – F8 back to the photo",
+    scene_untimed: "No capture time",
     faces_button: |n| {
         if n == 1 {
             "Show 1 face large (G)".to_owned()
@@ -674,6 +677,7 @@ pub static TEXTS: Texts = Texts {
                 "The mouse wheel over the filmstrip steps through the photos; over the photo it zooms.",
                 "Drop a folder onto the window to open it. Hold → to run through the photos.",
                 "In the grid (F7) ↑ ↓ move a row, + − change the size, Enter opens the photo.",
+                "In the scenes (F8) every scene starts a new row; PgUp PgDn jump from scene to scene.",
                 "Straighten (S): the wheel and the arrows turn, Shift is finer. Crop (R): draw a frame or move it with the arrows, +/− size it, A changes the ratio, X turns it.",
                 "The menu bar (F10 or the button at the bottom right) holds what acts on this photo, the photos on screen and the view, and the settings – all with the mouse.",
                 "On the description tab Enter puts the cursor into the keyword field.",
@@ -736,6 +740,7 @@ pub static TEXTS: Texts = Texts {
         ("Drag", "Move the zoomed photo"),
         ("O", "Check: sharp edges, clipping"),
         ("F7", "Grid of all photos"),
+        ("F8", "Scenes: alike photos grouped"),
         ("G", "All faces large"),
         ("F, F11", "Full screen"),
     ],
