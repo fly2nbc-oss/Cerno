@@ -43,7 +43,7 @@ pub fn hit_test(frame: Rect, pointer: Pos2) -> Hit {
 /// of movement first, and a quick pull from a corner was taken for a move – which the first
 /// frame, the whole photo, can't do.
 pub fn pointer_area(ui: &Ui, area: Rect) -> Response {
-    ui.interact(area, ui.id().with("crop"), Sense::drag())
+    ui.interact(area, ui.scope_id().with("crop"), Sense::drag())
 }
 
 /// Where a drag that starts this frame began: the press, not where the pointer is now.

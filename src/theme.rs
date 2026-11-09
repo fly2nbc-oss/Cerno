@@ -230,7 +230,21 @@ pub fn apply(ctx: &egui::Context) {
 
     ctx.set_visuals_of(Theme::Dark, visuals);
     ctx.set_theme(Theme::Dark);
+    keep_spacing(ctx);
     install_fonts(ctx);
+}
+
+/// egui 0.37 made its widgets roomier (`button_padding` 8 × 2 instead of 4 × 1,
+/// `interact_size` 20 high instead of 18 – every `ui.horizontal` starts that high) and lets a
+/// touchpad pull a scroll area past its end. Cerno keeps egui 0.36's spacing, so the bars and
+/// the widths measured from it (`filter_bar::scope_width`, `sort_width`) stay as they were, and
+/// no spring-back: nothing moves under the pointer.
+fn keep_spacing(ctx: &egui::Context) {
+    ctx.all_styles_mut(|style| {
+        style.spacing.button_padding = egui::vec2(4.0, 1.0);
+        style.spacing.interact_size.y = 18.0;
+        style.spacing.scroll.kinetic.rubber_band = false;
+    });
 }
 
 /// Text fields: the border is the element, so it takes `LINE_STRONG` (≥ 3:1) – everything
@@ -507,6 +521,7 @@ fn definitions(regular: Option<Vec<u8>>, bold: Option<Vec<u8>>) -> egui::FontDef
 pub fn test_context() -> egui::Context {
     let ctx = egui::Context::default();
     ctx.set_fonts(definitions(None, None));
+    keep_spacing(&ctx);
     ctx
 }
 

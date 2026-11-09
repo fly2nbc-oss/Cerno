@@ -352,7 +352,7 @@ impl CernoApp {
                 muted: self.videos.muted,
                 opacity,
             },
-            Id::new("video-controls"),
+            Id::unique("video-controls"),
         );
         let Some(session) = &mut self.videos.session else {
             return true;

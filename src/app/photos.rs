@@ -330,7 +330,7 @@ impl CernoApp {
     /// Mouse on a photo: double-click toggles 100 %, wheel zooms, drag pans; in the four-up view
     /// a click puts the frame on it. The photos on screen share one zoom, so they stay aligned.
     fn handle_mouse(&mut self, ui: &egui::Ui, frame: &viewer::Frame, slot: &Slot) {
-        let id = ui.id().with(("photo", slot.side as u8, slot.index));
+        let id = ui.scope_id().with(("photo", slot.side as u8, slot.index));
         let response = ui.interact(frame.area, id, Sense::click_and_drag());
         if slot.side == Side::Quad && response.clicked() {
             self.frame_slot(ui.ctx(), slot.index);
@@ -447,7 +447,7 @@ impl CernoApp {
                 self.handle_mouse(ui, &frame, slot);
             } else if !editing && slot.side == Side::Quad {
                 // A video in the four-up view has no zoom, but a click frames it.
-                let id = ui.id().with(("photo", slot.side as u8, slot.index));
+                let id = ui.scope_id().with(("photo", slot.side as u8, slot.index));
                 if ui.interact(frame.area, id, Sense::click()).clicked() {
                     self.frame_slot(ui.ctx(), slot.index);
                 }

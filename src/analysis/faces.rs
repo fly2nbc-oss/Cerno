@@ -80,8 +80,7 @@ pub struct FaceDetector {
 impl FaceDetector {
     /// CPU on purpose: the model takes a few milliseconds, the GPU is busy with the big ones.
     pub fn load() -> Result<Self> {
-        let session = Session::builder()
-            .map_err(|e| anyhow!("{e}"))?
+        let session = super::models::session_builder()?
             .commit_from_memory(MODEL)
             .map_err(|e| anyhow!("{e}"))
             .context("cannot load the face detector")?;

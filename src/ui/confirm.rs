@@ -27,7 +27,7 @@ pub fn show(ctx: &Context, window: Rect, confirm: &Confirm<'_>) -> Option<bool> 
             i.consume_key(Modifiers::NONE, Key::Escape),
         )
     });
-    let modal = modal::show(ctx, window, Id::new("confirm"), 460.0, |ui| {
+    let modal = modal::show(ctx, window, Id::unique("confirm"), 460.0, |ui| {
         ui.label(
             RichText::new(confirm.title)
                 .font(theme::strong(text::VALUE))

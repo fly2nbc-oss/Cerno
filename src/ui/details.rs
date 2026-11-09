@@ -106,7 +106,7 @@ pub fn tabs(ui: &mut Ui, rect: Rect, current: DetailsTab) -> Option<DetailsTab> 
         rect,
         &labels,
         index,
-        Id::new("details-tab"),
+        Id::unique("details-tab"),
         crate::ui::tabs::Widths::Equal,
     )
     .and_then(|i| DetailsTab::ALL.get(i).copied())
@@ -350,7 +350,7 @@ fn file(ui: &mut Ui, d: &Details<'_>) -> bool {
             icons::copy_button(
                 ui,
                 vec2(22.0, 16.0),
-                Id::new("details_path_copied_until"),
+                Id::unique("details_path_copied_until"),
                 &path,
                 &format!("{}\n{path}", t.copy_path),
                 t.path_copied,

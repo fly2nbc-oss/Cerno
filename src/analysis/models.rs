@@ -115,6 +115,26 @@ fn remove_files(dir: &Path) -> Result<()> {
     result
 }
 
+/// A session builder in ONNX Runtime's environment. ort allows one environment per process
+/// (a second `build` fails even after the first was dropped), so it is built at the first
+/// model load and kept to the process end – as ort's implicit global one was before rc.14
+/// (the sessions hold it too, and `Analyzer::drop` leaves CLIP and SigLIP to the process end).
+/// Telemetry off: Cerno sends nothing (ort's own binaries are built without it anyway).
+pub(super) fn session_builder() -> Result<ort::session::builder::SessionBuilder> {
+    static ENVIRONMENT: Mutex<Option<ort::environment::Environment>> = Mutex::new(None);
+    let mut environment = lock(&ENVIRONMENT);
+    let environment = match &mut *environment {
+        Some(environment) => environment,
+        empty => empty.insert(
+            ort::init()
+                .with_telemetry(false)
+                .build()
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
+        ),
+    };
+    ort::session::Session::builder(environment).map_err(|e| anyhow::anyhow!("{e}"))
+}
+
 /// Loads a model on first use (one instance shared by all workers), reports its state and
 /// runs it. `None` if it can't be loaded or the run fails.
 pub(super) fn run_model<M, R>(

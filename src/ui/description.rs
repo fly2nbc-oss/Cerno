@@ -18,11 +18,11 @@ use crate::theme::{self, text, tokens};
 const PAD: f32 = 16.0;
 
 pub fn comment_id() -> Id {
-    Id::new("description-comment")
+    Id::unique("description-comment")
 }
 
 pub fn keyword_id() -> Id {
-    Id::new("description-keyword")
+    Id::unique("description-keyword")
 }
 
 /// What is being typed, across frames.

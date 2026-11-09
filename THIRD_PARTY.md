@@ -12,7 +12,7 @@ Cerno's own code is licensed under Apache-2.0 (see [LICENSE](./LICENSE)). It use
 | [ONNX Runtime](https://github.com/microsoft/onnxruntime) via the [`ort`](https://github.com/pykeio/ort) crate | Runs all models | MIT |
 | [Lucide](https://lucide.dev) icons: a subset of the icon font of `lucide-static` 0.460.0 (`assets/lucide/lucide-subset.ttf`, cut out by `tools/make_lucide_subset.py`) | The interface's icons | ISC, © Lucide Contributors, portions © Cole Bemis (Feather, MIT) – see [licenses/lucide.txt](licenses/lucide.txt) |
 | egui's bundled fonts (`epaint_default_fonts`): Ubuntu-Light, Noto Emoji, emoji-icon-font, Hack | Fallback for characters the system font lacks, such as ★ | Ubuntu Font Licence 1.0, OFL-1.1, MIT, MIT + Bitstream Vera License – see [licenses/egui-fonts.txt](licenses/egui-fonts.txt) |
-| Rust crates (egui, wgpu, zune-jpeg, fast_image_resize, rusqlite/SQLite, …) | See `Cargo.lock` | MIT / Apache-2.0 / public domain (SQLite) |
+| Rust crates (egui, wgpu, zune-jpeg, fast_image_resize, rusqlite/SQLite, …) | See `Cargo.lock` | Permissive: mostly MIT / Apache-2.0, some BSD, ISC, Zlib, BSL-1.0, MPL-2.0, Unicode-3.0, CDLA-Permissive-2.0 (certificate data); public domain (SQLite) |
 
 ## Shipped next to the binary
 
@@ -45,6 +45,6 @@ The V2.5 head is deliberately kept out of the repository and the binary; Cerno r
 
 ## Used from the system
 
-- **Segoe UI** (Windows) or DejaVu Sans / Noto Sans (Linux) as UI font – read from the system at start-up, not distributed.
+- **Segoe UI** (Windows) or DejaVu Sans / Noto Sans (Linux) as UI font – read from the system at start-up, not distributed. Characters none of Cerno's fonts has (Segoe UI or DejaVu / Noto, Lucide, egui's bundled fonts) are drawn with another installed system font that has them (egui's system font provider: DirectWrite on Windows, fontconfig on Linux) – also not distributed.
 - **ExifTool** (© Phil Harvey; the Perl Artistic License or the GPL, like Perl) – separate program, called to write the marks. Not distributed: on Windows Cerno downloads the official, unchanged package (`exiftool-13.59_64.zip` from SourceForge, checked by size and SHA-256) into its data folder when the user asks; the package brings its licence (`exiftool_files/LICENSE`). On Linux it comes from the distribution.
 - **GStreamer** (Linux) – the distribution's GStreamer and its plugins play videos; not distributed.

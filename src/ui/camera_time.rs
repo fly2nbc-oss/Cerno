@@ -41,7 +41,7 @@ pub fn show(ctx: &Context, window: Rect, rows: &mut [Row]) -> Output {
     let valid = rows
         .iter()
         .all(|row| camera_time::parse_offset(&row.text).is_some());
-    let modal = modal::show(ctx, window, Id::new("camera-time"), 520.0, |ui| {
+    let modal = modal::show(ctx, window, Id::unique("camera-time"), 520.0, |ui| {
         let mut out = Output::default();
         let top_right = ui.max_rect().right_top() + vec2(8.0, -8.0);
         ui.label(

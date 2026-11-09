@@ -166,7 +166,7 @@ impl CernoApp {
         } else {
             1.0 - (elapsed - fade_start).as_secs_f32() / LANGUAGE_FADE.as_secs_f32()
         };
-        let painter = ctx.layer_painter(LayerId::new(Order::Tooltip, Id::new("language-flash")));
+        let painter = ctx.layer_painter(LayerId::new(Order::Tooltip, Id::unique("language-flash")));
         overlays::language_flash(&painter, area, i18n::current(), opacity);
         ctx.request_repaint();
     }

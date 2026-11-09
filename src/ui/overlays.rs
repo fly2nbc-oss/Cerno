@@ -43,7 +43,7 @@ pub fn browse_arrows(ui: &Ui, area: Rect, prev: bool, next: bool) -> Option<isiz
             continue;
         }
         let response = ui
-            .interact(button, Id::new(("browse-arrow", step)), Sense::click())
+            .interact(button, Id::unique(("browse-arrow", step)), Sense::click())
             .on_hover_cursor(CursorIcon::PointingHand);
         let (shade, arrow) = if response.hovered() {
             (tokens::PHOTO_VEIL, tokens::ACCENT_STRONG)
@@ -88,7 +88,7 @@ pub fn video_badge(ui: &Ui, area: Rect, slot: usize) -> Response {
     let button = Rect::from_center_size(centre, vec2(2.0 * radius, 2.0 * radius));
     // Clickable: the play button plays the video.
     let response = ui
-        .interact(button, Id::new(("video-play", slot)), Sense::click())
+        .interact(button, Id::unique(("video-play", slot)), Sense::click())
         .on_hover_cursor(CursorIcon::PointingHand)
         .on_hover_text(i18n::t().video_play_hint);
     let sign = if response.hovered() {
@@ -280,7 +280,7 @@ pub fn notices(ui: &Ui, rect: Rect, message: Option<(&str, bool, f32)>) -> bool 
     };
     theme::paint_raised(&painter, pill, radius::MD, fill, border);
     painter.galley(pill.min + vec2(12.0, 7.0), galley, tokens::TEXT);
-    ui.interact(pill, ui.id().with("notice"), Sense::click())
+    ui.interact(pill, ui.scope_id().with("notice"), Sense::click())
         .on_hover_cursor(CursorIcon::PointingHand)
         .clicked()
 }

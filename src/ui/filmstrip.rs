@@ -92,7 +92,7 @@ pub fn draw(
             ui,
             &painter,
             cell,
-            ui.id().with(("filmstrip", *index)),
+            ui.scope_id().with(("filmstrip", *index)),
             thumbs.get_or_request(path).as_ref(),
             Empty::default(),
             cell_info,
@@ -139,7 +139,7 @@ fn wheel_steps(ui: &Ui, rect: Rect) -> isize {
     if notches == 0.0 {
         return 0;
     }
-    let id = ui.id().with("filmstrip-wheel");
+    let id = ui.scope_id().with("filmstrip-wheel");
     ui.data_mut(|d| accumulate(d.get_temp_mut_or_default::<f32>(id), notches))
 }
 
