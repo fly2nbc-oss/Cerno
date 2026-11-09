@@ -1,4 +1,4 @@
-//! Scenes for the scene view (`F8`) – the one place where photos are grouped beyond series
+//! Scenes for the scene view (`F4`) – the one place where photos are grouped beyond series
 //! (the user's decision of 2026-11-09, ticket CER-6). The single view, the filmstrip, the grid
 //! and Top N never see them.
 //!

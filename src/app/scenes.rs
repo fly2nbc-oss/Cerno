@@ -1,4 +1,4 @@
-//! The scene view (`F8`) from the app's side: it is the grid (`Viewer::grid`) with its photos
+//! The scene view (`F4`) from the app's side: it is the grid (`Viewer::grid`) with its photos
 //! grouped into scenes (`Viewer::scenes`), so everything the grid does – the cursor is the
 //! current photo, only it is decoded, the filmstrip gives way – holds here too. While it shows,
 //! the view is built in capture-time order whatever the chosen sort (which stays saved), and
@@ -43,7 +43,7 @@ impl CernoApp {
         }
     }
 
-    /// `F8`, the view switcher: the scene view instead of the photo or the grid, or the photo
+    /// `F4`, the view switcher: the scene view instead of the photo or the grid, or the photo
     /// again. Not during a straighten or crop session (as the grid).
     pub(super) fn set_scenes(&mut self, on: bool) {
         if on {
@@ -232,12 +232,12 @@ mod tests {
         h.app.view[h.app.current].clone()
     }
 
-    /// `F8` shows the scenes in capture-time order on the same photo; `F8` again the photo, in
+    /// `F4` shows the scenes in capture-time order on the same photo; `F4` again the photo, in
     /// the chosen order. The sort itself never changes.
     #[test]
-    fn f8_opens_the_scenes_in_capture_time_order() {
+    fn f4_opens_the_scenes_in_capture_time_order() {
         let (mut h, paths) = six();
-        h.press(Key::F8, NONE);
+        h.press(Key::F4, NONE);
         assert!(h.app.viewer.grid && h.app.viewer.scenes);
         let order: Vec<PathBuf> = h.app.view.to_vec();
         let expected: Vec<PathBuf> = [1, 2, 3, 4, 0, 5].map(|k| paths[k].clone()).into();
@@ -250,7 +250,7 @@ mod tests {
         h.settle();
         assert_eq!(h.app.options.sort, SortKey::Name, "not saved");
 
-        h.press(Key::F8, NONE);
+        h.press(Key::F4, NONE);
         assert!(!h.app.viewer.grid && !h.app.viewer.scenes);
         assert_eq!(*h.app.view.paths, paths, "name order again");
         assert_eq!(current_path(&h), paths[0]);
@@ -261,7 +261,7 @@ mod tests {
     #[test]
     fn page_keys_jump_scenes_arrows_rows() {
         let (mut h, paths) = six();
-        h.press(Key::F8, NONE);
+        h.press(Key::F4, NONE);
         h.press(Key::Home, NONE);
         assert_eq!(h.app.current, 0);
         h.press(Key::PageDown, NONE);
@@ -285,22 +285,32 @@ mod tests {
         assert_eq!(h.app.current, 1, "↑ back, the column kept");
     }
 
-    /// `F7` and `F8` switch between grid and scenes; `Esc`, `Enter` and the view switcher's
-    /// photo leave for the single photo.
+    /// `F3` and `F4` switch between grid and scenes; `F2`, `Esc`, `Enter` and the view
+    /// switcher's photo leave for the single photo; `F3` again goes back to the photo too.
     #[test]
     fn grid_and_scenes_switch_and_leave_like_the_grid() {
         let (mut h, paths) = six();
-        h.press(Key::F7, NONE);
+        h.press(Key::F3, NONE);
         assert!(h.app.viewer.grid && !h.app.viewer.scenes);
-        h.press(Key::F8, NONE);
+        h.press(Key::F4, NONE);
         assert!(h.app.viewer.grid && h.app.viewer.scenes);
-        h.press(Key::F7, NONE);
-        assert!(h.app.viewer.grid && !h.app.viewer.scenes, "F7: the grid");
+        h.press(Key::F3, NONE);
+        assert!(h.app.viewer.grid && !h.app.viewer.scenes, "F3: the grid");
         assert_eq!(*h.app.view.paths, paths);
-        h.press(Key::F8, NONE);
+        h.press(Key::F3, NONE);
+        assert!(
+            !h.app.viewer.grid && !h.app.viewer.scenes,
+            "F3 again: the photo"
+        );
+        h.press(Key::F4, NONE);
+        h.press(Key::F2, NONE);
+        assert!(!h.app.viewer.grid && !h.app.viewer.scenes, "F2: the photo");
+        h.press(Key::F2, NONE);
+        assert!(!h.app.viewer.grid, "F2 on the photo: nothing changes");
+        h.press(Key::F4, NONE);
         h.press(Key::Escape, NONE);
         assert!(!h.app.viewer.grid && !h.app.viewer.scenes, "Esc: the photo");
-        h.press(Key::F8, NONE);
+        h.press(Key::F4, NONE);
         h.press(Key::Enter, NONE);
         assert!(
             !h.app.viewer.grid && !h.app.viewer.scenes,
@@ -319,7 +329,7 @@ mod tests {
     #[test]
     fn a_mark_in_the_scenes_lands_on_the_cursor() {
         let (mut h, paths) = six();
-        h.press(Key::F8, NONE);
+        h.press(Key::F4, NONE);
         h.press(Key::Home, NONE);
         h.press(Key::Num3, NONE);
         assert_eq!(h.app.marks.ratings.get(&paths[1]), Some(&Rating::Stars(3)));

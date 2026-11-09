@@ -49,6 +49,11 @@ impl Layer {
         matches!(self, Self::List(_))
     }
 
+    /// The filter mode's list below a box of the filter bar.
+    pub(super) fn is_filter_list(&self) -> bool {
+        matches!(self, Self::List(list) if list.is_filter())
+    }
+
     /// A card over the dimmed window – modal like the faces grid (`CernoApp::modal_open`);
     /// help and the list are not.
     pub(super) fn is_card(&self) -> bool {

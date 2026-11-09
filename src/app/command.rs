@@ -130,9 +130,9 @@ pub(super) enum Command {
     Reveal,
 
     // The view.
-    /// `F7`.
+    /// `F3`.
     ToggleGrid,
-    /// `F8`: the scene view.
+    /// `F4`: the scene view.
     ToggleScenes,
     /// The view switcher: the photo, the grid, the scenes or the faces.
     ShowView(View),
@@ -141,7 +141,7 @@ pub(super) enum Command {
     Compare,
     /// `Shift+C`: four photos at once.
     Quad,
-    /// `Shift+Z`: the photo whole and at 100 % side by side.
+    /// `Alt+C`: the photo whole and at 100 % side by side.
     Split,
     /// `A` / `D` in compare mode: the right / the left photo is rejected. `next` (with Shift):
     /// the winner stays pinned on the left and the next photo comes in on the right.
@@ -390,7 +390,7 @@ impl CernoApp {
             }
             Command::EditWithOther => self.pick_editor(),
             Command::EditWithChooser => self.edit_with_chooser(),
-            // From the scene view `F7` goes to the grid, from the grid `F8` to the scenes.
+            // From the scene view `F3` goes to the grid, from the grid `F4` to the scenes.
             Command::ToggleGrid => self.set_grid(!self.viewer.grid || self.viewer.scenes),
             Command::ToggleScenes => self.set_scenes(!self.viewer.scenes),
             Command::ShowView(view) => self.show_view(view),

@@ -206,6 +206,10 @@ pub fn keep_together(text: &str) -> String {
 /// One line of the help page: keys (comma-separated, each drawn as a key cap) and what they do.
 pub type HelpRow = (&'static str, &'static str);
 
+/// One section of the help page's shortcuts: a title and its rows. Every language has the same
+/// sections with the same rows and the same number of keys per row (tested).
+pub type KeySection = (&'static str, &'static [HelpRow]);
+
 /// One section of the help page's tips: a title and its tips, a paragraph each.
 pub type TipSection = (&'static str, &'static [&'static str]);
 
@@ -484,7 +488,7 @@ pub struct Texts {
     pub cmd_compare: &'static str,
     pub cmd_quad: &'static str,
     pub cmd_zoom: &'static str,
-    /// The menu bar's split view (`Shift+Z`): the photo whole and at 100 % side by side.
+    /// The menu bar's split view (`Alt+C`): the photo whole and at 100 % side by side.
     pub cmd_split: &'static str,
     /// View ▸ Overlay ▸ (`O`): marks on the photo.
     pub menu_overlay: &'static str,
@@ -850,15 +854,10 @@ pub struct Texts {
     /// Start screen, only while something is missing: ExifTool ready, the aesthetics models
     /// ready – and where to get them.
     pub setup_line: fn(bool, bool) -> String,
-    pub help_sections: [&'static str; 8],
-    pub help_browse: [HelpRow; 5],
-    pub help_rate: [HelpRow; 6],
-    pub help_cull: [HelpRow; 7],
-    pub help_video: [HelpRow; 5],
-    pub help_view: [HelpRow; 10],
-    pub help_panels: [HelpRow; 8],
-    pub help_edit: [HelpRow; 5],
-    pub help_more: [HelpRow; 3],
+    /// The shortcuts page, by task in reading order: browse, rate and sort out, views, compare,
+    /// zoom and check, panels, filter, edit, video, more. Keys of one family share a row
+    /// (`0 – 5`, `F2 – F5`, `T, Alt+3`); `Shift+…` says once what Shift adds.
+    pub help_keys: [KeySection; 10],
 }
 
 impl Texts {
@@ -1094,26 +1093,52 @@ mod tests {
         for lang in Lang::ALL {
             let t = lang.texts();
             let rows = t
-                .help_browse
+                .help_keys
                 .iter()
-                .chain(&t.help_rate)
-                .chain(&t.help_cull)
-                .chain(&t.help_video)
-                .chain(&t.help_view)
-                .chain(&t.help_panels)
-                .chain(&t.help_edit)
-                .chain(&t.help_more)
+                .flat_map(|(_, rows)| rows.iter())
                 .chain(&t.welcome_keys);
             for (keys, action) in rows {
                 assert!(!keys.trim().is_empty() && !action.trim().is_empty());
             }
-            assert!(t.help_sections.iter().all(|title| !title.is_empty()));
+            assert!(t.help_keys.iter().all(|(title, _)| !title.is_empty()));
             for (title, tips) in &t.help_tips {
                 assert!(!title.is_empty() && !tips.is_empty());
                 assert!(tips.iter().all(|tip| !tip.trim().is_empty()));
             }
             assert!(!t.help_tab_keys.is_empty() && !t.help_tab_tips.is_empty());
             assert!(!t.help_tab_about.is_empty());
+        }
+    }
+
+    /// Every language's shortcuts page names the same keys as the English one: the same rows
+    /// in each section, as many key caps per row, and the keys every layout spells alike
+    /// (letters, digits, F-keys, Alt+…, arrows) word for word.
+    #[test]
+    fn the_shortcuts_have_the_same_scope_in_every_language() {
+        let en = Lang::En.texts();
+        let alike = |cap: &str| {
+            cap.chars().count() <= 2
+                || cap
+                    .strip_prefix('F')
+                    .is_some_and(|n| n.parse::<u8>().is_ok())
+                || cap.contains(" – ")
+                || cap.starts_with("Alt+")
+        };
+        for lang in Lang::ALL {
+            let t = lang.texts();
+            for ((_, rows), (_, en_rows)) in t.help_keys.iter().zip(&en.help_keys) {
+                assert_eq!(rows.len(), en_rows.len(), "{lang:?}");
+                for ((keys, _), (en_keys, _)) in rows.iter().zip(en_rows.iter()) {
+                    let caps: Vec<&str> = keys.split(", ").collect();
+                    let en_caps: Vec<&str> = en_keys.split(", ").collect();
+                    assert_eq!(caps.len(), en_caps.len(), "{lang:?} {keys}");
+                    for (cap, en_cap) in caps.iter().zip(&en_caps) {
+                        if alike(en_cap) {
+                            assert_eq!(cap, en_cap, "{lang:?} {keys}");
+                        }
+                    }
+                }
+            }
         }
     }
 

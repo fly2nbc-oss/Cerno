@@ -48,6 +48,13 @@ pub(super) struct RowList {
     state: palette::State,
 }
 
+impl RowList {
+    /// A list of the filter mode, below a box of the filter bar.
+    pub(super) fn is_filter(&self) -> bool {
+        matches!(self.kind, ListKind::Filter(_))
+    }
+}
+
 /// The menu bar's state; whether it shows is `Bars::side_bar`.
 pub(super) struct MenuBar {
     /// Its open groups (saved as `side_bar_open`).
@@ -545,7 +552,7 @@ impl CernoApp {
                     .toggle(self.viewer.zoom.is_zoomed()),
             ),
             Item::Row(
-                Row::new(Command::Split, t.cmd_split, Some(i18n::with_shift("Z")))
+                Row::new(Command::Split, t.cmd_split, Some("Alt+C".to_owned()))
                     .toggle(self.viewer.split),
             ),
             Item::Segments(overlay),

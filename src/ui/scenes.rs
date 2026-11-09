@@ -1,4 +1,4 @@
-//! The scene view (`F8`): the grid's cells, but every section – a scene of two or more photos,
+//! The scene view (`F4`): the grid's cells, but every section – a scene of two or more photos,
 //! a run of single photos (`view::sections`), the photos without a time – starts a new row
 //! under a slim header line: its time, how many photos, the cameras. Every photo keeps its
 //! cell; nothing is folded away. The cursor is the current photo, as in the grid; only the rows on screen

@@ -203,7 +203,7 @@ impl CernoApp {
         }
     }
 
-    /// The grid (`F7`) instead of the photo: a click moves the cursor (the current photo), a
+    /// The grid (`F3`) instead of the photo: a click moves the cursor (the current photo), a
     /// double click opens it, Ctrl + wheel changes the size.
     fn draw_grid(&mut self, ui: &mut egui::Ui, rect: Rect) {
         let ctx = ui.ctx().clone();
@@ -220,10 +220,9 @@ impl CernoApp {
             grouped,
             step: self.viewer.grid_step,
             follow,
-            // A notice stands where the floating date would: the date goes below it.
-            notice_bottom: self
-                .notice_on_screen()
-                .map(|text| overlays::notice_rect(ui.painter(), rect, text).bottom()),
+            // The filter mode's pill and a notice stand where the floating date would: the date
+            // goes below them.
+            stacked_bottom: self.top_stack(ui.painter(), rect).bottom(),
         };
         // The floating date follows a camera set right, like the info bar.
         let taken_ms = |i: usize| {

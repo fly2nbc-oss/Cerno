@@ -266,8 +266,8 @@ impl CernoApp {
         }
     }
 
-    /// The pill under the photo while the mode is on: the box the frame stands on, and the
-    /// mode's keys.
+    /// The pill's caption while the mode is on (at the top of the photo area, under the filter
+    /// bar): the box the frame stands on; the mode's keys go below it.
     pub(super) fn filter_mode_caption(&mut self) -> Option<String> {
         let slot = self.filter_mode.cursor?;
         let t = i18n::t();

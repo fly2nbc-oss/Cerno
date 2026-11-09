@@ -538,7 +538,7 @@ mod tests {
                 Section {
                     id: "view",
                     title: "Ansicht".into(),
-                    items: vec![Item::Row(Row::new(5, "Raster", Some("F7".into())))],
+                    items: vec![Item::Row(Row::new(5, "Raster", Some("F3".into())))],
                 },
             ],
         }

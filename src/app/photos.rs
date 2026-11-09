@@ -29,7 +29,7 @@ pub(super) struct Viewer {
     pub(super) pinned: Option<PathBuf>,
     /// The four-up view (`Shift+C`): the view index of the first of its four photos.
     pub(super) quad: Option<usize>,
-    /// The split view (`Shift+Z`, ticket CER-49): the current photo whole on the left and at
+    /// The split view (`Alt+C`, ticket CER-49): the current photo whole on the left and at
     /// `zoom` on the right.
     pub(super) split: bool,
     /// The photo the split view's 100 % side was last aimed at (its eyes or sharpest spot):
@@ -38,7 +38,7 @@ pub(super) struct Viewer {
     pub(super) zoom: viewer::Zoom,
     /// The check overlay over the photos (`O`).
     pub(super) overlay: overlay::Mode,
-    /// The grid (`F7`) instead of the single photo.
+    /// The grid (`F3`) instead of the single photo.
     pub(super) grid: bool,
     /// Its cell size, an index into `grid::STEPS`.
     pub(super) grid_step: usize,
@@ -47,7 +47,7 @@ pub(super) struct Viewer {
     /// Columns and cells per page of the last drawn grid, for `↑`/`↓` and Page Up / Down.
     pub(super) grid_columns: usize,
     pub(super) grid_page: usize,
-    /// The grid shows the scene view (`F8`): every scene from a new row under its header.
+    /// The grid shows the scene view (`F4`): every scene from a new row under its header.
     pub(super) scenes: bool,
     /// The scenes and the order the view was built in.
     pub(super) scene_state: super::scenes::SceneState,
@@ -174,7 +174,7 @@ impl CernoApp {
             .collect()
     }
 
-    /// `Shift+Z`: the current photo whole on the left and at 100 % on the right, where Cerno
+    /// `Alt+C`: the current photo whole on the left and at 100 % on the right, where Cerno
     /// measured the sharpness – or the single photo again (ticket CER-49). Compare mode and
     /// the four-up view make way; not for a video, not during a straighten or crop session.
     pub(super) fn toggle_split(&mut self) {
@@ -320,7 +320,7 @@ impl CernoApp {
         }));
     }
 
-    /// `F7`: the grid instead of the single photo, or back. While it shows only its cursor
+    /// `F3`: the grid instead of the single photo, or back. While it shows only its cursor
     /// photo is decoded, and the thumbnail cache keeps what it shows. Not during a straighten
     /// or crop session.
     pub(super) fn set_grid(&mut self, on: bool) {
@@ -346,7 +346,7 @@ impl CernoApp {
     }
 
     /// The info bar's view switcher: the photo, the grid, the scenes or the faces of the photo
-    /// – what `Esc`, `F7`, `F8` and `G` do.
+    /// – what `F2`/`Esc`, `F3`, `F4` and `F5`/`G` do.
     pub(super) fn show_view(&mut self, view: crate::ui::info_bar::View) {
         use crate::ui::info_bar::View;
         match view {
@@ -563,8 +563,11 @@ impl CernoApp {
     }
 
     /// The split view: on the whole photo, the part the 100 % side shows, framed in the
-    /// accent like the navigator's – once that side is aimed at this photo.
-    fn draw_split_part(&self, ui: &egui::Ui, slots: &[Slot]) {
+    /// accent like the navigator's – once that side is aimed at this photo. A press on the
+    /// whole photo centres the 100 % side there, a drag moves it along (stopping where the
+    /// image's edge meets the view, `Zoom::centre_on`); that spot stays until the next photo is
+    /// aimed again. The whole side itself never zooms – the wheel over it does nothing.
+    fn draw_split_part(&mut self, ui: &egui::Ui, slots: &[Slot]) {
         let [whole, detail] = slots else {
             return;
         };
@@ -579,10 +582,24 @@ impl CernoApp {
         };
         let ppp = ui.ctx().pixels_per_point();
         let detail = frame_for(detail.area, &image, ppp);
+        let photo = viewer::Zoom::default().image_rect(&frame_for(whole.area, &image, ppp));
+        if !self.layer.is_open()
+            && !self.modal_open()
+            && let Some(point) = navigator::grab_point(
+                ui,
+                photo,
+                photo,
+                ui.scope_id().with("split-whole"),
+                CursorIcon::Grab,
+            )
+        {
+            self.viewer.zoom.centre_on(&detail, point);
+            // The 100 % side was drawn before this frame's press: draw it once more.
+            ui.ctx().request_repaint();
+        }
         let Some(part) = viewer::visible_part(&detail, &self.viewer.zoom) else {
             return;
         };
-        let photo = viewer::Zoom::default().image_rect(&frame_for(whole.area, &image, ppp));
         let at = |p: egui::Pos2| photo.min + p.to_vec2() * photo.size();
         ui.painter().with_clip_rect(photo).rect_stroke(
             Rect::from_min_max(at(part.min), at(part.max)),

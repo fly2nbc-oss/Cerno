@@ -235,17 +235,17 @@ pub static TEXTS: Texts = Texts {
     view_scenes: "Szenen",
     view_faces: "Gesichter",
     faces_video: "Videos werden nicht nach Gesichtern durchsucht",
-    filmstrip_in_grid: "Im Raster nicht nötig – F7 zurück zum Foto",
+    filmstrip_in_grid: "Im Raster nicht nötig – F2 zurück zum Foto",
     grid_no_date: "ohne Datum",
-    filmstrip_in_scenes: "In den Szenen nicht nötig – F8 zurück zum Foto",
+    filmstrip_in_scenes: "In den Szenen nicht nötig – F2 zurück zum Foto",
     sort_in_scenes: "Die Szenenansicht ordnet immer nach Aufnahmezeit – außerhalb gilt wieder diese Sortierung",
     scene_untimed: "Ohne Aufnahmezeit",
     scene_singles: "Einzelne Fotos",
     faces_button: |n| {
         if n == 1 {
-            "1 Gesicht groß zeigen (G)".to_owned()
+            "1 Gesicht groß zeigen (F5, G)".to_owned()
         } else {
-            format!("{n} Gesichter groß zeigen (G)")
+            format!("{n} Gesichter groß zeigen (F5, G)")
         }
     },
     button_side_bar: "Menüleiste",
@@ -710,8 +710,8 @@ pub static TEXTS: Texts = Texts {
             &[
                 "Das Mausrad über dem Filmstreifen blättert durch die Fotos, über dem Foto zoomt es.",
                 "Einen Ordner aufs Fenster ziehen öffnet ihn. → gedrückt halten läuft durch die Fotos.",
-                "Im Raster (F7) rücken ↑ ↓ eine Reihe, + − ändern die Größe, Enter öffnet das Foto.",
-                "In den Szenen (F8) beginnt jede Szene eine neue Reihe; Bild↑ Bild↓ springen von Szene zu Szene.",
+                "Im Raster (F3) rücken ↑ ↓ eine Reihe, + − ändern die Größe, Enter öffnet das Foto.",
+                "In den Szenen (F4) beginnt jede Szene eine neue Reihe; Bild↑ Bild↓ springen von Szene zu Szene.",
                 "Ausrichten (S): Mausrad und Pfeile drehen, Umschalt feiner. Ausschnitt (R): Rahmen aufziehen oder mit den Pfeilen schieben, +/− ändern die Größe, A wechselt das Format, X dreht Quer/Hoch.",
                 "Die Menüleiste (F10 oder der Knopf unten rechts) hält, was auf dieses Foto, die sichtbaren Fotos und die Ansicht wirkt, dazu die Einstellungen – alles mit der Maus.",
                 "In der Beschreibung setzt Enter den Cursor ins Stichwortfeld.",
@@ -734,82 +734,102 @@ pub static TEXTS: Texts = Texts {
             if aesthetics { "bereit" } else { "fehlt" },
         )
     },
-    help_sections: [
-        "Blättern",
-        "Bewerten",
-        "Aussortieren",
-        "Video",
-        "Ansicht",
-        "Leisten",
-        "Bearbeiten",
-        "Weiteres",
-    ],
-    help_browse: [
-        ("→, Leertaste, Bild↓", "Nächstes Foto"),
-        ("←, Rücktaste, Bild↑", "Vorheriges Foto"),
-        ("Pos1, Ende", "Erstes / letztes Foto"),
-        ("Strg+O", "Ordner öffnen"),
-        ("Strg+U", "Unterordner an / aus"),
-    ],
-    help_rate: [
-        ("1 – 5", "Sterne"),
-        ("0", "Keine Sterne, nicht abgelehnt"),
-        ("X", "Ablehnen"),
-        ("6 – 9", "Rot, Gelb, Grün, Blau"),
-        ("Umschalt+…", "Dasselbe, dann nächstes Foto"),
-        ("Strg+Z", "Rückgängig"),
-    ],
-    help_cull: [
-        ("C", "Zwei Fotos vergleichen"),
-        ("A, D", "Links / rechts behalten"),
+    help_keys: [
         (
-            "Umschalt+A, Umschalt+D",
-            "Behalten, mit dem nächsten weiter",
+            "Blättern",
+            &[
+                ("→, Leertaste, Bild↓", "Nächstes Foto"),
+                ("←, Rücktaste, Bild↑", "Vorheriges Foto"),
+                ("Pos1, Ende", "Erstes / letztes Foto"),
+            ],
         ),
-        ("Umschalt+C", "Vier Fotos auf einmal"),
-        ("M", "Nur ähnliche Fotos"),
-        ("Entf", "Löschen (nach .originals)"),
-        ("Esc", "Gelöschte zurückholen"),
-    ],
-    help_video: [
-        ("Leertaste", "Abspielen / anhalten"),
-        ("Umschalt+Leertaste", "Nächstes Foto"),
-        ("Alt+←, Alt+→", "5 s zurück / vor"),
-        (",, .", "Ein Bild zurück / vor"),
-        ("↑, ↓", "Lautstärke"),
-    ],
-    help_view: [
-        ("Z, Doppelklick", "Ganzes Foto ↔ 100 %"),
-        ("Strg+0, Strg+1", "Ganzes Foto / 100 %"),
-        ("Umschalt+Z", "Ganzes Foto und 100 % nebeneinander"),
-        ("+, −, Mausrad", "Hinein- / herauszoomen"),
-        ("Ziehen", "Gezoomtes Foto verschieben"),
-        ("O", "Prüfen: Kanten, Belichtung"),
-        ("F7", "Raster aller Fotos"),
-        ("F8", "Szenen: ähnliche Fotos gruppiert"),
-        ("G", "Alle Gesichter groß"),
-        ("F, F11", "Vollbild"),
-    ],
-    help_panels: [
-        ("F10, Alt+1", "Menüleiste"),
-        ("T", "Filterleiste"),
-        ("Strg+F", "Filter per Tastatur"),
-        ("Umschalt+T", "Filter kurz aus / wieder an"),
-        ("Tab, Alt+2", "Detailansicht"),
-        ("F6", "Filmstreifen"),
-        ("Umschalt+Tab, Alt+0", "Alle vier Leisten"),
-        ("Strg+Tab", "Nächster Reiter der Details"),
-    ],
-    help_edit: [
-        ("S", "Ausrichten"),
-        ("R", "Ausschnitt"),
-        ("Enter, Esc", "Übernehmen / verwerfen"),
-        ("Strg+←, Strg+→", "90° drehen"),
-        ("E", "In anderem Programm bearbeiten"),
-    ],
-    help_more: [
-        ("Strg+L", "Sprache"),
-        ("H, F1, ?", "Diese Hilfe"),
-        ("Esc", "Einen Schritt zurück"),
+        (
+            "Bewerten und aussortieren",
+            &[
+                ("0 – 5", "Sterne (0: keine)"),
+                ("6 – 9", "Rot, Gelb, Grün, Blau"),
+                ("X", "Ablehnen"),
+                ("Umschalt+…", "Dasselbe, dann nächstes Foto"),
+                ("Entf", "Löschen – Esc holt es zurück"),
+            ],
+        ),
+        (
+            "Ansichten",
+            &[
+                ("F2 – F5", "Foto · Raster · Szenen · Gesichter (G)"),
+                ("Esc, Enter", "Zurück zum Foto"),
+                ("F, F11", "Vollbild"),
+            ],
+        ),
+        (
+            "Vergleichen",
+            &[
+                ("C, Umschalt+C", "Zwei / vier Fotos vergleichen"),
+                ("Alt+C", "Ganz und 100 % nebeneinander"),
+                ("A, D", "Links / rechts behalten"),
+                (
+                    "Umschalt+A, Umschalt+D",
+                    "Behalten, mit dem nächsten weiter",
+                ),
+            ],
+        ),
+        (
+            "Zoom und Prüfen",
+            &[
+                ("Z, Doppelklick", "Ganzes Foto ↔ 100 %"),
+                ("Strg+0, Strg+1", "Ganzes Foto / 100 %"),
+                ("+, −, Mausrad, Ziehen", "Zoomen, gezoomtes Foto schieben"),
+                ("O", "Prüfen: Kanten, Belichtung"),
+            ],
+        ),
+        (
+            "Leisten",
+            &[
+                ("F10, Alt+1", "Menüleiste"),
+                ("Tab, Alt+2", "Detailansicht"),
+                ("T, Alt+3", "Filterleiste"),
+                ("F6, Alt+4", "Filmstreifen"),
+                ("Umschalt+Tab, Alt+0", "Alle vier Leisten"),
+                ("Strg+Tab", "Nächster Reiter der Details"),
+            ],
+        ),
+        (
+            "Filter",
+            &[
+                ("Strg+F", "Filter per Tastatur"),
+                ("Umschalt+T", "Filter kurz aus / wieder an"),
+                ("M", "Nur ähnliche Fotos"),
+            ],
+        ),
+        (
+            "Bearbeiten",
+            &[
+                ("S, R", "Ausrichten / Ausschnitt"),
+                ("Enter, Esc", "Übernehmen / verwerfen"),
+                ("Strg+←, Strg+→", "90° drehen"),
+                ("Strg+Z", "Rückgängig"),
+                ("E", "In anderem Programm bearbeiten"),
+            ],
+        ),
+        (
+            "Video",
+            &[
+                ("Leertaste", "Abspielen / anhalten"),
+                ("Umschalt+Leertaste", "Nächstes Foto"),
+                ("Alt+←, Alt+→", "5 s zurück / vor"),
+                (",, .", "Ein Bild zurück / vor"),
+                ("↑, ↓", "Lautstärke"),
+            ],
+        ),
+        (
+            "Weiteres",
+            &[
+                ("Strg+O", "Ordner öffnen"),
+                ("Strg+U", "Unterordner an / aus"),
+                ("Strg+L", "Sprache"),
+                ("H, F1, ?", "Diese Hilfe"),
+                ("Esc", "Einen Schritt zurück"),
+            ],
+        ),
     ],
 };

@@ -41,7 +41,7 @@ pub struct ToolbarInfo<'a> {
     pub name_list: Option<(usize, usize)>,
     /// The keyword filter's chip while it filters: its label and tooltip (`app::keywords`).
     pub keywords: Option<(&'a str, &'a str)>,
-    /// Why the sort box is greyed out – the scene view (`F8`) is always in capture-time
+    /// Why the sort box is greyed out – the scene view (`F4`) is always in capture-time
     /// order; `None`: it can be chosen.
     pub sort_locked: Option<&'a str>,
     /// The folder's cameras for the camera box, the most photos first (`camera_entries`).

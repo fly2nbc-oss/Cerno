@@ -38,8 +38,6 @@ pub fn navigator(
 ) -> Option<Vec2> {
     let photo = place(area, aspect);
     let card = photo.expand(PAD);
-    // Never focusable: `Space` must not click it again.
-    let response = ui.interact(card, Id::unique("navigator"), Sense::CLICK | Sense::DRAG);
     let painter = ui.painter().with_clip_rect(area);
     theme::paint_card(&painter, card, radius::LG);
     painter.image(
@@ -76,12 +74,23 @@ pub fn navigator(
         Stroke::new(2.0, tokens::ACCENT),
         StrokeKind::Outside,
     );
+    grab_point(
+        ui,
+        card,
+        photo,
+        Id::unique("navigator"),
+        CursorIcon::PointingHand,
+    )
+}
+
+/// A press or a drag on `hit`: the pointer's point in `photo` (0..1, clamped) while the button
+/// is held – at once on the press, then following the drag –, else `None`. Never focusable
+/// (`Space` must not click it again); `hover` is the cursor before the press, `Grabbing` while
+/// held. The navigator and the split view's whole side share it.
+pub fn grab_point(ui: &Ui, hit: Rect, photo: Rect, id: Id, hover: CursorIcon) -> Option<Vec2> {
+    let response = ui.interact(hit, id, Sense::CLICK | Sense::DRAG);
     let held = response.is_pointer_button_down_on() || response.dragged();
-    let response = response.on_hover_cursor(if held {
-        CursorIcon::Grabbing
-    } else {
-        CursorIcon::PointingHand
-    });
+    let response = response.on_hover_cursor(if held { CursorIcon::Grabbing } else { hover });
     if !held {
         return None;
     }
