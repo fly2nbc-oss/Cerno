@@ -12,6 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 - **The AppImage updates with AppImageUpdate** – it now carries update information, and every release has its `.zsync` beside it: [AppImageUpdate](https://github.com/AppImageCommunity/AppImageUpdate) (or AppImageLauncher) fetches only the parts that changed. Cerno itself still downloads nothing; its update check only names a newer version.
 - **A description in software centres** – the `.deb` and the AppImage carry AppStream metadata, so GNOME Software and KDE Discover show what Cerno does, a screenshot and its releases.
 - **`cerno --version`** prints the version and ends, without a window and without creating Cerno's data folder. On Windows the line shows only when the output is redirected (`cerno --version > version.txt`): the program has no console.
+- **The date while the grid scrolls** – in capture-time order, scrolling the grid (`F7`) shows the day of the top row in a small pill at the top, so you see where you are in a long folder; it fades about 1.5 s after scrolling stops. It follows a camera clock set right, says *no date* for the photos without a capture time at the end, and stays away in every other order. The grid keeps its regular rows – no day headings – so `↑`/`↓` still move exactly one row.
 
 ### Under the hood
 

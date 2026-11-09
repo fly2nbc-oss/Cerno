@@ -217,9 +217,19 @@ impl CernoApp {
             step: self.viewer.grid_step,
             follow,
         };
-        let out = grid::draw(ui, rect, &shown, &self.thumbs, |i| {
-            self.cell_info(i, percentiles, around)
-        });
+        // The floating date follows a camera set right, like the info bar.
+        let taken_ms = |i: usize| {
+            let known = self.board.get(paths.get(i)?)?;
+            self.camera_time.corrected(known.taken_ms, known.camera)
+        };
+        let out = grid::draw(
+            ui,
+            rect,
+            &shown,
+            &self.thumbs,
+            |i| self.cell_info(i, percentiles, around),
+            taken_ms,
+        );
         self.thumbs.set_visible(out.visible);
         self.viewer.grid_columns = out.columns;
         self.viewer.grid_page = out.page;
