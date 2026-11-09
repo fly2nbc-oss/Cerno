@@ -356,8 +356,10 @@ pub struct Texts {
     pub photos_badge_tooltip: &'static str,
     /// The info bar's position while a filter hides photos and the filter bar is hidden: the photo, how many show, how many there are.
     pub filtered_position: fn(usize, usize, usize) -> String,
-    /// Its tooltip.
-    pub filtered_hint: &'static str,
+    /// Its tooltip; it names `Shift+T` (the key, named in this language).
+    pub filtered_hint: fn(&str) -> String,
+    /// The hint when `Shift+T` sets the filter aside (the key, named in this language).
+    pub filter_aside_set: fn(&str) -> String,
     /// The info bar's mark while `Shift+T` has set the filter aside (the key, named in this
     /// language), its tooltip, and the hint when there is no filter to set aside.
     pub filter_aside_mark: fn(&str) -> String,
@@ -945,6 +947,8 @@ mod tests {
                 t.filter_aside_mark,
                 t.filter_aside_hint,
                 t.filter_aside_none,
+                t.filter_aside_set,
+                t.filtered_hint,
             ] {
                 assert!(aside("Shift+T").contains("Shift+T"), "{name}");
             }

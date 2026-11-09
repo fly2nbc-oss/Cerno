@@ -1,8 +1,9 @@
 //! `Shift+T`: the whole filter set aside for a moment – every photo of the folder shows – and
 //! back exactly as it was with the same key or a click on the info bar's mark (ticket CER-60,
-//! the user's decisions). Setting a filter meanwhile discards it (`options_changed`); it is
-//! never saved – the saved filter stays the one set aside (`save_options`) – and another
-//! folder puts it back before the folder's own parts are dropped, as at a start.
+//! the user's decisions). Setting a filter meanwhile discards it (`options_changed`), and so
+//! does another folder (`open`, the user's answer of 2026-11-09: it lapses, every photo of
+//! the new folder shows). While aside it is what is saved (`save_options`), so a restart in
+//! the same folder brings it back; once it lapses, the filter of now is saved.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -73,6 +74,9 @@ impl CernoApp {
             // The 🗑 box went aside too: the deleted photos leave what is looked at.
             self.sync_library();
             self.rebuild_view(ctx, None);
+            self.notice = Some(Notice::hint((i18n::t().filter_aside_set)(
+                &i18n::with_shift("T"),
+            )));
         } else {
             self.notice = Some(Notice::hint((i18n::t().filter_aside_none)(
                 &i18n::with_shift("T"),
@@ -252,5 +256,34 @@ mod tests {
         h.app.change_options(&ctx, |o| o.sort = SortKey::Rating);
         assert_eq!(h.app.db.setting("filter"), saved);
         assert_eq!(h.app.db.setting("sort").as_deref(), Some("rating"));
+    }
+
+    /// Setting the filter aside says so in a hint naming the key back.
+    #[test]
+    fn setting_the_filter_aside_says_so() {
+        let mut h = four_star_filter();
+        h.press(Key::T, SHIFT);
+        let notice = h.app.notice.as_ref().expect("a hint");
+        assert!(notice.text.contains("Filter off"), "{}", notice.text);
+        assert!(!notice.error);
+    }
+
+    /// Another folder: the filter set aside lapses (the user's decision of 2026-11-09) – every
+    /// photo shows, `Shift+T` has nothing to bring back, and no filter is saved any more.
+    #[test]
+    fn another_folder_lets_the_filter_aside_lapse() {
+        let mut h = four_star_filter();
+        let ctx = h.ctx.clone();
+        h.press(Key::T, SHIFT);
+        let dir = h.app.folder.dir.clone().expect("the folder");
+        h.app.open(&ctx, &dir);
+        h.settle();
+        assert!(h.app.browse.filter_aside.is_none());
+        assert!(!h.app.options.is_filtered());
+        assert_eq!(shown(&h).len(), 4);
+        let saved = h.app.db.setting("filter").unwrap_or_default();
+        assert!(!saved.contains('4'), "no 4★ box saved: {saved:?}");
+        h.press(Key::T, SHIFT);
+        assert!(h.app.browse.filter_aside.is_none(), "nothing to bring back");
     }
 }

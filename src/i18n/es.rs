@@ -149,7 +149,14 @@ pub static TEXTS: Texts = Texts {
     photos_count: |n| format!("{n} {}", if n == 1 { "foto" } else { "fotos" }),
     photos_badge_tooltip: "Cuántas fotos muestra ahora el filtro – «Fotos visibles» de la barra de menú actúa exactamente sobre estas.",
     filtered_position: |pos, shown, total| format!("{pos} / {shown} de {total}"),
-    filtered_hint: "Un filtro oculta fotos. Haz clic o pulsa T para mostrar la barra de filtros.",
+    filtered_hint: |key| {
+        format!(
+            "Un filtro oculta fotos. Haz clic o pulsa T para mostrar la barra de filtros, {key} para desactivarlo un momento."
+        )
+    },
+    filter_aside_set: |key| {
+        format!("Filtro desactivado – se ven todas las fotos. {key} lo recupera.")
+    },
     filter_aside_mark: |key| format!("Filtro desactivado – {key}"),
     filter_aside_hint: |key| {
         format!(

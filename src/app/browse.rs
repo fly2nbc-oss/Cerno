@@ -161,9 +161,11 @@ impl CernoApp {
         self.scan_deleted();
         self.viewer.pinned = None;
         self.viewer.quad = None;
-        // A filter set aside comes back, as at a start; what of it was about the last folder
-        // goes below.
-        self.put_filter_back();
+        // A filter set aside lapses with its folder (`Shift+T`, the user's decision): every
+        // photo of the new one shows, and that is what is saved from now on.
+        if self.browse.filter_aside.take().is_some() {
+            self.save_options();
+        }
         // "Similar photos" was about a photo of the previous folder, Top N picked from it, the
         // deleted photos lay beside it.
         self.options.similar = false;

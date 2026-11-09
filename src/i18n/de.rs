@@ -153,7 +153,12 @@ pub static TEXTS: Texts = Texts {
     photos_count: |n| format!("{n} {}", if n == 1 { "Foto" } else { "Fotos" }),
     photos_badge_tooltip: "So viele Fotos zeigt der Filter gerade – auf genau diese wirkt „Sichtbare Fotos“ in der Menüleiste.",
     filtered_position: |pos, shown, total| format!("{pos} / {shown} von {total}"),
-    filtered_hint: "Ein Filter blendet Fotos aus. Ein Klick oder T zeigt die Filterleiste.",
+    filtered_hint: |key| {
+        format!(
+            "Ein Filter blendet Fotos aus. Ein Klick oder T zeigt die Filterleiste, {key} schaltet ihn kurz aus."
+        )
+    },
+    filter_aside_set: |key| format!("Filter aus – alle Fotos. {key} holt ihn zurück."),
     filter_aside_mark: |key| format!("Filter aus – {key}"),
     filter_aside_hint: |key| {
         format!(

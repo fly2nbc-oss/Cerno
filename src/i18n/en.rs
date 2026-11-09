@@ -154,7 +154,12 @@ pub static TEXTS: Texts = Texts {
     photos_count: |n| format!("{n} {}", if n == 1 { "photo" } else { "photos" }),
     photos_badge_tooltip: "How many photos the filter shows now – the menu bar's “Photos on screen” works on exactly these.",
     filtered_position: |pos, shown, total| format!("{pos} / {shown} of {total}"),
-    filtered_hint: "A filter hides photos. Click or press T to show the filter bar.",
+    filtered_hint: |key| {
+        format!(
+            "A filter hides photos. Click or press T to show the filter bar, {key} to switch it off for a moment."
+        )
+    },
+    filter_aside_set: |key| format!("Filter off – every photo shows. {key} brings it back."),
     filter_aside_mark: |key| format!("Filter off – {key}"),
     filter_aside_hint: |key| {
         format!(

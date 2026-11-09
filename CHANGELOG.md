@@ -7,10 +7,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+## [1.14.0] – 2026-11-09
+
+Only one camera's photos, the filter off for a moment with `Shift+T`, a warning when a RAW preview is too small to judge sharpness – and marks that could not be written are no longer lost.
+
 ### Added
 
 - **Only one camera's photos** – with a second shooter or two bodies in one folder, the filter bar's new camera box shows only one camera's photos, together with the other filters; the list names each camera with its number of photos. Two bodies of the same model are listed apart by the last digits of their serial number when the photos state it. In Details › File a button beside the camera does the same for the photo shown, and a second click shows every camera again. The choice is not saved and ends when another folder opens. Every photo is read once more after the update (without decoding it) to learn its serial number.
-- **Filter off for a moment (`Shift+T`)** – every photo of the folder shows; `Shift+T` again, or a click on the grey *Filter off – Shift+T* at the start of the info bar's second row, brings back exactly the same filter: the boxes, *without ✕*, photos / videos, similar photos, the file list, the camera and Top N with the photos it had picked. The photo on screen stays where the filter shows it. Setting a filter meanwhile drops the one set aside; it is never saved.
+- **Filter off for a moment (`Shift+T`)** – every photo of the folder shows; `Shift+T` again, or a click on the grey *Filter off – Shift+T* at the start of the info bar's second row, brings back exactly the same filter: the boxes, *without ✕*, photos / videos, similar photos, the file list, the camera and Top N with the photos it had picked. The photo on screen stays where the filter shows it. Setting a filter meanwhile, or opening another folder, drops the one set aside. The blue filter hint's tooltip now names `Shift+T`.
 - **A RAW preview too small to judge sharpness says so** – some cameras put only a small JPEG into their RAW files (Sony ARW about 1616 px, early CR3). When the preview is below 3000 px on its long side, the info bar's *Zoom 100 % of the preview* turns orange while you zoom and names the preview's size on hover, with the tip to shoot RAW+JPG; Details › File adds *Sharpness check: preview too small* under the size. Cerno still doesn't develop RAW files.
 
 ### Fixed

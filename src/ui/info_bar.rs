@@ -239,6 +239,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
         // be yesterday's: the position says so in the accent, and a click shows the bar.
         Some(total) => {
             let (position, shown) = bar.position;
+            let tooltip = (t.filtered_hint)(&i18n::with_shift("T"));
             let lead = Lead {
                 label: format!(
                     "{}  {}",
@@ -248,7 +249,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
                 colour: tokens::ACCENT,
                 hover: Some(tokens::ACCENT_STRONG),
                 id: "filtered",
-                tooltip: t.filtered_hint,
+                tooltip: &tooltip,
             };
             let (clicked, right) = lead.show(ui, &left, pos2(cursor, row2), &font);
             out.show_filters = clicked;
