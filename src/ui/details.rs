@@ -1344,6 +1344,74 @@ mod tests {
         assert!(ctx.memory(|m| m.focused().is_none()));
     }
 
+    /// Details › File names the photo's camera as the camera box does; the filter button
+    /// beside it asks for that camera's photos – greyed out (one camera in the folder) it takes
+    /// no click – and never keeps the keyboard focus.
+    #[test]
+    fn the_camera_row_filters_by_its_camera() {
+        let status = status();
+        let click_camera = |blocked: Option<&'static str>| {
+            let ctx = crate::theme::test_context();
+            let details = Details {
+                file: Some(([6000, 4000], 120)),
+                camera: Some(CameraRow {
+                    label: "ILCE-7M4 ·4821".to_owned(),
+                    pick: CameraPick {
+                        model: 1,
+                        serial: Some(2),
+                    },
+                    on: false,
+                    blocked,
+                }),
+                ..details_with_scores(&status)
+            };
+            let panel = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 1200.0));
+            let frame = |events: Vec<Event>| {
+                let mut out = Output::default();
+                let mut output = ctx.run_ui(
+                    RawInput {
+                        screen_rect: Some(panel),
+                        events,
+                        ..Default::default()
+                    },
+                    |ui| out = draw(ui, panel, &details, &mut false),
+                );
+                output.textures_delta.clear();
+                (output, out.camera)
+            };
+            let drawn = texts(&frame(Vec::new()).0);
+            let row = drawn
+                .iter()
+                .find(|(text, _)| text == "Camera")
+                .map(|(_, rect)| *rect)
+                .expect("the camera row is drawn");
+            assert!(drawn.iter().any(|(text, _)| text == "ILCE-7M4 ·4821"));
+            let at = pos2(panel.right() - (PAD - 4.0) - 11.0, row.center().y);
+            let button = |pressed| Event::PointerButton {
+                pos: at,
+                button: PointerButton::Primary,
+                pressed,
+                modifiers: Modifiers::NONE,
+            };
+            let asked: Vec<bool> = [
+                vec![Event::PointerMoved(at)],
+                vec![button(true)],
+                vec![button(false)],
+                Vec::new(),
+            ]
+            .into_iter()
+            .map(|events| frame(events).1)
+            .collect();
+            assert!(ctx.memory(|m| m.focused().is_none()));
+            asked
+        };
+        assert_eq!(click_camera(None), [false, false, true, false]);
+        assert_eq!(
+            click_camera(Some("one camera")),
+            [false, false, false, false]
+        );
+    }
+
     /// The eye next to "Sharpness" turns the sharpness overlay on, and off again when lit.
     #[test]
     fn the_eye_switches_the_overlay() {

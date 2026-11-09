@@ -832,7 +832,20 @@ mod tests {
         stale: bool,
         status: &Status,
         similar_to: Option<&str>,
+        counts: (usize, usize),
+    ) -> (Vec<(String, Rect)>, Rect) {
+        bar_with(options, stale, status, similar_to, counts, &[], None)
+    }
+
+    /// The same with the folder's cameras and the name of the one chosen.
+    fn bar_with(
+        options: ViewOptions,
+        stale: bool,
+        status: &Status,
+        similar_to: Option<&str>,
         (shown, total): (usize, usize),
+        cameras: &[CameraEntry],
+        camera: Option<&str>,
     ) -> (Vec<(String, Rect)>, Rect) {
         let ctx = crate::theme::test_context();
         let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(1800.0, TOOLBAR_HEIGHT));
@@ -856,8 +869,8 @@ mod tests {
                         has_videos: true,
                         has_deleted: false,
                         name_list: None,
-                        cameras: &[],
-                        camera: None,
+                        cameras,
+                        camera,
                     };
                     count = toolbar(ui, screen, &mut options, &info).count;
                 },
@@ -1092,6 +1105,126 @@ mod tests {
             ..ViewOptions::default()
         };
         left_of(&bar(top, false, &done).0, &Scope::Top(250).label());
+    }
+
+    fn camera(model: u64, serial: Option<u64>, name: &str, suffix: Option<&str>) -> CameraEntry {
+        CameraEntry {
+            pick: crate::view::CameraPick { model, serial },
+            name: name.to_owned(),
+            suffix: suffix.map(str::to_owned),
+            count: 12,
+        }
+    }
+
+    /// Choosing a camera – a short name, a long one cut short, a body – moves no chip: the
+    /// camera box keeps its width whatever it shows and however many cameras the folder has.
+    #[test]
+    fn another_camera_moves_no_chip() {
+        let done = status(1, 1);
+        let cameras = [
+            camera(1, None, "ILCE-7M4", None),
+            camera(1, Some(2), "ILCE-7M4", Some("4821")),
+            camera(1, Some(3), "ILCE-7M4", Some("3021")),
+            camera(4, None, "Canon EOS R5 Mark II with a very long name", None),
+        ];
+        let left = |pick: Option<usize>, cameras: &[CameraEntry]| {
+            let options = ViewOptions {
+                camera: pick.map(|i| cameras[i].pick),
+                ..ViewOptions::default()
+            };
+            let chosen = pick.map(|i| cameras[i].label());
+            let (texts, _) = bar_with(
+                options,
+                false,
+                &done,
+                None,
+                (12, 340),
+                cameras,
+                chosen.as_deref(),
+            );
+            (left_of(&texts, "1★"), texts)
+        };
+        let (all, texts) = left(None, &cameras);
+        left_of(&texts, i18n::t().camera_all);
+        let (body, texts) = left(Some(1), &cameras);
+        left_of(&texts, "ILCE-7M4 ·4821");
+        let (long, texts) = left(Some(3), &cameras);
+        assert!(
+            texts
+                .iter()
+                .any(|(text, _)| text.starts_with("Canon") && text.ends_with('…')),
+            "a long name is cut short: {texts:?}"
+        );
+        let (none, _) = left(None, &[]);
+        assert_eq!([body, long, none], [all; 3]);
+    }
+
+    /// In a folder with one camera, or none known yet, the camera box is greyed out: a click
+    /// opens no list.
+    #[test]
+    fn one_camera_greys_the_camera_box_out() {
+        let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(1800.0, 900.0));
+        let bar = Rect::from_min_size(pos2(0.0, 0.0), vec2(1800.0, TOOLBAR_HEIGHT));
+        let done = status(1, 1);
+        let opened = |cameras: &[CameraEntry]| {
+            let ctx = crate::theme::test_context();
+            let mut options = ViewOptions::default();
+            let mut combo = None;
+            let mut listed = false;
+            for step in 0..6 {
+                let button = |pos, pressed| egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                };
+                let events = match (step, combo) {
+                    (1, Some(at)) => vec![egui::Event::PointerMoved(at)],
+                    (2, Some(at)) => vec![button(at, true)],
+                    (3, Some(at)) => vec![button(at, false)],
+                    _ => vec![],
+                };
+                let mut output = ctx.run_ui(
+                    RawInput {
+                        screen_rect: Some(screen),
+                        time: Some(f64::from(step) * 0.1),
+                        events,
+                        ..Default::default()
+                    },
+                    |ui| {
+                        let info = ToolbarInfo {
+                            stale: false,
+                            status: &done,
+                            similar_to: None,
+                            shown: 340,
+                            total: 340,
+                            has_videos: true,
+                            has_deleted: false,
+                            name_list: None,
+                            cameras,
+                            camera: None,
+                        };
+                        toolbar(ui, bar, &mut options, &info);
+                    },
+                );
+                output.textures_delta.clear();
+                for clipped in &output.shapes {
+                    if let Shape::Text(text) = &clipped.shape {
+                        let label = text.galley.text();
+                        if combo.is_none() && label == i18n::t().camera_all {
+                            combo = Some(text.visual_bounding_rect().center());
+                        }
+                        listed |= label.starts_with("Pixel 7a");
+                    }
+                }
+            }
+            listed
+        };
+        let one = [camera(1, None, "Pixel 7a", None)];
+        let two = [one[0].clone(), camera(2, None, "moto g42", None)];
+        assert!(!opened(&one));
+        assert!(!opened(&[]));
+        assert!(opened(&two));
     }
 
     /// The count stays at the right edge while the progress and "Refresh order" come and go,

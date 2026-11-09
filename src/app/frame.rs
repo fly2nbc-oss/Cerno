@@ -405,8 +405,7 @@ impl CernoApp {
         if out.camera
             && let Some(row) = camera
         {
-            let pick = (!row.on).then_some(row.pick);
-            self.click(&ctx, Command::FilterCamera(pick));
+            self.camera_button(&ctx, &row);
         }
     }
 

@@ -145,6 +145,17 @@ impl ScoreBoard {
             .cloned()
     }
 
+    /// Tests: a photo of this camera model and body, as the analysis would find it.
+    #[cfg(test)]
+    pub fn put_camera(&self, path: &Path, model: &str, serial: Option<&str>) {
+        let known = Known {
+            camera: self.camera(Some(model)),
+            serial: self.serial(serial),
+            ..self.get(path).unwrap_or_default()
+        };
+        self.set(path, known);
+    }
+
     /// Only a real change bumps the version (the analysis re-confirms known values).
     fn set(&self, path: &Path, known: Known) {
         let previous = self
