@@ -82,7 +82,7 @@ pub fn sharpness_threshold(rgb: &[u8], width: u32, height: u32) -> f32 {
 }
 
 /// About this many pixels decide where a photo is sharpest ([`sharpest_point`]).
-const FOCUS_SAMPLES: usize = 60_000;
+const FOCUS_SAMPLES: usize = 20_000;
 /// [`sharpest_point`] cuts the photo into this many cells across and down.
 const FOCUS_GRID: usize = 8;
 

@@ -1220,7 +1220,7 @@ mod tests {
             decode::decode_for_screen(&jpeg, jpg, 1, [u32::MAX; 2]).expect("full");
         });
         println!(
-            "{} MB JPEG, display {}x{}: decode {decode_ms:.1} ms, sharpest point {focus_ms:.1} ms,              histogram {histogram_ms:.1} ms; full resolution {full_ms:.1} ms",
+            "{} MB JPEG, display {}x{}: decode {decode_ms:.1} ms, sharpest point {focus_ms:.1} ms, histogram {histogram_ms:.1} ms; full resolution {full_ms:.1} ms",
             jpeg.len() / 1_000_000,
             display.width,
             display.height

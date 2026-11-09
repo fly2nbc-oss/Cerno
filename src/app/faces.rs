@@ -285,6 +285,10 @@ impl CernoApp {
     /// The photo was changed (an edit, another program's save): its faces are looked for
     /// again the next time they show.
     pub(super) fn forget_faces(&mut self, path: &Path) {
+        // Turned or saved by another program: the split view looks at it anew.
+        if self.viewer.split_aim.as_deref() == Some(path) {
+            self.viewer.split_aim = None;
+        }
         if self.viewer.faces.path.as_deref() == Some(path) {
             self.viewer.faces = Faces {
                 grid_open: self.viewer.faces.grid_open,
