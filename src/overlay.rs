@@ -81,6 +81,56 @@ pub fn sharpness_threshold(rgb: &[u8], width: u32, height: u32) -> f32 {
     (*value).max(PEAK_MIN)
 }
 
+/// About this many pixels decide where a photo is sharpest ([`sharpest_point`]).
+const FOCUS_SAMPLES: usize = 60_000;
+/// [`sharpest_point`] cuts the photo into this many cells across and down.
+const FOCUS_GRID: usize = 8;
+
+/// Where the photo is sharpest, in 0..1 of the image: among the edges the overlay marks as
+/// sharp (the photo's strongest [`PEAK_SHARE`], at least [`PEAK_MIN`]), the middle of those in
+/// the cell of an 8 × 8 grid that holds most of them – where the split view's 100 % side looks
+/// when the photo has no face (ticket CER-49). Sampled like [`sharpness_threshold`], so a
+/// display image costs a few milliseconds. `None` when no edge is sharp enough to be marked.
+pub fn sharpest_point(rgb: &[u8], width: u32, height: u32) -> Option<[f32; 2]> {
+    let (w, h) = (width as usize, height as usize);
+    if w < 5 || h < 5 || rgb.len() < w * h * 3 {
+        return None;
+    }
+    let inner = (w - 4) * (h - 4);
+    let step = ((inner as f32 / FOCUS_SAMPLES as f32).sqrt().floor() as usize).max(1);
+    let mut samples = Vec::with_capacity(inner / (step * step) + 1);
+    for y in (2..h - 2).step_by(step) {
+        for x in (2..w - 2).step_by(step) {
+            samples.push((x, y, edge_at(rgb, w, x, y)));
+        }
+    }
+    let mut strengths: Vec<f32> = samples.iter().map(|&(_, _, edge)| edge).collect();
+    let rank = ((strengths.len() as f32 * (1.0 - PEAK_SHARE)) as usize).min(strengths.len() - 1);
+    let (_, value, _) = strengths.select_nth_unstable_by(rank, f32::total_cmp);
+    let threshold = (*value).max(PEAK_MIN);
+    let mut cells = [(0usize, 0.0f64, 0.0f64); FOCUS_GRID * FOCUS_GRID];
+    for &(x, y, edge) in &samples {
+        if edge >= threshold {
+            let cell = &mut cells[(y * FOCUS_GRID / h) * FOCUS_GRID + x * FOCUS_GRID / w];
+            cell.0 += 1;
+            cell.1 += x as f64;
+            cell.2 += y as f64;
+        }
+    }
+    // The first of equally full cells, so the answer never depends on the order of a sort.
+    let (count, sum_x, sum_y) = cells
+        .iter()
+        .copied()
+        .reduce(|best, cell| if cell.0 > best.0 { cell } else { best })?;
+    (count > 0).then(|| {
+        let n = count as f64;
+        [
+            ((sum_x / n + 0.5) / w as f64) as f32,
+            ((sum_y / n + 0.5) / h as f64) as f32,
+        ]
+    })
+}
+
 /// The overlay for `region` of an image of `width` × `height` pixels. `threshold` comes from
 /// [`sharpness_threshold`] of the whole image, so tiles of one photo mark alike. `None` for
 /// [`Mode::Off`].
@@ -360,6 +410,32 @@ mod tests {
         let at_once = sharp_marks(&rgb, w as usize, h as usize, whole(w, h), threshold);
         assert_eq!(stripped, at_once);
         assert!(at_once.iter().any(|&m| m));
+    }
+
+    /// The sharpest spot is where the sharp edges gather: a sharp patch in a soft photo, not
+    /// its soft rest; a photo without a sharp edge has none.
+    #[test]
+    fn the_sharpest_point_lies_in_the_sharp_patch() {
+        let (w, h) = (400, 300);
+        let rgb = image(w, h, |x, y| {
+            let soft = (128.0 + 30.0 * ((x as f32 / 23.0).sin() + (y as f32 / 19.0).cos())) as u8;
+            let patch = (260..340).contains(&x) && (40..100).contains(&y);
+            if patch && (x / 3 + y / 3) % 2 == 0 {
+                [20; 3]
+            } else if patch {
+                [235; 3]
+            } else {
+                [soft; 3]
+            }
+        });
+        let [px, py] = sharpest_point(&rgb, w, h).expect("a sharp patch");
+        assert!((0.62..0.88).contains(&px), "x {px}");
+        assert!((0.1..0.36).contains(&py), "y {py}");
+        let soft = image(64, 64, |x, y| {
+            [(128.0 + 60.0 * ((x as f32 / 9.0).sin() + (y as f32 / 11.0).cos())) as u8; 3]
+        });
+        assert_eq!(sharpest_point(&soft, 64, 64), None);
+        assert_eq!(sharpest_point(&[0; 12], 2, 2), None);
     }
 
     /// The threshold samples the same edge strength that the marks compare.

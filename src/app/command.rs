@@ -139,9 +139,16 @@ pub(super) enum Command {
     Compare,
     /// `Shift+C`: four photos at once.
     Quad,
-    /// `A` / `D` in compare mode: the right / the left photo is rejected.
-    KeepLeft,
-    KeepRight,
+    /// `Shift+Z`: the photo whole and at 100 % side by side.
+    Split,
+    /// `A` / `D` in compare mode: the right / the left photo is rejected. `next` (with Shift):
+    /// the winner stays pinned on the left and the next photo comes in on the right.
+    KeepLeft {
+        next: bool,
+    },
+    KeepRight {
+        next: bool,
+    },
     Zoom(ZoomKeys),
     /// `O`: the next check overlay.
     NextOverlay,
@@ -209,6 +216,7 @@ impl Command {
             Self::Straighten
             | Self::Crop
             | Self::Compare
+            | Self::Split
             | Self::NextOverlay
             | Self::SetOverlay(_) => true,
             Self::Zoom(keys) => keys.toggle || keys.actual,
@@ -339,18 +347,15 @@ impl CernoApp {
                 self.db.put_flag("auto_advance", self.marks.auto_advance);
             }
             Command::DeleteCurrent => self.delete_current(ctx),
-            // Straighten and crop need the photo alone: the four-up view ends first (from the
-            // menu bar too – up to 1.11 its rows opened the session unseen behind the four).
+            // Straighten and crop need the photo alone: the four-up view and the split view end
+            // first (from the menu bar too – up to 1.11 its rows opened the session unseen
+            // behind the four).
             Command::Straighten => {
-                if self.viewer.quad.is_some() {
-                    self.toggle_quad();
-                }
+                self.alone_for_editing();
                 self.begin_straighten();
             }
             Command::Crop => {
-                if self.viewer.quad.is_some() {
-                    self.toggle_quad();
-                }
+                self.alone_for_editing();
                 self.begin_crop();
             }
             Command::Rotate(clockwise) => self.rotate_quarter(clockwise),
@@ -378,8 +383,9 @@ impl CernoApp {
             Command::ResizeGrid(steps) => self.resize_grid(steps),
             Command::Compare => self.toggle_compare(ctx),
             Command::Quad => self.toggle_quad(),
-            Command::KeepLeft => self.keep_left(ctx),
-            Command::KeepRight => self.keep_right(ctx),
+            Command::Split => self.toggle_split(),
+            Command::KeepLeft { next } => self.keep_left(ctx, next),
+            Command::KeepRight { next } => self.keep_right(ctx, next),
             Command::Zoom(keys) => self.zoom_keys(ctx, keys, source, frames, run),
             Command::NextOverlay => self.set_overlay(self.viewer.overlay.next()),
             Command::SetOverlay(mode) => self.set_overlay(mode),
@@ -426,6 +432,14 @@ impl CernoApp {
                 }
             }
         }
+    }
+
+    /// Straighten and crop work on the photo alone: the four-up view and the split view end.
+    fn alone_for_editing(&mut self) {
+        if self.viewer.quad.is_some() {
+            self.toggle_quad();
+        }
+        self.end_split();
     }
 
     /// A screen of cells in the grid, one photo otherwise.
@@ -508,6 +522,7 @@ impl CernoApp {
         let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
         let target = escape_target(Escapable {
             countdown: self.deletions.countdown(Instant::now()).is_some(),
+            split: self.viewer.split,
             zoomed: self.viewer.zoom.is_zoomed(),
             grid: self.viewer.grid,
             quad: self.viewer.quad.is_some(),
@@ -516,6 +531,7 @@ impl CernoApp {
         });
         match target {
             Escape::Deletions => self.undo_deletions(ctx),
+            Escape::Split => self.end_split(),
             Escape::Zoom => self.viewer.zoom.scale = None,
             Escape::Quad => self.toggle_quad(),
             Escape::Compare => self.toggle_compare(ctx),
@@ -536,6 +552,7 @@ mod tests {
             Command::Straighten,
             Command::Crop,
             Command::Compare,
+            Command::Split,
             Command::NextOverlay,
             Command::SetOverlay(overlay::Mode::Off),
         ] {

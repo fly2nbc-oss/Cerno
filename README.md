@@ -21,7 +21,8 @@ Cerno (Latin *cerno* – "I sift, see clearly") helps you go through a folder of
 - **Two helpers under every photo** – *Aesthetics* and *Sharpness*, both in percent (see [the values](#the-values)). Empty stars fill lightly with Cerno's guess of your rating.
 - **Sort and filter** – by capture time, rating, aesthetics, sharpness; photos or videos only; blurry shots, duplicates, files cut off while copying, similar photos, photos with or without people; *without ✕* hides the rejected ones; a pasted list of file names shows the photos a client chose; a camera whose clock was off is set right without touching its files. Filters of different kinds work together: *4★* and *Blurry* are the blurry 4-star photos.
 - **Top 10 … Top 250** – the best photos of what the filters leave, for a slideshow or a photo book: by your stars (else Cerno's guess), aesthetics and sharpness, the best of each burst first. Rejected and blurry shots and duplicates never count, and nothing in the photos changes.
-- **Compare** two or four photos side by side, or see the whole folder as a grid.
+- **Compare** two or four photos side by side, or see the whole folder as a grid. Thin out a burst pair by pair: the better photo stays on the left, the next one comes in on the right.
+- **Whole and 100 % at once** – one photo whole on the left and at 100 % on the right, looking at the eyes or the sharpest spot; both follow as you browse.
 - **RAW + JPG as one photo** – a pair shows once; stars, colour, copy, move and delete take both files.
 - **Straighten, crop and rotate** JPEGs – with the mouse or the keyboard; the original is kept and `Ctrl+Z` brings it back.
 - **Nothing is lost** – deleting moves a photo into a hidden `.originals` folder beside it, after a 5-second countdown you can undo with `Esc`. Later the bin box in the filter bar shows the deleted photos, and `Ctrl+Z` puts one back.
@@ -57,6 +58,8 @@ The Windows files are not signed yet: SmartScreen asks once (*More info* → *Ru
 | `Delete` | Delete – `Esc` within 5 s brings it back |
 | `Z`, double click | 100 % zoom (`Ctrl+1` 100 %, `Ctrl+0` the whole photo) |
 | `C` | Compare: this photo stays on the left, browse on the right |
+| `A` / `D` | Compare: keep the left / right one, the other is rejected (`Shift`: and compare the next photo) |
+| `Shift+Z` | The photo whole and at 100 % side by side |
 | `Shift+C` | Four photos at once – the frame is the current photo, `↑`/`↓` a row |
 | `F10` / `T` / `Tab` / `F6` / `F7` | Menu bar / filter bar / details / filmstrip / grid |
 | `Shift+T` | Filter off for a moment – again: the same filter back |

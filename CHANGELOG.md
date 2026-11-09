@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **Compare a burst pair by pair (`Shift+A` / `Shift+D`)** – in compare mode `A` and `D` keep one photo, reject the other and end the comparison. With `Shift` the comparison goes on: the photo you keep stays (or moves) on the left, the next photo comes in on the right, at the same zoom – so the best photo of a burst is what is left. Photos already rejected are passed over. At the end of the photos shown the comparison ends with a hint and the winner shows alone. `Ctrl+Z` takes the last rejection back.
+- **The photo whole and at 100 % side by side (`Shift+Z`)** – the left half shows the whole photo, the right half the same photo at 100 %: between the eyes of the largest face, else where the photo is sharpest (where the check overlay `O` marks the most sharp edges), with that part framed on the left. Both sides follow `←`/`→`; stars, ✕ and colours act on the one photo. Drag the right side to look elsewhere; the next photo is looked at where it is sharpest again. `Shift+Z` again or `Esc` ends it; also in the menu bar's *View*. Not for videos.
+
 ## [1.14.0] – 2026-11-09
 
 Only one camera's photos, the filter off for a moment with `Shift+T`, a warning when a RAW preview is too small to judge sharpness – and marks that could not be written are no longer lost.

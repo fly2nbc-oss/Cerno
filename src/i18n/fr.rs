@@ -261,6 +261,7 @@ pub static TEXTS: Texts = Texts {
     cmd_compare: "Comparer",
     cmd_quad: "Vue à quatre",
     cmd_zoom: "Photo entière ↔ 100 %",
+    cmd_split: "Entière et 100 %",
     menu_overlay: "Superposition",
     overlay_off: "Désactivée",
     overlay_sharpness: "Contours nets",
@@ -312,6 +313,7 @@ pub static TEXTS: Texts = Texts {
     compare_left_badge: "G",
     keeps_this: |key| format!("{key} garde celle-ci"),
     compare_needs_two: "Il faut au moins deux photos pour comparer",
+    compare_last: "Plus de photos après celle-ci – la comparaison se termine",
     deleting: |n| {
         if n == 1 {
             "1 photo va dans le dossier caché .originals   ·   Esc pour annuler".to_owned()
@@ -756,6 +758,7 @@ pub static TEXTS: Texts = Texts {
     help_cull: [
         ("C", "Comparer deux photos"),
         ("A, D", "Garder la gauche / la droite"),
+        ("Maj+A, Maj+D", "Garder, puis comparer la suivante"),
         ("Maj+C", "Quatre photos à la fois"),
         ("M", "Photos semblables seulement"),
         ("Suppr", "Supprimer (vers .originals)"),
@@ -771,6 +774,7 @@ pub static TEXTS: Texts = Texts {
     help_view: [
         ("Z, Double-clic", "Photo entière ↔ 100 %"),
         ("Ctrl+0, Ctrl+1", "Photo entière / 100 %"),
+        ("Maj+Z", "Photo entière et 100 % côte à côte"),
         ("+, −, Molette", "Zoom avant / arrière"),
         ("Glisser", "Déplacer la photo zoomée"),
         ("O", "Contrôle : netteté, écrêtage"),

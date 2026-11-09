@@ -449,6 +449,8 @@ pub struct Texts {
     pub cmd_compare: &'static str,
     pub cmd_quad: &'static str,
     pub cmd_zoom: &'static str,
+    /// The menu bar's split view (`Shift+Z`): the photo whole and at 100 % side by side.
+    pub cmd_split: &'static str,
     /// View ▸ Overlay ▸ (`O`): marks on the photo.
     pub menu_overlay: &'static str,
     pub overlay_off: &'static str,
@@ -589,6 +591,8 @@ pub struct Texts {
     pub compare_left_badge: &'static str,
     pub keeps_this: fn(&str) -> String,
     pub compare_needs_two: &'static str,
+    /// `Shift+A` / `Shift+D` at the end of the view: the comparison ends.
+    pub compare_last: &'static str,
     pub deleting: fn(usize) -> String,
     pub delete_failed: fn(usize, &str, &str) -> String,
     /// `true`: the eyes were measured, `false`: the whole photo; percent 0..100.
@@ -810,9 +814,9 @@ pub struct Texts {
     pub help_sections: [&'static str; 8],
     pub help_browse: [HelpRow; 5],
     pub help_rate: [HelpRow; 6],
-    pub help_cull: [HelpRow; 6],
+    pub help_cull: [HelpRow; 7],
     pub help_video: [HelpRow; 5],
-    pub help_view: [HelpRow; 8],
+    pub help_view: [HelpRow; 9],
     pub help_panels: [HelpRow; 7],
     pub help_edit: [HelpRow; 5],
     pub help_more: [HelpRow; 3],

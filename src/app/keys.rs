@@ -56,8 +56,13 @@ struct KeyInput {
     compare: bool,
     /// `Shift+C`: the four-up view.
     quad: bool,
+    /// `Shift+Z`: the split view, whole and 100 %.
+    split: bool,
     keep_left: bool,
     keep_right: bool,
+    /// `Shift+A` / `Shift+D`: keep, and the next photo comes in on the right.
+    keep_left_and_next: bool,
+    keep_right_and_next: bool,
     /// `Enter`: in the grid, open the photo; on the description tab, the keyword field.
     play: bool,
     /// Plain `Space` (with repeats; on a video only a fresh press plays or pauses).
@@ -201,8 +206,11 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         delete: plain && i.key_pressed(Key::Delete),
         compare: plain && i.key_pressed(Key::C),
         quad: i.modifiers.shift_only() && i.key_pressed(Key::C),
+        split: i.modifiers.shift_only() && i.key_pressed(Key::Z),
         keep_left: plain && i.key_pressed(Key::A),
         keep_right: plain && i.key_pressed(Key::D),
+        keep_left_and_next: i.modifiers.shift_only() && i.key_pressed(Key::A),
+        keep_right_and_next: i.modifiers.shift_only() && i.key_pressed(Key::D),
         play: plain && i.key_pressed(Key::Enter),
         space: plain && i.key_pressed(Key::Space),
         video: super::video::VideoKeys {
@@ -321,10 +329,13 @@ impl KeyInput {
         }
         push(self.compare, Command::Compare);
         push(self.quad, Command::Quad);
-        push(self.keep_left, Command::KeepLeft);
+        push(self.split, Command::Split);
+        push(self.keep_left, Command::KeepLeft { next: false });
+        push(self.keep_left_and_next, Command::KeepLeft { next: true });
         push(self.edit_elsewhere, Command::EditElsewhere);
         push(self.similar, Command::Similar);
-        push(self.keep_right, Command::KeepRight);
+        push(self.keep_right, Command::KeepRight { next: false });
+        push(self.keep_right_and_next, Command::KeepRight { next: true });
         push(self.play, Command::Enter);
         push(self.face_grid, Command::FaceGrid);
         push(self.delete, Command::DeleteCurrent);
@@ -446,6 +457,8 @@ impl CernoApp {
 #[derive(Debug, Clone, Copy, Default)]
 pub(super) struct Escapable {
     pub(super) countdown: bool,
+    /// The split view: its 100 % side is zoomed, so it comes before the zoom.
+    pub(super) split: bool,
     pub(super) zoomed: bool,
     pub(super) grid: bool,
     pub(super) quad: bool,
@@ -457,6 +470,7 @@ pub(super) struct Escapable {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Escape {
     Deletions,
+    Split,
     Zoom,
     Quad,
     Compare,
@@ -465,12 +479,15 @@ pub(super) enum Escape {
     Notice,
 }
 
-/// The first of: a deletion counting down (brought back), the zoom – not while the grid hides
-/// the photo, its zoom is left for when it shows again –, the four-up view, compare mode, the
-/// grid, full screen; else the notice goes.
+/// The first of: a deletion counting down (brought back), the split view (its 100 % side is
+/// always zoomed – `Esc` would otherwise leave the whole photo twice), the zoom – not while the
+/// grid hides the photo, its zoom is left for when it shows again –, the four-up view, compare
+/// mode, the grid, full screen; else the notice goes.
 pub(super) fn escape_target(open: Escapable) -> Escape {
     if open.countdown {
         Escape::Deletions
+    } else if open.split {
+        Escape::Split
     } else if open.zoomed && !open.grid {
         Escape::Zoom
     } else if open.quad {
@@ -552,6 +569,7 @@ mod tests {
     fn escape_ends_one_thing_at_a_time() {
         let all = Escapable {
             countdown: true,
+            split: true,
             zoomed: true,
             grid: false,
             quad: true,
@@ -562,6 +580,11 @@ mod tests {
         let open = Escapable {
             countdown: false,
             ..all
+        };
+        assert_eq!(escape_target(open), Escape::Split, "before its zoomed side");
+        let open = Escapable {
+            split: false,
+            ..open
         };
         assert_eq!(escape_target(open), Escape::Zoom);
         assert_eq!(
@@ -931,6 +954,44 @@ mod tests {
         assert!(four.quad && !four.compare);
         let two = read(vec![key(Key::C, Key::C, plain)], plain);
         assert!(two.compare && !two.quad);
+    }
+
+    /// `A` / `D` keep a side and end the comparison; with Shift the next photo comes in.
+    #[test]
+    fn shift_a_and_shift_d_keep_and_move_on() {
+        let (plain, shift) = (Modifiers::NONE, Modifiers::SHIFT);
+        let keys = read(vec![key(Key::A, Key::A, shift)], shift);
+        assert!(keys.keep_left_and_next && !keys.keep_left);
+        assert_eq!(
+            keys.commands(&[]).last(),
+            Some(&Command::KeepLeft { next: true })
+        );
+        let keys = read(vec![key(Key::D, Key::D, shift)], shift);
+        assert!(keys.keep_right_and_next && !keys.keep_right);
+        assert_eq!(
+            keys.commands(&[]).last(),
+            Some(&Command::KeepRight { next: true })
+        );
+        let keys = read(vec![key(Key::A, Key::A, plain)], plain);
+        assert!(keys.keep_left && !keys.keep_left_and_next);
+        let ctrl = Modifiers::COMMAND;
+        assert_eq!(
+            read(vec![key(Key::D, Key::D, ctrl)], ctrl),
+            KeyInput::default()
+        );
+    }
+
+    /// `Z` zooms, `Shift+Z` is the split view, `Ctrl+Z` undoes.
+    #[test]
+    fn shift_z_is_the_split_view() {
+        let (plain, shift, ctrl) = (Modifiers::NONE, Modifiers::SHIFT, Modifiers::COMMAND);
+        let split = read(vec![key(Key::Z, Key::Z, shift)], shift);
+        assert!(split.split && !split.toggle_zoom && !split.undo);
+        assert!(split.commands(&[]).contains(&Command::Split));
+        let zoom = read(vec![key(Key::Z, Key::Z, plain)], plain);
+        assert!(zoom.toggle_zoom && !zoom.split);
+        let undo = read(vec![key(Key::Z, Key::Z, ctrl)], ctrl);
+        assert!(undo.undo && !undo.split);
     }
 
     /// `T` is the filter bar, `Shift+T` sets the filter aside (or brings it back); with Ctrl
