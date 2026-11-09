@@ -685,6 +685,16 @@ impl CernoApp {
         if needs_full && full.is_none() {
             self.loader.request_full(slot.index);
         }
+        if slot.side == Side::Single
+            && let Some((index, at)) = self.startup.step
+            && index == slot.index
+        {
+            self.startup.step = None;
+            log::info!(
+                "browse: photo drawn {} ms after the step",
+                at.elapsed().as_millis()
+            );
+        }
         if self.startup.first_photo.is_none() {
             self.startup.first_photo = Some(std::time::Instant::now());
             log::info!(

@@ -160,6 +160,9 @@ struct Startup {
     logged_first_frame: bool,
     /// When the first photo was drawn; ExifTool starts a little later.
     first_photo: Option<Instant>,
+    /// The last step to another photo in the single view (`go_to`): its view index and when.
+    /// The `browse:` log line says how long it took until that photo was drawn.
+    step: Option<(usize, Instant)>,
 }
 
 /// What `assemble` takes from outside: the index and the parts that write or delete files or
@@ -301,6 +304,7 @@ impl CernoApp {
                 started,
                 logged_first_frame: false,
                 first_photo: None,
+                step: None,
             },
             writer_stopped_told: false,
             unsaved: unsaved::Unsaved::default(),

@@ -482,6 +482,7 @@ impl CernoApp {
         };
         if index != self.current {
             self.current = index;
+            self.startup.step = Some((index, std::time::Instant::now()));
             self.start_whole();
             self.loader.set_current(index);
             self.sync_quad();

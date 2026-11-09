@@ -244,6 +244,7 @@ packaging/linux/     build.sh (.deb, AppImage), AppRun, cerno.desktop
 - Before the first frame the loader decodes only the current photo (`prefetch: false`); neighbours would compete with the GPU set-up. `START_TARGET` (4K) is the decode size until the photo area is known; the start photo is then decoded again for it. The prefetch starts only after the first area-based `set_target` (`update_target`) – started earlier, in the first frame, it decoded the neighbours for the 4K guess.
 - wgpu is restricted to one backend (DX12 on Windows, Vulkan + GL elsewhere) – probing all of them cost ~90 ms and opened an untitled OpenGL helper window. `WGPU_BACKEND` overrides.
 - `start-up: …` log lines (info level) report app-ready, first frame and first photo; re-measure after changes that touch start-up.
+- `browse: photo drawn N ms after the step` (info level, since 1.15) times a step to another photo in the single view (`go_to` → `draw_photo`; `Startup::step`). Measured 2026-11-09 against 1.14.0 with the same line, on copies of the author's index and the Roadtrip folder (photos only), warm: start-up to the first photo 303 / 306 ms (1.15 / 1.14); → every 0.6 s and every 0.12 s: 0 ms in both (the neighbour is decoded ahead and shows in the same frame); `End` / `Home` jumps (a fresh decode): median 44–50 / 44–55 ms. The features of 1.15 cost nothing measurable here.
 
 ### Exit (measured 2026-10-13, ticket CER-51: ~50 ms, 0.3–0.4 s while the analysis runs)
 
