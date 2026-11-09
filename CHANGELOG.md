@@ -25,7 +25,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 ### Changed
 
 - **The grid moved from `F7` to `F3`** – the view keys now follow the order of the view switcher at the right of the info bar: `F2` the photo, `F3` the grid, `F4` the scenes, `F5` all faces large (`G` still works too). `F3` and `F4` again go back to the photo, as do `Esc` and `Enter`. `F7` and `F8` do nothing any more.
-- **A clearer shortcuts page** – the help's shortcuts are grouped by task (browse, rate and sort out, views, compare, zoom and check, panels, filter, edit, video, more), and keys of one family share a row, such as `0`–`5`, `F2`–`F5` or `T` and `Alt+3`. The page fits a 1280 × 800 window without scrolling; the short introduction moved to the tips.
+- **A clearer shortcuts page** – the help's shortcuts are grouped by task (browse, rate and sort out, views, compare, zoom and check, panels, filter, edit, video, more), and keys of one family share a row, such as `0`–`5`, `F2`–`F5` or `T` and `Alt+3`. The page fits a 1280 × 800 window at 100 % display scaling (1600 × 1000 at 125 %) without scrolling; the short introduction moved to the tips.
 
 ### Fixed
 
