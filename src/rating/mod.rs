@@ -21,6 +21,7 @@ use crate::metadata::{self, Description, Label, LabelInfo, Rating, RatingInfo};
 mod args;
 mod edits;
 mod marks;
+mod unsaved;
 mod writer;
 
 use args::*;
@@ -28,18 +29,39 @@ use edits::*;
 use marks::*;
 use writer::*;
 
+pub use unsaved::UnsavedMark;
+
 /// Pressing 3 and then 4 within this time results in a single write.
 const DEBOUNCE: Duration = Duration::from_millis(400);
 
 #[derive(Debug, Default, Clone)]
 pub struct WriterStatus {
+    /// Files whose marks wait for their debounce.
     pub pending: usize,
-    pub last_error: Option<String>,
+    /// Files whose marks could not be written, with the last error: kept and tried again
+    /// (ticket CER-57). A write of another file never clears them.
+    pub unsaved: Vec<UnsavedMark>,
+    /// Requests to try again now (`RatingWriter::retry`) and how many of them the writer has
+    /// carried out: copy, move and the exit wait for the attempt.
+    pub retry_asked: usize,
+    pub retry_done: usize,
     /// The version of the ExifTool that runs (once one was started).
     pub exiftool: Option<String>,
     /// Why no ExifTool runs: missing or too old. Not a failed write – the UI blocks the marks
     /// and says why; cleared once one runs.
     pub tool_problem: Option<ToolError>,
+}
+
+impl WriterStatus {
+    /// An attempt the app asked for has not run yet.
+    pub fn retrying(&self) -> bool {
+        self.retry_done < self.retry_asked
+    }
+
+    /// Whether `path` has marks that are not written.
+    pub fn is_unsaved(&self, path: &Path) -> bool {
+        self.unsaved.iter().any(|unsaved| unsaved.path == path)
+    }
 }
 
 enum Message {
@@ -92,6 +114,20 @@ enum Message {
         done: mpsc::Sender<()>,
     },
     Resume,
+    /// Write now what waits for these files – or every file – and try the marks kept from a
+    /// failed write again.
+    Retry {
+        paths: Option<Vec<PathBuf>>,
+    },
+    /// Cerno moved the file: what waits or is kept for it goes along.
+    Moved {
+        from: PathBuf,
+        to: PathBuf,
+    },
+    /// Cerno set the file aside (deleted): its marks are not written any more.
+    Forget {
+        path: PathBuf,
+    },
     Shutdown,
 }
 
@@ -208,18 +244,20 @@ impl RatingWriter {
     }
 
     /// What the writer reports, set by a test (the detached writer has no thread to say it).
-    /// Only the update offer's tests need it, and they run on Windows only.
-    #[cfg(all(test, windows))]
+    #[cfg(test)]
     pub fn report(&self, status: WriterStatus) {
         if let Ok(mut shown) = self.status.lock() {
             *shown = status;
         }
     }
 
-    fn send(&self, message: Message) {
-        if self.tx.send(message).is_err() && !self.lost.swap(true, Ordering::Relaxed) {
+    /// `false` when the thread has ended and the message is lost.
+    fn send(&self, message: Message) -> bool {
+        let sent = self.tx.send(message).is_ok();
+        if !sent && !self.lost.swap(true, Ordering::Relaxed) {
             log::error!("the mark writer has stopped: marks are no longer written");
         }
+        sent
     }
 
     /// The writer thread has ended before `shutdown` – marks and edits are not written.
@@ -269,6 +307,30 @@ impl RatingWriter {
             label,
             description,
         });
+    }
+
+    /// Writes now what waits for `paths` – or for every file with `None` – and tries the marks
+    /// that could not be written again. [`WriterStatus::retrying`] holds until it has run.
+    pub fn retry(&self, paths: Option<Vec<PathBuf>>) {
+        if let Ok(mut status) = self.status.lock() {
+            status.retry_asked += 1;
+        }
+        if !self.send(Message::Retry { paths })
+            && let Ok(mut status) = self.status.lock()
+        {
+            status.retry_asked -= 1;
+        }
+    }
+
+    /// Cerno moved `from` to `to`: marks still waiting or not written go along.
+    pub fn moved(&self, from: PathBuf, to: PathBuf) {
+        // After `shutdown` (a move finished at exit) there is nothing left to follow.
+        let _ = self.tx.send(Message::Moved { from, to });
+    }
+
+    /// Cerno set `path` aside (deleted): marks for it are not written any more.
+    pub fn forget(&self, path: PathBuf) {
+        let _ = self.tx.send(Message::Forget { path });
     }
 
     /// Starts ExifTool in the background, or tries again after it was missing; the outcome

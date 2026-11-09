@@ -117,6 +117,10 @@ impl CernoApp {
                 return;
             }
         };
+        // Marks that could not be written are tried again with every folder.
+        if !self.writer.status().unsaved.is_empty() {
+            self.writer.retry(None);
+        }
         // An error (e.g. the index could not be opened at start) stays until it is read.
         if !self.notice.as_ref().is_some_and(|notice| notice.error) {
             self.notice = library.paths.is_empty().then(|| {

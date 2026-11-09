@@ -27,6 +27,9 @@ pub(super) enum Layer {
     NameList(name_list::Card),
     /// The camera time card (*Visible photos ▸ Camera time …*).
     CameraTime(camera_time::Card),
+    /// The marks that could not be written (the info bar's warning); `exiting`: Cerno is being
+    /// closed, and the card offers *Quit anyway*.
+    Unsaved { exiting: bool },
 }
 
 impl Layer {
@@ -47,7 +50,11 @@ impl Layer {
     pub(super) fn is_card(&self) -> bool {
         matches!(
             self,
-            Self::Models | Self::Confirm { .. } | Self::NameList(_) | Self::CameraTime(_)
+            Self::Models
+                | Self::Confirm { .. }
+                | Self::NameList(_)
+                | Self::CameraTime(_)
+                | Self::Unsaved { .. }
         )
     }
 
@@ -57,6 +64,10 @@ impl Layer {
 
     pub(super) fn is_camera_time(&self) -> bool {
         matches!(self, Self::CameraTime(_))
+    }
+
+    pub(super) fn is_unsaved(&self) -> bool {
+        matches!(self, Self::Unsaved { .. })
     }
 
     /// Closes the layer when `is` holds for it (`Layer::is_list` …); any other stays open.

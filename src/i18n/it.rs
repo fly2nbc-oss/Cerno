@@ -148,6 +148,19 @@ pub static TEXTS: Texts = Texts {
         )
     },
     filter_aside_none: |key| format!("Nessun filtro attivo – {key} non ha niente da disattivare."),
+    unsaved_fact: |n| {
+        if n == 1 {
+            "1 contrassegno non salvato".to_owned()
+        } else {
+            format!("{n} contrassegni non salvati")
+        }
+    },
+    unsaved_tooltip: "Cerno non è riuscito a scriverli nei file e riprova. Fai clic per vedere quali e perché.",
+    unsaved_text: "Cerno non è riuscito a scrivere i contrassegni di queste foto nei loro file. Riprova da solo – o adesso, ad esempio dopo aver chiuso il programma che tiene aperto un file.",
+    unsaved_exit_text: "Se esci ora, vanno persi: i file mantengono ciò che avevano.",
+    unsaved_more: |n| format!("… e altri {n}"),
+    unsaved_retrying: "Nuovo tentativo…",
+    unsaved_all_saved: "Tutti i contrassegni salvati.",
     label_red: "Rosso",
     label_yellow: "Giallo",
     label_green: "Verde",
@@ -279,7 +292,7 @@ pub static TEXTS: Texts = Texts {
     internal_error: "Errore interno – il comando è stato interrotto, Cerno continua (dettagli in crash.log nella cartella dei dati).",
     cannot_open: |path, err| format!("Impossibile aprire {path}: {err}"),
     no_photos_in: |dir| format!("Nessun file JPEG o HEIC in {dir}"),
-    rating_not_saved: |err| format!("Stelle non salvate – {err}"),
+    rating_not_saved: |name| format!("Contrassegno non salvato: {name} – Cerno riprova"),
     open_folder: "Apri cartella",
     transfer_copy_cmd: "Copia tutto ciò che mostra il filtro attuale in …",
     transfer_move_cmd: "Sposta tutto ciò che mostra il filtro attuale in …",
@@ -318,6 +331,8 @@ pub static TEXTS: Texts = Texts {
     btn_download: "Scarica",
     btn_cancel: "Annulla",
     btn_close: "Chiudi (Esc)",
+    btn_retry: "Riprova",
+    btn_quit_anyway: "Esci comunque",
     aesthetics_offer: |size| {
         format!(
             "La valutazione estetica richiede modelli di immagini ({size}): Barra dei menu › Impostazioni › Modelli e dati."

@@ -694,3 +694,104 @@ fn a_pause_holds_marks_until_resume() {
     });
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A mark that can't be written is kept with its error – no longer lost, and not cleared by
+/// another file's write –, is tried again when asked, follows a move and goes with a deletion.
+/// A missing JPEG fails before ExifTool is needed, and a mark the file already has is no write
+/// at all, so this runs without ExifTool (ticket CER-57).
+#[test]
+fn a_mark_that_cannot_be_written_is_kept() {
+    let dir = std::env::temp_dir().join(format!("cerno-unsaved-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let missing = dir.join("gone.jpg");
+    let present = dir.join("here.jpg");
+    std::fs::copy(
+        concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/tiny.jpg"),
+        &present,
+    )
+    .unwrap();
+    let (tx, rx) = mpsc::channel();
+    let status = Mutex::new(WriterStatus::default());
+    let outcomes = Mutex::new(Vec::new());
+    let ctx = egui::Context::default();
+    let db = Db::open_in_memory().unwrap();
+    let files = FileLocks::default();
+    let shared = Shared {
+        status: &status,
+        outcomes: &outcomes,
+        ctx: &ctx,
+        db: &db,
+        files: &files,
+    };
+    let now = || status.lock().unwrap().clone();
+    let wait_for = |what: &str, done: &dyn Fn(&WriterStatus) -> bool| {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !done(&now()) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(done(&now()), "{what}");
+    };
+    let ask = |message: Message| {
+        if matches!(message, Message::Retry { .. }) {
+            status.lock().unwrap().retry_asked += 1;
+        }
+        tx.send(message).unwrap();
+    };
+    std::thread::scope(|scope| {
+        let shared = &shared;
+        scope.spawn(move || run(&rx, shared));
+        ask(Message::SetRating {
+            path: missing.clone(),
+            rating: Rating::Stars(4),
+        });
+        wait_for("kept", &|s| s.unsaved.len() == 1 && s.pending == 0);
+        let kept = now();
+        assert_eq!(kept.unsaved[0].path, missing);
+        assert!(kept.unsaved[0].error.contains("cannot read file"));
+        assert!(
+            !files.busy(&missing),
+            "a kept mark doesn't hold up the analysis"
+        );
+        assert_eq!(
+            files.generation(&missing),
+            0,
+            "a failed write changed nothing"
+        );
+
+        // Another file's write – here one with nothing to change – leaves it listed.
+        ask(Message::SetRating {
+            path: present.clone(),
+            rating: Rating::Unrated,
+        });
+        std::thread::sleep(DEBOUNCE + Duration::from_millis(200));
+        wait_for("the other file written", &|s| s.pending == 0);
+        assert!(now().is_unsaved(&missing));
+        assert!(!now().is_unsaved(&present));
+
+        // A newer mark merges in and fails again: still one entry.
+        ask(Message::SetLabel {
+            path: missing.clone(),
+            label: Some(Label::Red),
+        });
+        std::thread::sleep(DEBOUNCE + Duration::from_millis(200));
+        wait_for("failed again", &|s| s.pending == 0 && s.unsaved.len() == 1);
+
+        // Asked to try again: it runs, and the file is still missing.
+        ask(Message::Retry { paths: None });
+        wait_for("tried", &|s| !s.retrying());
+        assert!(now().is_unsaved(&missing));
+
+        let moved = dir.join("moved.jpg");
+        ask(Message::Moved {
+            from: missing.clone(),
+            to: moved.clone(),
+        });
+        wait_for("followed", &|s| {
+            s.is_unsaved(&moved) && !s.is_unsaved(&missing)
+        });
+        ask(Message::Forget { path: moved });
+        wait_for("dropped with the deletion", &|s| s.unsaved.is_empty());
+        tx.send(Message::Shutdown).unwrap();
+    });
+    let _ = std::fs::remove_dir_all(&dir);
+}

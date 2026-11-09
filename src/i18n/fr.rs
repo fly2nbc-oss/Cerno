@@ -178,6 +178,19 @@ pub static TEXTS: Texts = Texts {
         )
     },
     filter_aside_none: |key| format!("Aucun filtre actif – {key} n'a rien à désactiver."),
+    unsaved_fact: |n| {
+        if n == 1 {
+            "1 marque non enregistrée".to_owned()
+        } else {
+            format!("{n} marques non enregistrées")
+        }
+    },
+    unsaved_tooltip: "Cerno n'a pas pu les écrire dans les fichiers et réessaie. Cliquez pour voir lesquelles et pourquoi.",
+    unsaved_text: "Cerno n'a pas pu écrire les marques de ces photos dans leurs fichiers. Il réessaie de lui-même – ou maintenant, par exemple après avoir fermé le programme qui garde un fichier ouvert.",
+    unsaved_exit_text: "Si vous quittez maintenant, elles sont perdues : les fichiers gardent ce qu'ils avaient.",
+    unsaved_more: |n| format!("… et {n} de plus"),
+    unsaved_retrying: "Nouvel essai…",
+    unsaved_all_saved: "Toutes les marques sont enregistrées.",
     label_red: "Rouge",
     label_yellow: "Jaune",
     label_green: "Vert",
@@ -316,7 +329,7 @@ pub static TEXTS: Texts = Texts {
     internal_error: "Erreur interne – la commande a été interrompue, Cerno continue (détails dans crash.log du dossier de données).",
     cannot_open: |path, err| format!("Impossible d'ouvrir {path} : {err}"),
     no_photos_in: |dir| format!("Aucun fichier JPEG ou HEIC dans {dir}"),
-    rating_not_saved: |err| format!("Étoiles non enregistrées – {err}"),
+    rating_not_saved: |name| format!("Marque non enregistrée : {name} – Cerno réessaie"),
     open_folder: "Ouvrir un dossier",
     transfer_copy_cmd: "Copier tout ce que le filtre actuel affiche vers …",
     transfer_move_cmd: "Déplacer tout ce que le filtre actuel affiche vers …",
@@ -357,6 +370,8 @@ pub static TEXTS: Texts = Texts {
     btn_download: "Télécharger",
     btn_cancel: "Annuler",
     btn_close: "Fermer (Échap)",
+    btn_retry: "Réessayer",
+    btn_quit_anyway: "Quitter quand même",
     aesthetics_offer: |size| {
         format!(
             "L'évaluation esthétique a besoin de modèles d'image ({size}) : Barre de menu › Réglages › Modèles et données."

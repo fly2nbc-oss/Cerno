@@ -162,6 +162,19 @@ pub static TEXTS: Texts = Texts {
         )
     },
     filter_aside_none: |key| format!("No filter is on – {key} has nothing to set aside."),
+    unsaved_fact: |n| {
+        if n == 1 {
+            "1 mark not saved".to_owned()
+        } else {
+            format!("{n} marks not saved")
+        }
+    },
+    unsaved_tooltip: "Cerno could not write them into the files and tries again. Click to see which and why.",
+    unsaved_text: "Cerno could not write the marks of these photos into their files. It tries again on its own – or now, for example after closing the program that has a file open.",
+    unsaved_exit_text: "If you quit now, they are lost: the files keep what they had before.",
+    unsaved_more: |n| format!("… and {n} more"),
+    unsaved_retrying: "Trying again…",
+    unsaved_all_saved: "All marks saved.",
     label_red: "Red",
     label_yellow: "Yellow",
     label_green: "Green",
@@ -292,7 +305,7 @@ pub static TEXTS: Texts = Texts {
     internal_error: "Internal error – the command was stopped, Cerno goes on (details in crash.log in the data folder).",
     cannot_open: |path, err| format!("Cannot open {path}: {err}"),
     no_photos_in: |dir| format!("No JPEG or HEIC files in {dir}"),
-    rating_not_saved: |err| format!("Rating not saved – {err}"),
+    rating_not_saved: |name| format!("Mark not saved: {name} – Cerno tries again"),
     open_folder: "Open folder",
     transfer_copy_cmd: "Copy everything the current filter shows to …",
     transfer_move_cmd: "Move everything the current filter shows to …",
@@ -331,6 +344,8 @@ pub static TEXTS: Texts = Texts {
     btn_download: "Download",
     btn_cancel: "Cancel",
     btn_close: "Close (Esc)",
+    btn_retry: "Try again",
+    btn_quit_anyway: "Quit anyway",
     aesthetics_offer: |size| {
         format!(
             "Aesthetics scoring needs image models ({size}): Menu bar › Settings › Models & data."

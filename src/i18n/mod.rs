@@ -363,6 +363,20 @@ pub struct Texts {
     pub filter_aside_mark: fn(&str) -> String,
     pub filter_aside_hint: fn(&str) -> String,
     pub filter_aside_none: fn(&str) -> String,
+    /// The info bar while marks could not be written into their files: how many files (ticket CER-57); also the title of its card.
+    pub unsaved_fact: fn(usize) -> String,
+    /// Its tooltip.
+    pub unsaved_tooltip: &'static str,
+    /// The card of the marks not written: what happened.
+    pub unsaved_text: &'static str,
+    /// The same card when Cerno is closed: what quitting now means.
+    pub unsaved_exit_text: &'static str,
+    /// The card lists a few files; how many more there are.
+    pub unsaved_more: fn(usize) -> String,
+    /// While the card's try runs.
+    pub unsaved_retrying: &'static str,
+    /// The try from the card wrote everything.
+    pub unsaved_all_saved: &'static str,
     pub label_red: &'static str,
     pub label_yellow: &'static str,
     pub label_green: &'static str,
@@ -586,6 +600,7 @@ pub struct Texts {
     pub internal_error: &'static str,
     pub cannot_open: fn(&str, &str) -> String,
     pub no_photos_in: fn(&str) -> String,
+    /// A file's marks could not be written (its name); Cerno tries again.
     pub rating_not_saved: fn(&str) -> String,
     pub open_folder: &'static str,
     pub transfer_copy_cmd: &'static str,
@@ -604,6 +619,10 @@ pub struct Texts {
     pub btn_download: &'static str,
     pub btn_cancel: &'static str,
     pub btn_close: &'static str,
+    /// Write the marks not saved now.
+    pub btn_retry: &'static str,
+    /// Close Cerno although marks are not saved.
+    pub btn_quit_anyway: &'static str,
     /// One-time hint after the first folder opens while the CLIP model is missing; the size
     /// of the missing models.
     pub aesthetics_offer: fn(&str) -> String,
@@ -949,7 +968,10 @@ mod tests {
             let open = (t.cannot_open)("D:/x", "gone");
             assert!(open.contains("D:/x") && open.contains("gone"), "{name}");
             assert!((t.no_photos_in)("D:/x").contains("D:/x"), "{name}");
-            assert!((t.rating_not_saved)("locked").contains("locked"), "{name}");
+            assert!((t.rating_not_saved)("a.jpg").contains("a.jpg"), "{name}");
+            assert!((t.unsaved_fact)(1).starts_with('1'), "{name}");
+            assert!((t.unsaved_fact)(12).starts_with("12"), "{name}");
+            assert!((t.unsaved_more)(3).contains('3'), "{name}");
             let apt = "sudo apt install libimage-exiftool-perl";
             assert!((t.exiftool_install)(Some(apt)).contains(apt), "{name}");
             assert!((t.exiftool_install)(None).contains("exiftool"), "{name}");

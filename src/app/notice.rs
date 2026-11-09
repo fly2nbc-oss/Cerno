@@ -92,8 +92,8 @@ impl Notice {
 
 impl CernoApp {
     /// The deletion countdown and the copy progress – stacked above a video's play button –
-    /// then the notice, unless a failed rating write is reported, which wins as long as the
-    /// writer reports it.
+    /// then the notice. Marks that could not be written show in the info bar
+    /// (`app::unsaved`).
     pub(super) fn draw_messages(&mut self, ui: &egui::Ui, area: Rect) {
         let mut slot = usize::from(self.video_on_screen(area));
         if let Some((count, left)) = self.deletions.countdown(Instant::now()) {
@@ -108,24 +108,16 @@ impl CernoApp {
                 progress.fraction(),
             );
         }
-        let writer_error = self
-            .writer
-            .status()
-            .last_error
-            .map(|e| (i18n::t().rating_not_saved)(&e));
         let now = Instant::now();
         let opacity = self.notice.as_ref().and_then(|n| n.opacity(now));
         if opacity.is_none() {
             self.notice = None;
         }
-        let message = match (&writer_error, &self.notice, opacity) {
-            (Some(err), _, _) => Some((err.as_str(), true, 1.0)),
-            (None, Some(notice), Some(opacity)) => {
-                Some((notice.text.as_str(), notice.error, opacity))
-            }
+        let message = match (&self.notice, opacity) {
+            (Some(notice), Some(opacity)) => Some((notice.text.as_str(), notice.error, opacity)),
             _ => None,
         };
-        if overlays::notices(ui, area, message) && writer_error.is_none() {
+        if overlays::notices(ui, area, message) {
             self.notice = None;
         }
         if let Some(until) = self.notice.as_ref().and_then(|n| n.until) {
