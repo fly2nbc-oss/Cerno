@@ -89,6 +89,10 @@ impl CernoApp {
     /// The start screen, "nothing matches the filter", or the photo(s).
     pub(super) fn draw_centre(&mut self, ui: &mut egui::Ui, area: Rect) {
         let ctx = ui.ctx().clone();
+        // A step not drawn yet when another view opened is not timed (`go_to`).
+        if !self.single_photo_shows() {
+            self.startup.step = None;
+        }
         if self.folder.all.is_empty() {
             // Start screen: one sentence, "Open folder" and the first keys (H shows all) – and
             // what is still to set up.

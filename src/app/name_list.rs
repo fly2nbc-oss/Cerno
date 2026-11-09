@@ -104,6 +104,9 @@ impl CernoApp {
             };
             self.name_list.text = card.text;
             self.name_list.applied = Some(card.preview);
+            // The list lives outside `ViewOptions`: with the filter already on, `top_key` would
+            // not see it change, and Top N would keep the photos of the last list.
+            self.browse.top_pick_for = None;
             self.change_options(ctx, |o| o.name_list = true);
         } else if out.close {
             self.layer = Layer::None;
@@ -120,5 +123,53 @@ impl CernoApp {
         for (from, to) in moved {
             self.name_list.follow(from, to);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use eframe::egui::{Key, Modifiers};
+
+    use crate::metadata::Rating;
+
+    const HOUR: i64 = 3_600_000;
+
+    use super::super::harness::Harness;
+    use super::*;
+
+    /// Top N with the file list on: another list from the card picks the best photos again
+    /// among the new list's – the list lives outside `ViewOptions`, so `top_key` alone would
+    /// keep the photos of the last list, and none of them is on the new one.
+    #[test]
+    fn another_list_picks_top_n_again() {
+        let mut h = Harness::new(4);
+        let all = std::sync::Arc::clone(&h.app.folder.all);
+        for (i, path) in all.iter().enumerate() {
+            // On the board (an hour apart: no series) with stars, a value for Top N; the
+            // harness has no scores.
+            h.app.board.put_taken(path, HOUR * i as i64);
+            h.app.marks.ratings.insert(path.clone(), Rating::Stars(4));
+        }
+        let ctx = h.ctx.clone();
+        h.app.change_options(&ctx, |o| o.top = Some(10));
+        let apply = |h: &mut Harness, text: &str| {
+            h.app.open_name_list();
+            let Layer::NameList(card) = &mut h.app.layer else {
+                panic!("the card is open");
+            };
+            card.text = text.to_owned();
+            h.press(Key::Enter, Modifiers::COMMAND | Modifiers::CTRL);
+            assert_eq!(h.layer(), "none");
+        };
+        apply(&mut h, "IMG_1, IMG_2");
+        assert_eq!(&h.app.view.paths[..], &all[..2]);
+        apply(&mut h, "IMG_3, IMG_4");
+        assert!(h.app.options.name_list);
+        assert_eq!(h.app.options.top, Some(10));
+        assert_eq!(
+            &h.app.view.paths[..],
+            &all[2..],
+            "picked again among the new list"
+        );
     }
 }

@@ -44,8 +44,10 @@ pub(super) fn description_args(wanted: &Description, on_disk: &Description) -> V
 }
 
 /// Lightroom's keyword paths after a write (CER-67): every path whose last part is a keyword
-/// the file had and `wanted` no longer has goes – case aside. A parent (`Orte`) stays while
-/// another path still stands for it; new keywords get no path (Cerno knows no hierarchy).
+/// the file had and `wanted` no longer has goes – case aside. A path that has the keyword only
+/// as a parent (`Orte|Bodensee|Strand` without `Bodensee`) stays: taking the parent out would
+/// move the child to another place, so Lightroom may bring the parent back. New keywords get
+/// no path (Cerno knows no hierarchy).
 pub(super) fn kept_hierarchy(paths: &[String], had: &[String], wanted: &[String]) -> Vec<String> {
     let fold = |text: &str| text.trim().to_lowercase();
     let wanted: Vec<String> = wanted.iter().map(|k| fold(k)).collect();

@@ -78,6 +78,9 @@ pub(super) struct Browse {
     pub(super) cameras: (u64, Weak<Vec<PathBuf>>, Arc<Vec<view::CameraEntry>>),
     /// The filter `Shift+T` set aside, while every photo shows.
     pub(super) filter_aside: Option<super::filter_aside::FilterAside>,
+    /// A photo's keywords changed in this session since the view was built: while keywords
+    /// filter, *Refresh order* offers to show what they let through now (`order_stale`).
+    pub(super) keywords_changed: bool,
 }
 
 impl Default for Browse {
@@ -92,6 +95,7 @@ impl Default for Browse {
             videos_in: (Weak::new(), false),
             cameras: (u64::MAX, Weak::new(), Arc::default()),
             filter_aside: None,
+            keywords_changed: false,
         }
     }
 }
@@ -280,6 +284,7 @@ impl CernoApp {
         }
         self.browse.view_version = self.board.version();
         self.browse.view_built = Instant::now();
+        self.browse.keywords_changed = false;
         if let Some(start) = self.viewer.quad {
             self.viewer.quad = (self.view.len() >= 2)
                 .then(|| view::quad_start(start, self.current, self.view.len()));
@@ -482,13 +487,29 @@ impl CernoApp {
         };
         if index != self.current {
             self.current = index;
-            self.startup.step = Some((index, std::time::Instant::now()));
+            // Timed only where one photo shows alone: in the grid or compare mode it is never
+            // drawn as such, and the log line would come at the return with the whole stay.
+            self.startup.step = self
+                .single_photo_shows()
+                .then(|| (index, std::time::Instant::now()));
             self.start_whole();
             self.loader.set_current(index);
             self.sync_quad();
             self.sync_analyzer();
             self.update_title(ctx);
         }
+    }
+
+    /// The current photo shows alone: not the grid, the scene view or the faces grid, not
+    /// compare mode, the four-up or the split view.
+    pub(super) fn single_photo_shows(&self) -> bool {
+        let viewer = &self.viewer;
+        !viewer.grid
+            && !viewer.scenes
+            && !viewer.faces.grid_open
+            && viewer.pinned.is_none()
+            && viewer.quad.is_none()
+            && !viewer.split
     }
 
     /// Another photo is current: in the single view it starts whole, not at the zoom the last
@@ -613,5 +634,47 @@ impl CernoApp {
             .find(usable)
             .or_else(|| before.iter().rev().find(usable))
             .cloned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use eframe::egui::{Key, Modifiers};
+
+    use super::super::harness::Harness;
+
+    /// A step is timed for the `browse:` log line only where the photo shows alone: in the
+    /// grid, the scene view or the four-up view nothing is timed, and a step not drawn yet
+    /// when the grid opens is dropped – it would be logged at the return, with the whole stay.
+    #[test]
+    fn only_a_step_in_the_single_view_is_timed() {
+        let mut h = Harness::new(6);
+        h.settle();
+        let ctx = h.ctx.clone();
+        h.app.go_to(&ctx, 1, 1);
+        assert_eq!(h.app.startup.step.map(|(index, _)| index), Some(1));
+
+        h.press(Key::F7, Modifiers::NONE);
+        assert!(h.app.viewer.grid);
+        assert!(h.app.startup.step.is_none(), "dropped when the grid opens");
+        h.app.go_to(&ctx, 2, 1);
+        assert!(h.app.startup.step.is_none(), "the grid");
+        h.press(Key::F7, Modifiers::NONE);
+
+        h.press(Key::F8, Modifiers::NONE);
+        assert!(h.app.viewer.scenes);
+        h.app.go_to(&ctx, 3, 1);
+        assert!(h.app.startup.step.is_none(), "the scene view");
+        h.press(Key::F8, Modifiers::NONE);
+
+        h.press(Key::C, Modifiers::SHIFT);
+        assert!(h.app.viewer.quad.is_some());
+        h.app.go_to(&ctx, 4, 1);
+        assert!(h.app.startup.step.is_none(), "the four-up view");
+        h.press(Key::C, Modifiers::SHIFT);
+
+        assert!(h.app.single_photo_shows());
+        h.app.go_to(&ctx, 0, -1);
+        assert_eq!(h.app.startup.step.map(|(index, _)| index), Some(0));
     }
 }

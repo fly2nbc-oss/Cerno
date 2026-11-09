@@ -382,6 +382,21 @@ fn a_removed_keyword_takes_its_lightroom_paths_along() {
     assert_eq!(kept_hierarchy(&paths, &had, &had), paths);
 }
 
+/// Only the paths that end in a removed keyword go: one that has it as a parent further up
+/// stays whole – taking the parent out would move the child – so Lightroom may bring the
+/// parent back (CER-67, the documented limit).
+#[test]
+fn a_removed_parent_inside_a_longer_path_stays() {
+    let strings = |items: &[&str]| items.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+    let paths = strings(&["Orte|Bodensee", "Orte|Bodensee|Strand", "Bodensee|Ufer"]);
+    let had = strings(&["Orte", "Bodensee", "Strand", "Ufer"]);
+    let wanted = strings(&["Orte", "Strand", "Ufer"]);
+    assert_eq!(
+        kept_hierarchy(&paths, &had, &wanted),
+        ["Orte|Bodensee|Strand", "Bodensee|Ufer"]
+    );
+}
+
 #[test]
 fn the_hierarchy_is_written_only_when_it_changes() {
     let paths = vec!["Personen|Anna".to_owned()];

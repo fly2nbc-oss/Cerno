@@ -5,7 +5,7 @@
 //! pick is never saved; it goes when another folder opens.
 
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Rect};
@@ -26,12 +26,23 @@ pub(super) struct Keywords {
     /// The pick in effect while `ViewOptions::keywords` is on.
     applied: Option<Pick>,
     /// Every keyword of the index with its number of files, read once per folder when the
-    /// vocabulary is first needed (the suggestions after the folder's own).
-    index: Option<Arc<Vec<(String, usize)>>>,
+    /// vocabulary is first needed (the suggestions after the folder's own) – on a thread: an
+    /// index of 11 000 well tagged files takes ~11 ms (release, measured 2026-11-09), too
+    /// long for a frame.
+    index: IndexWords,
     /// The vocabulary, with the board's version and `edits` it was made from, and when.
     vocabulary: Option<Made>,
     /// Bumped by every comment or keyword change of this session.
     edits: u64,
+}
+
+/// The index's keywords for the suggestions: not asked yet, being read, or read.
+#[derive(Default)]
+enum IndexWords {
+    #[default]
+    NotAsked,
+    Reading(mpsc::Receiver<Vec<(String, usize)>>),
+    Read(Arc<Vec<(String, usize)>>),
 }
 
 struct Made {
@@ -45,7 +56,7 @@ impl Keywords {
     /// Another folder: the pick and the vocabulary were about the last one.
     pub(super) fn forget(&mut self) {
         self.applied = None;
-        self.index = None;
+        self.index = IndexWords::NotAsked;
         self.vocabulary = None;
     }
 
@@ -113,6 +124,7 @@ impl CernoApp {
 
     /// The folder's keywords, then the rest of the index's: what the description tab suggests.
     pub(super) fn vocabulary(&mut self) -> Arc<Vocabulary> {
+        let index = self.index_words();
         let board = self.board.version();
         let edits = self.keywords.edits;
         if let Some(made) = &self.keywords.vocabulary
@@ -121,18 +133,6 @@ impl CernoApp {
         {
             return Arc::clone(&made.vocabulary);
         }
-        let index = match &self.keywords.index {
-            Some(index) => Arc::clone(index),
-            None => {
-                let counts = self.db.keyword_counts().unwrap_or_else(|err| {
-                    log::warn!("keywords of the index: {err:#}");
-                    Vec::new()
-                });
-                let counts = Arc::new(counts);
-                self.keywords.index = Some(Arc::clone(&counts));
-                counts
-            }
-        };
         let lists: Vec<Vec<String>> = self
             .folder
             .all
@@ -147,6 +147,48 @@ impl CernoApp {
             vocabulary: Arc::clone(&vocabulary),
         });
         vocabulary
+    }
+
+    /// The index's keywords as far as they are read: asked for on a thread the first time,
+    /// none until they arrive – then the vocabulary is made again with them. No repaint is
+    /// asked for: they only matter for the suggestions, which show while a keyword is typed.
+    fn index_words(&mut self) -> Arc<Vec<(String, usize)>> {
+        match &self.keywords.index {
+            IndexWords::Read(index) => return Arc::clone(index),
+            IndexWords::Reading(rx) => match rx.try_recv() {
+                Ok(counts) => {
+                    let counts = Arc::new(counts);
+                    self.keywords.index = IndexWords::Read(Arc::clone(&counts));
+                    self.keywords.vocabulary = None;
+                    return counts;
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.keywords.index = IndexWords::Read(Arc::default());
+                }
+            },
+            IndexWords::NotAsked => {
+                let db = Arc::clone(&self.db);
+                let (tx, rx) = mpsc::channel();
+                let spawned = std::thread::Builder::new()
+                    .name("cerno-keywords".into())
+                    .spawn(move || {
+                        let counts = db.keyword_counts().unwrap_or_else(|err| {
+                            log::warn!("keywords of the index: {err:#}");
+                            Vec::new()
+                        });
+                        let _ = tx.send(counts);
+                    });
+                self.keywords.index = match spawned {
+                    Ok(_) => IndexWords::Reading(rx),
+                    Err(err) => {
+                        log::warn!("keywords of the index: {err}");
+                        IndexWords::Read(Arc::default())
+                    }
+                };
+            }
+        }
+        Arc::default()
     }
 
     /// *Visible photos ▸ By keyword …*: the card, with the pick in effect ticked.
@@ -190,6 +232,9 @@ impl CernoApp {
                 self.change_options(ctx, |o| o.keywords = false);
             } else {
                 self.keywords.applied = Some(card.pick);
+                // The pick lives outside `ViewOptions`: with the filter already on, `top_key`
+                // would not see it change, and Top N would keep the photos of the last pick.
+                self.browse.top_pick_for = None;
                 self.change_options(ctx, |o| o.keywords = true);
             }
         } else if out.close {
@@ -307,6 +352,56 @@ mod tests {
         assert_eq!(h.app.view.len(), 3);
     }
 
+    /// Top N with the keyword filter on: another pick from the card picks the best photos
+    /// again among those with the new keyword – the pick lives outside `ViewOptions`, so
+    /// `top_key` alone would keep the photos of the last one, and none of them has the new
+    /// keyword.
+    #[test]
+    fn another_keyword_pick_picks_top_n_again() {
+        use eframe::egui::{Key, Modifiers};
+
+        use crate::metadata::Rating;
+
+        const HOUR: i64 = 3_600_000;
+
+        let mut h = Harness::new(4);
+        let all = Arc::clone(&h.app.folder.all);
+        for (i, path) in all.iter().enumerate() {
+            let word = if i < 2 { "Familie" } else { "Strand" };
+            h.app.board.set_keywords(path, words(&[word]));
+            // On the board (an hour apart: no series) with stars, a value for Top N; the
+            // harness has no scores.
+            h.app.board.put_taken(path, HOUR * i as i64);
+            h.app.marks.ratings.insert(path.clone(), Rating::Stars(4));
+        }
+        let ctx = h.ctx.clone();
+        h.app.change_options(&ctx, |o| o.top = Some(10));
+        let ctrl = Modifiers::COMMAND | Modifiers::CTRL;
+        let pick = |h: &mut Harness, word: &str| {
+            h.app.open_keywords();
+            let Layer::Keywords(card) = &mut h.app.layer else {
+                panic!("the card is open");
+            };
+            for (i, entry) in card.entries.clone().iter().enumerate() {
+                if card.pick.contains(&entry.text) != (entry.text == word) {
+                    card.toggle(card_ui::Row::Word(i));
+                }
+            }
+            h.press(Key::Enter, ctrl);
+            assert_eq!(h.layer(), "none");
+        };
+        pick(&mut h, "Familie");
+        assert_eq!(&h.app.view.paths[..], &all[..2]);
+        pick(&mut h, "Strand");
+        assert!(h.app.options.keywords);
+        assert_eq!(h.app.options.top, Some(10));
+        assert_eq!(
+            &h.app.view.paths[..],
+            &all[2..],
+            "picked again among Strand"
+        );
+    }
+
     /// A change of this session counts for the suggestions at once; the vocabulary keeps the
     /// folder's spelling.
     #[test]
@@ -330,6 +425,45 @@ mod tests {
             0,
             "no longer in the folder"
         );
+    }
+
+    /// The index's keywords come from a thread: none at first, then – without the folder's
+    /// own changing – the vocabulary is made again with them.
+    #[test]
+    fn the_index_keywords_arrive_from_a_thread() {
+        use crate::db::FileStamp;
+
+        let mut h = Harness::new(1);
+        let a = h.app.folder.all[0].clone();
+        h.app.board.set_keywords(&a, words(&["Bodensee"]));
+        let elsewhere = "/elsewhere/IMG_9.jpg";
+        let stamp = FileStamp {
+            size: 1,
+            mtime_ns: 1,
+        };
+        h.app
+            .db
+            .put_file(elsewhere, stamp, 9, crate::metadata::Rating::Unrated, None)
+            .unwrap();
+        h.app
+            .db
+            .put_keywords(elsewhere, &words(&["Konstanz"]))
+            .unwrap();
+
+        let first = h.app.vocabulary();
+        assert_eq!(first.suggest("bo", &[], 5).len(), 1, "the folder's at once");
+        let started = Instant::now();
+        loop {
+            if !h.app.vocabulary().suggest("ko", &[], 5).is_empty() {
+                break;
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(10),
+                "the index's keywords arrive"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(matches!(h.app.keywords.index, IndexWords::Read(_)));
     }
 
     /// In the filter mode (`Ctrl+F`) the keyword chip is a box while it shows, after the file

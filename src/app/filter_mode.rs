@@ -102,9 +102,12 @@ impl CernoApp {
         )
     }
 
-    /// New scores arrived since the view was sorted or filtered by them: *Refresh order*.
+    /// New scores arrived since the view was sorted or filtered by them, or a keyword changed
+    /// while keywords filter: *Refresh order*.
     pub(super) fn order_stale(&self) -> bool {
-        self.view_options().depends_on_scores() && self.board.version() != self.browse.view_version
+        (self.view_options().depends_on_scores()
+            && self.board.version() != self.browse.view_version)
+            || (self.options.keywords && self.browse.keywords_changed)
     }
 
     /// The frame for the filter bar this frame (its scroll request is used up).
