@@ -90,7 +90,53 @@ impl Notice {
     }
 }
 
+/// What stands at the top centre of the photo area this frame, top to bottom: the filter
+/// mode's pill, then a notice ([`overlays::stack_top`] – the grid's floating date goes below
+/// both).
+pub(super) struct TopStack {
+    /// The filter mode's caption and where its pill stands.
+    pub(super) pill: Option<(String, Rect)>,
+    /// Where the notice's card starts: below the pill while it shows.
+    pub(super) notice_top: f32,
+    /// The notice's card while one shows.
+    pub(super) notice: Option<Rect>,
+}
+
+impl TopStack {
+    /// The bottom of the lowest thing stacked there.
+    pub(super) fn bottom(&self) -> Option<f32> {
+        self.notice
+            .or(self.pill.as_ref().map(|(_, rect)| *rect))
+            .map(|rect| rect.bottom())
+    }
+}
+
 impl CernoApp {
+    /// What stands at the top of `area`: the filter mode's pill – not while a list of the filter
+    /// bar is open below a box, which stands there with keys of its own, nor while one of the
+    /// bar's combo boxes is open –, then the notice.
+    pub(super) fn top_stack(&mut self, painter: &egui::Painter, area: Rect) -> TopStack {
+        let list_open = self.layer.is_filter_list() || egui::Popup::is_any_open(painter.ctx());
+        let pill = if list_open {
+            None
+        } else {
+            self.filter_mode_caption().map(|caption| {
+                let rect =
+                    overlays::filter_mode_rect(painter, area, &caption, i18n::t().filter_mode_hint);
+                (caption, rect)
+            })
+        };
+        let notice_top = overlays::stack_top(area, pill.as_ref().map(|(_, rect)| rect.bottom()));
+        let notice = self
+            .notice_on_screen()
+            .map(|text| overlays::notice_rect(painter, area, notice_top, text));
+        TopStack {
+            pill,
+            notice_top,
+            notice,
+        }
+    }
+
     /// The notice's text while it is on screen (it is drawn at the top of the photo area).
     pub(super) fn notice_on_screen(&self) -> Option<&str> {
         self.notice
@@ -99,9 +145,9 @@ impl CernoApp {
             .map(|notice| notice.text.as_str())
     }
 
-    /// The deletion countdown and the copy progress – stacked above a video's play button –
-    /// then the notice. Marks that could not be written show in the info bar
-    /// (`app::unsaved`).
+    /// The deletion countdown and the copy progress – stacked above a video's play button –,
+    /// the filter mode's pill at the top, then the notice below it. Marks that could not be
+    /// written show in the info bar (`app::unsaved`).
     pub(super) fn draw_messages(&mut self, ui: &egui::Ui, area: Rect) {
         let mut slot = usize::from(self.video_on_screen(area));
         if let Some((count, left)) = self.deletions.countdown(Instant::now()) {
@@ -115,16 +161,12 @@ impl CernoApp {
                 transfer_text(mode, &progress),
                 progress.fraction(),
             );
-            slot += 1;
         }
-        // The filter mode (`Ctrl+F`): the box the frame stands on, and its keys.
-        if let Some(caption) = self.filter_mode_caption() {
-            overlays::filter_mode(
-                ui,
-                overlays::bottom_slot(area, slot),
-                &caption,
-                i18n::t().filter_mode_hint,
-            );
+        // The filter mode (`Ctrl+F`): the box the frame stands on, and its keys – at the top,
+        // under the filter bar.
+        let stack = self.top_stack(ui.painter(), area);
+        if let Some((caption, _)) = &stack.pill {
+            overlays::filter_mode(ui, area, caption, i18n::t().filter_mode_hint);
         }
         let now = Instant::now();
         let opacity = self.notice.as_ref().and_then(|n| n.opacity(now));
@@ -135,7 +177,7 @@ impl CernoApp {
             (Some(notice), Some(opacity)) => Some((notice.text.as_str(), notice.error, opacity)),
             _ => None,
         };
-        if overlays::notices(ui, area, message) {
+        if overlays::notices(ui, area, stack.notice_top, message) {
             self.notice = None;
         }
         if let Some(until) = self.notice.as_ref().and_then(|n| n.until) {

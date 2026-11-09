@@ -229,10 +229,28 @@ pub fn transfer_progress(ui: &Ui, centre: Pos2, text: String, done: f32) {
     bar_pill(ui, centre, text, done, tokens::ACCENT);
 }
 
-/// The filter mode (`Ctrl+F`): the box the frame stands on, and the mode's keys below it in
-/// muted text. Only painted – the mode reads its own keys, the pill takes no click.
-pub fn filter_mode(ui: &Ui, centre: Pos2, caption: &str, keys: &str) {
-    let painter = ui.painter();
+/// Where the first thing stacked at the top of the photo area stands below its top edge.
+pub const TOP_INSET: f32 = 12.0;
+/// The room between two things stacked at the top of the photo area.
+pub const TOP_GAP: f32 = 8.0;
+
+/// One rule for what stands at the top centre of the photo area (or the grid), top to bottom:
+/// the filter mode's pill, a notice, the grid's floating date. The first stands
+/// [`TOP_INSET`] below `area`'s top; the next starts [`TOP_GAP`] below `above`, the bottom of
+/// what already stands there.
+pub fn stack_top(area: Rect, above: Option<f32>) -> f32 {
+    let top = area.top() + TOP_INSET;
+    above.map_or(top, |bottom| top.max(bottom + TOP_GAP))
+}
+
+/// The filter mode's pill laid out: the caption, the keys, and where it stands – centred at
+/// the top of `area`, directly under the filter bar the mode shows.
+fn filter_mode_layout(
+    painter: &Painter,
+    area: Rect,
+    caption: &str,
+    keys: &str,
+) -> (Arc<Galley>, Arc<Galley>, Rect) {
     let caption = painter.layout_no_wrap(
         caption.to_owned(),
         FontId::proportional(text::BODY),
@@ -244,7 +262,24 @@ pub fn filter_mode(ui: &Ui, centre: Pos2, caption: &str, keys: &str) {
         tokens::MUTED,
     );
     let width = caption.size().x.max(keys.size().x) + 32.0;
-    let pill = Rect::from_center_size(centre, vec2(width, 48.0));
+    let pill = Rect::from_min_size(
+        pos2(area.center().x - width / 2.0, stack_top(area, None)),
+        vec2(width, 48.0),
+    );
+    (caption, keys, pill)
+}
+
+/// Where [`filter_mode`] puts its pill over `area` – a notice and the grid's date go below.
+pub fn filter_mode_rect(painter: &Painter, area: Rect, caption: &str, keys: &str) -> Rect {
+    filter_mode_layout(painter, area, caption, keys).2
+}
+
+/// The filter mode (`Ctrl+F`): the box the frame stands on, and the mode's keys below it in
+/// muted text, at the top of `area`. Only painted – the mode reads its own keys, the pill
+/// takes no click.
+pub fn filter_mode(ui: &Ui, area: Rect, caption: &str, keys: &str) {
+    let painter = ui.painter();
+    let (caption, keys, pill) = filter_mode_layout(painter, area, caption, keys);
     theme::paint_raised(
         painter,
         pill,
@@ -291,8 +326,8 @@ fn bar_pill(ui: &Ui, centre: Pos2, text: String, share: f32, colour: Color32) {
 }
 
 /// A notice's text laid out for the photo area `rect`, and where its card stands: centred,
-/// 12 px below the top.
-fn notice_layout(painter: &Painter, rect: Rect, text: &str) -> (Arc<Galley>, Rect) {
+/// its top at `top` ([`stack_top`]).
+fn notice_layout(painter: &Painter, rect: Rect, top: f32, text: &str) -> (Arc<Galley>, Rect) {
     let galley = painter.layout(
         text.to_owned(),
         FontId::proportional(text::BODY),
@@ -300,28 +335,26 @@ fn notice_layout(painter: &Painter, rect: Rect, text: &str) -> (Arc<Galley>, Rec
         (rect.width() - 64.0).max(120.0),
     );
     let size = galley.size() + vec2(24.0, 14.0);
-    let pill = Rect::from_min_size(
-        pos2(rect.center().x - size.x / 2.0, rect.top() + 12.0),
-        size,
-    );
+    let pill = Rect::from_min_size(pos2(rect.center().x - size.x / 2.0, top), size);
     (galley, pill)
 }
 
-/// Where [`notices`] puts a notice of `text` over `rect` – the grid's floating date goes
-/// below it.
-pub fn notice_rect(painter: &Painter, rect: Rect, text: &str) -> Rect {
-    notice_layout(painter, rect, text).1
+/// Where [`notices`] puts a notice of `text` over `rect`, its top at `top` – the grid's
+/// floating date goes below it.
+pub fn notice_rect(painter: &Painter, rect: Rect, top: f32, text: &str) -> Rect {
+    notice_layout(painter, rect, top, text).1
 }
 
-/// A message at the top of the photo area: `(text, is_error, opacity)`. Returns whether it was
-/// clicked (which dismisses it).
-pub fn notices(ui: &Ui, rect: Rect, message: Option<(&str, bool, f32)>) -> bool {
+/// A message at the top of the photo area, its top at `top` (below the filter mode's pill
+/// while it shows): `(text, is_error, opacity)`. Returns whether it was clicked (which
+/// dismisses it).
+pub fn notices(ui: &Ui, rect: Rect, top: f32, message: Option<(&str, bool, f32)>) -> bool {
     let Some((text, is_error, opacity)) = message else {
         return false;
     };
     let mut painter = ui.painter().clone();
     painter.set_opacity(opacity);
-    let (galley, pill) = notice_layout(&painter, rect, text);
+    let (galley, pill) = notice_layout(&painter, rect, top, text);
     let (fill, border) = if is_error {
         (tokens::STATUS_ERROR_BG, tokens::STATUS_ERROR)
     } else {

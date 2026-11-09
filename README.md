@@ -48,8 +48,9 @@ The Windows files are not signed yet: SmartScreen asks once (*More info* → *Ru
 | `→` / `←`, `Space` | Next / previous photo (`Space` on a video: play / pause) |
 | `1`–`5`, `0`, `X`, `6`–`9` | Stars, no stars, reject, colour label (`Shift` + key: and go on) |
 | `Delete` | Delete – `Esc` within 5 s brings it back |
-| `Z`, `C`, `F7` | 100 % zoom, compare, grid |
-| `F10` / `T` / `Tab` / `F6` | Menu bar / filter bar / details / filmstrip |
+| `Z`, `C`, `Alt+C` | 100 % zoom, compare, whole photo and 100 % side by side |
+| `F2` / `F3` / `F4` / `F5` | Photo / grid / scenes / faces |
+| `F10` or `Alt+1` / `Tab` or `Alt+2` / `T` or `Alt+3` / `F6` or `Alt+4` | Menu bar / details / filter bar / filmstrip |
 | `Ctrl+Z` | Undo the last mark or edit – on a deleted photo: put it back |
 | `H` | Help: every key, and tips on working with Cerno |
 

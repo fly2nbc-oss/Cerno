@@ -268,6 +268,36 @@ mod tests {
         assert_eq!(h.rating_of(0), None);
     }
 
+    /// `F5` opens and closes the faces grid like `G`; over it `F2`, `F3` and `F4` go to the
+    /// photo, the grid and the scenes, as the view switcher's parts do – also when the faces
+    /// grid lies over the grid.
+    #[test]
+    fn the_view_keys_work_over_the_faces_grid() {
+        let mut h = Harness::new(3);
+        h.settle();
+        h.press(Key::F5, NONE);
+        assert!(h.app.viewer.faces.grid_open);
+        h.press(Key::F5, NONE);
+        assert!(!h.app.viewer.faces.grid_open);
+        h.press(Key::F3, NONE);
+        h.press(Key::F5, NONE);
+        assert!(h.app.viewer.faces.grid_open && h.app.viewer.grid);
+        h.press(Key::F3, NONE);
+        assert!(
+            !h.app.viewer.faces.grid_open && h.app.viewer.grid,
+            "F3: the grid"
+        );
+        h.press(Key::G, NONE);
+        h.press(Key::F4, NONE);
+        assert!(!h.app.viewer.faces.grid_open && h.app.viewer.scenes, "F4");
+        h.press(Key::F5, NONE);
+        h.press(Key::F2, NONE);
+        assert!(
+            !h.app.viewer.faces.grid_open && !h.app.viewer.grid,
+            "F2: the photo"
+        );
+    }
+
     /// Over the faces grid the arrows, `Space` and `End` move to another photo and the grid
     /// stays open for its faces; marks still pause.
     #[test]
@@ -335,7 +365,7 @@ mod tests {
     fn c_in_the_grid_leaves_the_grid_first() {
         let mut h = Harness::new(3);
         h.settle();
-        h.press(Key::F7, NONE);
+        h.press(Key::F3, NONE);
         assert!(h.app.viewer.grid);
         h.press(Key::C, NONE);
         assert!(!h.app.viewer.grid);
@@ -446,16 +476,16 @@ mod tests {
         panic!("the photo was not decoded");
     }
 
-    /// `Shift+Z` shows the photo whole and at 100 %: both sides follow the arrows, marks act on
+    /// `Alt+C` shows the photo whole and at 100 %: both sides follow the arrows, marks act on
     /// the one photo, the 100 % side is aimed at each new photo and keeps its scale. `Esc`
     /// ends it before the zoom, and the single photo is whole again (CER-49).
     #[test]
-    fn shift_z_shows_the_photo_whole_and_at_100_percent() {
-        let shift = Modifiers::SHIFT;
+    fn alt_c_shows_the_photo_whole_and_at_100_percent() {
+        let alt = Modifiers::ALT;
         let mut h = Harness::new(3);
         wait_for_photo(&mut h);
         let paths = h.app.view.paths.clone();
-        h.press(Key::Z, shift);
+        h.press(Key::C, alt);
         assert!(h.app.viewer.split);
         assert_eq!(h.app.viewer.zoom.scale, Some(1.0));
         let area = Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
@@ -489,25 +519,78 @@ mod tests {
         assert_eq!(h.app.slots(area).len(), 1);
     }
 
+    /// On the split view's whole side a press centres the 100 % side there and a drag moves it
+    /// along, stopping at the image's edge; neither zooms, and the next photo is aimed again.
+    #[test]
+    fn the_whole_side_moves_the_100_percent_side() {
+        let mut h = Harness::new(3);
+        wait_for_photo(&mut h);
+        h.press(Key::C, Modifiers::ALT);
+        wait_for_photo(&mut h);
+        let paths = h.app.view.paths.clone();
+        assert_eq!(h.app.viewer.split_aim.as_ref(), Some(&paths[0]), "aimed");
+        // The 16 px fixture: far larger than the right half only at a high scale.
+        h.app.viewer.zoom.scale = Some(100.0);
+        h.frame(Vec::new());
+        let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(SCREEN[0], SCREEN[1]));
+        let slots = h.app.slots(h.app.layout(window).area);
+        let ctx = h.ctx.clone();
+        let whole = h.app.frame_of(&ctx, &slots[0]).expect("the whole side");
+        let photo = crate::ui::viewer::Zoom::default().image_rect(&whole);
+        let at = |x: f32, y: f32| photo.min + photo.size() * vec2(x, y);
+        let button = |pos, pressed| Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        };
+        let near = |h: &Harness, x: f32, y: f32| {
+            let center = h.app.viewer.zoom.center;
+            assert!(
+                (center - vec2(x, y)).length() < 0.01,
+                "{center:?}, not ({x}, {y})"
+            );
+        };
+        h.frame(vec![Event::PointerMoved(at(0.25, 0.5))]);
+        h.frame(vec![button(at(0.25, 0.5), true)]);
+        near(&h, 0.25, 0.5);
+        h.frame(vec![Event::PointerMoved(at(0.7, 0.35))]);
+        near(&h, 0.7, 0.35);
+        // Into the corner: the view stops where the image's edge meets it.
+        h.frame(vec![Event::PointerMoved(at(0.0, 0.0))]);
+        let corner = h.app.viewer.zoom.center;
+        assert!(corner.x > 0.05 && corner.y > 0.05, "{corner:?}");
+        h.frame(vec![button(at(0.0, 0.0), false)]);
+        assert_eq!(h.app.viewer.zoom.scale, Some(100.0), "a drag never zooms");
+        assert!(h.app.viewer.split);
+        // The spot stays until the next photo, which is aimed again.
+        h.settle();
+        assert_eq!(h.app.viewer.zoom.center, corner);
+        h.press(Key::ArrowRight, Modifiers::NONE);
+        wait_for_photo(&mut h);
+        assert_eq!(h.app.viewer.split_aim.as_ref(), Some(&paths[1]));
+        assert_ne!(h.app.viewer.zoom.center, corner, "aimed again");
+    }
+
     /// The split view, compare mode, the four-up view and the grid exclude each other; the
-    /// menu bar's row switches it like `Shift+Z`.
+    /// menu bar's row switches it like `Alt+C`.
     #[test]
     fn the_split_view_makes_way_and_takes_over() {
-        let shift = Modifiers::SHIFT;
+        let (shift, alt) = (Modifiers::SHIFT, Modifiers::ALT);
         let mut h = Harness::new(5);
         h.settle();
-        h.press(Key::Z, shift);
+        h.press(Key::C, alt);
         h.press(Key::C, NONE);
         assert!(!h.app.viewer.split && h.app.viewer.pinned.is_some());
-        h.press(Key::Z, shift);
+        h.press(Key::C, alt);
         assert!(h.app.viewer.split && h.app.viewer.pinned.is_none());
         h.press(Key::C, shift);
         assert!(!h.app.viewer.split && h.app.viewer.quad.is_some());
-        h.press(Key::Z, shift);
+        h.press(Key::C, alt);
         assert!(h.app.viewer.split && h.app.viewer.quad.is_none());
-        h.press(Key::F7, NONE);
+        h.press(Key::F3, NONE);
         assert!(!h.app.viewer.split && h.app.viewer.grid);
-        h.press(Key::Z, shift);
+        h.press(Key::C, alt);
         assert!(
             h.app.viewer.split && !h.app.viewer.grid,
             "the grid steps aside"
@@ -523,17 +606,17 @@ mod tests {
     }
 
     /// The scene view and the split view end each other as the grid and the split view do:
-    /// `F8` ends the split view, `Shift+Z` leaves the scenes for the photo.
+    /// `F4` ends the split view, `Alt+C` leaves the scenes for the photo.
     #[test]
     fn the_split_view_and_the_scenes_end_each_other() {
-        let shift = Modifiers::SHIFT;
+        let alt = Modifiers::ALT;
         let mut h = Harness::new(5);
         h.settle();
-        h.press(Key::Z, shift);
+        h.press(Key::C, alt);
         assert!(h.app.viewer.split);
-        h.press(Key::F8, NONE);
+        h.press(Key::F4, NONE);
         assert!(!h.app.viewer.split && h.app.viewer.scenes && h.app.viewer.grid);
-        h.press(Key::Z, shift);
+        h.press(Key::C, alt);
         assert!(
             h.app.viewer.split && !h.app.viewer.scenes && !h.app.viewer.grid,
             "the scenes step aside"
@@ -555,7 +638,7 @@ mod tests {
     fn the_scene_view_greys_the_sort_box_out() {
         let mut h = Harness::new(3);
         h.settle();
-        h.press(Key::F8, NONE);
+        h.press(Key::F4, NONE);
         assert!(h.app.viewer.scenes);
         h.press(Key::F, Modifiers::COMMAND);
         h.press(Key::End, NONE);
@@ -571,7 +654,7 @@ mod tests {
                 .is_some_and(|notice| notice.text == reason)
         );
         h.press(Key::Escape, NONE);
-        h.press(Key::F8, NONE);
+        h.press(Key::F4, NONE);
         assert!(!h.app.viewer.scenes);
         h.press(Key::F, Modifiers::COMMAND);
         h.press(Key::Space, NONE);

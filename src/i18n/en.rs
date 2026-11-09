@@ -236,17 +236,17 @@ pub static TEXTS: Texts = Texts {
     view_scenes: "Scenes",
     view_faces: "Faces",
     faces_video: "Videos are not searched for faces",
-    filmstrip_in_grid: "Not needed in the grid – F7 back to the photo",
+    filmstrip_in_grid: "Not needed in the grid – F2 back to the photo",
     grid_no_date: "no date",
-    filmstrip_in_scenes: "Not needed in the scenes – F8 back to the photo",
+    filmstrip_in_scenes: "Not needed in the scenes – F2 back to the photo",
     sort_in_scenes: "The scene view is always in capture-time order – this sort applies again outside it",
     scene_untimed: "No capture time",
     scene_singles: "Single photos",
     faces_button: |n| {
         if n == 1 {
-            "Show 1 face large (G)".to_owned()
+            "Show 1 face large (F5, G)".to_owned()
         } else {
-            format!("Show {n} faces large (G)")
+            format!("Show {n} faces large (F5, G)")
         }
     },
     button_side_bar: "Menu bar",
@@ -701,8 +701,8 @@ pub static TEXTS: Texts = Texts {
             &[
                 "The mouse wheel over the filmstrip steps through the photos; over the photo it zooms.",
                 "Drop a folder onto the window to open it. Hold → to run through the photos.",
-                "In the grid (F7) ↑ ↓ move a row, + − change the size, Enter opens the photo.",
-                "In the scenes (F8) every scene starts a new row; PgUp PgDn jump from scene to scene.",
+                "In the grid (F3) ↑ ↓ move a row, + − change the size, Enter opens the photo.",
+                "In the scenes (F4) every scene starts a new row; PgUp PgDn jump from scene to scene.",
                 "Straighten (S): the wheel and the arrows turn, Shift is finer. Crop (R): draw a frame or move it with the arrows, +/− size it, A changes the ratio, X turns it.",
                 "The menu bar (F10 or the button at the bottom right) holds what acts on this photo, the photos on screen and the view, and the settings – all with the mouse.",
                 "On the description tab Enter puts the cursor into the keyword field.",
@@ -725,72 +725,100 @@ pub static TEXTS: Texts = Texts {
             if aesthetics { "ready" } else { "missing" },
         )
     },
-    help_sections: [
-        "Browse", "Rate", "Sort out", "Video", "View", "Panels", "Edit", "More",
-    ],
-    help_browse: [
-        ("→, Space, PgDn", "Next photo"),
-        ("←, Backspace, PgUp", "Previous photo"),
-        ("Home, End", "First / last photo"),
-        ("Ctrl+O", "Open a folder"),
-        ("Ctrl+U", "Subfolders on / off"),
-    ],
-    help_rate: [
-        ("1 – 5", "Stars"),
-        ("0", "No stars, not rejected"),
-        ("X", "Reject"),
-        ("6 – 9", "Red, yellow, green, blue"),
-        ("Shift+…", "Same, then the next photo"),
-        ("Ctrl+Z", "Undo"),
-    ],
-    help_cull: [
-        ("C", "Compare two photos"),
-        ("A, D", "Keep left / right"),
-        ("Shift+A, Shift+D", "Keep, then compare the next"),
-        ("Shift+C", "Four photos at once"),
-        ("M", "Only similar photos"),
-        ("Del", "Delete (into .originals)"),
-        ("Esc", "Bring the deleted back"),
-    ],
-    help_video: [
-        ("Space", "Play / pause"),
-        ("Shift+Space", "Next photo"),
-        ("Alt+←, Alt+→", "5 s back / on"),
-        (",, .", "One frame back / on"),
-        ("↑, ↓", "Volume"),
-    ],
-    help_view: [
-        ("Z, Double-click", "Whole photo ↔ 100 %"),
-        ("Ctrl+0, Ctrl+1", "Whole photo / 100 %"),
-        ("Shift+Z", "Whole photo and 100 % side by side"),
-        ("+, −, Mouse wheel", "Zoom in / out"),
-        ("Drag", "Move the zoomed photo"),
-        ("O", "Check: sharp edges, clipping"),
-        ("F7", "Grid of all photos"),
-        ("F8", "Scenes: alike photos grouped"),
-        ("G", "All faces large"),
-        ("F, F11", "Full screen"),
-    ],
-    help_panels: [
-        ("F10, Alt+1", "Menu bar"),
-        ("T", "Filter bar"),
-        ("Ctrl+F", "Filters with the keyboard"),
-        ("Shift+T", "Filter off for a moment / back"),
-        ("Tab, Alt+2", "Details panel"),
-        ("F6", "Filmstrip"),
-        ("Shift+Tab, Alt+0", "All four panels"),
-        ("Ctrl+Tab", "Next tab of the details"),
-    ],
-    help_edit: [
-        ("S", "Straighten"),
-        ("R", "Crop"),
-        ("Enter, Esc", "Apply / cancel"),
-        ("Ctrl+←, Ctrl+→", "Rotate 90°"),
-        ("E", "Edit in another program"),
-    ],
-    help_more: [
-        ("Ctrl+L", "Language"),
-        ("H, F1, ?", "This help"),
-        ("Esc", "One step back"),
+    help_keys: [
+        (
+            "Browse",
+            &[
+                ("→, Space, PgDn", "Next photo"),
+                ("←, Backspace, PgUp", "Previous photo"),
+                ("Home, End", "First / last photo"),
+            ],
+        ),
+        (
+            "Rate and sort out",
+            &[
+                ("0 – 5", "Stars (0: none)"),
+                ("6 – 9", "Red, yellow, green, blue"),
+                ("X", "Reject"),
+                ("Shift+…", "Same, then the next photo"),
+                ("Del", "Delete – Esc brings it back"),
+            ],
+        ),
+        (
+            "Views",
+            &[
+                ("F2 – F5", "Photo · grid · scenes · faces"),
+                ("G", "All faces large, like F5"),
+                ("Esc, Enter", "Back to the photo"),
+                ("F, F11", "Full screen"),
+            ],
+        ),
+        (
+            "Compare",
+            &[
+                ("C, Shift+C", "Compare two / four photos"),
+                ("Alt+C", "Whole photo and 100 % side by side"),
+                ("A, D", "Keep left / right"),
+                ("Shift+A, Shift+D", "Keep, then compare the next"),
+            ],
+        ),
+        (
+            "Zoom and check",
+            &[
+                ("Z, Double-click", "Whole photo ↔ 100 %"),
+                ("Ctrl+0, Ctrl+1", "Whole photo / 100 %"),
+                ("+, −, Mouse wheel, Drag", "Zoom in / out, move"),
+                ("O", "Check: sharp edges, clipping"),
+            ],
+        ),
+        (
+            "Panels",
+            &[
+                ("F10, Alt+1", "Menu bar"),
+                ("Tab, Alt+2", "Details panel"),
+                ("T, Alt+3", "Filter bar"),
+                ("F6, Alt+4", "Filmstrip"),
+                ("Shift+Tab, Alt+0", "All four panels"),
+                ("Ctrl+Tab", "Next tab of the details"),
+            ],
+        ),
+        (
+            "Filter",
+            &[
+                ("Ctrl+F", "Filters with the keyboard"),
+                ("Shift+T", "Filter off for a moment / back"),
+                ("M", "Only similar photos"),
+            ],
+        ),
+        (
+            "Edit",
+            &[
+                ("S, R", "Straighten / crop"),
+                ("Enter, Esc", "Apply / cancel"),
+                ("Ctrl+←, Ctrl+→", "Rotate 90°"),
+                ("Ctrl+Z", "Undo"),
+                ("E", "Edit in another program"),
+            ],
+        ),
+        (
+            "Video",
+            &[
+                ("Space", "Play / pause"),
+                ("Shift+Space", "Next photo"),
+                ("Alt+←, Alt+→", "5 s back / on"),
+                (",, .", "One frame back / on"),
+                ("↑, ↓", "Volume"),
+            ],
+        ),
+        (
+            "More",
+            &[
+                ("Ctrl+O", "Open a folder"),
+                ("Ctrl+U", "Subfolders on / off"),
+                ("Ctrl+L", "Language"),
+                ("H, F1, ?", "This help"),
+                ("Esc", "One step back"),
+            ],
+        ),
     ],
 };

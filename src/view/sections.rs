@@ -1,4 +1,4 @@
-//! What the scene view (`F8`) lays out: its scenes, with every run of single-photo scenes
+//! What the scene view (`F4`) lays out: its scenes, with every run of single-photo scenes
 //! collected under one header (the user's decision of 2026-11-09: two thirds of the scenes on
 //! the author's index are one photo, and a row each made the view several times longer than
 //! the grid). The scenes themselves stay as `view::scenes` cuts them; nothing is folded away.

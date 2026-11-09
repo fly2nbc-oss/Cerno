@@ -258,17 +258,17 @@ pub static TEXTS: Texts = Texts {
     view_scenes: "Scènes",
     view_faces: "Visages",
     faces_video: "Les vidéos ne sont pas analysées pour les visages",
-    filmstrip_in_grid: "Inutile dans la grille – F7 revient à la photo",
+    filmstrip_in_grid: "Inutile dans la grille – F2 revient à la photo",
     grid_no_date: "sans date",
-    filmstrip_in_scenes: "Inutile dans les scènes – F8 revient à la photo",
+    filmstrip_in_scenes: "Inutile dans les scènes – F2 revient à la photo",
     sort_in_scenes: "La vue par scènes suit toujours la date de prise – ce tri revient en dehors",
     scene_untimed: "Sans heure de prise de vue",
     scene_singles: "Photos isolées",
     faces_button: |n| {
         if n == 1 {
-            "Afficher 1 visage en grand (G)".to_owned()
+            "Afficher 1 visage en grand (F5, G)".to_owned()
         } else {
-            format!("Afficher {n} visages en grand (G)")
+            format!("Afficher {n} visages en grand (F5, G)")
         }
     },
     button_side_bar: "Barre de menu",
@@ -735,8 +735,8 @@ pub static TEXTS: Texts = Texts {
             &[
                 "La molette sur la pellicule fait défiler les photos ; sur la photo, elle zoome.",
                 "Déposez un dossier sur la fenêtre pour l'ouvrir. Maintenez → pour faire défiler les photos.",
-                "Dans la grille (F7), ↑ ↓ changent de ligne, + − la taille, Entrée ouvre la photo.",
-                "Dans les scènes (F8), chaque scène commence une ligne ; Pg préc et Pg suiv sautent de scène en scène.",
+                "Dans la grille (F3), ↑ ↓ changent de ligne, + − la taille, Entrée ouvre la photo.",
+                "Dans les scènes (F4), chaque scène commence une ligne ; Pg préc et Pg suiv sautent de scène en scène.",
                 "Redresser (S) : la molette et les flèches tournent, Maj plus fin. Recadrer (R) : tracez un cadre ou déplacez-le avec les flèches, +/− change sa taille, A le format, X bascule paysage/portrait.",
                 "La barre de menu (F10 ou le bouton en bas à droite) réunit ce qui agit sur cette photo, les photos affichées et la vue, plus les réglages – tout à la souris.",
                 "Dans la description, Entrée place le curseur dans le champ des mots-clés.",
@@ -759,79 +759,100 @@ pub static TEXTS: Texts = Texts {
             if aesthetics { "prête" } else { "manquante" },
         )
     },
-    help_sections: [
-        "Parcourir",
-        "Noter",
-        "Trier",
-        "Vidéo",
-        "Affichage",
-        "Panneaux",
-        "Retouche",
-        "Divers",
-    ],
-    help_browse: [
-        ("→, Espace, Pg suiv", "Photo suivante"),
-        ("←, Retour arrière, Pg préc", "Photo précédente"),
-        ("Début, Fin", "Première / dernière photo"),
-        ("Ctrl+O", "Ouvrir un dossier"),
-        ("Ctrl+U", "Sous-dossiers oui / non"),
-    ],
-    help_rate: [
-        ("1 – 5", "Étoiles"),
-        ("0", "Sans étoiles, non rejetée"),
-        ("X", "Rejeter"),
-        ("6 – 9", "Rouge, jaune, vert, bleu"),
-        ("Maj+…", "Idem, puis photo suivante"),
-        ("Ctrl+Z", "Annuler"),
-    ],
-    help_cull: [
-        ("C", "Comparer deux photos"),
-        ("A, D", "Garder la gauche / la droite"),
-        ("Maj+A, Maj+D", "Garder, puis comparer la suivante"),
-        ("Maj+C", "Quatre photos à la fois"),
-        ("M", "Photos semblables seulement"),
-        ("Suppr", "Supprimer (vers .originals)"),
-        ("Esc", "Récupérer les supprimées"),
-    ],
-    help_video: [
-        ("Espace", "Lire / mettre en pause"),
-        ("Maj+Espace", "Photo suivante"),
-        ("Alt+←, Alt+→", "5 s en arrière / en avant"),
-        (",, .", "Une image en arrière / avant"),
-        ("↑, ↓", "Volume"),
-    ],
-    help_view: [
-        ("Z, Double-clic", "Photo entière ↔ 100 %"),
-        ("Ctrl+0, Ctrl+1", "Photo entière / 100 %"),
-        ("Maj+Z", "Photo entière et 100 % côte à côte"),
-        ("+, −, Molette", "Zoom avant / arrière"),
-        ("Glisser", "Déplacer la photo zoomée"),
-        ("O", "Contrôle : netteté, écrêtage"),
-        ("F7", "Grille de toutes les photos"),
-        ("F8", "Scènes : photos semblables groupées"),
-        ("G", "Tous les visages en grand"),
-        ("F, F11", "Plein écran"),
-    ],
-    help_panels: [
-        ("F10, Alt+1", "Barre de menu"),
-        ("T", "Barre de filtres"),
-        ("Ctrl+F", "Filtres au clavier"),
-        ("Maj+T", "Filtre coupé un instant / rétabli"),
-        ("Tab, Alt+2", "Panneau de détails"),
-        ("F6", "Pellicule"),
-        ("Maj+Tab, Alt+0", "Les quatre panneaux"),
-        ("Ctrl+Tab", "Onglet suivant des détails"),
-    ],
-    help_edit: [
-        ("S", "Redresser"),
-        ("R", "Recadrer"),
-        ("Entrée, Échap", "Appliquer / annuler"),
-        ("Ctrl+←, Ctrl+→", "Pivoter de 90°"),
-        ("E", "Modifier dans un autre programme"),
-    ],
-    help_more: [
-        ("Ctrl+L", "Langue"),
-        ("H, F1, ?", "Cette aide"),
-        ("Esc", "Revenir en arrière"),
+    help_keys: [
+        (
+            "Parcourir",
+            &[
+                ("→, Espace, Pg suiv", "Photo suivante"),
+                ("←, Retour arrière, Pg préc", "Photo précédente"),
+                ("Début, Fin", "Première / dernière photo"),
+            ],
+        ),
+        (
+            "Noter et trier",
+            &[
+                ("0 – 5", "Étoiles (0 : aucune)"),
+                ("6 – 9", "Rouge, jaune, vert, bleu"),
+                ("X", "Rejeter"),
+                ("Maj+…", "Idem, puis photo suivante"),
+                ("Suppr", "Supprimer – Esc la récupère"),
+            ],
+        ),
+        (
+            "Vues",
+            &[
+                ("F2 – F5", "Photo · grille · scènes · visages"),
+                ("G", "Tous les visages en grand, comme F5"),
+                ("Esc, Entrée", "Retour à la photo"),
+                ("F, F11", "Plein écran"),
+            ],
+        ),
+        (
+            "Comparer",
+            &[
+                ("C, Maj+C", "Comparer deux / quatre photos"),
+                ("Alt+C", "Photo entière et 100 % côte à côte"),
+                ("A, D", "Garder la gauche / la droite"),
+                ("Maj+A, Maj+D", "Garder, puis comparer la suivante"),
+            ],
+        ),
+        (
+            "Zoom et contrôle",
+            &[
+                ("Z, Double-clic", "Photo entière ↔ 100 %"),
+                ("Ctrl+0, Ctrl+1", "Photo entière / 100 %"),
+                ("+, −, Molette, Glisser", "Zoomer, déplacer la photo zoomée"),
+                ("O", "Contrôle : netteté, écrêtage"),
+            ],
+        ),
+        (
+            "Panneaux",
+            &[
+                ("F10, Alt+1", "Barre de menu"),
+                ("Tab, Alt+2", "Panneau de détails"),
+                ("T, Alt+3", "Barre de filtres"),
+                ("F6, Alt+4", "Pellicule"),
+                ("Maj+Tab, Alt+0", "Les quatre panneaux"),
+                ("Ctrl+Tab", "Onglet suivant des détails"),
+            ],
+        ),
+        (
+            "Filtres",
+            &[
+                ("Ctrl+F", "Filtres au clavier"),
+                ("Maj+T", "Filtre coupé un instant / rétabli"),
+                ("M", "Photos semblables seulement"),
+            ],
+        ),
+        (
+            "Retouche",
+            &[
+                ("S, R", "Redresser / recadrer"),
+                ("Entrée, Échap", "Appliquer / annuler"),
+                ("Ctrl+←, Ctrl+→", "Pivoter de 90°"),
+                ("Ctrl+Z", "Annuler"),
+                ("E", "Modifier dans un autre programme"),
+            ],
+        ),
+        (
+            "Vidéo",
+            &[
+                ("Espace", "Lire / mettre en pause"),
+                ("Maj+Espace", "Photo suivante"),
+                ("Alt+←, Alt+→", "5 s en arrière / en avant"),
+                (",, .", "Une image en arrière / avant"),
+                ("↑, ↓", "Volume"),
+            ],
+        ),
+        (
+            "Divers",
+            &[
+                ("Ctrl+O", "Ouvrir un dossier"),
+                ("Ctrl+U", "Sous-dossiers oui / non"),
+                ("Ctrl+L", "Langue"),
+                ("H, F1, ?", "Cette aide"),
+                ("Esc", "Revenir en arrière"),
+            ],
+        ),
     ],
 };

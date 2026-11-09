@@ -103,7 +103,7 @@ pub struct InfoBar<'a> {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Views {
     pub grid: bool,
-    /// The grid shows the scene view (`F8`).
+    /// The grid shows the scene view (`F4`).
     pub scenes: bool,
     pub faces_open: bool,
     pub faces: FaceButton,
@@ -873,7 +873,7 @@ fn buttons(ui: &Ui, rect: Rect, panels: Panels, views: Views, out: &mut InfoBarO
             ),
             Panel::Bottom => (
                 panels.filmstrip,
-                format!("{} (F6)", t.button_filmstrip),
+                format!("{} (F6, Alt+4)", t.button_filmstrip),
                 false,
             ),
             Panel::Right => (
@@ -885,7 +885,7 @@ fn buttons(ui: &Ui, rect: Rect, panels: Panels, views: Views, out: &mut InfoBarO
             Panel::Top => (
                 panels.toolbar,
                 format!(
-                    "{} (T)
+                    "{} (T, Alt+3)
 {} ({})",
                     t.button_toolbar,
                     t.filter_mode_name,
@@ -929,17 +929,18 @@ fn view_switcher(ui: &Ui, places: &Block, views: Views, out: &mut InfoBarOutput)
         .enumerate()
     {
         let (tooltip, disabled) = match view {
-            View::Photo if current != View::Photo => (format!("{} (Esc)", t.view_photo), false),
-            View::Photo => (t.view_photo.to_owned(), false),
-            View::Grid => (format!("{} (F7)", t.view_grid), false),
-            View::Scenes => (format!("{} (F8)", t.view_scenes), false),
+            // The keys follow the parts: `F2` photo, `F3` grid, `F4` scenes, `F5` faces.
+            View::Photo if current != View::Photo => (format!("{} (F2, Esc)", t.view_photo), false),
+            View::Photo => (format!("{} (F2)", t.view_photo), false),
+            View::Grid => (format!("{} (F3)", t.view_grid), false),
+            View::Scenes => (format!("{} (F4)", t.view_scenes), false),
             View::Faces => match views.faces {
                 FaceButton::Unknown => (faces_tip(t.faces_unknown), true),
                 FaceButton::Video => (faces_tip(t.faces_video), true),
                 FaceButton::None => (faces_tip(t.faces_none), true),
                 FaceButton::OnlySmall => (faces_tip(t.faces_only_small), true),
                 FaceButton::Found(Some(n)) => ((t.faces_button)(n), false),
-                FaceButton::Found(None) => (format!("{} (G)", t.cmd_face_grid), false),
+                FaceButton::Found(None) => (format!("{} (F5, G)", t.cmd_face_grid), false),
             },
         };
         let active = view == current;

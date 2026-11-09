@@ -10,7 +10,7 @@ use eframe::egui::{
     pos2, vec2,
 };
 
-use crate::i18n::{self, HelpRow, Texts, TipSection};
+use crate::i18n::{self, HelpRow, KeySection, Texts, TipSection};
 use crate::theme::{self, radius, text, tokens};
 use crate::ui::icons;
 use crate::ui::tabs::{self, Widths};
@@ -22,6 +22,9 @@ const PAD: f32 = 28.0;
 /// Two columns of shortcuts from this content width on, three from the next.
 const TWO_COLUMNS: f32 = 700.0;
 const THREE_COLUMNS: f32 = 1100.0;
+/// Room below a section of shortcuts, and below each of its rows.
+const SECTION_GAP: f32 = 12.0;
+const ROW_GAP: f32 = 6.0;
 
 const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -272,7 +275,21 @@ fn content(
         }
         y = strip.bottom() + 16.0;
     }
+    // What Cerno is and where marks go: on the tips page, so the shortcuts page holds only
+    // the keys (it fits 1280 × 800 that way).
+    let intro = |y: f32, text: &str| {
+        let galley = painter.layout(
+            i18n::keep_together(text),
+            FontId::proportional(text::BODY),
+            tokens::TEXT,
+            width.min(760.0),
+        );
+        let height = galley.size().y;
+        painter.galley(pos2(left, y), galley, tokens::TEXT);
+        y + height + 18.0
+    };
     if page == Page::Tips && !welcome {
+        y = intro(y, t.help_intro);
         y = tips(&painter, left, y, width, &t.help_tips);
         y = footer(&painter, left, y, width, t);
         ui.allocate_space(vec2(width, y - top.y));
@@ -291,22 +308,8 @@ fn content(
         return (out, y - top.y);
     }
 
-    // Intro.
-    let intro = painter.layout(
-        i18n::keep_together(if welcome {
-            t.welcome_intro
-        } else {
-            t.help_intro
-        }),
-        FontId::proportional(text::BODY),
-        tokens::TEXT,
-        width.min(760.0),
-    );
-    let intro_height = intro.size().y;
-    painter.galley(pos2(left, y), intro, tokens::TEXT);
-    y += intro_height + 18.0;
-
     if welcome {
+        y = intro(y, t.welcome_intro);
         let button = Rect::from_center_size(
             pos2(left + width / 2.0, y + theme::CONTROL / 2.0),
             vec2(200.0, theme::CONTROL),
@@ -324,7 +327,7 @@ fn content(
         );
         y += 34.0;
         // Only the keys to begin with; H shows the rest.
-        y = section(&painter, left, y, width, "", &t.welcome_keys) + 10.0;
+        y = section(&painter, left, y, width, "", &t.welcome_keys, true) + 10.0;
         painter.text(
             pos2(left + width / 2.0, y),
             Align2::CENTER_TOP,
@@ -352,35 +355,31 @@ fn content(
         return (out, y - top.y);
     }
 
-    // Shortcuts in reading order, split into columns of about the same length: three on wide
-    // windows (so the page needs no scrolling: browse, rate, sort out │ video, view │ panels,
-    // edit, more), else two – left what culling needs (browse, rate, sort out, video), right
-    // the view, the panels, editing and the rest.
-    let sections: [(&str, &[HelpRow]); 8] = [
-        (t.help_sections[0], &t.help_browse),
-        (t.help_sections[1], &t.help_rate),
-        (t.help_sections[2], &t.help_cull),
-        (t.help_sections[3], &t.help_video),
-        (t.help_sections[4], &t.help_view),
-        (t.help_sections[5], &t.help_panels),
-        (t.help_sections[6], &t.help_edit),
-        (t.help_sections[7], &t.help_more),
-    ];
-    let columns: Vec<&[(&str, &[HelpRow])]> = if width >= THREE_COLUMNS {
-        vec![&sections[..3], &sections[3..5], &sections[5..]]
+    // Shortcuts by task in reading order, cut into columns of about the same height: three on
+    // wide windows (so the page needs no scrolling), else two. The heights are measured as the
+    // sections will be drawn – merged rows wrap their key caps – in the language shown.
+    let sections: &[KeySection] = &t.help_keys;
+    let count = if width >= THREE_COLUMNS {
+        3
     } else if width >= TWO_COLUMNS {
-        vec![&sections[..4], &sections[4..]]
+        2
     } else {
-        vec![&sections[..]]
+        1
     };
     let gap = 36.0;
-    let column_width = (width - gap * (columns.len() - 1) as f32) / columns.len() as f32;
+    let column_width = (width - gap * (count - 1) as f32) / count as f32;
+    let heights: Vec<f32> = sections
+        .iter()
+        .map(|(title, rows)| {
+            section(&painter, 0.0, 0.0, column_width, title, rows, false) + SECTION_GAP
+        })
+        .collect();
     let mut bottom = y;
-    for (i, column) in columns.iter().enumerate() {
+    for (i, column) in even_columns(&heights, count).into_iter().enumerate() {
         let x = left + i as f32 * (column_width + gap);
         let mut cy = y;
-        for (title, rows) in column.iter() {
-            cy = section(&painter, x, cy, column_width, title, rows) + 14.0;
+        for (title, rows) in &sections[column] {
+            cy = section(&painter, x, cy, column_width, title, rows, true) + SECTION_GAP;
         }
         bottom = bottom.max(cy);
     }
@@ -584,17 +583,60 @@ fn balanced(sections: &[TipSection], columns: usize) -> Vec<&[TipSection]> {
     out
 }
 
-/// Section title and its rows; returns the bottom.
-fn section(painter: &Painter, x: f32, y: f32, width: f32, title: &str, rows: &[HelpRow]) -> f32 {
+/// The sections (their `heights`) cut into `columns` runs in reading order, so that the
+/// tallest column is as short as it can be. Returns each column's range of sections.
+fn even_columns(heights: &[f32], columns: usize) -> Vec<std::ops::Range<usize>> {
+    /// The best cut of `heights[from..]` into `left` columns: the tallest column, the starts.
+    fn best(heights: &[f32], from: usize, left: usize) -> (f32, Vec<usize>) {
+        let rest: f32 = heights[from..].iter().sum();
+        if left <= 1 || heights.len() - from <= 1 {
+            return (rest, vec![from]);
+        }
+        let mut top = (rest, vec![from]);
+        let mut first = 0.0;
+        for end in from + 1..heights.len() {
+            first += heights[end - 1];
+            let (tallest, mut starts) = best(heights, end, left - 1);
+            let tallest = tallest.max(first);
+            if tallest < top.0 {
+                starts.insert(0, from);
+                top = (tallest, starts);
+            }
+        }
+        top
+    }
+    if heights.is_empty() {
+        return Vec::new();
+    }
+    let starts = best(heights, 0, columns.max(1)).1;
+    starts
+        .iter()
+        .enumerate()
+        .map(|(i, &start)| start..starts.get(i + 1).copied().unwrap_or(heights.len()))
+        .collect()
+}
+
+/// Section title and its rows; returns the bottom. `draw: false` only measures.
+fn section(
+    painter: &Painter,
+    x: f32,
+    y: f32,
+    width: f32,
+    title: &str,
+    rows: &[HelpRow],
+    draw: bool,
+) -> f32 {
     let mut y = y;
     if !title.is_empty() {
-        let galley = painter.layout_job(theme::overline_job(title, tokens::MUTED));
-        painter.galley(pos2(x, y), galley, tokens::MUTED);
+        if draw {
+            let galley = painter.layout_job(theme::overline_job(title, tokens::MUTED));
+            painter.galley(pos2(x, y), galley, tokens::MUTED);
+        }
         y += 22.0;
     }
     let keys_width = (width * 0.38).min(190.0);
     for (keys, action) in rows {
-        let caps_height = keycaps(painter, pos2(x, y), keys_width, keys);
+        let caps_height = keycaps(painter, pos2(x, y), keys_width, keys, draw);
         let description = painter.layout(
             i18n::keep_together(action),
             FontId::proportional(text::BODY),
@@ -602,18 +644,21 @@ fn section(painter: &Painter, x: f32, y: f32, width: f32, title: &str, rows: &[H
             width - keys_width - 12.0,
         );
         let description_height = description.size().y;
-        painter.galley(
-            pos2(x + keys_width + 12.0, y + 3.0),
-            description,
-            tokens::TEXT,
-        );
-        y += caps_height.max(description_height + 3.0) + 7.0;
+        if draw {
+            painter.galley(
+                pos2(x + keys_width + 12.0, y + 3.0),
+                description,
+                tokens::TEXT,
+            );
+        }
+        y += caps_height.max(description_height + 3.0) + ROW_GAP;
     }
     y
 }
 
 /// Keys of one row as key caps, wrapping within `max_width`; returns the height used.
-fn keycaps(painter: &Painter, origin: Pos2, max_width: f32, keys: &str) -> f32 {
+/// `draw: false` only measures.
+fn keycaps(painter: &Painter, origin: Pos2, max_width: f32, keys: &str, draw: bool) -> f32 {
     const GAP: f32 = 5.0;
     let (mut x, mut y) = (origin.x, origin.y);
     let mut line_height: f32 = 0.0;
@@ -628,10 +673,12 @@ fn keycaps(painter: &Painter, origin: Pos2, max_width: f32, keys: &str) -> f32 {
             x = origin.x;
             y += line_height + GAP;
         }
-        let cap = Rect::from_min_size(pos2(x, y), size);
-        painter.rect_filled(cap, 4.0, tokens::SURFACE_MUTED);
-        painter.rect_stroke(cap, 4.0, Stroke::new(1.0, tokens::LINE), StrokeKind::Inside);
-        painter.galley(cap.min + vec2(7.0, 3.0), galley, tokens::TEXT);
+        if draw {
+            let cap = Rect::from_min_size(pos2(x, y), size);
+            painter.rect_filled(cap, 4.0, tokens::SURFACE_MUTED);
+            painter.rect_stroke(cap, 4.0, Stroke::new(1.0, tokens::LINE), StrokeKind::Inside);
+            painter.galley(cap.min + vec2(7.0, 3.0), galley, tokens::TEXT);
+        }
         x += size.x + GAP;
         line_height = line_height.max(size.y);
     }
@@ -728,7 +775,8 @@ mod tests {
     }
 
     /// Every page – the shortcuts, the tips and About – fits a full HD window without
-    /// scrolling, in every language (handed in: tests never switch the language).
+    /// scrolling, in every language (handed in: tests never switch the language); the
+    /// shortcuts also fit 1280 × 800 (`page_height`).
     #[test]
     fn every_page_fits_a_full_hd_window_in_every_language() {
         let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(1920.0, 1080.0));
@@ -772,24 +820,69 @@ mod tests {
     fn shortcut_descriptions_stay_short() {
         for lang in i18n::Lang::ALL {
             let t = lang.texts();
-            let rows = [
-                &t.help_browse[..],
-                &t.help_rate,
-                &t.help_cull,
-                &t.help_video,
-                &t.help_view,
-                &t.help_panels,
-                &t.help_edit,
-                &t.help_more,
-                &t.welcome_keys,
-            ];
-            for (keys, description) in rows.into_iter().flatten() {
+            let rows = t
+                .help_keys
+                .iter()
+                .flat_map(|(_, rows)| rows.iter())
+                .chain(&t.welcome_keys);
+            for (keys, description) in rows {
                 assert!(
                     description.chars().count() <= 40,
                     "{lang:?} {keys}: {description}"
                 );
             }
         }
+    }
+
+    /// The content height of a help page drawn over `window`.
+    fn page_height(window: Rect, lang: i18n::Lang, page: Page) -> f32 {
+        let ctx = crate::theme::test_context();
+        let update = UpdateLine {
+            status: String::new(),
+            release: None,
+            checking: false,
+        };
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(
+                RawInput {
+                    screen_rect: Some(window),
+                    ..Default::default()
+                },
+                |ui| {
+                    overlay(ui.ctx(), window, page, lang.texts(), &update);
+                },
+            );
+            output.textures_delta.clear();
+        }
+        ctx.data(|d| d.get_temp::<f32>(Id::unique(("help-height", false, page))))
+            .expect("content height")
+    }
+
+    /// The shortcuts fit a 1280 × 800 window without scrolling, in every language (three
+    /// columns there). The test's fonts are egui's own, not Segoe UI: the screen check looks
+    /// at the real ones.
+    #[test]
+    fn the_shortcuts_fit_a_1280_by_800_window() {
+        let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0));
+        for lang in i18n::Lang::ALL {
+            let content = page_height(window, lang, Page::Keys);
+            assert!(
+                content + 40.0 <= window.height() - 48.0,
+                "{lang:?} needs {content} px"
+            );
+        }
+    }
+
+    /// The columns keep the reading order, none is empty, and the tallest is as short as a
+    /// cut can make it.
+    #[test]
+    fn shortcut_columns_are_even_and_keep_the_order() {
+        let heights = [3.0, 5.0, 4.0, 4.0, 4.0, 6.0, 3.0, 5.0, 5.0, 5.0];
+        assert_eq!(even_columns(&heights, 3), vec![0..4, 4..7, 7..10]);
+        assert_eq!(even_columns(&heights, 2), vec![0..5, 5..10]);
+        assert_eq!(even_columns(&heights, 1), vec![0..10]);
+        assert_eq!(even_columns(&[1.0, 9.0, 1.0], 2), vec![0..1, 1..3]);
+        assert_eq!(even_columns(&[2.0], 3), vec![0..1]);
     }
 
     #[test]
