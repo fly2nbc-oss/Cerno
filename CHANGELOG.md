@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+## [1.15.0] – 2026-11-09
+
+A scene view, the filter bar from the keyboard, the photo whole and at 100 % side by side, bursts compared pair by pair, keyword filters and suggestions, view keys in the switcher's order (`F2`–`F5`) – and libheif 1.23.7 for HEIC.
+
 ### Added
 
 - **Scene view (`F4`)** – a view like the grid in which photos taken close together that look alike are grouped into scenes. Every scene starts a new row under a slim line with its time, its number of photos and the camera(s); every photo keeps its cell, nothing is hidden. Single photos that follow each other share rows under one *Single photos* line, so the view stays compact. Series and single photos join one scene when they follow within 2 minutes, the scene stays within 10 minutes, and they look like the scene's first photos (the same measure as *similar photos*); without the aesthetics models only series group. Photos without a capture time come last. The scene view always shows capture-time order – the filter bar's sort box is greyed out there and says so –, the filters still apply. `Page Up`/`Page Down` jump to the previous / next scene (collected single photos are one stop), `↑`/`↓` go a row, `+`/`−` change the size, and marks, deleting and `Ctrl+Z` work on the framed photo as in the grid. `Enter`, a double click, `Esc`, `F2` or `F4` open the photo, `F3` switches to the grid. It is the fourth part of the info bar's view switcher. The single view, the filmstrip, the grid and Top N stay as they are.
