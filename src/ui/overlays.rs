@@ -227,6 +227,41 @@ pub fn transfer_progress(ui: &Ui, centre: Pos2, text: String, done: f32) {
     bar_pill(ui, centre, text, done, tokens::ACCENT);
 }
 
+/// The filter mode (`Ctrl+F`): the box the frame stands on, and the mode's keys below it in
+/// muted text. Only painted – the mode reads its own keys, the pill takes no click.
+pub fn filter_mode(ui: &Ui, centre: Pos2, caption: &str, keys: &str) {
+    let painter = ui.painter();
+    let caption = painter.layout_no_wrap(
+        caption.to_owned(),
+        FontId::proportional(text::BODY),
+        tokens::TEXT,
+    );
+    let keys = painter.layout_no_wrap(
+        keys.to_owned(),
+        FontId::proportional(text::SMALL),
+        tokens::MUTED,
+    );
+    let width = caption.size().x.max(keys.size().x) + 32.0;
+    let pill = Rect::from_center_size(centre, vec2(width, 48.0));
+    theme::paint_raised(
+        painter,
+        pill,
+        radius::LG,
+        tokens::SURFACE_RAISED,
+        tokens::LINE,
+    );
+    painter.galley(
+        pos2(pill.center().x - caption.size().x / 2.0, pill.top() + 7.0),
+        caption,
+        tokens::TEXT,
+    );
+    painter.galley(
+        pos2(pill.center().x - keys.size().x / 2.0, pill.top() + 27.0),
+        keys,
+        tokens::MUTED,
+    );
+}
+
 fn bar_pill(ui: &Ui, centre: Pos2, text: String, share: f32, colour: Color32) {
     let painter = ui.painter();
     let galley = painter.layout_no_wrap(text, FontId::proportional(text::BODY), tokens::TEXT);

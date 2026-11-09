@@ -222,6 +222,8 @@ mod tests {
     use crate::app::command::{Advance, Command, Source};
     use crate::app::editing::EditSession;
     use crate::app::menu::ConfirmAction;
+    use crate::ui::filter_bar::Slot;
+    use crate::view::FilterKind;
 
     const NONE: Modifiers = Modifiers::NONE;
 
@@ -793,5 +795,135 @@ mod tests {
                 .as_ref()
                 .is_some_and(|notice| notice.text == "All marks saved.")
         );
+    }
+
+    /// The filter bar shows in this frame's layout.
+    fn bar_shown(h: &Harness) -> bool {
+        let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(SCREEN[0], SCREEN[1]));
+        h.app.layout(window).toolbar.is_some()
+    }
+
+    /// `Ctrl+F` shows the filter bar although it is off and takes the keys: the arrows move
+    /// the frame, not the photo; `4` ticks 4★ and rates nothing; `Del` shows all and deletes
+    /// nothing; `Esc` ends the mode, the bar goes again and the keys are the photo's.
+    #[test]
+    fn the_filter_mode_takes_the_keys_until_esc() {
+        let ctrl = Modifiers::COMMAND;
+        let mut h = Harness::new(3);
+        h.settle();
+        assert!(!h.app.bars.toolbar && !bar_shown(&h));
+        h.press(Key::F, ctrl);
+        assert!(h.app.filter_mode.is_on());
+        assert!(bar_shown(&h), "the bar shows for the mode");
+        assert!(!h.app.bars.toolbar, "its switch stays off");
+        h.press(Key::ArrowRight, NONE);
+        assert_eq!(h.app.current, 0, "the arrows move the frame");
+        assert_eq!(h.app.filter_mode.cursor, Some(Slot::Camera));
+        h.press(Key::Num4, NONE);
+        assert!(h.app.options.filter.contains(FilterKind::Stars(4)));
+        assert_eq!(
+            h.app.filter_mode.cursor,
+            Some(Slot::Filter(FilterKind::Stars(4)))
+        );
+        assert_eq!(h.rating_of(0), None, "the digit rated nothing");
+        h.press(Key::X, NONE);
+        assert!(h.app.options.filter.contains(FilterKind::Rejected));
+        h.press(Key::Delete, NONE);
+        assert!(!h.app.options.is_filtered(), "Del shows all");
+        assert_eq!(h.app.view.len(), 3, "and deletes nothing");
+        assert!(h.app.deletions.countdown(Instant::now()).is_none());
+        h.press(Key::Space, NONE);
+        assert!(
+            h.app.options.filter.contains(FilterKind::Rejected),
+            "Space ticks the box"
+        );
+        h.press(Key::Space, NONE);
+        assert!(!h.app.options.is_filtered(), "and unticks it");
+        h.press(Key::Escape, NONE);
+        assert!(!h.app.filter_mode.is_on());
+        assert!(!bar_shown(&h), "the bar goes with the mode");
+        h.press(Key::X, NONE);
+        assert_eq!(h.rating_of(0), Some(Rating::Rejected));
+        // It starts where it ended; Ctrl+F ends it too.
+        h.press(Key::F, ctrl);
+        assert_eq!(
+            h.app.filter_mode.cursor,
+            Some(Slot::Filter(FilterKind::Rejected))
+        );
+        h.press(Key::F, ctrl);
+        assert!(!h.app.filter_mode.is_on());
+    }
+
+    /// `Space` on a choice box opens its list below it: it takes the keys, a pick closes it and
+    /// the mode goes on; `Esc` closes only the list.
+    #[test]
+    fn a_choice_box_opens_its_list() {
+        let mut h = Harness::new(3);
+        h.settle();
+        h.press(Key::F, Modifiers::COMMAND);
+        h.settle();
+        h.press(Key::Space, NONE);
+        h.settle();
+        assert_eq!(h.layer(), "list");
+        h.press(Key::X, NONE);
+        assert_eq!(h.rating_of(0), None);
+        assert!(
+            !h.app.options.filter.contains(FilterKind::Rejected),
+            "the list has the keys"
+        );
+        h.press(Key::Escape, NONE);
+        assert_eq!(h.layer(), "none");
+        assert!(h.app.filter_mode.is_on(), "Esc closed only the list");
+        // Photos and videos is ticked; one down is photos only.
+        h.press(Key::Enter, NONE);
+        h.settle();
+        assert_eq!(h.layer(), "list");
+        h.press(Key::ArrowDown, NONE);
+        h.press(Key::Enter, NONE);
+        assert_eq!(h.app.options.media, crate::view::Media::Photos);
+        assert_eq!(h.layer(), "none", "a pick closes the list");
+        assert!(h.app.filter_mode.is_on());
+        // The sort's list, from the last box.
+        h.press(Key::End, NONE);
+        h.settle();
+        h.press(Key::Space, NONE);
+        h.settle();
+        h.press(Key::ArrowDown, NONE);
+        h.press(Key::Enter, NONE);
+        assert_ne!(h.app.options.sort, crate::view::SortKey::Name);
+    }
+
+    /// A straighten session takes the keys from the filter mode and ends it.
+    #[test]
+    fn an_edit_session_ends_the_filter_mode() {
+        let mut h = Harness::new(1);
+        h.settle();
+        h.press(Key::F, Modifiers::COMMAND);
+        assert!(h.app.filter_mode.is_on());
+        let path = h.app.view.paths.first().cloned().expect("a photo");
+        h.app.edits.session = Some(EditSession::straightening(path));
+        h.press(Key::Num4, NONE);
+        assert!(!h.app.filter_mode.is_on());
+        assert!(!h.app.options.filter.contains(FilterKind::Stars(4)));
+    }
+
+    /// `Alt+1` is the menu bar, `Alt+2` the details, `Alt+0` every bar – beside `F10`, `Tab`
+    /// and `Shift+Tab`.
+    #[test]
+    fn alt_digits_switch_the_bars() {
+        let alt = Modifiers::ALT;
+        let mut h = Harness::new(2);
+        h.settle();
+        h.press(Key::Num1, alt);
+        assert!(h.app.bars.side_bar);
+        h.press(Key::Num2, alt);
+        assert_ne!(h.app.bars.details, crate::ui::details::DetailsMode::Off);
+        h.press(Key::Num0, alt);
+        assert!(!h.app.bars.side_bar && !h.app.bars.toolbar && !h.app.bars.filmstrip);
+        assert_eq!(h.app.bars.details, crate::ui::details::DetailsMode::Off);
+        h.press(Key::Num0, alt);
+        assert!(h.app.bars.side_bar && h.app.bars.toolbar && h.app.bars.filmstrip);
+        assert_eq!(h.rating_of(0), None, "no Alt digit rates");
+        assert_eq!(h.app.current, 0);
     }
 }

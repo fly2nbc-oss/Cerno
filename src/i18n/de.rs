@@ -91,6 +91,8 @@ pub static TEXTS: Texts = Texts {
     top_tooltip: "Fotos, Videos oder beides – oder nur die besten Fotos, nach deinen Sternen (sonst die Vorhersage), Ästhetik und Schärfe, aus jeder Serie zuerst das beste. Abgelehnte und unscharfe Fotos und Dubletten zählen nicht. Die Auswahl bleibt, bis sich ein Filter ändert oder du „Reihenfolge aktualisieren“ wählst. An den Fotos wird nichts geändert.",
     bulk_delete_top: "Nicht bei „Top“ – das wären die besten Fotos",
     filter_similar: "≈ Ähnliche",
+    filter_mode_hint: "←/→ wählen · Leertaste: an/aus oder öffnen · 0–9, X anhaken · Entf: alle zeigen · Esc: fertig",
+    filter_mode_name: "Filter per Tastatur",
     filter_similar_to: |name| format!("≈ wie {name}"),
     menu_similar_to: |name| format!("Ähnlich zu {name}"),
     similar_tooltip: |percent| {
@@ -770,12 +772,13 @@ pub static TEXTS: Texts = Texts {
         ("F, F11", "Vollbild"),
     ],
     help_panels: [
-        ("F10", "Menüleiste"),
+        ("F10, Alt+1", "Menüleiste"),
         ("T", "Filterleiste"),
+        ("Strg+F", "Filter per Tastatur"),
         ("Umschalt+T", "Filter kurz aus / wieder an"),
-        ("Tab", "Detailansicht"),
+        ("Tab, Alt+2", "Detailansicht"),
         ("F6", "Filmstreifen"),
-        ("Umschalt+Tab", "Alle vier Leisten"),
+        ("Umschalt+Tab, Alt+0", "Alle vier Leisten"),
         ("Strg+Tab", "Nächster Reiter der Details"),
     ],
     help_edit: [

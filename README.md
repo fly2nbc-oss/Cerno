@@ -66,6 +66,8 @@ The AppImage can be brought up to date with [AppImageUpdate](https://github.com/
 | `F10` / `T` / `Tab` / `F6` / `F7` | Menu bar / filter bar / details / filmstrip / grid |
 | `F8` | Scenes: the grid with alike photos taken close together grouped, each scene on its own row – `Page Up`/`Page Down` jump from scene to scene |
 | `Shift+T` | Filter off for a moment – again: the same filter back |
+| `Ctrl+F` | Filters with the keyboard: `←`/`→` choose a box, `Space` ticks it, `1`–`5`, `6`–`9`, `X` tick their box, `Esc` done |
+| `Alt+1` / `Alt+2` / `Alt+0` | Menu bar / details / every bar (like `F10`, `Tab`, `Shift+Tab`) |
 | `Ctrl+Tab` | The details panel's tabs: values, description |
 | `G` | All faces large – a click zooms to one |
 | `Ctrl+U` | Include subfolders (on / off) |

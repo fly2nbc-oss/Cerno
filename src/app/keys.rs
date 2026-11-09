@@ -10,7 +10,10 @@ use crate::ui::viewer;
 
 use super::CernoApp;
 use super::command::{Advance, Command, Source, ZoomKeys};
+use super::filter_mode::Action;
 use super::layer::Layer;
+use crate::ui::filter_bar::Step;
+use crate::view::FilterKind;
 
 /// `0` clears the stars, `1`–`5` set them.
 const STAR_KEYS: [(Key, Rating); 6] = [
@@ -90,8 +93,14 @@ struct KeyInput {
     toggle_scenes: bool,
     help: bool,
     language: bool,
-    /// `F10`: the menu bar.
+    /// `F10` or `Alt+1`: the menu bar.
     toggle_side_bar: bool,
+    /// `Alt+2`: the details panel (`Tab` is taken in `raw_input_hook`).
+    toggle_details: bool,
+    /// `Alt+0`: every bar (like `Shift+Tab`).
+    all_panels: bool,
+    /// `Ctrl+F`: the filter mode.
+    filter_mode: bool,
     toggle_zoom: bool,
     /// `+`/`−`, with or without Ctrl.
     zoom_in: bool,
@@ -147,6 +156,15 @@ fn ctrl_digit(events: &[egui::Event], digit: Key) -> bool {
     events.iter().any(|event| {
         matches!(event, egui::Event::Key { key, physical_key, pressed: true, repeat: false, modifiers }
             if modifiers.command_only() && physical_key.unwrap_or(*key) == digit)
+    })
+}
+
+/// `Alt` alone and a digit, by the digit's place on the keyboard (see [`digit_key`]). Not with
+/// `Ctrl` too: `AltGr` is `Ctrl+Alt` on German and French layouts and types `}`, `@` … there.
+fn alt_digit(events: &[egui::Event], digit: Key) -> bool {
+    events.iter().any(|event| {
+        matches!(event, egui::Event::Key { key, physical_key, pressed: true, repeat: false, modifiers }
+            if *modifiers == egui::Modifiers::ALT && physical_key.unwrap_or(*key) == digit)
     })
 }
 
@@ -244,7 +262,10 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
             || i.key_pressed(Key::Questionmark)
             || (plain && i.key_pressed(Key::H)),
         language: i.modifiers.command && i.key_pressed(Key::L),
-        toggle_side_bar: i.key_pressed(Key::F10),
+        toggle_side_bar: i.key_pressed(Key::F10) || alt_digit(&i.events, Key::Num1),
+        toggle_details: alt_digit(&i.events, Key::Num2),
+        all_panels: alt_digit(&i.events, Key::Num0),
+        filter_mode: i.modifiers.command_only() && i.key_pressed(Key::F),
         toggle_zoom: plain && i.key_pressed(Key::Z),
         // German layouts type "=" for Shift+0, which is "rate 0 and next" here.
         zoom_in: !i.modifiers.alt
@@ -262,6 +283,47 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         rotate_ccw: i.modifiers.command && !i.modifiers.shift && i.key_pressed(Key::ArrowLeft),
         undo: i.modifiers.command && !i.modifiers.shift && i.key_pressed(Key::Z),
     }
+}
+
+/// The keys of one frame in the filter mode (`Ctrl+F`), in this order: the frame moves, `Space`
+/// or `Enter` act on its box, the marking keys tick their box, `Del` shows all, `Esc` or
+/// `Ctrl+F` end the mode. Arrows repeat while held; the rest counts fresh presses only. Digits
+/// count by their place on the keyboard, as when marking.
+pub(super) fn read_filter_keys(i: &egui::InputState) -> Vec<Action> {
+    let plain = i.modifiers.is_none();
+    let mut out = Vec::new();
+    for (key, step) in [
+        (Key::ArrowLeft, Step::Prev),
+        (Key::ArrowRight, Step::Next),
+        (Key::Home, Step::First),
+        (Key::End, Step::Last),
+    ] {
+        if plain && i.key_pressed(key) {
+            out.push(Action::Move(step));
+        }
+    }
+    if fresh(&i.events, Key::Space) || fresh(&i.events, Key::Enter) {
+        out.push(Action::Activate);
+    }
+    if let Some(rating) = digit_key(&i.events, &STAR_KEYS, false) {
+        out.push(Action::Tick(match rating {
+            Rating::Stars(n) => FilterKind::Stars(n),
+            Rating::Unrated | Rating::Rejected => FilterKind::Unrated,
+        }));
+    }
+    if let Some(label) = digit_key(&i.events, &LABEL_KEYS, false) {
+        out.push(Action::Tick(FilterKind::Colour(label)));
+    }
+    if fresh(&i.events, Key::X) {
+        out.push(Action::Tick(FilterKind::Rejected));
+    }
+    if fresh(&i.events, Key::Delete) {
+        out.push(Action::ShowAll);
+    }
+    if i.key_pressed(Key::Escape) || (i.modifiers.command_only() && i.key_pressed(Key::F)) {
+        out.push(Action::End);
+    }
+    out
 }
 
 impl KeyInput {
@@ -353,10 +415,13 @@ impl KeyInput {
                 },
             );
         }
+        push(self.toggle_details, Command::TogglePanel(Panel::Right));
+        push(self.all_panels, Command::AllPanels);
         push(self.toggle_toolbar, Command::TogglePanel(Panel::Top));
         push(self.filter_aside, Command::FilterAside);
         push(self.toggle_filmstrip, Command::TogglePanel(Panel::Bottom));
         push(self.toggle_side_bar, Command::TogglePanel(Panel::Left));
+        push(self.filter_mode, Command::FilterMode);
         push(self.overlay, Command::NextOverlay);
         let zoom = ZoomKeys {
             toggle: self.toggle_zoom,
@@ -449,8 +514,16 @@ impl CernoApp {
             self.open_help();
             return;
         }
+        // A straighten or crop session takes the keys; the filter mode makes way for it.
         if self.edits.session.is_some() {
+            self.filter_mode.end();
             self.handle_edit_keys(ctx);
+            return;
+        }
+        // The filter mode (`Ctrl+F`) takes the keys like an edit session: the photo's rest.
+        if self.filter_mode.is_on() {
+            let actions = ctx.input(read_filter_keys);
+            self.handle_filter_keys(ctx, &actions);
             return;
         }
         self.execute_all(ctx, &keys.commands(&tabs), Source::Keys, frames);
@@ -1027,5 +1100,117 @@ mod tests {
         let shift = Modifiers::SHIFT;
         assert!(read(vec![key(Key::G, Key::G, plain)], plain).face_grid);
         assert!(!read(vec![key(Key::G, Key::G, shift)], shift).face_grid);
+    }
+
+    /// `Alt+1`, `Alt+2` and `Alt+0` switch the menu bar, the details and every bar, by the
+    /// digit's place (AZERTY types `&`, `é`, `à`); with `Ctrl` too – `AltGr` – they do nothing,
+    /// and they never rate.
+    #[test]
+    fn alt_digits_switch_the_bars() {
+        let alt = Modifiers::ALT;
+        let left = read(vec![key(Key::Num1, Key::Num1, alt)], alt);
+        assert!(left.toggle_side_bar && left.rating.is_none());
+        assert!(
+            left.commands(&[])
+                .contains(&Command::TogglePanel(Panel::Left))
+        );
+        let right = read(vec![key(Key::Num2, Key::Quote, alt)], alt);
+        assert!(right.toggle_details);
+        assert!(
+            right
+                .commands(&[])
+                .contains(&Command::TogglePanel(Panel::Right))
+        );
+        let all = read(vec![key(Key::Num0, Key::Num0, alt)], alt);
+        assert!(all.all_panels && all.rating.is_none() && !all.zoom_fit);
+        assert!(all.commands(&[]).contains(&Command::AllPanels));
+        let alt_gr = Modifiers::ALT | Modifiers::COMMAND;
+        assert_eq!(
+            read(vec![key(Key::Num0, Key::Num0, alt_gr)], alt_gr),
+            KeyInput::default()
+        );
+        assert_eq!(
+            read(vec![key(Key::Num2, Key::Num2, alt_gr)], alt_gr),
+            KeyInput::default()
+        );
+    }
+
+    /// `Ctrl+F` is the filter mode; plain `F` stays full screen.
+    #[test]
+    fn ctrl_f_is_the_filter_mode() {
+        let ctrl = Modifiers::COMMAND;
+        let keys = read(vec![key(Key::F, Key::F, ctrl)], ctrl);
+        assert!(keys.filter_mode && !keys.toggle_fullscreen);
+        assert!(keys.commands(&[]).contains(&Command::FilterMode));
+        let plain = Modifiers::NONE;
+        let keys = read(vec![key(Key::F, Key::F, plain)], plain);
+        assert!(keys.toggle_fullscreen && !keys.filter_mode);
+    }
+
+    /// The filter mode's keys of one headless frame.
+    fn read_mode(events: Vec<Event>, modifiers: Modifiers) -> Vec<Action> {
+        let ctx = crate::theme::test_context();
+        let mut actions = None;
+        let mut all = vec![Event::ModifiersChanged(modifiers)];
+        all.extend(events);
+        let mut output = ctx.run_ui(
+            RawInput {
+                events: all,
+                ..Default::default()
+            },
+            |ui| actions = Some(ui.ctx().input(read_filter_keys)),
+        );
+        output.textures_delta.clear();
+        actions.expect("one frame")
+    }
+
+    /// In the filter mode the marking keys tick their box – digits by their place, as when
+    /// marking –, the arrows move the frame, `Space` and `Enter` act, `Del` shows all, `Esc`
+    /// and `Ctrl+F` end it.
+    #[test]
+    fn the_filter_mode_reads_its_own_keys() {
+        let plain = Modifiers::NONE;
+        let one = |physical, logical| read_mode(vec![key(physical, logical, plain)], plain);
+        assert_eq!(
+            one(Key::Num4, Key::Quote),
+            vec![Action::Tick(FilterKind::Stars(4))]
+        );
+        assert_eq!(
+            one(Key::Num0, Key::Num0),
+            vec![Action::Tick(FilterKind::Unrated)]
+        );
+        assert_eq!(
+            one(Key::Num6, Key::Minus),
+            vec![Action::Tick(FilterKind::Colour(Label::Red))]
+        );
+        assert_eq!(
+            one(Key::X, Key::X),
+            vec![Action::Tick(FilterKind::Rejected)]
+        );
+        assert_eq!(one(Key::Delete, Key::Delete), vec![Action::ShowAll]);
+        assert_eq!(one(Key::Space, Key::Space), vec![Action::Activate]);
+        assert_eq!(one(Key::Enter, Key::Enter), vec![Action::Activate]);
+        assert_eq!(one(Key::Escape, Key::Escape), vec![Action::End]);
+        assert_eq!(
+            one(Key::ArrowRight, Key::ArrowRight),
+            vec![Action::Move(Step::Next)]
+        );
+        assert_eq!(
+            one(Key::ArrowLeft, Key::ArrowLeft),
+            vec![Action::Move(Step::Prev)]
+        );
+        assert_eq!(one(Key::Home, Key::Home), vec![Action::Move(Step::First)]);
+        assert_eq!(one(Key::End, Key::End), vec![Action::Move(Step::Last)]);
+        let ctrl = Modifiers::COMMAND;
+        assert_eq!(
+            read_mode(vec![key(Key::F, Key::F, ctrl)], ctrl),
+            vec![Action::End]
+        );
+        // Shift+digits, Ctrl+arrows and keys the mode has no use for do nothing.
+        let shift = Modifiers::SHIFT;
+        assert!(read_mode(vec![key(Key::Num4, Key::Num4, shift)], shift).is_empty());
+        assert!(read_mode(vec![key(Key::ArrowRight, Key::ArrowRight, ctrl)], ctrl).is_empty());
+        assert!(one(Key::T, Key::T).is_empty());
+        assert!(one(Key::Backspace, Key::Backspace).is_empty());
     }
 }

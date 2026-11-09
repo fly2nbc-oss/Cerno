@@ -33,19 +33,21 @@ pub(super) struct Layout {
 impl CernoApp {
     /// The info bar always shows (once there is a photo); the filter bar also when a filter
     /// hides everything, so it can be changed back – and then as long as the pointer is on it,
-    /// so it doesn't vanish under the click that resets the filter.
+    /// so it doesn't vanish under the click that resets the filter –, and while the filter
+    /// mode (`Ctrl+F`) is on.
     pub(super) fn layout(&self, window: Rect) -> Layout {
         let mut area = window;
         let toolbar = (!self.folder.all.is_empty()
-            && (self.bars.toolbar || self.view.is_empty() || self.bars.toolbar_held))
-            .then(|| {
-                let r = Rect::from_min_size(
-                    window.min,
-                    vec2(window.width(), filter_bar::TOOLBAR_HEIGHT),
-                );
-                area.min.y = r.max.y;
-                r
-            });
+            && (self.bars.toolbar
+                || self.view.is_empty()
+                || self.bars.toolbar_held
+                || self.filter_mode.is_on()))
+        .then(|| {
+            let r =
+                Rect::from_min_size(window.min, vec2(window.width(), filter_bar::TOOLBAR_HEIGHT));
+            area.min.y = r.max.y;
+            r
+        });
         let info = (!self.view.is_empty()).then(|| {
             let r = Rect::from_min_max(
                 pos2(window.min.x, window.max.y - info_bar::INFO_HEIGHT),
@@ -459,8 +461,7 @@ impl CernoApp {
             .camera
             .map(|pick| self.camera_label(pick, &cameras));
         let info = filter_bar::ToolbarInfo {
-            stale: self.view_options().depends_on_scores()
-                && self.board.version() != self.browse.view_version,
+            stale: self.order_stale(),
             status: &status,
             similar_to: similar_to.as_deref(),
             shown: self.view.len(),
@@ -472,7 +473,9 @@ impl CernoApp {
             camera: camera.as_deref(),
         };
         let mut options = self.options;
-        let out = filter_bar::toolbar(ui, rect, &mut options, &info);
+        let cursor = self.filter_cursor();
+        let out = filter_bar::toolbar(ui, rect, &mut options, &info, cursor);
+        self.filter_bar_drawn(out.clicked, out.cursor_rect);
         self.bars.toolbar_held = !self.bars.toolbar && ui.rect_contains_pointer(rect);
         if out.options_changed {
             self.options = options;
