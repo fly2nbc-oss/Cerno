@@ -229,6 +229,7 @@ pub static TEXTS: Texts = Texts {
     filmstrip_in_grid: "Non serve nella griglia – F7 torna alla foto",
     grid_no_date: "senza data",
     filmstrip_in_scenes: "Non serve nelle scene – F8 torna alla foto",
+    sort_in_scenes: "La vista per scene segue sempre l'ora di scatto – questo ordinamento torna fuori da essa",
     scene_untimed: "Senza ora di scatto",
     scene_singles: "Foto singole",
     faces_button: |n| {

@@ -41,6 +41,9 @@ pub struct ToolbarInfo<'a> {
     pub name_list: Option<(usize, usize)>,
     /// The keyword filter's chip while it filters: its label and tooltip (`app::keywords`).
     pub keywords: Option<(&'a str, &'a str)>,
+    /// Why the sort box is greyed out – the scene view (`F8`) is always in capture-time
+    /// order; `None`: it can be chosen.
+    pub sort_locked: Option<&'a str>,
     /// The folder's cameras for the camera box, the most photos first (`camera_entries`).
     pub cameras: &'a [CameraEntry],
     /// The camera the view is narrowed to, by name, while the camera filter is on.
@@ -341,16 +344,23 @@ pub fn toolbar(
                             count_badge(ui, info.shown, info.total, before.is_filtered());
                         clear = cleared;
                         count_rect = Some(slot);
-                        let sorted = ComboBox::from_id_salt("sort")
-                            .icon(combo_chevron)
-                            .width(sort_width(ui))
-                            .selected_text((t.sort)(sort.label()))
-                            .show_ui(ui, |ui| {
-                                for key in SortKey::ALL {
-                                    ui.selectable_value(&mut sort, key, key.label());
-                                }
+                        // Greyed out with the reason while the scene view orders by
+                        // capture time; it still names the sort chosen for the other views.
+                        let sorted = ui
+                            .add_enabled_ui(info.sort_locked.is_none(), |ui| {
+                                ComboBox::from_id_salt("sort")
+                                    .icon(combo_chevron)
+                                    .width(sort_width(ui))
+                                    .selected_text((t.sort)(sort.label()))
+                                    .show_ui(ui, |ui| {
+                                        for key in SortKey::ALL {
+                                            ui.selectable_value(&mut sort, key, key.label());
+                                        }
+                                    })
+                                    .response
                             })
-                            .response;
+                            .inner
+                            .on_disabled_hover_text(info.sort_locked.unwrap_or_default());
                         right.place(ui, Slot::Sort, &sorted);
                         if info.stale {
                             let refresh = ui
@@ -1061,6 +1071,7 @@ mod tests {
                         has_deleted: false,
                         name_list: None,
                         keywords: None,
+                        sort_locked: None,
                         cameras,
                         camera,
                     };
@@ -1150,6 +1161,7 @@ mod tests {
                         has_deleted: false,
                         name_list: None,
                         keywords: None,
+                        sort_locked: None,
                         cameras: &[],
                         camera: None,
                     };
@@ -1229,6 +1241,7 @@ mod tests {
                         has_deleted: false,
                         name_list: None,
                         keywords: None,
+                        sort_locked: None,
                         cameras: &[],
                         camera: None,
                     };
@@ -1396,6 +1409,7 @@ mod tests {
                             has_deleted: false,
                             name_list: None,
                             keywords: None,
+                            sort_locked: None,
                             cameras,
                             camera: None,
                         };
@@ -1549,6 +1563,7 @@ mod tests {
                         has_deleted: false,
                         name_list: None,
                         keywords: None,
+                        sort_locked: None,
                         cameras: &[],
                         camera: None,
                     };

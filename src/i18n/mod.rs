@@ -455,6 +455,8 @@ pub struct Texts {
     pub grid_no_date: &'static str,
     /// Why the filmstrip button is greyed out in the scene view.
     pub filmstrip_in_scenes: &'static str,
+    /// Why the sort box is greyed out in the scene view (it is always capture-time order).
+    pub sort_in_scenes: &'static str,
     /// The scene view's header over the photos without a capture time (they come last).
     pub scene_untimed: &'static str,
     /// The scene view's header over single photos collected in a row (each a scene of one).

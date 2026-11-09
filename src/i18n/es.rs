@@ -240,6 +240,7 @@ pub static TEXTS: Texts = Texts {
     filmstrip_in_grid: "No hace falta en la cuadrícula – F7 vuelve a la foto",
     grid_no_date: "sin fecha",
     filmstrip_in_scenes: "No hace falta en las escenas – F8 vuelve a la foto",
+    sort_in_scenes: "La vista de escenas siempre sigue la hora de captura – este orden vuelve fuera de ella",
     scene_untimed: "Sin hora de captura",
     scene_singles: "Fotos sueltas",
     faces_button: |n| {

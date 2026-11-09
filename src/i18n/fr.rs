@@ -261,6 +261,7 @@ pub static TEXTS: Texts = Texts {
     filmstrip_in_grid: "Inutile dans la grille – F7 revient à la photo",
     grid_no_date: "sans date",
     filmstrip_in_scenes: "Inutile dans les scènes – F8 revient à la photo",
+    sort_in_scenes: "La vue par scènes suit toujours la date de prise – ce tri revient en dehors",
     scene_untimed: "Sans heure de prise de vue",
     scene_singles: "Photos isolées",
     faces_button: |n| {

@@ -238,6 +238,7 @@ pub static TEXTS: Texts = Texts {
     filmstrip_in_grid: "Im Raster nicht nötig – F7 zurück zum Foto",
     grid_no_date: "ohne Datum",
     filmstrip_in_scenes: "In den Szenen nicht nötig – F8 zurück zum Foto",
+    sort_in_scenes: "Die Szenenansicht ordnet immer nach Aufnahmezeit – außerhalb gilt wieder diese Sortierung",
     scene_untimed: "Ohne Aufnahmezeit",
     scene_singles: "Einzelne Fotos",
     faces_button: |n| {

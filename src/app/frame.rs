@@ -470,6 +470,7 @@ impl CernoApp {
             has_videos,
             has_deleted: self.has_deleted(),
             name_list: self.name_list.counts(),
+            sort_locked: self.viewer.scenes.then_some(i18n::t().sort_in_scenes),
             keywords: keyword_chip
                 .as_ref()
                 .map(|(label, tooltip)| (label.as_str(), tooltip.as_str())),

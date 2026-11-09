@@ -239,6 +239,7 @@ pub static TEXTS: Texts = Texts {
     filmstrip_in_grid: "Not needed in the grid – F7 back to the photo",
     grid_no_date: "no date",
     filmstrip_in_scenes: "Not needed in the scenes – F8 back to the photo",
+    sort_in_scenes: "The scene view is always in capture-time order – this sort applies again outside it",
     scene_untimed: "No capture time",
     scene_singles: "Single photos",
     faces_button: |n| {

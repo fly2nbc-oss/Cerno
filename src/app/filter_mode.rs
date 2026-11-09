@@ -176,6 +176,10 @@ impl CernoApp {
         };
         match slot {
             Slot::Scope => open(self, Choices::Scope),
+            // The scene view orders by capture time: the box is greyed out, its reason shows.
+            Slot::Sort if self.viewer.scenes => {
+                self.notice = Some(Notice::hint(t.sort_in_scenes));
+            }
             Slot::Sort => open(self, Choices::Sort),
             Slot::Camera => {
                 let cameras = self.cameras();

@@ -522,6 +522,63 @@ mod tests {
         assert!(!h.app.viewer.split);
     }
 
+    /// The scene view and the split view end each other as the grid and the split view do:
+    /// `F8` ends the split view, `Shift+Z` leaves the scenes for the photo.
+    #[test]
+    fn the_split_view_and_the_scenes_end_each_other() {
+        let shift = Modifiers::SHIFT;
+        let mut h = Harness::new(5);
+        h.settle();
+        h.press(Key::Z, shift);
+        assert!(h.app.viewer.split);
+        h.press(Key::F8, NONE);
+        assert!(!h.app.viewer.split && h.app.viewer.scenes && h.app.viewer.grid);
+        h.press(Key::Z, shift);
+        assert!(
+            h.app.viewer.split && !h.app.viewer.scenes && !h.app.viewer.grid,
+            "the scenes step aside"
+        );
+        // The view switcher's scenes part too.
+        let ctx = h.ctx.clone();
+        h.app.run(
+            &ctx,
+            Command::ShowView(crate::ui::info_bar::View::Scenes),
+            Source::Mouse,
+            &[],
+        );
+        assert!(!h.app.viewer.split && h.app.viewer.scenes);
+    }
+
+    /// In the scene view the sort box is greyed out: in the filter mode `Space` on it names
+    /// the reason and opens no list; outside the scenes it opens its list again.
+    #[test]
+    fn the_scene_view_greys_the_sort_box_out() {
+        let mut h = Harness::new(3);
+        h.settle();
+        h.press(Key::F8, NONE);
+        assert!(h.app.viewer.scenes);
+        h.press(Key::F, Modifiers::COMMAND);
+        h.press(Key::End, NONE);
+        assert_eq!(h.app.filter_mode.cursor, Some(Slot::Sort));
+        h.press(Key::Space, NONE);
+        h.settle();
+        assert_eq!(h.layer(), "none", "no list");
+        let reason = crate::i18n::Lang::En.texts().sort_in_scenes;
+        assert!(
+            h.app
+                .notice
+                .as_ref()
+                .is_some_and(|notice| notice.text == reason)
+        );
+        h.press(Key::Escape, NONE);
+        h.press(Key::F8, NONE);
+        assert!(!h.app.viewer.scenes);
+        h.press(Key::F, Modifiers::COMMAND);
+        h.press(Key::Space, NONE);
+        h.settle();
+        assert_eq!(h.layer(), "list");
+    }
+
     /// A deletion counting down comes first: `Esc` brings the photo back.
     #[test]
     fn escape_brings_a_deletion_back_first() {
