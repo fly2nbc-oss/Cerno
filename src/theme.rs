@@ -553,6 +553,28 @@ mod tests {
         }
     }
 
+    /// The stars Cerno writes as text – the filter chips' `1★`, the menu bar's star row, star
+    /// tooltips – are in egui's bundled fonts, also without the system's: since 0.37 egui
+    /// bundles them only behind its `monochrome_emoji_fonts` feature, and without it they
+    /// showed as boxes. (The arrows come from the system's font, see `install_fonts`.)
+    #[test]
+    fn the_symbols_cerno_writes_have_glyphs() {
+        let ctx = test_context();
+        ctx.run_ui(Default::default(), |_| {})
+            .textures_delta
+            .clear();
+        for size in [text::SMALL, text::BODY] {
+            let font = FontId::proportional(size);
+            for symbol in ['★', '☆', '≈', '·', '–', '…'] {
+                assert!(
+                    ctx.fonts_mut(|f| f.has_glyph(&font, symbol)),
+                    "U+{:04X} has no glyph",
+                    symbol as u32
+                );
+            }
+        }
+    }
+
     #[test]
     fn lucide_comes_second_and_the_semibold_family_exists() {
         let defs = definitions(Some(Vec::new()), None);

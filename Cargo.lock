@@ -664,6 +664,7 @@ dependencies = [
  "anyhow",
  "directories",
  "eframe",
+ "egui",
  "env_logger",
  "fast_image_resize",
  "gstreamer",

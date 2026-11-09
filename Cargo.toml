@@ -25,6 +25,9 @@ video = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-pbutils", "dep:gst
 anyhow = "1.0.104"
 directories = "6.0.0"
 eframe = "0.37.0"
+# Only for its feature: since 0.37 egui bundles the fonts with ★ (filter chips, star rows,
+# tooltips) and other symbols only behind `monochrome_emoji_fonts`; without it they show as boxes.
+egui = { version = "0.37.0", default-features = false, features = ["monochrome_emoji_fonts"] }
 env_logger = "0.11.11"
 fast_image_resize = "6.1.0"
 gstreamer = { version = "0.25.4", optional = true }
