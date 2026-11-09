@@ -1,12 +1,19 @@
 name: CI
 
 # Pull requests: lint and tests only. Pushes to main, tags and manual runs also
-# build the four packages (kept 14 days as run artifacts); a `v*` tag turns them
-# into a draft release.
+# build the four packages (kept 7 days as run artifacts) and install them on clean
+# systems; a `v*` tag turns them into a draft release with a build provenance
+# attestation.
 #
 # Every action is pinned to a commit, its version as a comment: a tag that is moved
 # can't bring other code into this workflow, least of all into the job with the
-# SignPath token. Bumping one is by hand (CLAUDE.md, "Actions pinned by commit").
+# SignPath token. Bumping one is by hand (AGENTS.md, "Actions pinned by commit");
+# zizmor in the `scripts` job checks the workflow on every run.
+#
+# The caches (cargo, vcpkg's binary cache, the GStreamer installer) carry
+# `zizmor: ignore[cache-poisoning]`: GitHub restores a tag's caches only from the
+# tag itself or from main, and whoever can write main's cache can already change
+# the release; the GStreamer installer is checked by SHA-256 before every use.
 on:
   push:
     branches: [main]
@@ -32,9 +39,10 @@ permissions:
 
 jobs:
   # Seconds: the workflow (actionlint, which also runs shellcheck over every bash `run:`
-  # block), the shell scripts (shellcheck), the PowerShell scripts (PSScriptAnalyzer), and the
-  # Linux packages' desktop file and AppStream metadata. Each tool is pinned by version and
-  # SHA-256; appstreamcli and desktop-file-validate come from Ubuntu.
+  # block, and zizmor for its security), the shell scripts (shellcheck), the PowerShell
+  # scripts (PSScriptAnalyzer), and the Linux packages' desktop file and AppStream metadata.
+  # Each tool is pinned by version and SHA-256 (zizmor by the action's hash-checked lock);
+  # appstreamcli and desktop-file-validate come from Ubuntu.
   scripts:
     name: Lint scripts & package metadata
     runs-on: ubuntu-24.04
@@ -72,6 +80,14 @@ jobs:
           shellcheck --version
           actionlint -version
           actionlint -color
+      # Online audits too (impostor commits, known vulnerable actions) with the run's token;
+      # findings fail the job, nothing is uploaded.
+      - name: Workflow security (zizmor)
+        uses: zizmorcore/zizmor-action@53290badfa369cb0bf7ad16342cb62c2fa47ac7b # v0.8.0
+        with:
+          version: 1.31.1
+          advanced-security: false
+          annotations: true
       - name: Shell scripts (shellcheck)
         run: git ls-files -z '*.sh' | xargs -0 shellcheck packaging/linux/AppRun
       - name: PowerShell scripts (PSScriptAnalyzer)
@@ -100,13 +116,16 @@ jobs:
   linux:
     name: Lint & test (Linux, HEIC, video)
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable branch, 2026-10-09
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
         with:
           toolchain: stable
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2 # zizmor: ignore[cache-poisoning]
       - name: System packages
         run: |
           sudo apt-get update
@@ -114,7 +133,7 @@ jobs:
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base \
             gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
       - run: cargo fmt --all -- --check
-      - run: cargo clippy --all-targets --features heic,video -- -D warnings
+      - run: cargo clippy --all-targets --locked --features heic,video -- -D warnings
       # The player tests play tests/fixtures/tiny.mp4 on the CPU, without sound. A manual
       # run can repeat them (`test_rounds`); the step fails when any round failed.
       - name: Test
@@ -124,7 +143,7 @@ jobs:
           [[ "$ROUNDS" =~ ^[1-9][0-9]?$ ]] || { echo "::error::test_rounds must be 1-99"; exit 1; }
           failed=0
           for round in $(seq 1 "$ROUNDS"); do
-            if ! cargo test --features heic,video; then
+            if ! cargo test --locked --features heic,video; then
               failed=$((failed + 1))
               echo "::warning::test round $round of $ROUNDS failed"
             fi
@@ -133,7 +152,7 @@ jobs:
           if [ "$failed" -gt 0 ]; then exit 1; fi
       # The experimental WebGPU path for the models (Linux only; ort ships a prebuilt ONNX
       # Runtime with WebGPU for x86_64 Linux): it must keep compiling, warning-free.
-      - run: cargo clippy --all-targets --features webgpu -- -D warnings
+      - run: cargo clippy --all-targets --locked --features webgpu -- -D warnings
       # Known vulnerabilities in the locked dependencies fail the run; warnings (unmaintained,
       # yanked) are listed only.
       - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
@@ -144,22 +163,25 @@ jobs:
   windows:
     name: Test & build (Windows)
     runs-on: windows-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable branch, 2026-10-09
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
         with:
           toolchain: stable
           components: clippy
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2 # zizmor: ignore[cache-poisoning]
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked
       # The installer (527 MB) is kept between runs: its server sometimes cuts transfers off.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0 # zizmor: ignore[cache-poisoning]
         with:
           path: ${{ runner.temp }}/gstreamer-download
           key: gstreamer-installer-1.28.7
       - name: GStreamer
-        run: ./packaging/windows/install-gstreamer.ps1 -Download "${{ runner.temp }}/gstreamer-download"
+        run: ./packaging/windows/install-gstreamer.ps1 -Download "$env:RUNNER_TEMP/gstreamer-download"
       # A runner has no GPU: D3D12 runs on WARP, Windows' software device. `test_rounds`
       # repeats the tests like on Linux.
       - name: Lint & test (video)
@@ -170,12 +192,12 @@ jobs:
           $env:PKG_CONFIG = "$env:GSTREAMER_ROOT\bin\pkg-config.exe"
           $env:PKG_CONFIG_PATH = "$env:GSTREAMER_ROOT\lib\pkgconfig"
           $env:PATH = "$env:GSTREAMER_ROOT\bin;$env:PATH"
-          cargo clippy --all-targets --features video -- -D warnings
+          cargo clippy --all-targets --locked --features video -- -D warnings
           if ($LASTEXITCODE) { exit 1 }
           $rounds = [int]$env:ROUNDS
           $failed = 0
           for ($round = 1; $round -le $rounds; $round++) {
-            cargo test --features video
+            cargo test --locked --features video
             if ($LASTEXITCODE) {
               $failed++
               Write-Output "::warning::test round $round of $rounds failed"
@@ -185,7 +207,7 @@ jobs:
           if ($failed) { exit 1 }
       # Outside pull requests the packaging job builds the release (with HEIC and video).
       - if: github.event_name == 'pull_request'
-        run: cargo build --release
+        run: cargo build --release --locked
 
   package-windows:
     name: Package (Windows installer, portable)
@@ -207,10 +229,12 @@ jobs:
       VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}\.vcpkg-cache,readwrite
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable branch, 2026-10-09
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
         with:
           toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2 # zizmor: ignore[cache-poisoning]
       # The runner image is part of the key: vcpkg's package hashes include the compiler, so a
       # new image (2026-09-30: VS 2026) rebuilds everything, and only a new key saves the result.
       - name: vcpkg revision
@@ -219,7 +243,7 @@ jobs:
         run: |
           echo "rev=$(sed -n 's/^rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml)" >> "$GITHUB_OUTPUT"
           echo "image=${ImageOS:-windows}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0 # zizmor: ignore[cache-poisoning]
         with:
           path: .vcpkg-cache
           key: vcpkg-${{ steps.vcpkg.outputs.rev }}-x64-windows-libheif-core-libde265-${{ steps.vcpkg.outputs.image }}
@@ -242,12 +266,12 @@ jobs:
         run: cargo install cargo-packager --version 0.11.8 --locked
       # GStreamer to build against and to ship; never on PATH here, so the package's own
       # self-test (build.ps1) and the installed exe find only what they bring along.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0 # zizmor: ignore[cache-poisoning]
         with:
           path: ${{ runner.temp }}/gstreamer-download
           key: gstreamer-installer-1.28.7
       - name: GStreamer
-        run: ./packaging/windows/install-gstreamer.ps1 -Download "${{ runner.temp }}/gstreamer-download"
+        run: ./packaging/windows/install-gstreamer.ps1 -Download "$env:RUNNER_TEMP/gstreamer-download"
       - name: Build (release, HEIC, video)
         run: |
           $env:PKG_CONFIG = "$env:GSTREAMER_ROOT\bin\pkg-config.exe"
@@ -371,10 +395,12 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable branch, 2026-10-09
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
         with:
           toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2 # zizmor: ignore[cache-poisoning]
       - name: System packages
         run: |
           sudo apt-get update
@@ -420,9 +446,11 @@ jobs:
   # when it has drawn it – the HEVC plugin is loaded with dlopen, so ldd alone
   # can't tell) and playing a video without a window (`--check-video`). The
   # AppImage gets only what every desktop has – GStreamer with its plugins among
-  # it – and no libheif: it must bring its own. The .deb goes onto the bare image,
-  # so its Depends and Recommends alone must bring everything Cerno loads; only
-  # Xvfb is added.
+  # it – and no libheif: it must bring its own. It runs on Ubuntu and Debian and on
+  # two other families with their own GStreamer builds: Fedora (H.264 only through
+  # openh264 from Fedora's Cisco repository) and Arch. The
+  # .deb goes onto the bare image, so its Depends and Recommends alone must bring
+  # everything Cerno loads; only Xvfb is added.
   test-linux-packages:
     name: Install test (${{ matrix.package }}, ${{ matrix.image }})
     needs: package-linux
@@ -433,6 +461,12 @@ jobs:
       matrix:
         image: ["ubuntu:24.04", "debian:trixie"]
         package: [appimage, deb]
+        include:
+          - image: "fedora:44"
+            package: appimage
+          # Arch is rolling: the step's `pacman -Syu` brings the image up to date anyway.
+          - image: "archlinux:base"
+            package: appimage
     container: ${{ matrix.image }}
     env:
       DEBIAN_FRONTEND: noninteractive
@@ -443,29 +477,58 @@ jobs:
           pattern: "{linux-*,smoke-photo}"
           merge-multiple: true
           path: pkg
-      - run: apt-get update
+      - name: System packages for the AppImage
+        if: matrix.package == 'appimage'
+        run: |
+          # shellcheck source=/dev/null
+          . /etc/os-release
+          case "$ID" in
+            ubuntu|debian)
+              apt-get update
+              apt-get install -y --no-install-recommends xvfb xauth mesa-vulkan-drivers libgl1-mesa-dri \
+                libegl1 libvulkan1 libxkbcommon0 libxkbcommon-x11-0 libx11-6 libx11-xcb1 libxcursor1 \
+                libxi6 libxcb1 libwayland-client0 \
+                gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
+              heif=$(dpkg-query -W -f='${Package} ${Status}\n' 'libheif*' 2>/dev/null | grep 'install ok' || true)
+              ;;
+            fedora)
+              dnf install -y --setopt=install_weak_deps=False --enablerepo=fedora-cisco-openh264 \
+                xorg-x11-server-Xvfb xorg-x11-xauth util-linux findutils mesa-dri-drivers mesa-vulkan-drivers \
+                mesa-libEGL vulkan-loader libxkbcommon libxkbcommon-x11 libX11 libX11-xcb libXcursor libXi \
+                libxcb libwayland-client \
+                gstreamer1-plugins-base gstreamer1-plugins-good gstreamer1-plugins-bad-free \
+                gstreamer1-plugin-libav gstreamer1-plugin-openh264 openh264
+              heif=$(rpm -qa 'libheif*')
+              ;;
+            arch)
+              pacman -Syu --noconfirm --needed xorg-server-xvfb xorg-xauth mesa vulkan-swrast \
+                vulkan-icd-loader libxkbcommon libxkbcommon-x11 libx11 libxcursor libxi libxcb wayland \
+                gst-plugins-base gst-plugins-good gst-plugins-bad gst-libav
+              heif=$(pacman -Qq | grep '^libheif' || true)
+              ;;
+            *)
+              echo "::error::No package list for $ID"
+              exit 1
+              ;;
+          esac
+          if [ -n "$heif" ]; then
+            echo "libheif is installed ($heif) - the test would not show that the AppImage brings its own"
+            exit 1
+          fi
       - name: AppImage
         if: matrix.package == 'appimage'
         run: |
-          apt-get install -y --no-install-recommends xvfb xauth mesa-vulkan-drivers libgl1-mesa-dri \
-            libegl1 libvulkan1 libxkbcommon0 libxkbcommon-x11-0 libx11-6 libx11-xcb1 libxcursor1 \
-            libxi6 libxcb1 libwayland-client0 \
-            gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
-          if dpkg-query -W -f='${Status}\n' 'libheif*' 2>/dev/null | grep -q '^install ok'; then
-            echo "libheif is installed - the test would not show that the AppImage brings its own"
-            exit 1
-          fi
           chmod +x pkg/*.AppImage
           appimage=$(find pkg -name 'cerno_*_x86_64.AppImage')
           version=$(basename "$appimage" | cut -d_ -f2)
           said=$(APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --version)
           if [ "$said" != "cerno $version" ]; then echo "--version said '$said'"; exit 1; fi
-          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a timeout 30 pkg/cerno_*_x86_64.AppImage pkg/smoke.heic \
-            >cerno.log 2>&1 || true
-          APPIMAGE_EXTRACT_AND_RUN=1 timeout 60 pkg/cerno_*_x86_64.AppImage --check-video pkg/tiny.mp4
+          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a timeout 30 "$appimage" pkg/smoke.heic >cerno.log 2>&1 || true
+          APPIMAGE_EXTRACT_AND_RUN=1 timeout 60 "$appimage" --check-video pkg/tiny.mp4
       - name: deb
         if: matrix.package == 'deb'
         run: |
+          apt-get update
           apt-get install -y ./pkg/cerno_*_amd64.deb
           apt-get install -y --no-install-recommends xvfb xauth
           version=$(basename pkg/cerno_*_amd64.deb | cut -d_ -f2)
@@ -487,11 +550,16 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [scripts, linux, windows, package-windows, package-linux, test-linux-packages]
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
-      contents: write
+      contents: write # the draft release
+      id-token: write # the signing certificate of the provenance attestation
+      attestations: write # storing the attestation
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable branch, 2026-10-09
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
         with:
           toolchain: stable
       - name: Tag matches Cargo.toml
@@ -508,6 +576,7 @@ jobs:
           pattern: "{windows-*,linux-*}"
           merge-multiple: true
           path: release
+      # The notes are the version's CHANGELOG.md section; without one the release stops.
       - name: Checksums and release notes
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -516,7 +585,10 @@ jobs:
           awk -v v="$VERSION" '
             /^## \[/ { if (found) exit; found = index($0, "## [" v "]") == 1; next }
             found' CHANGELOG.md > notes.md
-          [ -s notes.md ] || echo "See [CHANGELOG.md](CHANGELOG.md)." > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "::error::CHANGELOG.md has no section '## [$VERSION]' (or it is empty) - the release notes come from it"
+            exit 1
+          fi
           cat >> notes.md <<EOF
 
           ### Downloads
@@ -525,17 +597,25 @@ jobs:
           |---|---|
           | \`cerno_${VERSION}_x64-setup.exe\` | Windows 10/11 installer – per user, no admin rights |
           | \`cerno_${VERSION}_x64-portable.zip\` | Windows portable – unzip and run \`Cerno\\cerno.exe\` |
-          | \`cerno_${VERSION}_x86_64.AppImage\` | Linux portable – glibc 2.39 or newer (Ubuntu 24.04, Debian 13, Fedora 40 and later) |
+          | \`cerno_${VERSION}_x86_64.AppImage\` | Linux portable – glibc 2.39 or newer; tested on Ubuntu 24.04, Debian 13, Fedora 44 and Arch Linux |
           | \`cerno_${VERSION}_amd64.deb\` | Ubuntu 24.04+, Debian 13+ |
           | \`cerno_${VERSION}_x86_64.AppImage.zsync\` | Not a download: lets [AppImageUpdate](https://github.com/AppImageCommunity/AppImageUpdate) fetch only what changed in the AppImage |
 
           Writing ratings, colour labels, comments and keywords needs [ExifTool](https://exiftool.org/): on Windows Cerno offers to download it the first time it is needed; the .deb recommends it. Videos play inside Cerno: the Windows packages bring GStreamer along, on Linux it comes from the system (the .deb depends on it).
 
+          Every file was built by this repository's CI from the tag and carries a build provenance attestation: \`gh attestation verify <file> --repo fly2nbc-oss/Cerno\` checks it.
+
           Code signing policy: what is signed, by whom and how – see [Code signing policy](https://github.com/fly2nbc-oss/Cerno#code-signing-policy) in the README.
           EOF
-      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+      - name: Build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          draft: true
-          name: Cerno ${{ steps.version.outputs.version }}
-          body_path: notes.md
-          files: release/*
+          subject-path: release/*
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" release/* --draft --verify-tag
+          --title "Cerno $VERSION" --notes-file notes.md
