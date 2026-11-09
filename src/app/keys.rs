@@ -86,6 +86,8 @@ struct KeyInput {
     toggle_filmstrip: bool,
     /// `F7`: the grid.
     toggle_grid: bool,
+    /// `F8`: the scene view.
+    toggle_scenes: bool,
     help: bool,
     language: bool,
     /// `F10`: the menu bar.
@@ -237,6 +239,7 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         filter_aside: i.modifiers.shift_only() && i.key_pressed(Key::T),
         toggle_filmstrip: i.key_pressed(Key::F6),
         toggle_grid: i.key_pressed(Key::F7),
+        toggle_scenes: i.key_pressed(Key::F8),
         help: i.key_pressed(Key::F1)
             || i.key_pressed(Key::Questionmark)
             || (plain && i.key_pressed(Key::H)),
@@ -287,6 +290,7 @@ impl KeyInput {
             }
         };
         push(self.toggle_grid, Command::ToggleGrid);
+        push(self.toggle_scenes, Command::ToggleScenes);
         push(self.straighten, Command::Straighten);
         push(self.crop, Command::Crop);
         push(self.rotate_ccw, Command::Rotate(false));
@@ -874,6 +878,12 @@ mod tests {
     fn f7_the_grid_and_page_keys_on_their_own() {
         let plain = Modifiers::NONE;
         assert!(read(vec![key(Key::F7, Key::F7, plain)], plain).toggle_grid);
+        let scenes = read(vec![key(Key::F8, Key::F8, plain)], plain);
+        assert!(
+            scenes.toggle_scenes && !scenes.toggle_grid,
+            "F8: the scene view"
+        );
+        assert!(scenes.commands(&[]).contains(&Command::ToggleScenes));
         let keys = read(vec![key(Key::PageDown, Key::PageDown, plain)], plain);
         assert!(
             keys.page_down && !keys.next,

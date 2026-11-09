@@ -106,6 +106,8 @@ impl CernoApp {
             }
         } else if self.view.is_empty() {
             overlays::centred_message(ui, area, i18n::t().no_match, tokens::MUTED);
+        } else if self.viewer.scenes {
+            self.draw_scenes(ui, area);
         } else if self.viewer.grid {
             self.draw_grid(ui, area);
         } else {
@@ -117,7 +119,7 @@ impl CernoApp {
 
     /// What the cell of view index `i` shows, for the filmstrip and the grid. `around` is the
     /// pinned photo and the current series, looked up once per frame.
-    fn cell_info(
+    pub(super) fn cell_info(
         &self,
         i: usize,
         percentiles: &view::Percentiles,
@@ -160,7 +162,7 @@ impl CernoApp {
     }
 
     /// The pinned photo and the current photo's series, for [`Self::cell_info`].
-    fn around_current(&self) -> (Option<usize>, Option<u32>) {
+    pub(super) fn around_current(&self) -> (Option<usize>, Option<u32>) {
         let series = self
             .view
             .series
@@ -348,6 +350,7 @@ impl CernoApp {
             },
             views: info_bar::Views {
                 grid: self.viewer.grid,
+                scenes: self.viewer.scenes,
                 faces_open: self.viewer.faces.grid_open,
                 faces,
             },
@@ -456,7 +459,7 @@ impl CernoApp {
             .camera
             .map(|pick| self.camera_label(pick, &cameras));
         let info = filter_bar::ToolbarInfo {
-            stale: self.options.depends_on_scores()
+            stale: self.view_options().depends_on_scores()
                 && self.board.version() != self.browse.view_version,
             status: &status,
             similar_to: similar_to.as_deref(),

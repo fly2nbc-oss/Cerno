@@ -126,6 +126,7 @@ pub mod icon {
     pub const FOLDER_OPEN: char = '\u{E247}';
     pub const IMAGE: char = '\u{E0F9}';
     pub const LAYOUT_GRID: char = '\u{E105}';
+    pub const LAYOUT_PANEL_TOP: char = '\u{E476}';
     pub const PANEL_BOTTOM: char = '\u{E431}';
     pub const PANEL_LEFT: char = '\u{E12E}';
     pub const PANEL_RIGHT: char = '\u{E436}';
@@ -146,7 +147,7 @@ pub mod icon {
 
     /// Every icon above, for the test that checks the subset holds them.
     #[cfg(test)]
-    pub const ALL: [char; 30] = [
+    pub const ALL: [char; 31] = [
         CHECK,
         CHEVRON_DOWN,
         CHEVRON_LEFT,
@@ -160,6 +161,7 @@ pub mod icon {
         FOLDER_OPEN,
         IMAGE,
         LAYOUT_GRID,
+        LAYOUT_PANEL_TOP,
         PANEL_BOTTOM,
         PANEL_LEFT,
         PANEL_RIGHT,

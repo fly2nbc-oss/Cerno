@@ -196,7 +196,7 @@ impl CernoApp {
     fn rating_affects_view(&self) -> bool {
         !self.options.filter.is_all()
             || self.options.hide_rejected
-            || matches!(self.options.sort, SortKey::Rating | SortKey::Taken)
+            || matches!(self.view_options().sort, SortKey::Rating | SortKey::Taken)
     }
 
     /// `X`: rejects the current photo, or takes the rejection back.

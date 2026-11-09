@@ -47,6 +47,10 @@ pub(super) struct Viewer {
     /// Columns and cells per page of the last drawn grid, for `↑`/`↓` and Page Up / Down.
     pub(super) grid_columns: usize,
     pub(super) grid_page: usize,
+    /// The grid shows the scene view (`F8`): every scene from a new row under its header.
+    pub(super) scenes: bool,
+    /// The scenes and the order the view was built in.
+    pub(super) scene_state: super::scenes::SceneState,
     /// The current photo's faces and the faces grid (`G`).
     pub(super) faces: super::faces::Faces,
 }
@@ -65,6 +69,8 @@ impl Default for Viewer {
             grid_shown: None,
             grid_columns: 1,
             grid_page: 1,
+            scenes: false,
+            scene_state: super::scenes::SceneState::default(),
             faces: super::faces::Faces::default(),
         }
     }
@@ -330,6 +336,8 @@ impl CernoApp {
             self.end_split();
         }
         self.viewer.grid = on;
+        // The grid itself; the scene view sets this again (`set_scenes`).
+        self.viewer.scenes = false;
         self.viewer.grid_shown = None;
         self.loader.set_prefetch(!on);
         if !on {
@@ -337,8 +345,8 @@ impl CernoApp {
         }
     }
 
-    /// The info bar's view switcher: the photo, the grid or the faces of the photo – what
-    /// `Esc`, `F7` and `G` do.
+    /// The info bar's view switcher: the photo, the grid, the scenes or the faces of the photo
+    /// – what `Esc`, `F7`, `F8` and `G` do.
     pub(super) fn show_view(&mut self, view: crate::ui::info_bar::View) {
         use crate::ui::info_bar::View;
         match view {
@@ -351,6 +359,10 @@ impl CernoApp {
             View::Grid => {
                 self.viewer.faces.grid_open = false;
                 self.set_grid(true);
+            }
+            View::Scenes => {
+                self.viewer.faces.grid_open = false;
+                self.set_scenes(true);
             }
             View::Faces => self.viewer.faces.grid_open = true,
         }

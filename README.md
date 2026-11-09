@@ -64,6 +64,7 @@ The AppImage can be brought up to date with [AppImageUpdate](https://github.com/
 | `Shift+Z` | The photo whole and at 100 % side by side |
 | `Shift+C` | Four photos at once – the frame is the current photo, `↑`/`↓` a row |
 | `F10` / `T` / `Tab` / `F6` / `F7` | Menu bar / filter bar / details / filmstrip / grid |
+| `F8` | Scenes: the grid with alike photos taken close together grouped, each scene on its own row – `Page Up`/`Page Down` jump from scene to scene |
 | `Shift+T` | Filter off for a moment – again: the same filter back |
 | `Ctrl+Tab` | The details panel's tabs: values, description |
 | `G` | All faces large – a click zooms to one |

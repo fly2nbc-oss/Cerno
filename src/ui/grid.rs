@@ -342,7 +342,7 @@ fn date_pill(ui: &Ui, rect: Rect, label: &str, alpha: f32) {
 
 /// Size steps from Ctrl + mouse wheel over the grid (egui turns it into zoom). Fractions carry
 /// over to the next frame.
-fn zoom_steps(ui: &Ui, rect: Rect) -> i32 {
+pub(crate) fn zoom_steps(ui: &Ui, rect: Rect) -> i32 {
     if !ui.rect_contains_pointer(rect) {
         return 0;
     }

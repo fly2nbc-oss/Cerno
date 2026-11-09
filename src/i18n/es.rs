@@ -217,10 +217,14 @@ pub static TEXTS: Texts = Texts {
     button_help: "Ayuda",
     view_photo: "Foto",
     view_grid: "Cuadrícula",
+    view_scenes: "Escenas",
     view_faces: "Caras",
     faces_video: "En los vídeos no se buscan caras",
     filmstrip_in_grid: "No hace falta en la cuadrícula – F7 vuelve a la foto",
     grid_no_date: "sin fecha",
+    filmstrip_in_scenes: "No hace falta en las escenas – F8 vuelve a la foto",
+    scene_untimed: "Sin hora de captura",
+    scene_singles: "Fotos sueltas",
     faces_button: |n| {
         if n == 1 {
             "Mostrar 1 cara en grande (G)".to_owned()
@@ -686,6 +690,7 @@ pub static TEXTS: Texts = Texts {
                 "La rueda del ratón sobre la tira de miniaturas recorre las fotos; sobre la foto, acerca y aleja.",
                 "Arrastra una carpeta a la ventana para abrirla. Mantén pulsado → para avanzar sin parar.",
                 "En la cuadrícula (F7), ↑ ↓ cambian de fila, + − el tamaño, Intro abre la foto.",
+                "En las escenas (F8), cada escena empieza una fila; Re Pág y Av Pág saltan de escena en escena.",
                 "Enderezar (S): la rueda y las flechas giran, Mayús más fino. Recorte (R): traza un marco o muévelo con las flechas, +/− cambia su tamaño, A el formato, X cambia horizontal/vertical.",
                 "La barra de menú (F10 o el botón abajo a la derecha) reúne lo que actúa sobre esta foto, las fotos visibles y la vista, y los ajustes – todo con el ratón.",
                 "En la descripción, Intro lleva el cursor al campo de palabras clave.",
@@ -757,6 +762,7 @@ pub static TEXTS: Texts = Texts {
         ("Arrastrar", "Mover la foto ampliada"),
         ("O", "Revisar: nitidez, recortes"),
         ("F7", "Cuadrícula de todas las fotos"),
+        ("F8", "Escenas: fotos parecidas juntas"),
         ("G", "Todas las caras en grande"),
         ("F, F11", "Pantalla completa"),
     ],

@@ -149,6 +149,11 @@ pub fn grid(painter: &Painter, center: Pos2, color: Color32) {
     glyph(painter, center, icon::LAYOUT_GRID, BAR, color);
 }
 
+/// The view switcher's scenes: a header line over cells (Lucide `layout-panel-top`).
+pub fn scenes(painter: &Painter, center: Pos2, color: Color32) {
+    glyph(painter, center, icon::LAYOUT_PANEL_TOP, BAR, color);
+}
+
 /// The view switcher's faces: a face in a viewfinder.
 pub fn face_frame(painter: &Painter, center: Pos2, color: Color32) {
     glyph(painter, center, icon::SCAN_FACE, BAR, color);

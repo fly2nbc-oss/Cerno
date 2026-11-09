@@ -43,6 +43,7 @@ ICONS = [
     "folder-open",
     "image",
     "layout-grid",
+    "layout-panel-top",
     "panel-bottom",
     "panel-left",
     "panel-right",
