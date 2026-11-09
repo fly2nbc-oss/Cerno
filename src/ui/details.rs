@@ -17,7 +17,7 @@ use crate::overlay;
 use crate::playback::MediaInfo;
 use crate::theme::{self, text, tokens};
 use crate::ui::{icons, video_controls};
-use crate::view::is_blurry;
+use crate::view::{CameraPick, is_blurry};
 
 pub const WIDTH: f32 = 320.0;
 const PAD: f32 = 16.0;
@@ -138,6 +138,22 @@ pub struct Details<'a> {
     pub video: bool,
     /// What the check overlay shows; its eye is lit in that section.
     pub overlay: overlay::Mode,
+    /// The photo's camera, when the analysis knows it: a row in File with the camera filter's
+    /// button.
+    pub camera: Option<CameraRow>,
+}
+
+/// Details › File's camera row: the camera as the filter bar's camera box names it, and the
+/// button beside it that shows only its photos.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CameraRow {
+    pub label: String,
+    /// What the button chooses: the model, or the body when the model is split.
+    pub pick: CameraPick,
+    /// The camera filter shows only this camera now; a click shows every camera again.
+    pub on: bool,
+    /// Why the button takes no click (one camera in the folder).
+    pub blocked: Option<&'static str>,
 }
 
 struct Value {
@@ -176,6 +192,8 @@ pub struct Output {
     pub overlay: Option<overlay::Mode>,
     /// The File title's folder button: show the file in the file manager.
     pub reveal: bool,
+    /// The camera row's button: only this camera's photos, or (while on) every camera again.
+    pub camera: bool,
 }
 
 /// Draws the panel. `attributes_open`: the CLIP attributes are folded out (a click on their
@@ -214,8 +232,12 @@ fn content(ui: &mut Ui, d: &Details<'_>, attributes_open: &mut bool) -> Output {
     } else {
         analysis(ui, d, attributes_open)
     };
-    let reveal = file(ui, d);
-    Output { overlay, reveal }
+    let (reveal, camera) = file(ui, d);
+    Output {
+        overlay,
+        reveal,
+        camera,
+    }
 }
 
 /// Aesthetics, For you, sharpness and exposure. Returns the overlay an eye asks for.
@@ -338,12 +360,14 @@ fn analysis(ui: &mut Ui, d: &Details<'_>, attributes_open: &mut bool) -> Option<
     overlay
 }
 
-/// Size and load time, or a video's streams; the GPS position with its map links. The title
-/// carries a button that copies the file's path – the tooltip shows which – and one that
-/// shows the file in the file manager (`true` when clicked).
-fn file(ui: &mut Ui, d: &Details<'_>) -> bool {
+/// Size and load time, or a video's streams; the camera with its filter button; the GPS
+/// position with its map links. The title carries a button that copies the file's path – the
+/// tooltip shows which – and one that shows the file in the file manager. Whether the folder
+/// button and the camera's button were clicked.
+fn file(ui: &mut Ui, d: &Details<'_>) -> (bool, bool) {
     let t = i18n::t();
     let mut reveal = false;
+    let mut camera = false;
     if d.file.is_some() || d.media.is_some() {
         let path = d.path.display().to_string();
         reveal = section_with(ui, t.section_file, |ui| {
@@ -396,12 +420,91 @@ fn file(ui: &mut Ui, d: &Details<'_>) -> bool {
                 tokens::STATUS_WARN,
             );
         }
+        if let Some(row) = &d.camera {
+            camera = camera_row(ui, row);
+        }
         if let Some((lat, lon)) = d.position {
             plain_row(ui, t.row_location, i18n::coordinates(lat, lon));
             map_links(ui, (lat, lon));
         }
     }
-    reveal
+    (reveal, camera)
+}
+
+/// "Camera  ILCE-7M4 ·4821  [filter]": the button shows only this camera's photos – lit in the
+/// accent while it does, then a click shows every camera again. Greyed out with the reason
+/// while the folder has one camera. Whether it was clicked.
+fn camera_row(ui: &mut Ui, row: &CameraRow) -> bool {
+    let t = i18n::t();
+    ui.horizontal(|ui| {
+        ui.add_space(PAD + 14.0);
+        ui.add(
+            Label::new(
+                RichText::new(t.row_camera)
+                    .font(FontId::proportional(text::SMALL))
+                    .color(tokens::MUTED),
+            )
+            .selectable(false),
+        );
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.add_space(PAD - 4.0);
+            let clicked = camera_button(ui, row);
+            ui.add(
+                Label::new(
+                    RichText::new(&row.label)
+                        .font(FontId::proportional(text::SMALL))
+                        .color(tokens::TEXT),
+                )
+                .selectable(false)
+                .truncate(),
+            );
+            clicked
+        })
+        .inner
+    })
+    .inner
+}
+
+/// The camera row's filter button. It takes no keyboard focus (`Sense::CLICK`), so `Space`
+/// never clicks it again.
+fn camera_button(ui: &mut Ui, row: &CameraRow) -> bool {
+    let t = i18n::t();
+    let enabled = row.blocked.is_none();
+    let sense = if enabled {
+        Sense::CLICK
+    } else {
+        Sense::hover()
+    };
+    let (rect, response) = ui.allocate_exact_size(vec2(22.0, 16.0), sense);
+    let hovered = enabled && response.hovered();
+    icons::button_background(ui.painter(), rect, hovered, row.on);
+    let colour = match (enabled, row.on || hovered) {
+        (false, _) => tokens::LINE,
+        (true, true) => tokens::ACCENT_STRONG,
+        (true, false) => tokens::MUTED,
+    };
+    icons::glyph(
+        ui.painter(),
+        rect.center(),
+        theme::icon::FILTER,
+        icons::INLINE,
+        colour,
+    );
+    let tooltip = match row.blocked {
+        Some(reason) => format!(
+            "{}
+{reason}",
+            t.camera_only_this
+        ),
+        None if row.on => t.camera_show_all.to_owned(),
+        None => t.camera_only_this.to_owned(),
+    };
+    let response = response.on_hover_text(tooltip);
+    if enabled {
+        response.on_hover_cursor(CursorIcon::PointingHand).clicked()
+    } else {
+        false
+    }
 }
 
 /// A video's file rows: container, duration, the video stream (codec and HDR, size, frame
@@ -910,6 +1013,7 @@ mod tests {
             media: None,
             video: false,
             overlay: overlay::Mode::Off,
+            camera: None,
         }
     }
 
@@ -1062,6 +1166,7 @@ mod tests {
             media: None,
             video: false,
             overlay: overlay::Mode::Off,
+            camera: None,
         };
         let panel = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 1200.0));
         let frame = |events: Vec<Event>| {
@@ -1263,6 +1368,7 @@ mod tests {
                 media: None,
                 video: false,
                 overlay: mode,
+                camera: None,
             };
             let mut chosen = None;
             let mut output = ctx.run_ui(
@@ -1402,6 +1508,7 @@ mod tests {
             media: Some(&media),
             video: true,
             overlay: overlay::Mode::Off,
+            camera: None,
         };
         let panel = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 1200.0));
         let mut output = ctx.run_ui(

@@ -943,3 +943,153 @@ fn ids_round_trip() {
     }
     assert_eq!(PhotoFilter::from_stored(&filter.id()), filter);
 }
+
+/// One photo for the camera filter: its model and the body's serial number.
+fn shot_with(name: &str, camera: Option<&str>, serial: Option<&str>) -> (PathBuf, Facts) {
+    let id = crate::metadata::camera_id;
+    (
+        PathBuf::from(name),
+        Facts {
+            camera: camera.map(id),
+            serial: serial.map(id),
+            ..Facts::default()
+        },
+    )
+}
+
+/// The camera filter keeps one model – every body, also one whose serial number is unknown – or
+/// one body of it; videos and photos without a camera never stay. It is an AND with the boxes,
+/// and a deleted photo shows only through the 🗑 box, like with every other filter.
+#[test]
+fn the_camera_filter_keeps_one_model_or_one_body() {
+    let id = crate::metadata::camera_id;
+    let mut rows = vec![
+        shot_with("a", Some("ILCE-7M4"), Some("1114821")),
+        shot_with("b", Some("ILCE-7M4"), Some("2223021")),
+        shot_with("c", Some("ILCE-7M4"), None),
+        shot_with("d", Some("Pixel 7a"), None),
+        shot_with("e", None, None),
+        shot_with("v.mp4", None, None),
+        shot_with("x", Some("ILCE-7M4"), Some("1114821")),
+    ];
+    rows[0].1.rating = Rating::Stars(4);
+    rows[6].1.deleted = true;
+    let all: Vec<_> = rows.iter().map(|(p, _)| p.clone()).collect();
+    let known: HashMap<_, _> = rows.into_iter().collect();
+    let shown = |options: ViewOptions| {
+        let view = build(
+            &all,
+            options,
+            |p: &Path| known.get(p).copied(),
+            &HashMap::new(),
+            &HashMap::new(),
+            |_| false,
+        );
+        names(&view.paths)
+    };
+    let camera = |model: &str, serial: Option<&str>| ViewOptions {
+        camera: Some(CameraPick {
+            model: id(model),
+            serial: serial.map(id),
+        }),
+        ..ViewOptions::default()
+    };
+    assert_eq!(shown(ViewOptions::default()), "abcdev.mp4");
+    assert_eq!(shown(camera("ILCE-7M4", None)), "abc");
+    assert_eq!(
+        shown(camera("ilce-7m4 ", None)),
+        "abc",
+        "as the model id counts"
+    );
+    assert_eq!(shown(camera("ILCE-7M4", Some("1114821"))), "a");
+    assert_eq!(shown(camera("ILCE-7M4", Some("2223021"))), "b");
+    assert_eq!(shown(camera("Pixel 7a", None)), "d");
+    let mut four = camera("ILCE-7M4", None);
+    four.filter.set(FilterKind::Stars(4), true);
+    assert_eq!(shown(four), "a", "AND with the boxes");
+    let mut deleted = camera("ILCE-7M4", Some("1114821"));
+    deleted.filter.set(FilterKind::Deleted, true);
+    assert_eq!(shown(deleted), "x", "a deleted photo of that body");
+    deleted.camera = Some(CameraPick {
+        model: id("Pixel 7a"),
+        serial: None,
+    });
+    assert_eq!(shown(deleted), "", "no deleted photo of that camera");
+    let options = camera("ILCE-7M4", None);
+    assert!(options.is_filtered());
+    assert!(
+        options.depends_on_scores(),
+        "the cameras come with the analysis"
+    );
+    let mut cleared = options;
+    cleared.clear_filters();
+    assert_eq!(cleared.camera, None, "Show all");
+}
+
+/// One entry per model, the most photos first; a model with two bodies also gets one per body,
+/// told apart by the last digits of the serial number – more when two end alike. Photos
+/// without a camera are in none; one serial number alone splits nothing.
+#[test]
+fn the_camera_list_counts_models_and_splits_bodies() {
+    let id = crate::metadata::camera_id;
+    let names = HashMap::from([
+        (id("ILCE-7M4"), "ILCE-7M4".to_owned()),
+        (id("Pixel 7a"), "Pixel 7a".to_owned()),
+        (id("NIKON Z 6_2"), "NIKON Z 6_2".to_owned()),
+    ]);
+    let serials: HashMap<u64, String> = ["0474821", "0473021", "9990001", "8880001", "77"]
+        .into_iter()
+        .map(|s| (id(s), s.to_owned()))
+        .collect();
+    let photo = |camera: Option<&str>, serial: Option<&str>| (camera.map(id), serial.map(id));
+    let mut photos = Vec::new();
+    photos.extend(std::iter::repeat_n(
+        photo(Some("ILCE-7M4"), Some("0474821")),
+        3,
+    ));
+    photos.extend(std::iter::repeat_n(
+        photo(Some("ILCE-7M4"), Some("0473021")),
+        2,
+    ));
+    photos.push(photo(Some("ILCE-7M4"), None));
+    photos.extend(std::iter::repeat_n(photo(Some("Pixel 7a"), None), 4));
+    photos.push(photo(Some("NIKON Z 6_2"), Some("77")));
+    photos.push(photo(None, None));
+    let entries = camera_entries(
+        photos,
+        |model| names.get(&model).cloned(),
+        |serial| serials.get(&serial).cloned(),
+    );
+    let listed: Vec<(String, usize)> = entries.iter().map(|e| (e.label(), e.count)).collect();
+    assert_eq!(
+        listed,
+        [
+            ("ILCE-7M4".to_owned(), 6),
+            ("ILCE-7M4 ·4821".to_owned(), 3),
+            ("ILCE-7M4 ·3021".to_owned(), 2),
+            ("Pixel 7a".to_owned(), 4),
+            ("NIKON Z 6_2".to_owned(), 1),
+        ]
+    );
+    assert_eq!(entries[0].pick.serial, None, "the model: every body");
+    assert_eq!(entries[1].pick.serial, Some(id("0474821")));
+    assert!(
+        entries[1]
+            .pick
+            .accepts(Some(id("ILCE-7M4")), Some(id("0474821")))
+    );
+    assert!(!entries[1].pick.accepts(Some(id("ILCE-7M4")), None));
+
+    // Two bodies whose last four digits agree: as many as tell them apart.
+    let twins = camera_entries(
+        [
+            photo(Some("ILCE-7M4"), Some("9990001")),
+            photo(Some("ILCE-7M4"), Some("8880001")),
+        ],
+        |model| names.get(&model).cloned(),
+        |serial| serials.get(&serial).cloned(),
+    );
+    let labels: Vec<String> = twins.iter().map(CameraEntry::label).collect();
+    assert_eq!(labels, ["ILCE-7M4", "ILCE-7M4 ·80001", "ILCE-7M4 ·90001"]);
+    assert!(camera_entries([photo(None, None)], |_| None, |_| None).is_empty());
+}

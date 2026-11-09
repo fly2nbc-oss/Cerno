@@ -1,5 +1,5 @@
-//! The filter bar at the top. Left, what is shown: photos, videos or the best N photos, then
-//! the filter groups (rating, colour, blurry / duplicates) and "similar photos". Right, what
+//! The filter bar at the top. Left, what is shown: photos, videos or the best N photos, one
+//! camera or all, then the filter groups (rating, colour, blurry / duplicates) and "similar photos". Right, what
 //! comes of it: the analysis status, the sort, the count with its reset. What acts on the
 //! photos shown is the menu bar's *Visible photos* (since 1.11).
 
@@ -14,7 +14,7 @@ use crate::analysis::{ModelState, Status};
 use crate::i18n;
 use crate::theme::{self, radius, tokens};
 use crate::ui::{icons, stars};
-use crate::view::{FilterKind, Media, Scope, SortKey, TOP_LEVELS, ViewOptions};
+use crate::view::{CameraEntry, FilterKind, Media, Scope, SortKey, TOP_LEVELS, ViewOptions};
 
 pub const TOOLBAR_HEIGHT: f32 = 40.0;
 /// Height of the boxes, chips and the count, so they line up.
@@ -35,6 +35,10 @@ pub struct ToolbarInfo<'a> {
     pub has_deleted: bool,
     /// The pasted file-name list while it filters: found and asked for.
     pub name_list: Option<(usize, usize)>,
+    /// The folder's cameras for the camera box, the most photos first (`camera_entries`).
+    pub cameras: &'a [CameraEntry],
+    /// The camera the view is narrowed to, by name, while the camera filter is on.
+    pub camera: Option<&'a str>,
 }
 
 #[derive(Default)]
@@ -87,6 +91,7 @@ pub fn toolbar(
                     ui,
                     |ui| {
                         scope_box(ui, options, info.has_videos);
+                        camera_box(ui, options, info.cameras, info.camera);
                         separator(ui);
                         let boxes = ScrollArea::horizontal()
                             .id_salt("filter-boxes")
@@ -229,6 +234,126 @@ fn scope_box(ui: &mut Ui, options: &mut ViewOptions, has_videos: bool) {
             StrokeKind::Inside,
         );
     }
+}
+
+/// Only the photos of one camera: "All cameras", then the folder's cameras with their photo
+/// counts, a model with two bodies followed by each body (`camera_entries`). Its width is fixed
+/// in the language: the cameras arrive while the analysis reads them, and a box that grew with
+/// them would move the chips under the pointer – a longer name is cut short, whole in the
+/// tooltip. Greyed out with the reason while the folder has one camera or none known yet,
+/// unless it filters and has to be switched back; outlined in the accent while it filters.
+fn camera_box(
+    ui: &mut Ui,
+    options: &mut ViewOptions,
+    cameras: &[CameraEntry],
+    chosen: Option<&str>,
+) {
+    /// Indent of a body below its model in the list.
+    const BODY_INDENT: f32 = 12.0;
+    let t = i18n::t();
+    let width = camera_width(ui);
+    let label = chosen
+        .filter(|_| options.camera.is_some())
+        .unwrap_or(t.camera_all);
+    let spacing = ui.spacing();
+    let room = width - spacing.icon_spacing - spacing.icon_width - 2.0 * spacing.button_padding.x;
+    let shown = elide(ui, label, room);
+    let enabled = cameras.len() > 1 || options.camera.is_some();
+    let response = ui
+        .add_enabled_ui(enabled, |ui| {
+            ComboBox::from_id_salt("camera")
+                .icon(combo_chevron)
+                .width(width)
+                .selected_text(shown)
+                .show_ui(ui, |ui| {
+                    ui.style_mut().wrap_mode = Some(TextWrapMode::Extend);
+                    let all = Button::selectable(options.camera.is_none(), t.camera_all);
+                    if ui.add(all).clicked() {
+                        options.camera = None;
+                    }
+                    ui.separator();
+                    for entry in cameras {
+                        let text = format!(
+                            "{}  ·  {}",
+                            entry.label(),
+                            (t.camera_time_photos)(entry.count)
+                        );
+                        let row = Button::selectable(options.camera == Some(entry.pick), text);
+                        let clicked = ui
+                            .horizontal(|ui| {
+                                if entry.pick.serial.is_some() {
+                                    ui.add_space(BODY_INDENT);
+                                }
+                                ui.add(row).clicked()
+                            })
+                            .inner;
+                        if clicked {
+                            options.camera = Some(entry.pick);
+                        }
+                    }
+                })
+                .response
+        })
+        .inner;
+    let reason = if cameras.is_empty() {
+        t.camera_none
+    } else {
+        t.camera_one
+    };
+    let response = response
+        .on_disabled_hover_text(reason)
+        .on_hover_text(format!(
+            "{label}
+{}",
+            t.camera_tooltip
+        ));
+    if options.camera.is_some() {
+        ui.painter().rect_stroke(
+            response.rect,
+            ui.visuals().widgets.inactive.corner_radius,
+            Stroke::new(1.0, tokens::ACCENT),
+            StrokeKind::Inside,
+        );
+    }
+}
+
+/// The camera box is as wide as "All cameras" in this language, or as a typical camera with a
+/// body's digits – whichever is wider.
+fn camera_width(ui: &Ui) -> f32 {
+    /// A typical camera name with a body's last digits.
+    const SAMPLE: &str = "ILCE-7RM5 ·4821";
+    let font = TextStyle::Button.resolve(ui.style());
+    let widest = [i18n::t().camera_all, SAMPLE]
+        .into_iter()
+        .map(|text| {
+            ui.painter()
+                .layout_no_wrap(text.to_owned(), font.clone(), tokens::TEXT)
+                .size()
+                .x
+        })
+        .fold(0.0, f32::max);
+    let spacing = ui.spacing();
+    widest + spacing.icon_spacing + spacing.icon_width + 2.0 * spacing.button_padding.x
+}
+
+/// `text`, or as much of it as fits in `room` with "…" at the end.
+fn elide(ui: &Ui, text: &str, room: f32) -> String {
+    let font = TextStyle::Button.resolve(ui.style());
+    let width = |text: String| {
+        ui.painter()
+            .layout_no_wrap(text, font.clone(), tokens::TEXT)
+            .size()
+            .x
+    };
+    if width(text.to_owned()) <= room {
+        return text.to_owned();
+    }
+    let chars: Vec<char> = text.chars().collect();
+    (0..chars.len())
+        .rev()
+        .map(|keep| format!("{}…", chars[..keep].iter().collect::<String>().trim_end()))
+        .find(|short| width(short.clone()) <= room)
+        .unwrap_or_else(|| "…".to_owned())
 }
 
 /// The combo boxes' chevron: Lucide's, like the menu bar's, instead of egui's triangle.
@@ -731,6 +856,8 @@ mod tests {
                         has_videos: true,
                         has_deleted: false,
                         name_list: None,
+                        cameras: &[],
+                        camera: None,
                     };
                     count = toolbar(ui, screen, &mut options, &info).count;
                 },
@@ -817,6 +944,8 @@ mod tests {
                         has_videos: true,
                         has_deleted: false,
                         name_list: None,
+                        cameras: &[],
+                        camera: None,
                     };
                     toolbar(ui, bar, &mut options, &info);
                 },
@@ -893,6 +1022,8 @@ mod tests {
                         has_videos: true,
                         has_deleted: false,
                         name_list: None,
+                        cameras: &[],
+                        camera: None,
                     };
                     let out = toolbar(ui, screen, &mut options, &info);
                     let count = out.count.expect("the count is drawn");

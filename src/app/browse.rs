@@ -74,6 +74,8 @@ pub(super) struct Browse {
     pub(super) percentiles: (u64, Arc<Percentiles>),
     /// `has_videos` for this list of the folder.
     pub(super) videos_in: (Weak<Vec<PathBuf>>, bool),
+    /// The folder's cameras for the camera box (`cameras`): board version, list, entries.
+    pub(super) cameras: (u64, Weak<Vec<PathBuf>>, Arc<Vec<view::CameraEntry>>),
 }
 
 impl Default for Browse {
@@ -86,6 +88,7 @@ impl Default for Browse {
             view_built: Instant::now(),
             percentiles: (u64::MAX, Arc::default()),
             videos_in: (Weak::new(), false),
+            cameras: (u64::MAX, Weak::new(), Arc::default()),
         }
     }
 }
@@ -156,6 +159,8 @@ impl CernoApp {
         self.options.similar = false;
         self.options.filter.set(FilterKind::Deleted, false);
         self.options.name_list = false;
+        // The cameras are this folder's.
+        self.options.camera = None;
         self.name_list.forget();
         self.layer.close_if(Layer::is_name_list);
         self.browse.similar_to = None;
@@ -512,6 +517,7 @@ impl CernoApp {
                 .taken_ms
                 .map(|taken| taken + self.camera_time.offset(known.camera)),
             camera: known.camera,
+            serial: known.serial,
             fingerprint: known.fingerprint,
             scores: known.scores,
             personal: self.analyzer.personal(path),

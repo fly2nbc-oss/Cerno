@@ -289,6 +289,13 @@ pub struct Texts {
     pub media_photos: &'static str,
     pub media_videos: &'static str,
     pub media_no_videos: &'static str,
+    /// The filter bar's camera box: every camera, the default …
+    pub camera_all: &'static str,
+    /// … what it does …
+    pub camera_tooltip: &'static str,
+    /// … and why it is greyed out: one camera, or none known (yet).
+    pub camera_one: &'static str,
+    pub camera_none: &'static str,
     /// The filter bar's first box and Filter ▸ Best photos ▸: the best N photos.
     pub top_photos: fn(u16) -> String,
     /// What each Top level (10, 25, 50, 100, 250) is for, beside it in the list.
@@ -631,6 +638,11 @@ pub struct Texts {
     /// Sound channels: Mono, Stereo, 5.1 …
     pub channels: fn(u32) -> String,
     pub row_location: &'static str,
+    /// Details › File: the photo's camera, with a button that shows only its photos …
+    pub row_camera: &'static str,
+    pub camera_only_this: &'static str,
+    /// … and, while it filters, shows every camera again.
+    pub camera_show_all: &'static str,
     /// Details panel tabs: the analysis values …
     pub tab_values: &'static str,
     /// … and the photo's comment and keywords.

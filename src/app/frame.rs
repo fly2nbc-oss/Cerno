@@ -371,6 +371,7 @@ impl CernoApp {
         let status = self.analyzer.status();
         let video = library::format_of(&path) == Some(library::Format::Video);
         let media = video.then(|| self.media_info(&ctx, &path)).flatten();
+        let camera = self.camera_row(&path);
         let out = details::draw(
             ui,
             body,
@@ -391,6 +392,7 @@ impl CernoApp {
                 media: media.as_ref(),
                 video,
                 overlay: self.viewer.overlay,
+                camera: camera.clone(),
             },
             &mut self.bars.attributes_open,
         );
@@ -399,6 +401,12 @@ impl CernoApp {
         }
         if out.reveal {
             self.click(&ctx, Command::Reveal);
+        }
+        if out.camera
+            && let Some(row) = camera
+        {
+            let pick = (!row.on).then_some(row.pick);
+            self.click(&ctx, Command::FilterCamera(pick));
         }
     }
 
@@ -422,6 +430,11 @@ impl CernoApp {
             .as_ref()
             .map(|(path, _)| self.photo_name(path));
         let has_videos = self.has_videos();
+        let cameras = self.cameras();
+        let camera = self
+            .options
+            .camera
+            .map(|pick| self.camera_label(pick, &cameras));
         let info = filter_bar::ToolbarInfo {
             stale: self.options.depends_on_scores()
                 && self.board.version() != self.browse.view_version,
@@ -432,6 +445,8 @@ impl CernoApp {
             has_videos,
             has_deleted: self.has_deleted(),
             name_list: self.name_list.counts(),
+            cameras: &cameras,
+            camera: camera.as_deref(),
         };
         let mut options = self.options;
         let out = filter_bar::toolbar(ui, rect, &mut options, &info);

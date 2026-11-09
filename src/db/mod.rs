@@ -120,6 +120,7 @@ const ADDED_IMAGE_COLUMNS: &[(&str, &str)] = &[
     ("metadata_version", "INTEGER NOT NULL DEFAULT 0"),
     ("camera", "TEXT"),
     ("truncated", "INTEGER"),
+    ("camera_serial", "TEXT"),
 ];
 
 /// Columns added to `files` after the first release.
@@ -129,7 +130,7 @@ const ADDED_FILE_COLUMNS: &[(&str, &str)] = &[("label", "TEXT")];
 const IMAGE_COLUMNS: &str = "i.sharpness, i.sharpness_version, i.aesthetic, i.aesthetic_model,
     i.aesthetic25, i.aesthetic25_model, i.highlights, i.shadows, i.exposure_version,
     i.eyes, i.faces, i.faces_version, i.thumbnail IS NOT NULL, i.embedding,
-    i.taken_ms, i.metadata_version, i.camera, i.truncated";
+    i.taken_ms, i.metadata_version, i.camera, i.truncated, i.camera_serial";
 
 /// Cheap identity check for a file: if size or mtime changed, the fingerprint is recomputed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -190,6 +191,9 @@ pub struct ImageRecord {
     pub metadata_version: i64,
     /// Camera model (`CameraInfo::model`): only photos of one camera form a series.
     pub camera: Option<String>,
+    /// The body's serial number (`CameraInfo::serial`, since `metadata::VERSION` 3): the
+    /// camera filter tells two bodies of one model apart by it.
+    pub camera_serial: Option<String>,
 }
 
 /// What the index knows about one path.
@@ -268,6 +272,7 @@ fn image_from_row(row: &Row<'_>, at: usize) -> rusqlite::Result<ImageRecord> {
         taken_ms: row.get(at + 14)?,
         metadata_version: row.get::<_, Option<i64>>(at + 15)?.unwrap_or(0),
         camera: row.get(at + 16)?,
+        camera_serial: row.get(at + 18)?,
     })
 }
 

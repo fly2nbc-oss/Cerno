@@ -11,6 +11,7 @@ use crate::i18n;
 use crate::library::{self, Format};
 use crate::metadata::{Label, Rating};
 
+mod cameras;
 mod duplicates;
 mod filter;
 mod nav;
@@ -21,6 +22,7 @@ mod top;
 use duplicates::*;
 use series::*;
 
+pub use cameras::*;
 pub use filter::*;
 pub use nav::*;
 pub use options::*;
@@ -57,6 +59,9 @@ pub struct Facts {
     pub taken_ms: Option<i64>,
     /// `metadata::camera_id` of the camera model; series never mix cameras.
     pub camera: Option<u64>,
+    /// `metadata::camera_id` of the body's serial number, when the file states one (the camera
+    /// filter only; series stay per model).
+    pub serial: Option<u64>,
     /// Pixel fingerprint; `None` until the photo has been indexed.
     pub fingerprint: Option<u64>,
     pub scores: Scores,
@@ -273,8 +278,13 @@ pub fn build(
                 None => options.media.accepts(video),
             };
             let faces = entry.facts.and_then(|f| f.scores.faces);
+            let camera = options.camera.is_none_or(|pick| {
+                let facts = entry.facts.unwrap_or_default();
+                pick.accepts(facts.camera, facts.serial)
+            });
             similar
                 && in_scope
+                && camera
                 && options
                     .filter
                     .accepts(entry.rating, quality, entry.label, faces, entry.deleted)

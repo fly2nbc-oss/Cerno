@@ -123,6 +123,9 @@ pub struct ViewOptions {
     /// Only the photos of a pasted file-name list (`Facts::listed`, `name_list`). Never saved:
     /// the list is about this folder.
     pub name_list: bool,
+    /// Only the photos of one camera – a model, or one body of it (the filter bar's camera
+    /// box, `camera_entries`). Never saved: the cameras are this folder's.
+    pub camera: Option<CameraPick>,
 }
 
 impl Default for ViewOptions {
@@ -135,6 +138,7 @@ impl Default for ViewOptions {
             top: None,
             hide_rejected: false,
             name_list: false,
+            camera: None,
         }
     }
 }
@@ -150,11 +154,12 @@ impl ViewOptions {
     }
 
     /// Whether anything hides photos: a box, "without ✕", "similar photos", photos / videos
-    /// only or Top N.
+    /// only, one camera or Top N.
     pub fn is_filtered(&self) -> bool {
         !self.filter.is_all()
             || self.hide_rejected
             || self.name_list
+            || self.camera.is_some()
             || self.similar
             || self.media != Media::All
             || self.top.is_some()
@@ -165,6 +170,7 @@ impl ViewOptions {
         self.filter.clear();
         self.hide_rejected = false;
         self.name_list = false;
+        self.camera = None;
         self.similar = false;
         self.media = Media::All;
         self.top = None;
