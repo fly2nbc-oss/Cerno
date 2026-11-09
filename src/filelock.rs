@@ -54,6 +54,15 @@ impl Drop for Held<'_> {
     }
 }
 
+impl Held<'_> {
+    /// Releases a write hold whose write failed: the file is as it was, so its generation
+    /// stays – a failed mark write and its retries must not look like Cerno's own save to
+    /// whoever watches the file (`app::external`).
+    pub fn unchanged(mut self) {
+        self.write = false;
+    }
+}
+
 impl FileLocks {
     fn lock(&self) -> MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(|p| p.into_inner())
@@ -136,6 +145,12 @@ mod tests {
             assert!(locks.busy(path));
             assert_eq!(locks.generation(path), before, "bumped only when done");
         }
+        assert!(!locks.busy(path));
+        assert_eq!(locks.generation(path), before + 1);
+        // A write that failed changed nothing.
+        let failed = locks.hold_write(path);
+        assert!(locks.busy(path));
+        failed.unchanged();
         assert!(!locks.busy(path));
         assert_eq!(locks.generation(path), before + 1);
         locks.set_queued(path, true);

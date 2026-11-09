@@ -315,7 +315,13 @@ impl Work<'_> {
             marks.description.as_ref(),
         );
         self.files.set_queued(path, false);
-        drop(held);
+        // A failed write left the file as it was: no new generation, or every retry would
+        // look like Cerno's own save to the watch of *Edit elsewhere*.
+        if result.is_err() {
+            held.unchanged();
+        } else {
+            drop(held);
+        }
         self.settle(path, marks, failures, result);
     }
 

@@ -282,7 +282,7 @@ impl CernoApp {
             &card::Card {
                 files: &files,
                 exiting,
-                retrying: status.retrying() || status.pending > 0,
+                retrying: status.retrying(),
             },
         );
         if out.retry {

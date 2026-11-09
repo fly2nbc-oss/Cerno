@@ -752,6 +752,11 @@ fn a_mark_that_cannot_be_written_is_kept() {
             !files.busy(&missing),
             "a kept mark doesn't hold up the analysis"
         );
+        assert_eq!(
+            files.generation(&missing),
+            0,
+            "a failed write changed nothing"
+        );
 
         // Another file's write – here one with nothing to change – leaves it listed.
         ask(Message::SetRating {
