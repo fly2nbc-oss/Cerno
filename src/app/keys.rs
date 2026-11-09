@@ -286,8 +286,8 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
 }
 
 /// The keys of one frame in the filter mode (`Ctrl+F`), in this order: the frame moves, `Space`
-/// or `Enter` act on its box, the marking keys tick their box, `Del` shows all, `Esc` or
-/// `Ctrl+F` end the mode. Arrows repeat while held; the rest counts fresh presses only. Digits
+/// or `Enter` act on its box, the marking keys tick their box, `Del` shows all, `Esc` (after a
+/// deletion counting down) or `Ctrl+F` end the mode. Arrows repeat while held; the rest counts fresh presses only. Digits
 /// count by their place on the keyboard, as when marking.
 pub(super) fn read_filter_keys(i: &egui::InputState) -> Vec<Action> {
     let plain = i.modifiers.is_none();
@@ -320,7 +320,10 @@ pub(super) fn read_filter_keys(i: &egui::InputState) -> Vec<Action> {
     if fresh(&i.events, Key::Delete) {
         out.push(Action::ShowAll);
     }
-    if i.key_pressed(Key::Escape) || (i.modifiers.command_only() && i.key_pressed(Key::F)) {
+    if i.key_pressed(Key::Escape) {
+        out.push(Action::Escape);
+    }
+    if i.modifiers.command_only() && i.key_pressed(Key::F) {
         out.push(Action::End);
     }
     out
@@ -473,7 +476,15 @@ impl CernoApp {
                 && !self.layer.is_open()
                 && !ctx.egui_wants_keyboard_input()
             {
-                let browsing = ctx.input(read_keys).browsing();
+                let keys = ctx.input(read_keys);
+                // `Ctrl+F` closes the faces grid first: the filter mode's `←`/`→` move its
+                // frame, not the grid's photo.
+                if keys.filter_mode {
+                    self.viewer.faces.grid_open = false;
+                    self.toggle_filter_mode();
+                    return;
+                }
+                let browsing = keys.browsing();
                 self.execute_all(ctx, &browsing, Source::Keys, frames);
             }
             return;
@@ -1190,7 +1201,7 @@ mod tests {
         assert_eq!(one(Key::Delete, Key::Delete), vec![Action::ShowAll]);
         assert_eq!(one(Key::Space, Key::Space), vec![Action::Activate]);
         assert_eq!(one(Key::Enter, Key::Enter), vec![Action::Activate]);
-        assert_eq!(one(Key::Escape, Key::Escape), vec![Action::End]);
+        assert_eq!(one(Key::Escape, Key::Escape), vec![Action::Escape]);
         assert_eq!(
             one(Key::ArrowRight, Key::ArrowRight),
             vec![Action::Move(Step::Next)]

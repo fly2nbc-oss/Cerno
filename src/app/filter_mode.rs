@@ -4,9 +4,11 @@
 //! `Space` or `Enter` tick the box or open its list (photos / videos / Top N, the camera, the
 //! sort: a `palette` list below the box), the marking keys tick their own box – `0`–`5` the
 //! stars, `6`–`9` the colours, `X` the rejected ones –, `Del` shows all, `Esc` or `Ctrl+F` end
-//! the mode. Like a straighten or crop session it is a mode of the keys, not a `Layer`: the
+//! the mode (`Esc` brings back a deletion counting down first, as everywhere). Like a straighten or crop session it is a mode of the keys, not a `Layer`: the
 //! photo's keys rest meanwhile, help and the lists still open over it. The box it ended on is
 //! where it starts again, for the session.
+
+use std::time::Instant;
 
 use eframe::egui::{self, Rect};
 
@@ -39,7 +41,9 @@ pub(super) enum Action {
     Tick(FilterKind),
     /// `Del`: *Show all* – every filter off, the sort stays.
     ShowAll,
-    /// `Esc` or `Ctrl+F`.
+    /// `Esc`: a deletion counting down comes back first, as everywhere; else the mode ends.
+    Escape,
+    /// `Ctrl+F`.
     End,
 }
 
@@ -147,7 +151,12 @@ impl CernoApp {
                         self.change_options(ctx, |options| options.clear_filters());
                     }
                 }
-                Action::End => {
+                // The deletion countdown comes first in the `Esc` chain (`escape_target`):
+                // the photos come back, the mode stays on.
+                Action::Escape if self.deletions.countdown(Instant::now()).is_some() => {
+                    self.undo_deletions(ctx);
+                }
+                Action::Escape | Action::End => {
                     self.filter_mode.end();
                     return;
                 }

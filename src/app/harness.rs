@@ -927,4 +927,43 @@ mod tests {
         assert_eq!(h.rating_of(0), None, "no Alt digit rates");
         assert_eq!(h.app.current, 0);
     }
+
+    /// In the filter mode `Esc` first brings back a deletion counting down, as everywhere
+    /// (`escape_target`); the mode stays on, and the next `Esc` ends it.
+    #[test]
+    fn escape_in_the_filter_mode_brings_a_deletion_back_first() {
+        let mut h = Harness::new(3);
+        h.settle();
+        h.press(Key::Delete, NONE);
+        assert_eq!(h.app.view.len(), 2);
+        h.press(Key::F, Modifiers::COMMAND);
+        assert!(h.app.filter_mode.is_on());
+        h.press(Key::Escape, NONE);
+        assert!(h.app.deletions.countdown(Instant::now()).is_none());
+        assert_eq!(h.app.view.len(), 3, "the photo is back");
+        assert!(h.app.filter_mode.is_on(), "the mode is the next Esc");
+        h.press(Key::Escape, NONE);
+        assert!(!h.app.filter_mode.is_on());
+        // `Ctrl+F` ends the mode at once, whatever counts down.
+        h.press(Key::Delete, NONE);
+        h.press(Key::F, Modifiers::COMMAND);
+        h.press(Key::F, Modifiers::COMMAND);
+        assert!(!h.app.filter_mode.is_on());
+        assert!(h.app.deletions.countdown(Instant::now()).is_some());
+    }
+
+    /// `Ctrl+F` over the faces grid closes the grid: the arrows then move the mode's frame,
+    /// not the photo.
+    #[test]
+    fn ctrl_f_closes_the_faces_grid() {
+        let mut h = Harness::new(3);
+        h.settle();
+        h.app.viewer.faces.grid_open = true;
+        h.press(Key::F, Modifiers::COMMAND);
+        assert!(!h.app.viewer.faces.grid_open);
+        assert!(h.app.filter_mode.is_on());
+        h.press(Key::ArrowRight, NONE);
+        assert_eq!(h.app.current, 0, "the photo stays");
+        assert_eq!(h.app.filter_mode.cursor, Some(Slot::Camera));
+    }
 }
