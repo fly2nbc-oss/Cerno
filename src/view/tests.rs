@@ -356,6 +356,44 @@ fn without_rejected_hides_them_and_excludes_the_reject_box() {
     assert_eq!(options, ViewOptions::default());
 }
 
+/// The keyword filter keeps the photos with a picked keyword (`Facts::tagged`), together with
+/// the boxes; "Show all" ends it (CER-68).
+#[test]
+fn the_keyword_filter_keeps_its_photos() {
+    let (all, mut known) = fixture();
+    for name in ["a", "c"] {
+        known.get_mut(Path::new(name)).expect("known").tagged = true;
+    }
+    let lookup = |p: &Path| known.get(p).copied();
+    let shown = |options: ViewOptions| {
+        names(
+            &build(
+                &all,
+                options,
+                lookup,
+                &HashMap::new(),
+                &HashMap::new(),
+                |_| false,
+            )
+            .paths,
+        )
+    };
+    let mut options = ViewOptions {
+        keywords: true,
+        ..ViewOptions::default()
+    };
+    assert_eq!(shown(options), "ac");
+    assert!(options.is_filtered());
+    assert!(
+        options.depends_on_scores(),
+        "Refresh order takes new keywords"
+    );
+    options.toggle_filter(FilterKind::Stars(5));
+    assert_eq!(shown(options), "c", "together with the boxes");
+    options.clear_filters();
+    assert_eq!(options, ViewOptions::default());
+}
+
 /// A pasted file-name list keeps just its photos – analysed or not – together with the
 /// boxes; "Show all" ends it.
 #[test]
@@ -1112,6 +1150,7 @@ fn the_whole_filter_goes_aside_and_comes_back() {
         top: Some(50),
         hide_rejected: true,
         name_list: true,
+        keywords: true,
         camera: Some(CameraPick {
             model: 1,
             serial: Some(2),
@@ -1146,6 +1185,10 @@ fn the_whole_filter_goes_aside_and_comes_back() {
         },
         ViewOptions {
             name_list: true,
+            ..unfiltered
+        },
+        ViewOptions {
+            keywords: true,
             ..unfiltered
         },
         ViewOptions {

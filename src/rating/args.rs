@@ -43,6 +43,45 @@ pub(super) fn description_args(wanted: &Description, on_disk: &Description) -> V
     args
 }
 
+/// Lightroom's keyword paths after a write (CER-67): every path whose last part is a keyword
+/// the file had and `wanted` no longer has goes – case aside. A parent (`Orte`) stays while
+/// another path still stands for it; new keywords get no path (Cerno knows no hierarchy).
+pub(super) fn kept_hierarchy(paths: &[String], had: &[String], wanted: &[String]) -> Vec<String> {
+    let fold = |text: &str| text.trim().to_lowercase();
+    let wanted: Vec<String> = wanted.iter().map(|k| fold(k)).collect();
+    let removed: Vec<String> = had
+        .iter()
+        .map(|k| fold(k))
+        .filter(|k| !wanted.contains(k))
+        .collect();
+    if removed.is_empty() {
+        return paths.to_vec();
+    }
+    paths
+        .iter()
+        .filter(|path| {
+            let leaf = path.rsplit('|').next().unwrap_or(path);
+            !removed.contains(&fold(leaf))
+        })
+        .cloned()
+        .collect()
+}
+
+/// The new list of Lightroom's keyword paths, when it differs from the file's. Repeating the
+/// tag builds the list; one empty value removes it, like the keywords.
+pub(super) fn hierarchy_args(wanted: &[String], on_disk: &[String]) -> Vec<String> {
+    if wanted == on_disk {
+        return Vec::new();
+    }
+    if wanted.is_empty() {
+        return vec!["-XMP-lr:HierarchicalSubject=".to_owned()];
+    }
+    wanted
+        .iter()
+        .map(|path| format!("-XMP-lr:HierarchicalSubject={path}"))
+        .collect()
+}
+
 pub(super) fn label_arg(label: Option<Label>) -> String {
     match label {
         Some(label) => format!("-XMP-xmp:Label={}", label.xmp_name()),

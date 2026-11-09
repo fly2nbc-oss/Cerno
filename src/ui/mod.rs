@@ -13,6 +13,7 @@ pub mod grid;
 pub mod help;
 pub mod icons;
 pub mod info_bar;
+pub mod keywords;
 pub mod modal;
 pub mod models;
 pub mod name_list;

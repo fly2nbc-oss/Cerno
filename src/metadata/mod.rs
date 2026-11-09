@@ -27,8 +27,9 @@ const EXIF_RATING: exif::Tag = exif::Tag(exif::Context::Tiff, 0x4746);
 
 /// Bumped when capture time, camera or colour-label reading changes, so the analysis re-reads
 /// metadata without decoding the image again. 2: the camera model (series per camera). 3: the
-/// body's serial number (the camera filter tells two bodies of one model apart).
-pub const VERSION: i64 = 3;
+/// body's serial number (the camera filter tells two bodies of one model apart). 4: the
+/// keywords go into the index (`files.keywords`, the keyword filter – CER-68).
+pub const VERSION: i64 = 4;
 
 /// Stable id of a camera model for series – and of a body's serial number for the camera
 /// filter – (FNV-1a, not `DefaultHasher`): case and outer spaces don't count.
@@ -217,6 +218,22 @@ pub struct FileMetadata {
     pub orientation: u16,
     pub camera: CameraInfo,
     pub description: Description,
+    /// Lightroom's keyword paths (`lr:hierarchicalSubject`, `Orte|Bodensee`): never shown, only
+    /// kept in step – a keyword removed in Cerno takes the paths that end in it along (CER-67),
+    /// or Lightroom would bring it back.
+    pub hierarchy: Vec<String>,
+}
+
+/// IPTC IIM (2:25) holds at most this many bytes of one keyword; ExifTool cuts a longer one
+/// there while XMP keeps it whole. Cerno writes it anyway and only says so (CER-67).
+pub const IIM_KEYWORD_MAX: usize = 64;
+/// The same for the comment (IIM 2:120, Caption-Abstract).
+pub const IIM_COMMENT_MAX: usize = 2000;
+
+/// Longer than IPTC IIM keeps (`max` bytes of UTF-8 – an umlaut counts twice), as written:
+/// trimmed.
+pub fn exceeds_iim(text: &str, max: usize) -> bool {
+    text.trim().len() > max
 }
 
 /// A photo's comment and keywords as other programs show them: XMP `dc:description` /
@@ -352,6 +369,7 @@ fn with_sidecar(meta: &mut FileMetadata, path: &std::path::Path) {
         };
         meta.label = side.label;
         meta.description = side.description;
+        meta.hierarchy = side.hierarchy;
     }
 }
 
@@ -383,6 +401,10 @@ pub fn read(bytes: &[u8]) -> FileMetadata {
         .as_deref()
         .map_or(LabelInfo::None, LabelInfo::parse);
     let description = read_description(bytes, xmp.as_deref());
+    let hierarchy = xmp
+        .as_deref()
+        .and_then(|x| xmp_bag(x, "lr:hierarchicalSubject"))
+        .unwrap_or_default();
 
     FileMetadata {
         rating: RatingInfo {
@@ -394,6 +416,7 @@ pub fn read(bytes: &[u8]) -> FileMetadata {
         orientation,
         camera,
         description,
+        hierarchy,
     }
 }
 

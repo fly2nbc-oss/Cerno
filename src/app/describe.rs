@@ -38,6 +38,7 @@ impl CernoApp {
         self.marks
             .descriptions
             .insert(path.clone(), description.clone());
+        self.keywords.edited();
         self.describe_companion(&path, &description);
         self.writer.set_description(path, description);
     }
@@ -103,7 +104,15 @@ impl CernoApp {
             self.drafts.reset(path.to_path_buf(), current.as_ref());
         }
         let blocked = self.menu_block(Change::Mark, Some(path));
-        let out = description::draw(ui, rect, current.as_ref(), &mut self.drafts, blocked);
+        let vocabulary = self.vocabulary();
+        let out = description::draw(
+            ui,
+            rect,
+            current.as_ref(),
+            &mut self.drafts,
+            &vocabulary,
+            blocked,
+        );
         if let Some(changed) = out.changed {
             self.set_description(path.to_path_buf(), changed);
         }

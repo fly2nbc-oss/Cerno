@@ -41,6 +41,21 @@ pub static TEXTS: Texts = Texts {
     name_list_chip_tooltip: "Only the photos of the pasted list – a click shows all again",
     name_list_found: |found, total| format!("{found} of {total} found"),
     name_list_chip: |found, total| format!("List {found}/{total}  ×"),
+    menu_keywords: "By keyword …",
+    keywords_title: "Filter by keyword",
+    keywords_intro: "Only the photos with one of the chosen keywords – or without any. The number says how many photos of the folder have it.",
+    keywords_search_hint: "Find a keyword …",
+    keywords_none: "Without keywords",
+    keywords_empty: "The photos of this folder have no keywords yet.",
+    keywords_unread: |n| {
+        if n == 1 {
+            "1 photo is not read yet; its keywords are missing here.".to_owned()
+        } else {
+            format!("{n} photos are not read yet; their keywords are missing here.")
+        }
+    },
+    keywords_chip: |label| format!("Keyword: {label}  ×"),
+    keywords_chip_tooltip: |names| format!("Only photos with: {names} – a click shows all again"),
     align_camera_hint: "Moves the capture time of every photo from the right camera in this folder, so the right photo was taken at the same moment as the left one. Only in the index – the files keep their time.",
     align_needs_compare: "Compare two photos from different cameras first (C)",
     align_no_time: "One of the two photos has no camera or capture time",
@@ -422,6 +437,8 @@ pub static TEXTS: Texts = Texts {
     comment_hint: "Write a comment …",
     keyword_hint: "Add a keyword …",
     keyword_remove: "Remove",
+    keyword_too_long: "Older programs see only the first 64 characters (accented letters count twice). It is saved in full.",
+    comment_too_long: "Older programs see only the first 2000 characters (accented letters count twice). It is saved in full.",
     description_note: "Enter adds a keyword, Esc leaves the field. Comment and keywords are written into the file (IPTC and XMP), where Windows, Lightroom and digiKam read them.",
     description_waiting: "Reading …",
     row_laion: "LAION (CLIP)",
@@ -650,6 +667,7 @@ pub static TEXTS: Texts = Texts {
                 "Choose “Top 50 photos” in the filter bar's first box: Cerno suggests the best, one from each series first.",
                 "Aesthetics and sharpness under the photo help you decide – the stars are yours to give.",
                 "Filter › By file list …: paste the names a client chose – only those photos show.",
+                "Photos on screen › By keyword …: only the photos with one of the chosen keywords. While you type a keyword, Cerno offers the ones already in use.",
             ],
         ),
         (

@@ -351,6 +351,228 @@ fn a_description_comes_back_only_when_the_save_dropped_it() {
     assert_eq!(lost_description(&none, &none), None);
 }
 
+/// A keyword removed takes every Lightroom path that ends in it along – case aside – and
+/// nothing else: a parent stays, a new keyword gets no path (CER-67).
+#[test]
+fn a_removed_keyword_takes_its_lightroom_paths_along() {
+    let strings = |items: &[&str]| items.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+    let paths = strings(&[
+        "Orte|Bodensee",
+        "Personen|Anna",
+        "Orte|Konstanz",
+        "Bodensee",
+    ]);
+    let had = strings(&["Orte", "Bodensee", "Personen", "Anna", "Konstanz"]);
+    // "Bodensee" removed (and "bodensee" typed in another case would be the same word).
+    let wanted = strings(&["Orte", "Personen", "Anna", "Konstanz", "See"]);
+    assert_eq!(
+        kept_hierarchy(&paths, &had, &wanted),
+        ["Personen|Anna", "Orte|Konstanz"]
+    );
+    // The parent removed: no path ends in it, all stay.
+    let wanted = strings(&["Bodensee", "Personen", "Anna", "Konstanz"]);
+    assert_eq!(kept_hierarchy(&paths, &had, &wanted), paths);
+    // Case aside.
+    let wanted = strings(&["Orte", "Bodensee", "Personen", "Konstanz"]);
+    assert_eq!(
+        kept_hierarchy(&strings(&["Personen|ANNA "]), &had, &wanted),
+        Vec::<String>::new()
+    );
+    // Nothing removed: the list as it was.
+    assert_eq!(kept_hierarchy(&paths, &had, &had), paths);
+}
+
+#[test]
+fn the_hierarchy_is_written_only_when_it_changes() {
+    let paths = vec!["Personen|Anna".to_owned()];
+    assert!(hierarchy_args(&paths, &paths).is_empty());
+    assert!(hierarchy_args(&[], &[]).is_empty());
+    assert_eq!(
+        hierarchy_args(&paths, &["Orte|Bodensee".to_owned(), paths[0].clone()]),
+        ["-XMP-lr:HierarchicalSubject=Personen|Anna"]
+    );
+    assert_eq!(
+        hierarchy_args(&[], &paths),
+        ["-XMP-lr:HierarchicalSubject="]
+    );
+}
+
+/// The ticket's case through a real ExifTool: a photo with `Orte|Bodensee` and
+/// `Personen|Anna`, "Bodensee" removed – the hierarchy is `Personen|Anna`, "Orte" stays in the
+/// flat list, the dates stay, and the same write again changes nothing. Skipped without
+/// ExifTool.
+#[test]
+fn removing_a_keyword_keeps_lightrooms_hierarchy_in_step() {
+    use std::fs::{self, File, FileTimes};
+    use std::time::SystemTime;
+
+    if crate::exiftool::locate().is_none() {
+        eprintln!("ExifTool not found – skipped");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("cerno-lr-hier-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("Bodensee ä.jpg");
+    fs::copy(
+        concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/tiny.jpg"),
+        &path,
+    )
+    .unwrap();
+    let mut exiftool = None;
+    let path_str = path.to_str().unwrap().to_owned();
+    run_exiftool(
+        &mut exiftool,
+        &[
+            "-XMP-dc:Subject=Orte".to_owned(),
+            "-XMP-dc:Subject=Bodensee".to_owned(),
+            "-XMP-dc:Subject=Personen".to_owned(),
+            "-XMP-dc:Subject=Anna".to_owned(),
+            "-XMP-lr:HierarchicalSubject=Orte|Bodensee".to_owned(),
+            "-XMP-lr:HierarchicalSubject=Personen|Anna".to_owned(),
+            "-overwrite_original".to_owned(),
+            path_str,
+        ],
+    )
+    .unwrap();
+    let read = || metadata::read(&fs::read(&path).unwrap());
+    assert_eq!(read().hierarchy, ["Orte|Bodensee", "Personen|Anna"]);
+    let old = SystemTime::now() - Duration::from_secs(86_400 * 400);
+    File::options()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_times(FileTimes::new().set_modified(old))
+        .unwrap();
+    let before = fs::metadata(&path).unwrap().modified().unwrap();
+
+    let keywords = |items: &[&str]| Description {
+        comment: String::new(),
+        keywords: items.iter().map(|s| (*s).to_owned()).collect(),
+    };
+    let wanted = keywords(&["Orte", "Personen", "Anna"]);
+    write_marks(&mut exiftool, &path, None, None, Some(&wanted)).unwrap();
+    let meta = read();
+    assert_eq!(meta.hierarchy, ["Personen|Anna"]);
+    assert_eq!(meta.description.keywords, ["Orte", "Personen", "Anna"]);
+    assert_eq!(fs::metadata(&path).unwrap().modified().unwrap(), before);
+    let unchanged = fs::read(&path).unwrap();
+    write_marks(&mut exiftool, &path, None, None, Some(&wanted)).unwrap();
+    assert_eq!(fs::read(&path).unwrap(), unchanged, "same values: no write");
+
+    // A keyword added gets no path; the last path goes with the last keyword it ends in.
+    write_marks(
+        &mut exiftool,
+        &path,
+        None,
+        None,
+        Some(&keywords(&["Orte", "Personen", "See"])),
+    )
+    .unwrap();
+    let meta = read();
+    assert!(meta.hierarchy.is_empty(), "{:?}", meta.hierarchy);
+    assert_eq!(meta.description.keywords, ["Orte", "Personen", "See"]);
+    assert_eq!(fs::metadata(&path).unwrap().modified().unwrap(), before);
+    drop(exiftool);
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+/// The same in a RAW's sidecar, which Lightroom wrote with its hierarchy. Skipped without
+/// ExifTool.
+#[test]
+fn a_sidecars_hierarchy_follows_a_removed_keyword() {
+    if crate::exiftool::locate().is_none() {
+        eprintln!("ExifTool not found – skipped");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("cerno-lr-hier-side-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let raw = dir.join("IMG_5.CR3");
+    std::fs::write(&raw, b"proprietary raw data").unwrap();
+    let lightroom = r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:lr="http://ns.adobe.com/lightroom/1.0/">
+   <dc:subject>
+    <rdf:Bag>
+     <rdf:li>Orte</rdf:li>
+     <rdf:li>Bodensee</rdf:li>
+     <rdf:li>Personen</rdf:li>
+     <rdf:li>Anna</rdf:li>
+    </rdf:Bag>
+   </dc:subject>
+   <lr:hierarchicalSubject>
+    <rdf:Bag>
+     <rdf:li>Orte|Bodensee</rdf:li>
+     <rdf:li>Personen|Anna</rdf:li>
+    </rdf:Bag>
+   </lr:hierarchicalSubject>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>
+"#;
+    std::fs::write(crate::sidecar::path_of(&raw), lightroom).unwrap();
+    assert_eq!(
+        metadata::read_sidecar(&raw).hierarchy,
+        ["Orte|Bodensee", "Personen|Anna"]
+    );
+    let mut exiftool = None;
+    let wanted = Description {
+        comment: String::new(),
+        keywords: vec!["Orte".into(), "Bodensee".into(), "Personen".into()],
+    };
+    write_marks(&mut exiftool, &raw, None, None, Some(&wanted)).unwrap();
+    let meta = metadata::read_sidecar(&raw);
+    assert_eq!(meta.hierarchy, ["Orte|Bodensee"]);
+    assert_eq!(meta.description.keywords, ["Orte", "Bodensee", "Personen"]);
+    drop(exiftool);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// The first write into a new sidecar carries the RAW's own hierarchy like its other marks,
+/// less the paths of a keyword removed with it. Skipped without ExifTool.
+#[test]
+fn a_new_sidecar_carries_the_raws_hierarchy() {
+    if crate::exiftool::locate().is_none() {
+        eprintln!("ExifTool not found – skipped");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("cerno-lr-hier-new-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let in_camera = "II*\0<x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF \
+            xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'><rdf:Description \
+            rdf:about='' xmlns:dc='http://purl.org/dc/elements/1.1/' \
+            xmlns:lr='http://ns.adobe.com/lightroom/1.0/'><dc:subject><rdf:Bag>\
+            <rdf:li>Orte</rdf:li><rdf:li>Bodensee</rdf:li><rdf:li>Anna</rdf:li></rdf:Bag>\
+            </dc:subject><lr:hierarchicalSubject><rdf:Bag><rdf:li>Orte|Bodensee</rdf:li>\
+            <rdf:li>Personen|Anna</rdf:li></rdf:Bag></lr:hierarchicalSubject>\
+            </rdf:Description></rdf:RDF></x:xmpmeta>";
+    let (kept, removed) = (dir.join("IMG_1.NEF"), dir.join("IMG_2.NEF"));
+    std::fs::write(&kept, in_camera).unwrap();
+    std::fs::write(&removed, in_camera).unwrap();
+    let mut exiftool = None;
+
+    write_marks(&mut exiftool, &kept, None, Some(Some(Label::Red)), None).unwrap();
+    assert_eq!(
+        metadata::read_sidecar(&kept).hierarchy,
+        ["Orte|Bodensee", "Personen|Anna"]
+    );
+    let wanted = Description {
+        comment: String::new(),
+        keywords: vec!["Orte".into(), "Anna".into()],
+    };
+    write_marks(&mut exiftool, &removed, None, None, Some(&wanted)).unwrap();
+    assert_eq!(
+        metadata::read_sidecar(&removed).hierarchy,
+        ["Personen|Anna"]
+    );
+    drop(exiftool);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
 /// End-to-end through a real ExifTool; skipped when ExifTool isn't installed.
 #[test]
 fn writes_stars_and_keeps_file_dates() {
@@ -434,6 +656,10 @@ fn round_trip(source: &Path, name: &str) {
     };
     write_marks(&mut exiftool, &path, None, None, Some(&description)).unwrap();
     assert_eq!(read().description, description);
+    assert!(
+        read().hierarchy.is_empty(),
+        "no hierarchy where there was none"
+    );
     assert_eq!(on_label(), LabelInfo::None, "other marks untouched");
     if name.ends_with(".jpg") {
         // IPTC too (HEIC has no IPTC block), as UTF-8.

@@ -39,6 +39,8 @@ pub struct ToolbarInfo<'a> {
     pub has_deleted: bool,
     /// The pasted file-name list while it filters: found and asked for.
     pub name_list: Option<(usize, usize)>,
+    /// The keyword filter's chip while it filters: its label and tooltip (`app::keywords`).
+    pub keywords: Option<(&'a str, &'a str)>,
     /// The folder's cameras for the camera box, the most photos first (`camera_entries`).
     pub cameras: &'a [CameraEntry],
     /// The camera the view is narrowed to, by name, while the camera filter is on.
@@ -301,6 +303,15 @@ pub fn toolbar(
                                         if list.clicked() {
                                             options.name_list = false;
                                         }
+                                    }
+                                    // The keywords picked; a click shows every photo again.
+                                    if let Some((label, tooltip)) =
+                                        info.keywords.filter(|_| options.keywords)
+                                        && chip(ui, true, Face::Text(label))
+                                            .on_hover_text(tooltip)
+                                            .clicked()
+                                    {
+                                        options.keywords = false;
                                     }
                                 });
                             });
@@ -1039,6 +1050,7 @@ mod tests {
                         has_videos: true,
                         has_deleted: false,
                         name_list: None,
+                        keywords: None,
                         cameras,
                         camera,
                     };
@@ -1127,6 +1139,7 @@ mod tests {
                         has_videos: true,
                         has_deleted: false,
                         name_list: None,
+                        keywords: None,
                         cameras: &[],
                         camera: None,
                     };
@@ -1205,6 +1218,7 @@ mod tests {
                         has_videos: true,
                         has_deleted: false,
                         name_list: None,
+                        keywords: None,
                         cameras: &[],
                         camera: None,
                     };
@@ -1371,6 +1385,7 @@ mod tests {
                             has_videos: true,
                             has_deleted: false,
                             name_list: None,
+                            keywords: None,
                             cameras,
                             camera: None,
                         };
@@ -1514,6 +1529,7 @@ mod tests {
                         has_videos: true,
                         has_deleted: false,
                         name_list: None,
+                        keywords: None,
                         cameras: &[],
                         camera: None,
                     };

@@ -171,6 +171,7 @@ impl Harness {
             Layer::Models => "models",
             Layer::Confirm { .. } => "confirm",
             Layer::NameList(_) => "name list",
+            Layer::Keywords(_) => "keywords",
             Layer::CameraTime(_) => "camera time",
             Layer::Unsaved { .. } => "unsaved",
         }

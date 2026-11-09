@@ -257,6 +257,7 @@ impl CernoApp {
             }
         }
         self.draw_name_list_card(ctx, window);
+        self.draw_keywords_card(ctx, window);
         self.draw_camera_time_card(ctx, window);
         self.draw_unsaved_card(ctx, window);
         if matches!(self.layer, Layer::Models) {
@@ -501,6 +502,7 @@ impl CernoApp {
         let t = i18n::t();
         let mut items = vec![
             Item::Row(Row::new(Command::NameList, t.menu_name_list, None).hint(t.name_list_intro)),
+            Item::Row(Row::new(Command::Keywords, t.menu_keywords, None).hint(t.keywords_intro)),
             Item::Row(
                 Row::new(Command::CameraTime, t.menu_camera_time, None).hint(t.camera_time_intro),
             ),

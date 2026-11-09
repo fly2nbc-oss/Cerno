@@ -186,6 +186,8 @@ pub(super) enum Command {
     RestoreShown,
     /// *By file list …*: the card for a pasted list.
     NameList,
+    /// *By keyword …*: the card with the folder's keywords.
+    Keywords,
     /// *Camera time …*: the card with every camera's offset.
     CameraTime,
 
@@ -429,6 +431,7 @@ impl CernoApp {
             Command::DeleteRejected => self.delete_rejected(ctx),
             Command::RestoreShown => self.restore_shown(),
             Command::NameList => self.open_name_list(),
+            Command::Keywords => self.open_keywords(),
             Command::CameraTime => self.open_camera_time(),
             Command::TogglePanel(panel) => self.toggle_panel(panel),
             Command::AllPanels => self.toggle_all_panels(),

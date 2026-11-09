@@ -5,6 +5,8 @@ use super::*;
 pub(super) struct Written {
     pub(super) rating: Rating,
     pub(super) label: Option<Label>,
+    /// The keywords the file (or its sidecar) has now, for the index.
+    pub(super) keywords: Vec<String>,
 }
 
 /// Writes the rating, colour label, comment and keywords – whatever changed – in one ExifTool
@@ -31,7 +33,15 @@ pub(super) fn write_marks(
     // write into it carries all of them – a colour set on a RAW keeps its in-camera stars.
     // Whether anything changes at all is still judged against the file.
     let fresh = sidecar && !target.is_file();
-    let (meta, rating, label, description) = if fresh {
+    // Lightroom's keyword paths go along with a keyword removed here (CER-67).
+    let hierarchy = description.map(|d| {
+        kept_hierarchy(
+            &on_disk.hierarchy,
+            &on_disk.description.keywords,
+            &d.keywords,
+        )
+    });
+    let (meta, rating, label, description, hierarchy) = if fresh {
         let changes = rating.is_some_and(|r| r != on_disk.rating.value)
             || label.is_some_and(|l| label_needs_write(on_disk.label, l))
             || description.is_some_and(|d| !description_args(d, &on_disk.description).is_empty());
@@ -39,19 +49,28 @@ pub(super) fn write_marks(
             return Ok(None);
         }
         let carried = description.map_or_else(|| on_disk.description.clone(), Clone::clone);
+        let paths = hierarchy.unwrap_or_else(|| on_disk.hierarchy.clone());
         (
             metadata::read(&[]),
             Some(rating.unwrap_or(on_disk.rating.value)),
             Some(label.unwrap_or(on_disk.label.known())),
             Some(carried),
+            Some(paths),
         )
     } else {
-        (on_disk, rating, label, description.cloned())
+        (on_disk, rating, label, description.cloned(), hierarchy)
     };
 
     let mut args = Vec::new();
     let mut written_rating = meta.rating.value;
     let mut written_label = meta.label.known();
+    let written_keywords: Vec<String> = description
+        .as_ref()
+        .map_or(&meta.description.keywords, |d| &d.keywords)
+        .iter()
+        .map(|k| crate::keywords::clean(k))
+        .filter(|k| !k.is_empty())
+        .collect();
     if let Some(rating) = rating
         && rating != meta.rating.value
     {
@@ -67,6 +86,9 @@ pub(super) fn write_marks(
     if let Some(description) = &description {
         args.extend(description_args(description, &meta.description));
     }
+    if let Some(hierarchy) = &hierarchy {
+        args.extend(hierarchy_args(hierarchy, &meta.hierarchy));
+    }
     if args.is_empty() {
         if !fresh {
             return Ok(None);
@@ -76,6 +98,7 @@ pub(super) fn write_marks(
         return Ok(Some(Written {
             rating: written_rating,
             label: written_label,
+            keywords: written_keywords,
         }));
     }
     // ExifTool first: without it an empty sidecar would be left behind, and from then on it
@@ -130,6 +153,7 @@ pub(super) fn write_marks(
     Ok(Some(Written {
         rating: written_rating,
         label: written_label,
+        keywords: written_keywords,
     }))
 }
 

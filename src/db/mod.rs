@@ -124,7 +124,9 @@ const ADDED_IMAGE_COLUMNS: &[(&str, &str)] = &[
 ];
 
 /// Columns added to `files` after the first release.
-const ADDED_FILE_COLUMNS: &[(&str, &str)] = &[("label", "TEXT")];
+/// `keywords` (since `metadata::VERSION` 4, CER-68): the file's keywords, one per line; NULL
+/// until read, empty for none.
+const ADDED_FILE_COLUMNS: &[(&str, &str)] = &[("label", "TEXT"), ("keywords", "TEXT")];
 
 /// Everything `ImageRecord` needs, in the order `image_from_row` reads it.
 const IMAGE_COLUMNS: &str = "i.sharpness, i.sharpness_version, i.aesthetic, i.aesthetic_model,
@@ -205,6 +207,9 @@ pub struct FileRecord {
     pub rating: Rating,
     /// Colour label Cerno understands (`Red` …). A foreign `xmp:Label` is stored as none.
     pub label: Option<Label>,
+    /// The file's keywords as read when it was indexed (kept current by the rating writer);
+    /// `None` until they were read (indexed before `metadata::VERSION` 4).
+    pub keywords: Option<Vec<String>>,
     pub image: ImageRecord,
 }
 

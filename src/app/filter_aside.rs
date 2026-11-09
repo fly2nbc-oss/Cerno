@@ -12,6 +12,7 @@ use std::sync::Arc;
 use eframe::egui;
 
 use crate::i18n;
+use crate::keywords::Pick;
 use crate::name_list::Matched;
 use crate::view::ViewOptions;
 
@@ -27,6 +28,7 @@ pub(super) struct FilterAside {
     top_pick: HashSet<PathBuf>,
     top_pick_for: Option<ViewOptions>,
     name_list: Option<Matched>,
+    keywords: Option<Pick>,
     /// The photo shown when the filter went aside: shown again when the photo shown at the
     /// return is one the filter hides.
     shown: Option<PathBuf>,
@@ -69,6 +71,7 @@ impl CernoApp {
                 top_pick: std::mem::take(&mut self.browse.top_pick),
                 top_pick_for: self.browse.top_pick_for.take(),
                 name_list: self.name_list.take_applied(),
+                keywords: self.keywords.take_applied(),
                 shown: self.view.get(self.current).cloned(),
             });
             // The 🗑 box went aside too: the deleted photos leave what is looked at.
@@ -93,6 +96,7 @@ impl CernoApp {
         self.browse.top_pick = aside.top_pick;
         self.browse.top_pick_for = aside.top_pick_for;
         self.name_list.put_applied(aside.name_list);
+        self.keywords.put_applied(aside.keywords);
         aside.shown
     }
 

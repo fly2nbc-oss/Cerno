@@ -483,6 +483,7 @@ fn update_index(db: &Db, path: &Path, written: &Written) {
                 stamp,
                 written.rating,
                 written.label,
+                &written.keywords,
             )
         });
     if let Err(err) = updated {

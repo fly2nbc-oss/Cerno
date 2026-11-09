@@ -123,6 +123,9 @@ pub struct ViewOptions {
     /// Only the photos of a pasted file-name list (`Facts::listed`, `name_list`). Never saved:
     /// the list is about this folder.
     pub name_list: bool,
+    /// Only the photos with one of the keywords picked in the keyword card (`Facts::tagged`,
+    /// `keywords::Pick`) – or without any. Never saved: the keywords are this folder's.
+    pub keywords: bool,
     /// Only the photos of one camera – a model, or one body of it (the filter bar's camera
     /// box, `camera_entries`). Never saved: the cameras are this folder's.
     pub camera: Option<CameraPick>,
@@ -138,6 +141,7 @@ impl Default for ViewOptions {
             top: None,
             hide_rejected: false,
             name_list: false,
+            keywords: false,
             camera: None,
         }
     }

@@ -101,10 +101,33 @@ pub struct ScoreBoard {
     camera_names: RwLock<HashMap<u64, String>>,
     /// The serial number behind each `Known::serial`, for the camera filter's labels.
     serials: RwLock<HashMap<u64, String>>,
+    /// Each file's keywords as read (CER-68): the keyword filter and the suggestions. Apart
+    /// from `Known`, which stays `Copy`.
+    keywords: RwLock<HashMap<PathBuf, Arc<[String]>>>,
     version: AtomicU64,
 }
 
 impl ScoreBoard {
+    /// The keywords read from the file (or its sidecar); `None` until the analysis has read it.
+    pub fn keywords(&self, path: &Path) -> Option<Arc<[String]>> {
+        self.keywords
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(path)
+            .cloned()
+    }
+
+    /// Only a real change bumps the version.
+    pub fn set_keywords(&self, path: &Path, keywords: Vec<String>) {
+        let mut map = self.keywords.write().unwrap_or_else(|p| p.into_inner());
+        if map.get(path).is_some_and(|known| **known == keywords[..]) {
+            return;
+        }
+        map.insert(path.to_path_buf(), keywords.into());
+        drop(map);
+        self.bump();
+    }
+
     pub fn get(&self, path: &Path) -> Option<Known> {
         self.entries
             .read()
@@ -293,15 +316,21 @@ fn is_complete(image: &ImageRecord, caps: Capabilities, jpeg: bool) -> bool {
 
 /// What the index knows. For a photo whose marks live in a sidecar the sidecar has the last
 /// word: another program may have changed it without touching the photo's stamp.
-fn known_from(path: &Path, record: &crate::db::FileRecord, board: &ScoreBoard) -> Known {
+/// Its keywords go on the board too (`None`: not read yet).
+fn put_known(path: &Path, record: &crate::db::FileRecord, board: &ScoreBoard) {
     let (mut rating, mut label) = (record.rating, record.label);
+    let mut keywords = record.keywords.clone();
     if crate::sidecar::applies(path)
         && let Some(bytes) = crate::sidecar::read(path)
     {
         let side = metadata::read(&bytes);
         (rating, label) = (side.rating.value, side.label.known());
+        keywords = Some(side.description.keywords);
     }
-    Known {
+    if let Some(keywords) = keywords {
+        board.set_keywords(path, keywords);
+    }
+    let known = Known {
         rating,
         label,
         taken_ms: record.image.taken_ms,
@@ -309,7 +338,8 @@ fn known_from(path: &Path, record: &crate::db::FileRecord, board: &ScoreBoard) -
         serial: board.serial(record.image.camera_serial.as_deref()),
         fingerprint: Some(record.fingerprint),
         scores: record.image.scores,
-    }
+    };
+    board.set(path, known);
 }
 
 pub struct Analyzer {
@@ -408,8 +438,7 @@ impl Analyzer {
             };
             if let Ok(Some(record)) = self.shared.db.lookup(&path.to_string_lossy(), stamp) {
                 remember_embedding(&self.shared, path, record.image.embedding.as_deref());
-                let known = known_from(path, &record, &self.shared.board);
-                self.shared.board.set(path, known);
+                put_known(path, &record, &self.shared.board);
             }
         }
         log::info!(
@@ -692,6 +721,7 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
                 ..Known::default()
             },
         );
+        shared.board.set_keywords(path, meta.description.keywords);
         return Ok(Outcome::Done);
     }
     let generation = files.generation(path);
@@ -709,10 +739,11 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
     // Fast path: nothing to compute.
     if let Some(record) = shared.db.lookup(&key, stamp)? {
         remember_embedding(shared, path, record.image.embedding.as_deref());
-        if is_complete(&record.image, caps, jpeg) {
-            shared
-                .board
-                .set(path, known_from(path, &record, &shared.board));
+        // Keywords not read yet: an index row from before `metadata::VERSION` 4, or a copy
+        // whose pixels another file's re-read already brought up to date (`files` is per path,
+        // `metadata_version` per fingerprint).
+        if is_complete(&record.image, caps, jpeg) && record.keywords.is_some() {
+            put_known(path, &record, &shared.board);
             return Ok(Outcome::Done);
         }
         // Scores are done; only the capture time (and a fresh read of rating/label) or a
@@ -732,6 +763,7 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
                 meta.rating.value,
                 meta.label.known(),
             )?;
+            shared.db.put_keywords(&key, &meta.description.keywords)?;
             shared.db.put_metadata(
                 record.fingerprint,
                 meta.camera.taken_ms,
@@ -756,6 +788,7 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
                     scores,
                 },
             );
+            shared.board.set_keywords(path, meta.description.keywords);
             // A write that slipped in between is repaired by the next try.
             return Ok(if changed() {
                 Outcome::Retry
@@ -807,6 +840,7 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
         meta.rating.value,
         meta.label.known(),
     )?;
+    shared.db.put_keywords(&key, &meta.description.keywords)?;
     if !record.has_thumbnail {
         shared
             .db
@@ -929,6 +963,7 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
             scores: record.scores,
         },
     );
+    shared.board.set_keywords(path, meta.description.keywords);
     // A write that slipped in after the check above: the next try stores its rating.
     Ok(if changed() {
         Outcome::Retry

@@ -80,6 +80,9 @@ pub struct Facts {
     pub deleted: bool,
     /// Named by the pasted file-name list, while that filter is on.
     pub listed: bool,
+    /// Has a keyword the keyword filter picked (or none, when it picked that), while that
+    /// filter is on.
+    pub tagged: bool,
 }
 
 /// Where a photo sits in its series (at least two photos). `index` is 1-based, sharpest
@@ -258,6 +261,9 @@ pub fn build(
                 return false;
             }
             if options.name_list && !entry.facts.is_some_and(|f| f.listed) {
+                return false;
+            }
+            if options.keywords && !entry.facts.is_some_and(|f| f.tagged) {
                 return false;
             }
             let quality = Quality {
