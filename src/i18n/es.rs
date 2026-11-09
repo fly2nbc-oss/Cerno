@@ -445,7 +445,7 @@ pub static TEXTS: Texts = Texts {
     keyword_remove: "Quitar",
     keyword_too_long: "Los programas antiguos solo ven los primeros 64 caracteres (las letras acentuadas cuentan doble). Se guarda completa.",
     comment_too_long: "Los programas antiguos solo ven los primeros 2000 caracteres (las letras acentuadas cuentan doble). Se guarda completo.",
-    description_note: "Intro añade una palabra clave, Esc sale del campo. El comentario y las palabras clave se escriben en el archivo (IPTC y XMP), donde Windows, Lightroom y digiKam los leen.",
+    description_note: "Intro añade una palabra clave, ↑/↓ eligen una sugerencia, Esc sale del campo. El comentario y las palabras clave se escriben en el archivo (IPTC y XMP), donde Windows, Lightroom y digiKam los leen.",
     description_waiting: "Leyendo …",
     row_laion: "LAION (CLIP)",
     row_v25: "V2.5 (SigLIP)",
@@ -676,7 +676,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "Elegir «Top 50 fotos» en la primera casilla de la barra de filtros: Cerno propone las mejores, primero una de cada serie.",
                 "La estética y la nitidez bajo la foto ayudan a decidir; las estrellas las pones tú.",
-                "Filtro › Por lista de archivos …: pega los nombres que eligió un cliente – solo quedan esas fotos.",
+                "Barra de menú (F10) › Fotos visibles › Por lista de archivos …: pega los nombres que eligió un cliente – solo quedan esas fotos.",
                 "Fotos visibles › Por palabra clave …: solo las fotos con una de las palabras clave elegidas. Al escribir una, Cerno propone las que ya existen.",
             ],
         ),

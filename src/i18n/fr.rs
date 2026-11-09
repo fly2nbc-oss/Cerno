@@ -470,7 +470,7 @@ pub static TEXTS: Texts = Texts {
     keyword_remove: "Retirer",
     keyword_too_long: "Les anciens programmes n'en voient que les 64 premiers caractères (les lettres accentuées comptent double). Il est enregistré en entier.",
     comment_too_long: "Les anciens programmes n'en voient que les 2000 premiers caractères (les lettres accentuées comptent double). Il est enregistré en entier.",
-    description_note: "Entrée ajoute un mot-clé, Échap quitte le champ. Le commentaire et les mots-clés sont écrits dans le fichier (IPTC et XMP), là où Windows, Lightroom et digiKam les lisent.",
+    description_note: "Entrée ajoute un mot-clé, ↑/↓ choisissent une suggestion, Échap quitte le champ. Le commentaire et les mots-clés sont écrits dans le fichier (IPTC et XMP), là où Windows, Lightroom et digiKam les lisent.",
     description_waiting: "Lecture …",
     row_laion: "LAION (CLIP)",
     row_v25: "V2.5 (SigLIP)",
@@ -701,7 +701,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "Choisir « Top 50 photos » dans la première case de la barre de filtres : Cerno propose les meilleures, d'abord une par série.",
                 "L'esthétique et la netteté sous la photo aident à décider – les étoiles, c'est vous qui les donnez.",
-                "Filtre › Par liste de fichiers … : collez les noms choisis par un client – seules ces photos restent.",
+                "Barre de menu (F10) › Photos affichées › Par liste de fichiers … : collez les noms choisis par un client – seules ces photos restent.",
                 "Photos affichées › Par mot-clé … : seulement les photos ayant l'un des mots-clés choisis. Quand vous tapez un mot-clé, Cerno propose ceux qui existent déjà.",
             ],
         ),

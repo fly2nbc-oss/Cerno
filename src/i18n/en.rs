@@ -440,7 +440,7 @@ pub static TEXTS: Texts = Texts {
     keyword_remove: "Remove",
     keyword_too_long: "Older programs see only the first 64 characters (accented letters count twice). It is saved in full.",
     comment_too_long: "Older programs see only the first 2000 characters (accented letters count twice). It is saved in full.",
-    description_note: "Enter adds a keyword, Esc leaves the field. Comment and keywords are written into the file (IPTC and XMP), where Windows, Lightroom and digiKam read them.",
+    description_note: "Enter adds a keyword, ↑/↓ pick a suggestion, Esc leaves the field. Comment and keywords are written into the file (IPTC and XMP), where Windows, Lightroom and digiKam read them.",
     description_waiting: "Reading …",
     row_laion: "LAION (CLIP)",
     row_v25: "V2.5 (SigLIP)",
@@ -667,7 +667,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "Choose “Top 50 photos” in the filter bar's first box: Cerno suggests the best, one from each series first.",
                 "Aesthetics and sharpness under the photo help you decide – the stars are yours to give.",
-                "Filter › By file list …: paste the names a client chose – only those photos show.",
+                "Menu bar (F10) › Photos on screen › By file list …: paste the names a client chose – only those photos show.",
                 "Photos on screen › By keyword …: only the photos with one of the chosen keywords. While you type a keyword, Cerno offers the ones already in use.",
             ],
         ),

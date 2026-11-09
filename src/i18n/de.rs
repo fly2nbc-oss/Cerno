@@ -445,7 +445,7 @@ pub static TEXTS: Texts = Texts {
     keyword_remove: "Entfernen",
     keyword_too_long: "Ältere Programme sehen nur die ersten 64 Zeichen (Umlaute zählen doppelt). Gespeichert wird es ganz.",
     comment_too_long: "Ältere Programme sehen nur die ersten 2000 Zeichen (Umlaute zählen doppelt). Gespeichert wird er ganz.",
-    description_note: "Enter fügt ein Stichwort hinzu, Esc verlässt das Feld. Kommentar und Stichwörter stehen in der Datei (IPTC und XMP), wie Windows, Lightroom und digiKam sie lesen.",
+    description_note: "Enter fügt ein Stichwort hinzu, ↑/↓ wählen einen Vorschlag, Esc verlässt das Feld. Kommentar und Stichwörter stehen in der Datei (IPTC und XMP), wie Windows, Lightroom und digiKam sie lesen.",
     description_waiting: "Wird gelesen …",
     row_laion: "LAION (CLIP)",
     row_v25: "V2.5 (SigLIP)",
@@ -676,7 +676,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "Im ersten Feld der Filterleiste „Top 50 Fotos“ wählen: Cerno schlägt die besten vor, aus jeder Serie zuerst eines.",
                 "Ästhetik und Schärfe unter dem Foto helfen beim Entscheiden – die Sterne vergibst du.",
-                "Filter › Nach Dateiliste …: die Namen einfügen, die ein Kunde gewählt hat – nur diese Fotos bleiben.",
+                "Menüleiste (F10) › Sichtbare Fotos › Nach Dateiliste …: die Namen einfügen, die ein Kunde gewählt hat – nur diese Fotos bleiben.",
                 "Sichtbare Fotos › Nach Stichwort …: nur die Fotos mit einem der gewählten Stichwörter. Beim Tippen eines Stichworts schlägt Cerno die vor, die es schon gibt.",
             ],
         ),
