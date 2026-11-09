@@ -151,6 +151,10 @@ struct Places {
     cursor: Option<Cursor>,
     clicked: Option<Slot>,
     cursor_rect: Option<Rect>,
+    /// The boxes drawn now are inside the side-scrolling area. Only there may the frame ask
+    /// for a scroll: a request from outside would reach the next scroll area drawn this frame
+    /// (the menu bar's, the details panel's) and move it.
+    in_scroll: bool,
 }
 
 impl Places {
@@ -159,6 +163,7 @@ impl Places {
             cursor,
             clicked: None,
             cursor_rect: None,
+            in_scroll: false,
         }
     }
 
@@ -182,7 +187,7 @@ impl Places {
             StrokeKind::Outside,
         );
         // At once: a key's step is no reason to animate, and the frame must not lag behind.
-        if cursor.scroll {
+        if cursor.scroll && self.in_scroll {
             ui.scroll_to_rect_animation(
                 rect.expand(8.0),
                 None,
@@ -244,6 +249,7 @@ pub fn toolbar(
                         let camera = camera_box(ui, options, info.cameras, info.camera);
                         left.place(ui, Slot::Camera, &camera);
                         separator(ui);
+                        left.in_scroll = true;
                         let boxes = ScrollArea::horizontal()
                             .id_salt("filter-boxes")
                             .max_width(ui.available_width())
@@ -298,6 +304,7 @@ pub fn toolbar(
                                     }
                                 });
                             });
+                        left.in_scroll = false;
                         overflow_hint(
                             ui.painter(),
                             boxes.inner_rect,
