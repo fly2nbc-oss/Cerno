@@ -269,6 +269,8 @@ impl CernoApp {
             .unwrap_or(0);
         self.current = view::skip_pinned(view.len(), current, pinned, 1).unwrap_or(current);
         self.view = view;
+        // Built with `view_options`: no second build when the scene view opens or closes.
+        self.viewer.scene_state.ordered = self.viewer.scenes;
         if self.view.get(self.current) != before.as_ref() {
             self.start_whole();
         }

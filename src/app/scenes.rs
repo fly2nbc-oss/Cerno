@@ -24,8 +24,8 @@ pub(super) struct SceneState {
     /// The view's list and build the scenes belong to.
     from: (Weak<Vec<PathBuf>>, u64),
     scenes: Arc<Vec<Scene>>,
-    /// The view was built for the scene view (capture-time order).
-    ordered: bool,
+    /// The view was built for the scene view (capture-time order); set with every build.
+    pub(super) ordered: bool,
 }
 
 impl CernoApp {
