@@ -41,6 +41,21 @@ pub static TEXTS: Texts = Texts {
     name_list_chip_tooltip: "Solo las fotos de la lista pegada: un clic vuelve a mostrar todas",
     name_list_found: |found, total| format!("{found} de {total} encontrados"),
     name_list_chip: |found, total| format!("Lista {found}/{total}  ×"),
+    menu_keywords: "Por palabra clave …",
+    keywords_title: "Filtrar por palabra clave",
+    keywords_intro: "Solo las fotos con una de las palabras clave elegidas, o sin ninguna. El número indica cuántas fotos de la carpeta la tienen.",
+    keywords_search_hint: "Buscar una palabra clave …",
+    keywords_none: "Sin palabras clave",
+    keywords_empty: "Las fotos de esta carpeta aún no tienen palabras clave.",
+    keywords_unread: |n| {
+        if n == 1 {
+            "1 foto aún no se ha leído; sus palabras clave faltan aquí.".to_owned()
+        } else {
+            format!("{n} fotos aún no se han leído; sus palabras clave faltan aquí.")
+        }
+    },
+    keywords_chip: |label| format!("Palabra clave: {label}  ×"),
+    keywords_chip_tooltip: |names| format!("Solo fotos con: {names} – un clic muestra todas"),
     align_camera_hint: "Desplaza la hora de captura de todas las fotos de la cámara derecha en esta carpeta, para que la foto derecha se tomara en el mismo momento que la izquierda. Solo en el índice: los archivos conservan su hora.",
     align_needs_compare: "Primero compara dos fotos de cámaras distintas (C)",
     align_no_time: "A una de las dos fotos le falta la cámara o la hora de captura",
@@ -418,6 +433,8 @@ pub static TEXTS: Texts = Texts {
     comment_hint: "Escribir un comentario …",
     keyword_hint: "Añadir palabra clave …",
     keyword_remove: "Quitar",
+    keyword_too_long: "Los programas antiguos solo ven los primeros 64 caracteres (las letras acentuadas cuentan doble). Se guarda completa.",
+    comment_too_long: "Los programas antiguos solo ven los primeros 2000 caracteres (las letras acentuadas cuentan doble). Se guarda completo.",
     description_note: "Intro añade una palabra clave, Esc sale del campo. El comentario y las palabras clave se escriben en el archivo (IPTC y XMP), donde Windows, Lightroom y digiKam los leen.",
     description_waiting: "Leyendo …",
     row_laion: "LAION (CLIP)",
@@ -650,6 +667,7 @@ pub static TEXTS: Texts = Texts {
                 "Elegir «Top 50 fotos» en la primera casilla de la barra de filtros: Cerno propone las mejores, primero una de cada serie.",
                 "La estética y la nitidez bajo la foto ayudan a decidir; las estrellas las pones tú.",
                 "Filtro › Por lista de archivos …: pega los nombres que eligió un cliente – solo quedan esas fotos.",
+                "Fotos visibles › Por palabra clave …: solo las fotos con una de las palabras clave elegidas. Al escribir una, Cerno propone las que ya existen.",
             ],
         ),
         (

@@ -7,6 +7,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **Filter by keyword** – *Photos on screen ▸ By keyword …* lists the folder's keywords with how many photos have each, the most used first, and *Without keywords*. Tick one or more (type to narrow the list; `↑`/`↓` and `Enter` tick, `Ctrl+Enter` applies): only the photos with one of them show, together with the other filters. A chip in the filter bar names the choice; a click on it or *Show all* ends it, `Shift+T` sets it aside with the rest. It is not saved and ends when another folder opens.
+- **Keyword suggestions** – while you type a keyword in the description tab, the keywords this folder already has show below the field (the most used first, then those of your other folders); `↓`/`↑` and `Enter` or a click take one. "bodensee" and "Bodensee" are one keyword: a word Cerno knows keeps the spelling the folder uses, and a photo never gets it twice.
+- **Long keywords and comments are marked** – a keyword over 64 bytes or a comment over 2000 bytes (an umlaut counts twice) shows a warning: older programs that read only IPTC IIM see it cut short. Cerno still saves it whole.
+
+### Fixed
+
+- **A removed keyword stays removed in Lightroom** – Lightroom keeps keyword hierarchies (`Places|Lake Constance`) in a field of its own. Removing a keyword in Cerno now also removes the hierarchy entries that end in it, in the photo and in a RAW's `.xmp` file, so Lightroom's *Read Metadata from File* no longer brings it back. Keywords added in Cerno stay plain; a photo without a hierarchy gets none.
+
+### Under the hood
+
+- **Keywords are in the index** – every photo is read once more after the update (without decoding it) to learn its keywords.
+
 ## [1.14.0] – 2026-11-09
 
 Only one camera's photos, the filter off for a moment with `Shift+T`, a warning when a RAW preview is too small to judge sharpness – and marks that could not be written are no longer lost.

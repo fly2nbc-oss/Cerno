@@ -41,6 +41,21 @@ pub static TEXTS: Texts = Texts {
     name_list_chip_tooltip: "Nur die Fotos der eingefügten Liste – Klick zeigt wieder alle",
     name_list_found: |found, total| format!("{found} von {total} gefunden"),
     name_list_chip: |found, total| format!("Liste {found}/{total}  ×"),
+    menu_keywords: "Nach Stichwort …",
+    keywords_title: "Nach Stichwort filtern",
+    keywords_intro: "Nur die Fotos mit einem der gewählten Stichwörter – oder ohne Stichwort. Die Zahl sagt, wie viele Fotos des Ordners es haben.",
+    keywords_search_hint: "Stichwort suchen …",
+    keywords_none: "Ohne Stichwort",
+    keywords_empty: "Die Fotos dieses Ordners haben noch keine Stichwörter.",
+    keywords_unread: |n| {
+        if n == 1 {
+            "1 Foto ist noch nicht gelesen; seine Stichwörter fehlen hier.".to_owned()
+        } else {
+            format!("{n} Fotos sind noch nicht gelesen; ihre Stichwörter fehlen hier.")
+        }
+    },
+    keywords_chip: |label| format!("Stichwort: {label}  ×"),
+    keywords_chip_tooltip: |names| format!("Nur Fotos mit: {names} – Klick zeigt wieder alle"),
     align_camera_hint: "Verschiebt die Aufnahmezeit aller Fotos der rechten Kamera in diesem Ordner, sodass das rechte Foto zur selben Zeit entstand wie das linke. Nur im Index – die Dateien behalten ihre Zeit.",
     align_needs_compare: "Erst zwei Fotos verschiedener Kameras vergleichen (C)",
     align_no_time: "Einem der beiden Fotos fehlt die Kamera oder die Aufnahmezeit",
@@ -418,6 +433,8 @@ pub static TEXTS: Texts = Texts {
     comment_hint: "Kommentar schreiben …",
     keyword_hint: "Stichwort hinzufügen …",
     keyword_remove: "Entfernen",
+    keyword_too_long: "Ältere Programme sehen nur die ersten 64 Zeichen (Umlaute zählen doppelt). Gespeichert wird es ganz.",
+    comment_too_long: "Ältere Programme sehen nur die ersten 2000 Zeichen (Umlaute zählen doppelt). Gespeichert wird er ganz.",
     description_note: "Enter fügt ein Stichwort hinzu, Esc verlässt das Feld. Kommentar und Stichwörter stehen in der Datei (IPTC und XMP), wie Windows, Lightroom und digiKam sie lesen.",
     description_waiting: "Wird gelesen …",
     row_laion: "LAION (CLIP)",
@@ -650,6 +667,7 @@ pub static TEXTS: Texts = Texts {
                 "Im ersten Feld der Filterleiste „Top 50 Fotos“ wählen: Cerno schlägt die besten vor, aus jeder Serie zuerst eines.",
                 "Ästhetik und Schärfe unter dem Foto helfen beim Entscheiden – die Sterne vergibst du.",
                 "Filter › Nach Dateiliste …: die Namen einfügen, die ein Kunde gewählt hat – nur diese Fotos bleiben.",
+                "Sichtbare Fotos › Nach Stichwort …: nur die Fotos mit einem der gewählten Stichwörter. Beim Tippen eines Stichworts schlägt Cerno die vor, die es schon gibt.",
             ],
         ),
         (

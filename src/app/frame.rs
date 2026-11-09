@@ -445,6 +445,7 @@ impl CernoApp {
             .options
             .camera
             .map(|pick| self.camera_label(pick, &cameras));
+        let keyword_chip = self.keywords.chip();
         let info = filter_bar::ToolbarInfo {
             stale: self.options.depends_on_scores()
                 && self.board.version() != self.browse.view_version,
@@ -455,6 +456,9 @@ impl CernoApp {
             has_videos,
             has_deleted: self.has_deleted(),
             name_list: self.name_list.counts(),
+            keywords: keyword_chip
+                .as_ref()
+                .map(|(label, tooltip)| (label.as_str(), tooltip.as_str())),
             cameras: &cameras,
             camera: camera.as_deref(),
         };

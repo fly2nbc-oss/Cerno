@@ -33,6 +33,7 @@ mod filter_aside;
 mod frame;
 mod gate;
 mod keys;
+mod keywords;
 mod layer;
 mod marks;
 mod menu;
@@ -97,6 +98,8 @@ pub struct CernoApp {
     deleted: deleted::Deleted,
     /// The pasted file-name list (*Filter ▸ By file list …*).
     name_list: name_list::NameList,
+    /// The keyword filter's pick and the folder's vocabulary (*By keyword …*, suggestions).
+    keywords: keywords::Keywords,
     /// Camera clocks set right in the open folder (*Camera time …*).
     camera_time: camera_time::CameraTime,
     /// What is shown, after sorting, filtering and hiding pending deletions.
@@ -235,6 +238,7 @@ impl CernoApp {
             top: None,
             hide_rejected: db.setting("hide_rejected").as_deref() == Some("1"),
             name_list: false,
+            keywords: false,
             camera: None,
         };
         let marks = marks::Marks::restore(&db);
@@ -269,6 +273,7 @@ impl CernoApp {
             folder,
             deleted: deleted::Deleted::default(),
             name_list: name_list::NameList::default(),
+            keywords: keywords::Keywords::default(),
             camera_time: camera_time::CameraTime::default(),
             view: View::default(),
             current: 0,

@@ -22,6 +22,7 @@ mod frames;
 mod histogram;
 mod i18n;
 mod jpeg_info;
+mod keywords;
 mod library;
 mod loader;
 mod metadata;

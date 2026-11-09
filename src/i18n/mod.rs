@@ -248,6 +248,18 @@ pub struct Texts {
     pub name_list_chip_tooltip: &'static str,
     pub name_list_found: fn(usize, usize) -> String,
     pub name_list_chip: fn(usize, usize) -> String,
+    /// The keyword filter (CER-68): the menu bar's row, the card, the chip.
+    pub menu_keywords: &'static str,
+    pub keywords_title: &'static str,
+    pub keywords_intro: &'static str,
+    pub keywords_search_hint: &'static str,
+    /// The card's row for the photos without any keyword (also the chip's label).
+    pub keywords_none: &'static str,
+    pub keywords_empty: &'static str,
+    /// Photos the analysis has not read yet: their keywords are not in the card.
+    pub keywords_unread: fn(usize) -> String,
+    pub keywords_chip: fn(&str) -> String,
+    pub keywords_chip_tooltip: fn(&str) -> String,
     pub align_camera_hint: &'static str,
     pub align_needs_compare: &'static str,
     pub align_no_time: &'static str,
@@ -688,6 +700,10 @@ pub struct Texts {
     pub keyword_hint: &'static str,
     /// Tooltip of a keyword's ×.
     pub keyword_remove: &'static str,
+    /// Tooltip of a keyword longer than IPTC IIM keeps (64 bytes): written whole anyway.
+    pub keyword_too_long: &'static str,
+    /// Under a comment longer than IPTC IIM keeps (2000 bytes): written whole anyway.
+    pub comment_too_long: &'static str,
     /// Under the fields: how they are used and where the values go.
     pub description_note: &'static str,
     /// While the photo is still loading, its comment and keywords are not known yet.
@@ -898,6 +914,15 @@ mod tests {
                 "{name}"
             );
             assert!((t.bulk_restore)(12).contains("12"), "{name}");
+            assert!((t.keywords_unread)(12).contains("12"), "{name}");
+            assert!(
+                (t.keywords_chip)("Bodensee +2").contains("Bodensee +2"),
+                "{name}"
+            );
+            assert!(
+                (t.keywords_chip_tooltip)("Bodensee, Familie").contains("Bodensee, Familie"),
+                "{name}"
+            );
             for list in [t.name_list_found, t.name_list_chip] {
                 let text = list(23, 25);
                 assert!(text.contains("23") && text.contains("25"), "{name}");

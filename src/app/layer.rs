@@ -4,6 +4,8 @@
 
 use crate::ui::help::Page;
 
+use crate::ui::keywords as keyword_card;
+
 use super::menu::{ConfirmAction, RowList};
 use super::{camera_time, name_list};
 
@@ -25,6 +27,8 @@ pub(super) enum Layer {
     },
     /// The file-list card (*Visible photos ▸ By file list …*).
     NameList(name_list::Card),
+    /// The keyword filter's card (*Visible photos ▸ By keyword …*).
+    Keywords(keyword_card::Card),
     /// The camera time card (*Visible photos ▸ Camera time …*).
     CameraTime(camera_time::Card),
     /// The marks that could not be written (the info bar's warning); `exiting`: Cerno is being
@@ -53,6 +57,7 @@ impl Layer {
             Self::Models
                 | Self::Confirm { .. }
                 | Self::NameList(_)
+                | Self::Keywords(_)
                 | Self::CameraTime(_)
                 | Self::Unsaved { .. }
         )
@@ -60,6 +65,10 @@ impl Layer {
 
     pub(super) fn is_name_list(&self) -> bool {
         matches!(self, Self::NameList(_))
+    }
+
+    pub(super) fn is_keywords(&self) -> bool {
+        matches!(self, Self::Keywords(_))
     }
 
     pub(super) fn is_camera_time(&self) -> bool {

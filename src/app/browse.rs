@@ -171,10 +171,13 @@ impl CernoApp {
         self.options.similar = false;
         self.options.filter.set(FilterKind::Deleted, false);
         self.options.name_list = false;
+        self.options.keywords = false;
         // The cameras are this folder's.
         self.options.camera = None;
         self.name_list.forget();
         self.layer.close_if(Layer::is_name_list);
+        self.keywords.forget();
+        self.layer.close_if(Layer::is_keywords);
         self.browse.similar_to = None;
         self.options.top = None;
         self.browse.top_pick.clear();
@@ -372,6 +375,9 @@ impl CernoApp {
         if !self.options.name_list {
             self.name_list.drop_applied();
         }
+        if !self.options.keywords {
+            self.keywords.drop_applied();
+        }
         self.save_options();
         if self.browse.top_pick_for != self.options.top_key() {
             self.pick_top();
@@ -519,10 +525,12 @@ impl CernoApp {
     fn facts(&self, path: &Path) -> Option<Facts> {
         let deleted = self.is_deleted(path);
         let listed = self.is_listed(path);
+        let tagged = self.is_tagged(path);
         let Some(known) = self.board.get(path) else {
-            return (deleted || listed).then(|| Facts {
+            return (deleted || listed || tagged).then(|| Facts {
                 deleted,
                 listed,
+                tagged,
                 ..Facts::default()
             });
         };
@@ -542,6 +550,7 @@ impl CernoApp {
             top: self.browse.top_pick.contains(path),
             deleted,
             listed,
+            tagged,
         })
     }
 

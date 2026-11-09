@@ -41,6 +41,23 @@ pub static TEXTS: Texts = Texts {
     name_list_chip_tooltip: "Seulement les photos de la liste collée – un clic les montre toutes",
     name_list_found: |found, total| format!("{found} sur {total} trouvés"),
     name_list_chip: |found, total| format!("Liste {found}/{total}  ×"),
+    menu_keywords: "Par mot-clé …",
+    keywords_title: "Filtrer par mot-clé",
+    keywords_intro: "Seulement les photos ayant l'un des mots-clés choisis – ou aucun. Le nombre indique combien de photos du dossier l'ont.",
+    keywords_search_hint: "Chercher un mot-clé …",
+    keywords_none: "Sans mot-clé",
+    keywords_empty: "Les photos de ce dossier n'ont pas encore de mots-clés.",
+    keywords_unread: |n| {
+        if n == 1 {
+            "1 photo n'est pas encore lue ; ses mots-clés manquent ici.".to_owned()
+        } else {
+            format!("{n} photos ne sont pas encore lues ; leurs mots-clés manquent ici.")
+        }
+    },
+    keywords_chip: |label| format!("Mot-clé : {label}  ×"),
+    keywords_chip_tooltip: |names| {
+        format!("Seulement les photos avec : {names} – un clic les montre toutes")
+    },
     align_camera_hint: "Décale l'heure de prise de vue de toutes les photos de l'appareil de droite dans ce dossier, pour que la photo de droite ait été prise au même moment que celle de gauche. Seulement dans l'index – les fichiers gardent leur heure.",
     align_needs_compare: "Comparer d'abord deux photos d'appareils différents (C)",
     align_no_time: "Il manque l'appareil ou l'heure de prise de vue à l'une des deux photos",
@@ -441,6 +458,8 @@ pub static TEXTS: Texts = Texts {
     comment_hint: "Écrire un commentaire …",
     keyword_hint: "Ajouter un mot-clé …",
     keyword_remove: "Retirer",
+    keyword_too_long: "Les anciens programmes n'en voient que les 64 premiers caractères (les lettres accentuées comptent double). Il est enregistré en entier.",
+    comment_too_long: "Les anciens programmes n'en voient que les 2000 premiers caractères (les lettres accentuées comptent double). Il est enregistré en entier.",
     description_note: "Entrée ajoute un mot-clé, Échap quitte le champ. Le commentaire et les mots-clés sont écrits dans le fichier (IPTC et XMP), là où Windows, Lightroom et digiKam les lisent.",
     description_waiting: "Lecture …",
     row_laion: "LAION (CLIP)",
@@ -673,6 +692,7 @@ pub static TEXTS: Texts = Texts {
                 "Choisir « Top 50 photos » dans la première case de la barre de filtres : Cerno propose les meilleures, d'abord une par série.",
                 "L'esthétique et la netteté sous la photo aident à décider – les étoiles, c'est vous qui les donnez.",
                 "Filtre › Par liste de fichiers … : collez les noms choisis par un client – seules ces photos restent.",
+                "Photos affichées › Par mot-clé … : seulement les photos ayant l'un des mots-clés choisis. Quand vous tapez un mot-clé, Cerno propose ceux qui existent déjà.",
             ],
         ),
         (

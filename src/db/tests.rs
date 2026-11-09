@@ -31,11 +31,52 @@ fn lookup_requires_matching_stamp() {
         ..STAMP
     };
     assert!(db.lookup("a.jpg", changed).unwrap().is_none());
-    db.update_after_write("a.jpg", changed, Rating::Rejected, None)
-        .unwrap();
+    assert_eq!(record.keywords, None, "not read yet");
+    db.update_after_write(
+        "a.jpg",
+        changed,
+        Rating::Rejected,
+        None,
+        &["Bodensee".to_owned()],
+    )
+    .unwrap();
     let updated = db.lookup("a.jpg", changed).unwrap().unwrap();
     assert_eq!(updated.rating, Rating::Rejected);
     assert_eq!(updated.label, None);
+    assert_eq!(
+        updated.keywords.as_deref(),
+        Some(&["Bodensee".to_owned()][..])
+    );
+}
+
+/// A file's keywords: NULL until read, empty for none; the index counts each spelling once
+/// per live file (CER-68).
+#[test]
+fn keywords_are_kept_per_file() {
+    let db = Db::open_in_memory().unwrap();
+    let words = |items: &[&str]| items.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+    for (path, keywords) in [
+        ("/p/a.jpg", words(&["Bodensee", "Familie"])),
+        ("/p/b.jpg", words(&["Bodensee", "Bodensee"])),
+        ("/p/c.jpg", Vec::new()),
+        ("/p/.originals/d.jpg", words(&["Bodensee"])),
+    ] {
+        db.put_file(path, STAMP, 1, Rating::Unrated, None).unwrap();
+        db.put_keywords(path, &keywords).unwrap();
+    }
+    db.put_file("/p/e.jpg", STAMP, 1, Rating::Unrated, None)
+        .unwrap();
+    let keywords = |path| db.lookup(path, STAMP).unwrap().unwrap().keywords;
+    assert_eq!(keywords("/p/a.jpg"), Some(words(&["Bodensee", "Familie"])));
+    assert_eq!(keywords("/p/c.jpg"), Some(Vec::new()), "read: none");
+    assert_eq!(keywords("/p/e.jpg"), None, "not read yet");
+    let mut counts = db.keyword_counts().unwrap();
+    counts.sort();
+    assert_eq!(
+        counts,
+        [("Bodensee".to_owned(), 2), ("Familie".to_owned(), 1)],
+        "a deleted photo's keywords don't count"
+    );
 }
 
 #[test]

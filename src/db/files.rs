@@ -7,7 +7,7 @@ impl Db {
     pub fn lookup(&self, path: &str, stamp: FileStamp) -> Result<Option<FileRecord>> {
         let conn = self.conn();
         let mut stmt = conn.prepare_cached(&format!(
-            "SELECT f.fingerprint, f.rating, f.label, {IMAGE_COLUMNS}
+            "SELECT f.fingerprint, f.rating, f.label, f.keywords, {IMAGE_COLUMNS}
              FROM files f LEFT JOIN images i ON i.fingerprint = f.fingerprint
              WHERE f.path = ?1 AND f.size = ?2 AND f.mtime_ns = ?3"
         ))?;
@@ -22,7 +22,11 @@ impl Db {
                         .get::<_, Option<String>>(2)?
                         .as_deref()
                         .and_then(Label::from_stored),
-                    image: image_from_row(row, 3)?,
+                    keywords: row
+                        .get::<_, Option<String>>(3)?
+                        .as_deref()
+                        .map(crate::keywords::split),
+                    image: image_from_row(row, 4)?,
                 })
             })
             .optional()?;
@@ -65,6 +69,35 @@ impl Db {
         Ok(())
     }
 
+    /// The file's keywords as read (CER-68); the row exists (`put_file` just wrote it).
+    pub fn put_keywords(&self, path: &str, keywords: &[String]) -> Result<()> {
+        self.conn()
+            .prepare_cached("UPDATE files SET keywords = ?2 WHERE path = ?1")?
+            .execute(params![path, crate::keywords::join(keywords)])?;
+        Ok(())
+    }
+
+    /// Every keyword of the index with the number of files that have it – live ones only
+    /// (`live`): the description tab's suggestions after the folder's own.
+    pub fn keyword_counts(&self) -> Result<Vec<(String, usize)>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(&format!(
+            "SELECT keywords FROM files WHERE keywords IS NOT NULL AND keywords != '' AND {}",
+            live("path")
+        ))?;
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+        for stored in rows {
+            let mut seen = HashSet::new();
+            for keyword in crate::keywords::split(&stored?) {
+                if seen.insert(keyword.clone()) {
+                    *counts.entry(keyword).or_default() += 1;
+                }
+            }
+        }
+        Ok(counts.into_iter().collect())
+    }
+
     /// Drops the path so the next analysis fingerprints the file again. Used after a pixel edit
     /// or a quarter turn: size and mtime are put back on purpose, so the stamp would otherwise
     /// still match and the old scores would stick. The `images` row stays; ratings history and
@@ -103,18 +136,20 @@ impl Db {
         Ok(())
     }
 
-    /// After Cerno wrote a rating or colour label: the size changed, the mtime deliberately did
-    /// not. Updating the stamp here avoids re-fingerprinting the file.
+    /// After Cerno wrote a rating, colour label or keywords: the size changed, the mtime
+    /// deliberately did not. Updating the stamp here avoids re-fingerprinting the file.
     pub fn update_after_write(
         &self,
         path: &str,
         stamp: FileStamp,
         rating: Rating,
         label: Option<Label>,
+        keywords: &[String],
     ) -> Result<()> {
         self.conn()
             .prepare_cached(
-                "UPDATE files SET size = ?2, mtime_ns = ?3, rating = ?4, label = ?5 WHERE path = ?1",
+                "UPDATE files SET size = ?2, mtime_ns = ?3, rating = ?4, label = ?5, keywords = ?6
+                 WHERE path = ?1",
             )?
             .execute(params![
                 path,
@@ -122,6 +157,7 @@ impl Db {
                 stamp.mtime_ns,
                 rating.value(),
                 label.map(|l| l.xmp_name()),
+                crate::keywords::join(keywords),
             ])?;
         Ok(())
     }
