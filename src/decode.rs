@@ -550,6 +550,32 @@ mod tests {
         assert!(decode_for_display(b"II*\0 nothing", Format::Raw, 1, [9, 9]).is_err());
     }
 
+    /// A real HEIC through libheif and its HEVC decoder (the rating round trip only goes
+    /// through ExifTool): `CERNO_TEST_HEIC=<file.heic> cargo test --features heic -- --ignored
+    /// --nocapture heic`. Prints the libheif version the test binary loaded.
+    #[cfg(feature = "heic")]
+    #[test]
+    #[ignore = "needs a HEIC sample in CERNO_TEST_HEIC"]
+    fn heic_decodes() {
+        let path = std::env::var_os("CERNO_TEST_HEIC").expect("set CERNO_TEST_HEIC");
+        let bytes = std::fs::read(&path).unwrap();
+        let image = decode_for_display(&bytes, Format::Heif, 1, [1024, 1024])
+            .unwrap_or_else(|e| panic!("{}: {e:#}", path.display()));
+        let [major, minor, patch] = libheif_rs::LibHeif::new().version();
+        println!(
+            "libheif {major}.{minor}.{patch}: {} × {} (full size {:?})",
+            image.width, image.height, image.original_size
+        );
+        assert!(image.width > 0 && image.height > 0);
+        assert!(image.width.max(image.height) <= 1024);
+        assert_eq!(
+            image.rgb.len(),
+            image.width as usize * image.height as usize * 3
+        );
+        // Not one flat colour: the HEVC decoder ran (a missing one fails above anyway).
+        assert!(image.rgb.chunks(3).any(|px| px != &image.rgb[..3]));
+    }
+
     /// 3×2 test image; every pixel's red channel is its letter:
     /// ```text
     /// A B C

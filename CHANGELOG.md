@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Security
+
+- On Windows, HEIC photos are decoded with libheif 1.23.7 instead of 1.23.5 (libde265 stays 1.1.3). It fixes flaws a crafted HEIC file could trigger, among them a deadlock while a grid photo decodes – the way phones store their photos – and files of a few kilobytes that kept the processor busy for more than a minute; such a file is now refused with an error. Every step of the colour conversion is checked as well. The Linux packages use the distribution's libheif.
+
 ## [1.14.0] – 2026-11-09
 
 Only one camera's photos, the filter off for a moment with `Shift+T`, a warning when a RAW preview is too small to judge sharpness – and marks that could not be written are no longer lost.

@@ -42,7 +42,7 @@ The first build downloads ONNX Runtime. A release build puts `DirectML.dll` next
 ```bash
 cargo install cargo-vcpkg && cargo vcpkg build
 target\vcpkg\bootstrap-vcpkg.bat -disableMetrics
-target\vcpkg\vcpkg.exe install "libheif[core]:x64-windows"
+target\vcpkg\vcpkg.exe install "libheif[core,libde265]:x64-windows"
 cargo clean -p libheif-sys
 cargo build --release --features heic
 ```

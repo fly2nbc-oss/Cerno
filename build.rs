@@ -138,7 +138,20 @@ fn copy_heic_dlls(profile: &Path) {
         panic!(
             "no HEIC DLLs in {}.\n\
              Install the dynamic triplet (the static one must not be linked):\n\
-             target\\vcpkg\\vcpkg.exe install \"libheif[core]:x64-windows\"",
+             target\\vcpkg\\vcpkg.exe install \"libheif[core,libde265]:x64-windows\"",
+            bin.display()
+        );
+    }
+    // Since libheif 1.23.6 the port's HEVC decoder is the feature `libde265`; without it
+    // heif.dll builds and loads, but has no decoder for any HEIC.
+    let decoder = dlls.iter().any(|dll| {
+        dll.file_name()
+            .is_some_and(|n| n.eq_ignore_ascii_case("libde265.dll"))
+    });
+    if !decoder {
+        panic!(
+            "no libde265.dll in {}: libheif was built without its HEVC decoder.\n\
+             target\\vcpkg\\vcpkg.exe install \"libheif[core,libde265]:x64-windows\" --recurse",
             bin.display()
         );
     }
@@ -179,7 +192,7 @@ fn dlls_in(dir: &Path) -> Vec<PathBuf> {
         panic!(
             "HEIC DLLs not found in {} ({err}).\n\
              Install the dynamic triplet:\n\
-             target\\vcpkg\\vcpkg.exe install \"libheif[core]:x64-windows\"",
+             target\\vcpkg\\vcpkg.exe install \"libheif[core,libde265]:x64-windows\"",
             dir.display()
         );
     });
