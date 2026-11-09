@@ -193,6 +193,11 @@ pub static TEXTS: Texts = Texts {
     },
     zoom: |percent| format!("Zoom {percent:.0} %"),
     zoom_preview: |percent| format!("Zoom {percent:.0} % de l'aperçu"),
+    small_preview_tooltip: |px| {
+        format!(
+            "Aperçu de {px} px seulement – trop petit pour juger la netteté ; photographier en RAW+JPG"
+        )
+    },
     digital_zoom: |ratio| format!("Zoom numérique {ratio:.1}×"),
     button_toolbar: "Barre de filtres",
     button_details: "Panneau de détails",
@@ -373,6 +378,8 @@ pub static TEXTS: Texts = Texts {
     row_complete: "Complet",
     incomplete_value: "non – la fin manque",
     explain_raw_preview: "Pour les fichiers RAW, Cerno montre le JPEG intégré par l'appareil – aucun développement RAW. Couleurs et exposition sont celles de l'appareil, et 100 % correspond à la taille de cet aperçu, pas à celle du capteur. L'histogramme et l'exposition mesurent l'aperçu.",
+    row_sharpness_check: "Contrôle de netteté",
+    small_preview_value: "aperçu trop petit",
     row_container: "Conteneur",
     row_duration: "Durée",
     row_video: "Vidéo",

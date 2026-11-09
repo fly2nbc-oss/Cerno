@@ -177,6 +177,9 @@ pub static TEXTS: Texts = Texts {
     },
     zoom: |percent| format!("Zoom {percent:.0} %"),
     zoom_preview: |percent| format!("Zoom {percent:.0} % of the preview"),
+    small_preview_tooltip: |px| {
+        format!("Preview only {px} px – too small to judge sharpness; shoot RAW+JPG")
+    },
     digital_zoom: |ratio| format!("{ratio:.1}× digital zoom"),
     button_toolbar: "Filter bar",
     button_details: "Details panel",
@@ -349,6 +352,8 @@ pub static TEXTS: Texts = Texts {
     row_complete: "Complete",
     incomplete_value: "no – the end is missing",
     explain_raw_preview: "For RAW files Cerno shows the JPEG the camera embedded – no RAW development. Colour and exposure are the camera's, and 100 % is this preview's size, not the sensor's. The histogram and the exposure measure the preview.",
+    row_sharpness_check: "Sharpness check",
+    small_preview_value: "preview too small",
     row_container: "Container",
     row_duration: "Duration",
     row_video: "Video",

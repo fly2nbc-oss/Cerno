@@ -172,6 +172,11 @@ pub static TEXTS: Texts = Texts {
     },
     zoom: |percent| format!("Zoom {percent:.0} %"),
     zoom_preview: |percent| format!("Zoom {percent:.0} % de la vista previa"),
+    small_preview_tooltip: |px| {
+        format!(
+            "Vista previa de solo {px} px – demasiado pequeña para juzgar la nitidez; fotografiar en RAW+JPG"
+        )
+    },
     digital_zoom: |ratio| format!("Zoom digital {ratio:.1}×"),
     button_toolbar: "Barra de filtros",
     button_details: "Panel de detalles",
@@ -348,6 +353,8 @@ pub static TEXTS: Texts = Texts {
     row_complete: "Completo",
     incomplete_value: "no – falta el final",
     explain_raw_preview: "En los archivos RAW, Cerno muestra el JPEG que incrustó la cámara, sin revelado RAW. El color y la exposición son los de la cámara, y el 100 % es el tamaño de esta vista previa, no el del sensor. El histograma y la exposición miden la vista previa.",
+    row_sharpness_check: "Control de nitidez",
+    small_preview_value: "vista previa muy pequeña",
     row_container: "Contenedor",
     row_duration: "Duración",
     row_video: "Vídeo",

@@ -382,6 +382,9 @@ pub struct Texts {
     pub zoom: fn(f32) -> String,
     /// The zoom of a RAW file: 100 % is the size of its preview, not of the sensor.
     pub zoom_preview: fn(f32) -> String,
+    /// A RAW file's preview too small to judge sharpness (`raw::SMALL_PREVIEW_PX`), its long
+    /// side in pixels: the tooltip of the zoom in the info bar and of the row in Details › File.
+    pub small_preview_tooltip: fn(u32) -> String,
     pub digital_zoom: fn(f64) -> String,
     pub button_toolbar: &'static str,
     pub button_details: &'static str,
@@ -616,6 +619,10 @@ pub struct Texts {
     pub row_complete: &'static str,
     pub incomplete_value: &'static str,
     pub explain_raw_preview: &'static str,
+    /// Details › File, only for a RAW file whose preview is too small to judge sharpness; its
+    /// value is `small_preview_value`, its tooltip `small_preview_tooltip`.
+    pub row_sharpness_check: &'static str,
+    pub small_preview_value: &'static str,
     /// The file section of a video (`playback::probe`).
     pub row_container: &'static str,
     pub row_duration: &'static str,
@@ -848,6 +855,10 @@ mod tests {
             assert!((t.personal_hint)(2.4).contains("2.4"), "{name}");
             assert!((t.zoom)(250.0).contains("250"), "{name}");
             assert!((t.zoom_preview)(100.0).contains("100"), "{name}");
+            assert!(
+                (t.small_preview_tooltip)(1616).contains("1616 px"),
+                "{name}"
+            );
             assert!((t.bulk_restore)(12).contains("12"), "{name}");
             for list in [t.name_list_found, t.name_list_chip] {
                 let text = list(23, 25);

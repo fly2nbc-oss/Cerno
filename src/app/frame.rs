@@ -322,6 +322,9 @@ impl CernoApp {
             similarity: self.similarity_to_reference(&path),
             deleted: self.is_deleted(&path),
             raw_preview: library::format_of(&path).is_some_and(library::Format::is_raw),
+            small_preview: image.as_deref().and_then(|image| {
+                crate::raw::small_preview(library::format_of(&path), image.original_size)
+            }),
             time_offset: self.time_offset_of(&path),
             pair: self.pair_note(&path).map(|(note, _)| note),
             filtered: (!toolbar && self.options.is_filtered()).then(|| self.library_total()),

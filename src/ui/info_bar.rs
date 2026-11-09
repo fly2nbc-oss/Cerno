@@ -1,8 +1,10 @@
 //! The info bar at the bottom: name and facts, stars and scores, exposure and camera, then
 //! one block of buttons – what the photo area shows, which bars show, help.
 
+use std::ops::Range;
 use std::sync::Arc;
 
+use eframe::egui::text::{LayoutJob, TextFormat};
 use eframe::egui::{
     Align2, Color32, CursorIcon, FontId, Galley, Painter, Pos2, Rect, Sense, Stroke, StrokeKind,
     Ui, Vec2, pos2, vec2,
@@ -72,6 +74,10 @@ pub struct InfoBar<'a> {
     pub deleted: bool,
     /// A RAW file: what shows is the JPEG preview inside it, and 100 % is that preview's size.
     pub raw_preview: bool,
+    /// A RAW file whose preview is too small to judge sharpness (`raw::small_preview`): its
+    /// long side in pixels. The zoom then shows in the warning colour and says so on hover
+    /// (ticket CER-62).
+    pub small_preview: Option<u32>,
     /// The camera's clock was set right by this much (*Camera time …*): the date shows moved.
     pub time_offset: Option<i64>,
     /// A RAW + JPG pair: `RAW+JPG`, and the RAW's marks where they differ.
@@ -249,7 +255,14 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     if bar.auto_advance {
         facts.push(t.auto_advance_on.to_owned());
     }
+    // The zoom of a preview too small to judge sharpness: in the warning colour, with a tooltip.
+    let mut warn = None;
     if let Some(zoom) = bar.zoom {
+        if bar.raw_preview
+            && let Some(px) = bar.small_preview
+        {
+            warn = Some((facts.len(), (t.small_preview_tooltip)(px)));
+        }
         facts.push(if bar.raw_preview {
             (t.zoom_preview)(zoom)
         } else {
@@ -292,18 +305,42 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
         0.0
     };
     let room = (centre - centre_half - 12.0 - facts_left - lead).max(0.0);
-    let mut text = fit_parts(painter, facts, separator, &font, room, Drop::Back);
-    if bar.filtered.is_some() && !text.is_empty() {
-        text.insert_str(0, separator);
-    }
-    let line = left.text(
-        pos2(facts_left, row2),
-        Align2::LEFT_CENTER,
-        text,
-        font,
-        tokens::MUTED,
+    let kept = &facts[fitting(painter, &facts, separator, &font, room, Drop::Back)];
+    let warn = warn.filter(|(index, _)| *index < kept.len());
+    let (job, warned) = facts_job(
+        kept,
+        separator,
+        bar.filtered.is_some(),
+        warn.as_ref().map(|(index, _)| *index),
+        &font,
     );
-    if let Some(tooltip) = date_tooltip {
+    let galley = painter.layout_job(job);
+    let line = Rect::from_min_size(
+        pos2(facts_left, row2 - galley.size().y / 2.0),
+        galley.size(),
+    );
+    left.galley(line.min, galley, tokens::MUTED);
+    // Where the warned part lies: the width of the text before it, then its own.
+    let warned = warned.map(|(before, part)| {
+        let width = |text: String| {
+            painter
+                .layout_no_wrap(text, font.clone(), tokens::MUTED)
+                .size()
+                .x
+        };
+        let x = line.left() + width(before);
+        Rect::from_x_y_ranges(x..=x + width(part), line.y_range())
+    });
+    let mut on_warning = false;
+    if let (Some((_, tooltip)), Some(area)) = (warn, warned) {
+        on_warning = ui
+            .interact(area, ui.id().with("small-preview"), Sense::hover())
+            .on_hover_text(i18n::keep_together(&tooltip))
+            .hovered();
+    }
+    if let Some(tooltip) = date_tooltip
+        && !on_warning
+    {
         ui.interact(line, ui.id().with("facts-line"), Sense::hover())
             .on_hover_text(tooltip);
     }
@@ -450,27 +487,72 @@ enum Drop {
 /// last part always stays; the painter's clip handles the rest).
 fn fit_parts(
     painter: &Painter,
-    mut parts: Vec<String>,
+    parts: Vec<String>,
     separator: &str,
     font: &FontId,
     width: f32,
     drop: Drop,
 ) -> String {
+    parts[fitting(painter, &parts, separator, font, width, drop)].join(separator)
+}
+
+/// Which of `parts` `fit_parts` keeps.
+fn fitting(
+    painter: &Painter,
+    parts: &[String],
+    separator: &str,
+    font: &FontId,
+    width: f32,
+    drop: Drop,
+) -> Range<usize> {
+    let mut kept = 0..parts.len();
     loop {
-        let text = parts.join(separator);
+        let text = parts[kept.clone()].join(separator);
         let fits = painter
-            .layout_no_wrap(text.clone(), font.clone(), tokens::TEXT)
+            .layout_no_wrap(text, font.clone(), tokens::TEXT)
             .size()
             .x
             <= width;
-        if fits || parts.len() <= 1 {
-            return text;
+        if fits || kept.len() <= 1 {
+            return kept;
         }
         match drop {
-            Drop::Front => parts.remove(0),
-            Drop::Back => parts.pop().unwrap_or_default(),
-        };
+            Drop::Front => kept.start += 1,
+            Drop::Back => kept.end -= 1,
+        }
     }
+}
+
+/// The facts line as one text, muted, the part at `warn` in the warning colour; with
+/// `lead`, a separator before it (after the filtered position). Also returns the text before
+/// the warned part and that part, to place its tooltip.
+fn facts_job(
+    parts: &[String],
+    separator: &str,
+    lead: bool,
+    warn: Option<usize>,
+    font: &FontId,
+) -> (LayoutJob, Option<(String, String)>) {
+    let mut job = LayoutJob::default();
+    let mut warned = None;
+    let append = |job: &mut LayoutJob, part: &str, colour: Color32| {
+        job.append(part, 0.0, TextFormat::simple(font.clone(), colour));
+    };
+    if lead && !parts.is_empty() {
+        append(&mut job, separator, tokens::MUTED);
+    }
+    for (index, part) in parts.iter().enumerate() {
+        if index > 0 {
+            append(&mut job, separator, tokens::MUTED);
+        }
+        if warn == Some(index) {
+            warned = Some((job.text.clone(), part.clone()));
+            append(&mut job, part, tokens::STATUS_WARN);
+        } else {
+            append(&mut job, part, tokens::MUTED);
+        }
+    }
+    (job, warned)
 }
 
 /// How many light stars For you shows: its prediction rounded to whole stars, only while the
@@ -990,6 +1072,7 @@ mod tests {
             overlay: None,
             deleted: false,
             raw_preview: false,
+            small_preview: None,
             similarity: None,
             time_offset: None,
             pair: None,
@@ -1293,5 +1376,151 @@ mod tests {
         assert_eq!(light(Rating::Unrated), 3 * 6);
         assert_eq!(light(Rating::Stars(3)), 0);
         assert_eq!(light(Rating::Rejected), 0);
+    }
+
+    /// The facts line's galley and where it is drawn.
+    fn facts_galley(bar: &InfoBar<'_>) -> (Arc<Galley>, Pos2) {
+        facts_galley_at(bar, 1400.0)
+    }
+
+    fn facts_galley_at(bar: &InfoBar<'_>, width: f32) -> (Arc<Galley>, Pos2) {
+        shapes_of(bar, width)
+            .into_iter()
+            .find_map(|shape| match shape {
+                Shape::Text(text) if text.galley.text().starts_with("3 / 120") => {
+                    Some((text.galley, text.pos))
+                }
+                _ => None,
+            })
+            .expect("facts line")
+    }
+
+    /// The colours of the facts line's parts that contain `needle`.
+    fn colours_of(galley: &Galley, needle: &str) -> Vec<Color32> {
+        galley
+            .job
+            .sections
+            .iter()
+            .filter(|section| {
+                let range = &section.byte_range;
+                galley.job.text[range.start.0..range.end.0].contains(needle)
+            })
+            .map(|section| section.format.color)
+            .collect()
+    }
+
+    fn small_raw() -> InfoBar<'static> {
+        InfoBar {
+            raw_preview: true,
+            small_preview: Some(1616),
+            ..bar(false)
+        }
+    }
+
+    /// A RAW whose preview is too small to judge sharpness shows its zoom in the warning colour
+    /// – the rest of the line stays muted and keeps its text; a full-size preview and a JPEG
+    /// don't (ticket CER-62).
+    #[test]
+    fn a_small_preview_shows_its_zoom_as_a_warning() {
+        let (galley, _) = facts_galley(&small_raw());
+        assert_eq!(
+            colours_of(&galley, "Zoom 100 % of the preview"),
+            [tokens::STATUS_WARN]
+        );
+        // The parts before it share one muted section.
+        assert_eq!(
+            colours_of(&galley, "3 / 120   ·   RAW preview   ·   Auto advance"),
+            [tokens::MUTED]
+        );
+        let large = InfoBar {
+            raw_preview: true,
+            ..bar(false)
+        };
+        let (plain, _) = facts_galley(&large);
+        assert_eq!(
+            plain.text(),
+            galley.text(),
+            "the same words, so the same width"
+        );
+        assert_eq!(
+            colours_of(&plain, "Zoom 100 % of the preview"),
+            [tokens::MUTED]
+        );
+        let jpeg = InfoBar {
+            small_preview: Some(1616),
+            ..bar(false)
+        };
+        let (galley, _) = facts_galley(&jpeg);
+        assert!(galley.text().contains("Zoom 100 %"));
+        assert!(
+            galley
+                .job
+                .sections
+                .iter()
+                .all(|section| section.format.color == tokens::MUTED)
+        );
+        let fitted = InfoBar {
+            zoom: None,
+            ..small_raw()
+        };
+        let (galley, _) = facts_galley(&fitted);
+        assert!(!galley.text().contains("Zoom"), "only while zoomed");
+        // A zoom left out for want of room takes its colour along.
+        let (narrow, _) = facts_galley_at(&small_raw(), 760.0);
+        assert!(!narrow.text().contains("Zoom"), "{}", narrow.text());
+        assert!(
+            narrow
+                .job
+                .sections
+                .iter()
+                .all(|section| section.format.color == tokens::MUTED)
+        );
+    }
+
+    /// The warned zoom names the preview's size when the pointer rests on it.
+    #[test]
+    fn a_small_preview_explains_itself_on_hover() {
+        use eframe::egui::Event;
+        let bar = small_raw();
+        let (galley, pos) = facts_galley(&bar);
+        let start = galley.text().find("Zoom").expect("the zoom part");
+        let index = galley.text()[..start].chars().count();
+        let glyph = &galley.rows[0].glyphs[index + 2];
+        let at = pos2(
+            pos.x + galley.rows[0].pos.x + glyph.pos.x,
+            pos.y + galley.size().y / 2.0,
+        );
+        let tooltip = i18n::keep_together(&(i18n::t().small_preview_tooltip)(1616));
+        let ctx = crate::theme::test_context();
+        ctx.all_styles_mut(|style| style.interaction.tooltip_delay = 0.0);
+        let frame = |events: Vec<Event>, time: f64| {
+            let mut output = ctx.run_ui(
+                RawInput {
+                    screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1400.0, 400.0))),
+                    events,
+                    time: Some(time),
+                    ..Default::default()
+                },
+                |ui| {
+                    info_bar(ui, bar_rect(), &bar);
+                },
+            );
+            output.textures_delta.clear();
+            output
+                .shapes
+                .into_iter()
+                .filter_map(|clipped| match clipped.shape {
+                    Shape::Text(text) => Some(text.galley.text().to_owned()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        assert!(!frame(Vec::new(), 0.0).contains(&tooltip));
+        frame(vec![Event::PointerMoved(at)], 0.1);
+        let mut shown = Vec::new();
+        for n in 1..6 {
+            shown = frame(Vec::new(), 0.1 + f64::from(n) * 0.3);
+        }
+        assert!(shown.contains(&tooltip), "the tooltip shows: {shown:?}");
     }
 }

@@ -3,6 +3,21 @@
 
 use memchr::memmem;
 
+use crate::library::Format;
+
+/// A preview whose long side is below this is too small to judge critical focus at 100 %
+/// (Sony ARW ~1616 px, early Canon CR3 1620 × 1080, some drones); the info bar's zoom and
+/// Details › File say so (ticket CER-62). Full-size previews start at ~4000 px.
+pub const SMALL_PREVIEW_PX: u32 = 3000;
+
+/// The long side of a RAW file's preview when it is too small to judge sharpness
+/// (`SMALL_PREVIEW_PX`); `None` for anything else – a JPEG, a RAW with a full-size preview.
+/// `size` is the decoded preview's (turned or not: the long side stays).
+pub fn small_preview(format: Option<Format>, size: [u32; 2]) -> Option<u32> {
+    let long = size[0].max(size[1]);
+    (format.is_some_and(Format::is_raw) && long > 0 && long < SMALL_PREVIEW_PX).then_some(long)
+}
+
 /// Frame headers of baseline, extended and progressive JPEG. The lossless kinds (SOF3 …) hold
 /// the raw sensor data in some formats and are no preview.
 const PREVIEW_FRAMES: [u8; 3] = [0xC0, 0xC1, 0xC2];
@@ -52,6 +67,27 @@ fn frame_size(jpeg: &[u8]) -> Option<(u16, u16)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Only a RAW's (DNG's too) preview below 3000 px on its long side is too small; a JPEG
+    /// never is, whatever its size.
+    #[test]
+    fn a_small_preview_is_named_with_its_long_side() {
+        for format in [Format::Raw, Format::Dng] {
+            assert_eq!(small_preview(Some(format), [1616, 1080]), Some(1616));
+            assert_eq!(small_preview(Some(format), [1080, 1616]), Some(1616));
+            assert_eq!(small_preview(Some(format), [2999, 2000]), Some(2999));
+            assert_eq!(small_preview(Some(format), [3000, 2000]), None);
+            assert_eq!(small_preview(Some(format), [6000, 4000]), None);
+        }
+        for format in [
+            Some(Format::Jpeg),
+            Some(Format::Heif),
+            Some(Format::Video),
+            None,
+        ] {
+            assert_eq!(small_preview(format, [1616, 1080]), None);
+        }
+    }
 
     /// A JPEG header down to its frame header: SOI, an APP1 segment, SOFn.
     fn header(sof: u8, w: u16, h: u16) -> Vec<u8> {
