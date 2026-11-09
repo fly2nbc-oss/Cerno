@@ -101,7 +101,8 @@ fn migrates_an_index_from_the_first_release() {
     assert_eq!(record.image.metadata_version, 0);
     assert_eq!(record.label, None);
     assert_eq!(record.image.camera, None);
-    db.put_metadata(9, Some(1_000), Some("Pixel 7a"), 2)
+    assert_eq!(record.image.camera_serial, None);
+    db.put_metadata(9, Some(1_000), Some("Pixel 7a"), None, 2)
         .unwrap();
     assert_eq!(db.image(9).unwrap().taken_ms, Some(1_000));
     assert_eq!(db.image(9).unwrap().camera.as_deref(), Some("Pixel 7a"));
@@ -114,6 +115,23 @@ fn migrates_an_index_from_the_first_release() {
     db.put_truncated(9, false).unwrap();
     let record = db.lookup("old.jpg", STAMP).unwrap().unwrap();
     assert_eq!(record.image.scores.truncated, Some(false));
+}
+
+/// The body's serial number (`metadata::VERSION` 3) is a column of its own beside the model;
+/// writing the metadata again replaces it, also with none.
+#[test]
+fn the_body_serial_is_stored_with_the_model() {
+    let db = Db::open_in_memory().unwrap();
+    db.put_thumbnail(5, b"jpeg").unwrap();
+    db.put_metadata(5, Some(7), Some("ILCE-7M4"), Some("04821"), 3)
+        .unwrap();
+    let image = db.image(5).unwrap();
+    assert_eq!(image.camera.as_deref(), Some("ILCE-7M4"));
+    assert_eq!(image.camera_serial.as_deref(), Some("04821"));
+    assert_eq!(image.metadata_version, 3);
+    db.put_metadata(5, Some(7), Some("ILCE-7M4"), None, 3)
+        .unwrap();
+    assert_eq!(db.image(5).unwrap().camera_serial, None);
 }
 
 /// Stars count with their number, rejections as 0; a deleted photo is no example.

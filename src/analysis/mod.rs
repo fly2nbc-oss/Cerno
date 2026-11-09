@@ -68,9 +68,29 @@ pub struct Known {
     pub taken_ms: Option<i64>,
     /// `metadata::camera_id` of the camera model; only one camera's photos form a series.
     pub camera: Option<u64>,
+    /// `metadata::camera_id` of the body's serial number, when the file states one: the camera
+    /// filter tells two bodies of one model apart by it.
+    pub serial: Option<u64>,
     /// `None` until the file has been indexed.
     pub fingerprint: Option<u64>,
     pub scores: Scores,
+}
+
+/// `metadata::camera_id` of a model or serial number; the text is kept in `names` for the UI.
+fn remember(names: &RwLock<HashMap<u64, String>>, text: &str) -> u64 {
+    let text = text.trim();
+    let id = metadata::camera_id(text);
+    let known = names
+        .read()
+        .unwrap_or_else(|p| p.into_inner())
+        .contains_key(&id);
+    if !known {
+        names
+            .write()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(id, text.to_owned());
+    }
+    id
 }
 
 /// Results shared with the UI. `version` changes whenever an entry does.
@@ -79,6 +99,8 @@ pub struct ScoreBoard {
     entries: RwLock<HashMap<PathBuf, Known>>,
     /// The model name behind each `Known::camera`, for the camera time card.
     camera_names: RwLock<HashMap<u64, String>>,
+    /// The serial number behind each `Known::serial`, for the camera filter's labels.
+    serials: RwLock<HashMap<u64, String>>,
     version: AtomicU64,
 }
 
@@ -97,20 +119,21 @@ impl ScoreBoard {
 
     /// The id of a camera model (`metadata::camera_id`); its name is kept for the UI.
     fn camera(&self, model: Option<&str>) -> Option<u64> {
-        let model = model?.trim();
-        let id = metadata::camera_id(model);
-        let known = self
-            .camera_names
+        Some(remember(&self.camera_names, model?))
+    }
+
+    /// The id of a body's serial number; the number is kept for the UI.
+    fn serial(&self, serial: Option<&str>) -> Option<u64> {
+        Some(remember(&self.serials, serial?))
+    }
+
+    /// The serial number of a `Known::serial`, as the file states it.
+    pub fn serial_number(&self, id: u64) -> Option<String> {
+        self.serials
             .read()
             .unwrap_or_else(|p| p.into_inner())
-            .contains_key(&id);
-        if !known {
-            self.camera_names
-                .write()
-                .unwrap_or_else(|p| p.into_inner())
-                .insert(id, model.to_owned());
-        }
-        Some(id)
+            .get(&id)
+            .cloned()
     }
 
     /// The model name of a camera id, as the file states it.
@@ -120,6 +143,17 @@ impl ScoreBoard {
             .unwrap_or_else(|p| p.into_inner())
             .get(&id)
             .cloned()
+    }
+
+    /// Tests: a photo of this camera model and body, as the analysis would find it.
+    #[cfg(test)]
+    pub fn put_camera(&self, path: &Path, model: &str, serial: Option<&str>) {
+        let known = Known {
+            camera: self.camera(Some(model)),
+            serial: self.serial(serial),
+            ..self.get(path).unwrap_or_default()
+        };
+        self.set(path, known);
     }
 
     /// Only a real change bumps the version (the analysis re-confirms known values).
@@ -262,6 +296,7 @@ fn known_from(path: &Path, record: &crate::db::FileRecord, board: &ScoreBoard) -
         label,
         taken_ms: record.image.taken_ms,
         camera: board.camera(record.image.camera.as_deref()),
+        serial: board.serial(record.image.camera_serial.as_deref()),
         fingerprint: Some(record.fingerprint),
         scores: record.image.scores,
     }
@@ -691,6 +726,7 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
                 record.fingerprint,
                 meta.camera.taken_ms,
                 meta.camera.model.as_deref(),
+                meta.camera.serial.as_deref(),
                 metadata::VERSION,
             )?;
             let mut scores = record.image.scores;
@@ -705,6 +741,7 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
                     label: meta.label.known(),
                     taken_ms: meta.camera.taken_ms,
                     camera: shared.board.camera(meta.camera.model.as_deref()),
+                    serial: shared.board.serial(meta.camera.serial.as_deref()),
                     fingerprint: Some(record.fingerprint),
                     scores,
                 },
@@ -865,6 +902,7 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
         fingerprint,
         meta.camera.taken_ms,
         meta.camera.model.as_deref(),
+        meta.camera.serial.as_deref(),
         metadata::VERSION,
     )?;
     log::debug!("analysed {}: {timings:?} ms", path.display());
@@ -876,6 +914,7 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
             label: meta.label.known(),
             taken_ms: meta.camera.taken_ms,
             camera: shared.board.camera(meta.camera.model.as_deref()),
+            serial: shared.board.serial(meta.camera.serial.as_deref()),
             fingerprint: Some(fingerprint),
             scores: record.scores,
         },

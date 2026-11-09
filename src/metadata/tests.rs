@@ -105,6 +105,30 @@ fn the_model_tells_cameras_apart() {
     assert_eq!(make_only.model.as_deref(), Some("Ricoh"));
 }
 
+/// Two bodies of one model: the EXIF `BodySerialNumber` tells them apart; an empty or all-zero
+/// number is none.
+#[test]
+fn the_body_serial_number_is_read() {
+    let ascii = |s: &str| Value::Ascii(vec![s.as_bytes().to_vec()]);
+    let body = |serial: &str| {
+        camera_info(&exif_from(&[
+            field(Tag::Model, ascii("ILCE-7M4")),
+            field(Tag::BodySerialNumber, ascii(serial)),
+        ]))
+    };
+    assert_eq!(body("04754821").serial.as_deref(), Some("04754821"));
+    assert_eq!(body(" 3021 ").serial.as_deref(), Some("3021"));
+    assert_eq!(body("0000000000").serial, None);
+    assert_eq!(body("").serial, None);
+    let without = camera_info(&exif_from(&[field(Tag::Model, ascii("ILCE-7M4"))]));
+    assert_eq!(without.serial, None);
+    assert_eq!(
+        body("04754821").model,
+        without.model,
+        "the model stays the same"
+    );
+}
+
 fn rationals(values: &[(u32, u32)]) -> Value {
     Value::Rational(
         values

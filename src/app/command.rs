@@ -155,6 +155,8 @@ pub(super) enum Command {
     ZoomToFace(usize),
     /// `M`: only photos like this one, or all again.
     Similar,
+    /// Details › File's camera button: only this camera's photos (`None`: every camera again).
+    FilterCamera(Option<crate::view::CameraPick>),
     /// The filter bar's *Refresh order*.
     RefreshOrder,
 
@@ -387,6 +389,7 @@ impl CernoApp {
             Command::FaceGrid => self.toggle_face_grid(),
             Command::ZoomToFace(index) => self.zoom_to_face(index),
             Command::Similar => self.toggle_similar(ctx),
+            Command::FilterCamera(pick) => self.filter_camera(ctx, pick),
             Command::RefreshOrder => self.refresh_order(ctx),
             Command::Copy => self.begin_transfer(ctx, TransferMode::Copy),
             Command::Move => self.begin_transfer(ctx, TransferMode::Move),

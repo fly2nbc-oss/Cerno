@@ -18,6 +18,7 @@
 //! Drawing of the widgets themselves lives in `ui/`.
 
 mod browse;
+mod camera_filter;
 mod camera_time;
 mod command;
 mod deleted;
@@ -229,6 +230,7 @@ impl CernoApp {
             top: None,
             hide_rejected: db.setting("hide_rejected").as_deref() == Some("1"),
             name_list: false,
+            camera: None,
         };
         let marks = marks::Marks::restore(&db);
         let folder = browse::Folder::restore(&db);

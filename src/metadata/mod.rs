@@ -26,11 +26,12 @@ pub use time::format_millis;
 const EXIF_RATING: exif::Tag = exif::Tag(exif::Context::Tiff, 0x4746);
 
 /// Bumped when capture time, camera or colour-label reading changes, so the analysis re-reads
-/// metadata without decoding the image again. 2: the camera model (series per camera).
-pub const VERSION: i64 = 2;
+/// metadata without decoding the image again. 2: the camera model (series per camera). 3: the
+/// body's serial number (the camera filter tells two bodies of one model apart).
+pub const VERSION: i64 = 3;
 
-/// Stable id of a camera model for series (FNV-1a, not `DefaultHasher`): case and outer
-/// spaces don't count.
+/// Stable id of a camera model for series – and of a body's serial number for the camera
+/// filter – (FNV-1a, not `DefaultHasher`): case and outer spaces don't count.
 pub fn camera_id(model: &str) -> u64 {
     model
         .trim()
@@ -254,6 +255,9 @@ pub struct CameraInfo {
     /// some files of the same camera lack the make ("FC7503" next to "DJI FC7503"). Two bodies
     /// of the same model look alike – phones write no serial number.
     pub model: Option<String>,
+    /// The body's serial number (EXIF `BodySerialNumber`), where the camera writes it there;
+    /// only the camera filter uses it – series and camera offsets stay per model.
+    pub serial: Option<String>,
     pub lens: Option<String>,
     pub focal_mm: Option<f64>,
     pub focal_35mm: Option<u32>,

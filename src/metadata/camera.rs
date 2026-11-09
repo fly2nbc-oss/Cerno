@@ -42,6 +42,7 @@ pub(super) fn camera_info(exif: &Exif) -> CameraInfo {
     CameraInfo {
         camera,
         model,
+        serial: text(Tag::BodySerialNumber).and_then(|serial| body_serial(&serial)),
         lens: text(Tag::LensModel),
         focal_mm: number(Tag::FocalLength),
         focal_35mm: uint(Tag::FocalLengthIn35mmFilm),
@@ -56,6 +57,13 @@ pub(super) fn camera_info(exif: &Exif) -> CameraInfo {
         gps: gps(exif),
         digital_zoom: number(Tag::DigitalZoomRatio).filter(|z| *z > 1.01),
     }
+}
+
+/// A body's serial number as the camera wrote it (`BodySerialNumber`, EXIF 0xA431), or none
+/// when it is empty or only zeros – what some cameras write instead of leaving it out.
+pub(super) fn body_serial(text: &str) -> Option<String> {
+    let serial = text.trim();
+    serial.chars().any(|c| c != '0').then(|| serial.to_owned())
 }
 
 /// Degrees/minutes/seconds plus N/S and E/W → signed decimal degrees. `(0, 0)` is what some

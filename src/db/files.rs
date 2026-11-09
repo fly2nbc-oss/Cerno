@@ -126,21 +126,29 @@ impl Db {
         Ok(())
     }
 
-    /// Capture time and camera model for a fingerprint. The images row already exists (the
-    /// thumbnail does).
+    /// Capture time, camera model and body serial number for a fingerprint. The images row
+    /// already exists (the thumbnail does).
     pub fn put_metadata(
         &self,
         fingerprint: u64,
         taken_ms: Option<i64>,
         camera: Option<&str>,
+        serial: Option<&str>,
         version: i64,
     ) -> Result<()> {
         self.conn()
             .prepare_cached(
-                "UPDATE images SET taken_ms = ?2, camera = ?3, metadata_version = ?4
+                "UPDATE images SET taken_ms = ?2, camera = ?3, camera_serial = ?4,
+                     metadata_version = ?5
                  WHERE fingerprint = ?1",
             )?
-            .execute(params![fingerprint as i64, taken_ms, camera, version])?;
+            .execute(params![
+                fingerprint as i64,
+                taken_ms,
+                camera,
+                serial,
+                version
+            ])?;
         Ok(())
     }
 
