@@ -338,7 +338,7 @@ packaging/linux/     build.sh (.deb, AppImage), AppRun, cerno.desktop
 2. In the same commit: `CHANGELOG.md`'s `[Unreleased]` becomes `## [X.Y.Z] – YYYY-MM-DD` under a new empty `[Unreleased]`, and the AppStream metainfo gets its `<release>` line (the `scripts` job checks both). A visible UI change also renews `screenshots/cerno-main.jpg`.
 3. Push `main`, wait for a green CI.
 4. Only when the owner says so: `git tag -a vX.Y.Z -m "Cerno X.Y.Z"`, `git push origin vX.Y.Z`.
-5. CI builds, signs (once SignPath is set up), attests and drafts the release; it stops when the tag differs from `Cargo.toml` or the CHANGELOG has no section for it. Look at the draft: notes, files, `SHA256SUMS.txt`.
+5. CI builds, signs (once SignPath is set up), attests and drafts the release; it stops when the tag differs from `Cargo.toml` or the CHANGELOG has no section for it. Look at the draft: notes, files, `SHA256SUMS.txt`. `gh release create` refuses a tag that already has a release: before re-running a release job that got that far, `gh release delete vX.Y.Z --yes` (the tag stays).
 6. Publish: `gh release edit vX.Y.Z --draft=false --latest` (the AppImage's update information follows *latest*).
 
 ## Gotchas
