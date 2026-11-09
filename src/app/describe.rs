@@ -35,6 +35,13 @@ impl CernoApp {
         if self.drafts.path.as_ref() == Some(&path) {
             self.drafts.base = Some(description.clone());
         }
+        // A running keyword filter follows at its next build – nothing vanishes under the
+        // pointer –, and *Refresh order* says there is one to make.
+        if self.options.keywords
+            && self.with_keywords(&path, |keywords| keywords != description.keywords) != Some(false)
+        {
+            self.browse.keywords_changed = true;
+        }
         self.marks
             .descriptions
             .insert(path.clone(), description.clone());
@@ -116,5 +123,66 @@ impl CernoApp {
         if let Some(changed) = out.changed {
             self.set_description(path.to_path_buf(), changed);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::keywords::Pick;
+
+    use super::super::harness::Harness;
+    use super::*;
+
+    fn words(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    /// A keyword changed while keywords filter moves nothing at once – the photo that lost it
+    /// stays, the one that gained it doesn't show yet –, but *Refresh order* offers the new
+    /// view. A comment alone changes nothing the filter looks at.
+    #[test]
+    fn a_keyword_changed_under_the_keyword_filter_asks_for_a_refresh() {
+        let mut h = Harness::new(3);
+        let ctx = h.ctx.clone();
+        let all = std::sync::Arc::clone(&h.app.folder.all);
+        let (a, b, c) = (all[0].clone(), all[1].clone(), all[2].clone());
+        h.app.board.set_keywords(&a, words(&["Familie"]));
+        h.app.board.set_keywords(&b, words(&["Familie"]));
+        h.app.board.set_keywords(&c, Vec::new());
+        h.app.keywords.put_applied(Some(Pick {
+            keywords: words(&["Familie"]),
+            none: false,
+        }));
+        h.app.change_options(&ctx, |o| o.keywords = true);
+        assert_eq!(&h.app.view.paths[..], [a.clone(), b.clone()]);
+        assert!(!h.app.order_stale());
+
+        let described = |comment: &str, keywords: &[&str]| Description {
+            comment: comment.to_owned(),
+            keywords: words(keywords),
+        };
+        h.app
+            .set_description(a.clone(), described("Am Strand", &["Familie"]));
+        assert!(!h.app.order_stale(), "a comment is no keyword");
+
+        h.app
+            .set_description(a.clone(), described("Am Strand", &[]));
+        h.app
+            .set_description(c.clone(), described("", &["Familie"]));
+        assert_eq!(
+            &h.app.view.paths[..],
+            [a.clone(), b.clone()],
+            "nothing moves under the pointer"
+        );
+        assert!(h.app.order_stale(), "Refresh order shows");
+
+        h.app.refresh_order(&ctx);
+        assert_eq!(&h.app.view.paths[..], [b, c]);
+        assert!(!h.app.order_stale());
+
+        // Without the keyword filter a keyword changes no view.
+        h.app.change_options(&ctx, |o| o.keywords = false);
+        h.app.set_description(a, described("", &["Strand"]));
+        assert!(!h.app.order_stale());
     }
 }

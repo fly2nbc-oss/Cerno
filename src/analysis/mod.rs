@@ -812,12 +812,23 @@ fn analyze(shared: &Shared, path: &Path) -> Result<Outcome> {
     let bytes = files.read(path)?;
     let meta = metadata::read_for(path, &bytes);
     let truncated = jpeg.then(|| !jpeg_info::is_complete(&bytes));
-    let image = decode::decode_for_display(
+    let image = match decode::decode_for_display(
         &bytes,
         format,
         meta.orientation,
         [ANALYSIS_SIZE, ANALYSIS_SIZE],
-    )?;
+    ) {
+        Ok(image) => image,
+        Err(err) => {
+            // No pixels, no fingerprint – so no index row to keep them in –, but the keywords
+            // were read: the keyword filter and its card count the photo instead of calling it
+            // not read yet for the whole session.
+            if !changed() {
+                shared.board.set_keywords(path, meta.description.keywords);
+            }
+            return Err(err);
+        }
+    };
     drop(bytes);
     let (rgb, w, h) = (&image.rgb, image.width, image.height);
     lap("decode", &mut timings);
@@ -1125,6 +1136,79 @@ mod tests {
         finish(&mut state, 0, Outcome::Retry, at);
         assert!(state.done.contains(&0));
         assert!(state.deferred.is_empty());
+    }
+
+    /// The analysis' shared state without its threads: an index in memory, no models.
+    fn shared_without_threads() -> Shared {
+        let ctx = egui::Context::default();
+        let db = Arc::new(Db::open_in_memory().expect("an index in memory"));
+        Shared {
+            state: Mutex::new(State {
+                generation: 0,
+                paths: Arc::new(Vec::new()),
+                current: 0,
+                done: HashSet::new(),
+                in_flight: HashSet::new(),
+                deferred: HashMap::new(),
+                shutdown: false,
+            }),
+            wake: Condvar::new(),
+            ctx: ctx.clone(),
+            thumbs: Arc::new(thumbs::Thumbs::new(ctx, Arc::clone(&db))),
+            db,
+            board: Arc::new(ScoreBoard::default()),
+            files: Arc::new(FileLocks::default()),
+            last_navigation: Mutex::new(Instant::now()),
+            clip: Mutex::new(Slot::NotLoaded),
+            clip_state: Mutex::new(ModelState::Missing),
+            v25: Mutex::new(Slot::NotLoaded),
+            v25_state: Mutex::new(ModelState::Missing),
+            faces: Mutex::new(Slot::NotLoaded),
+            faces_state: Mutex::new(ModelState::Missing),
+            embeddings: RwLock::default(),
+            taste: RwLock::default(),
+            taste_state: Mutex::new(TasteState {
+                dirty_since: None,
+                shutdown: false,
+                status: TasteStatus {
+                    examples: 0,
+                    sources: Default::default(),
+                    model: None,
+                },
+            }),
+            taste_wake: Condvar::new(),
+            removal: Mutex::new(None),
+            download: Mutex::new(None),
+        }
+    }
+
+    /// A photo whose pixels can't be decoded still brings its keywords to the board – the
+    /// keyword filter and its card would otherwise call it "not read yet" all session. No
+    /// index row: without pixels there is no fingerprint.
+    #[test]
+    fn a_photo_that_does_not_decode_still_brings_its_keywords() {
+        let xmp = "<x:xmpmeta><rdf:Description><dc:subject><rdf:Bag>\
+                   <rdf:li>Familie</rdf:li></rdf:Bag></dc:subject></rdf:Description></x:xmpmeta>";
+        let mut payload = b"http://ns.adobe.com/xap/1.0/\0".to_vec();
+        payload.extend_from_slice(xmp.as_bytes());
+        let mut bytes = vec![0xFF, 0xD8, 0xFF, 0xE1];
+        bytes.extend_from_slice(&u16::try_from(payload.len() + 2).unwrap().to_be_bytes());
+        bytes.extend_from_slice(&payload);
+        // No frame header, no scan: nothing to decode.
+        bytes.extend_from_slice(b"not an image at all");
+        let dir = std::env::temp_dir().join(format!("cerno-analysis-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("broken.jpg");
+        std::fs::write(&path, &bytes).unwrap();
+
+        let shared = shared_without_threads();
+        let result = analyze(&shared, &path);
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(result.is_err(), "the decode fails");
+        assert_eq!(
+            shared.board.keywords(&path).as_deref(),
+            Some(&["Familie".to_owned()][..])
+        );
     }
 
     fn complete_record() -> ImageRecord {
