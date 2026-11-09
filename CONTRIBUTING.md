@@ -19,12 +19,20 @@ cargo run --release -- path/to/photos
 
 ## Checking your build
 
+Exactly what CI runs (`cargo audit` needs `cargo install cargo-audit`; the Linux list needs the HEIC and video packages below):
+
 ```bash
 cargo fmt --all -- --check
-cargo clippy --all-targets -- -D warnings
-cargo clippy --all-targets --features heic,video -- -D warnings
-cargo test
-cargo test --features heic,video
+# Linux (CI: Ubuntu 24.04)
+cargo clippy --all-targets --locked --features heic,video -- -D warnings
+cargo test --locked --features heic,video
+cargo clippy --all-targets --locked --features webgpu -- -D warnings
+cargo audit
+# Windows (CI: without HEIC; video needs GStreamer, see below)
+cargo clippy --all-targets --locked -- -D warnings
+cargo test --locked
+cargo clippy --all-targets --locked --features video -- -D warnings
+cargo test --locked --features video
 ```
 
 The ExifTool round-trip test (`rating::tests::writes_stars_and_keeps_file_dates`) skips silently when ExifTool is missing — make sure it actually ran before trusting rating-write changes. Fixture: `tests/fixtures/tiny.jpg`.
@@ -76,18 +84,23 @@ packaging/linux/build.sh           # dist/linux: .deb (needs cargo-deb) and AppI
 
 ## Continuous Integration
 
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on pushes and pull requests to **`main`** and on `v*` tags:
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on pushes to `main`, on pull requests, on `v*` tags and by hand. Every action is pinned to a commit.
 
-- **Lint & test (Linux, HEIC, video)** — `cargo fmt --check`, `cargo clippy` and `cargo test` with `--features heic,video` on Ubuntu 24.04 (libheif, GStreamer and ExifTool installed)
-- **Test & build (Windows)** — `cargo clippy` and `cargo test` without features and with `video` (GStreamer installed; no GPU, so the player's CPU path), `cargo build --release`
-- **Packages** (pushes to `main`, tags and manual runs, not pull requests) — the Windows installer and portable zip, the AppImage and the `.deb`, kept as run artifacts; a `v*` tag (equal to the `Cargo.toml` version) drafts a GitHub release with them.
+- **Lint scripts & package metadata** (`scripts`, every run, seconds) — actionlint (with shellcheck on the workflow's bash blocks) and zizmor over the workflow, shellcheck over the shell scripts, PSScriptAnalyzer over the PowerShell scripts, `desktop-file-validate` and `appstreamcli validate` over the Linux desktop file and AppStream metadata, and a check that the metadata's newest release is the version in `Cargo.toml`.
+- **Lint & test (Linux, HEIC, video)** (`linux`, every run) — the Linux commands above on Ubuntu 24.04 with libheif, GStreamer and ExifTool installed, including the clippy run with the experimental `webgpu` feature and `cargo audit` (a known vulnerability fails the run).
+- **Test & build (Windows)** (`windows`, every run) — the Windows commands above; GStreamer is installed, and without a GPU the player uses WARP. Pull requests also build the release.
+- **Packages** (`package-windows`, `package-linux`; pushes to `main`, tags and manual runs) — the installer, the portable zip, the AppImage with its `.zsync` and the `.deb`, kept 7 days as run artifacts. The Windows job installs, starts and uninstalls the installer; the Linux packages answer `--version`.
+- **Install tests** (`test-linux-packages`) — the `.deb` on bare Ubuntu 24.04 and Debian 13, the AppImage there and on Fedora 44 and Arch Linux: each opens a HEIC photo under Xvfb and plays a video without a window.
+- **Signing** — on `v*` tags only, and only once the `release` environment has the SignPath organisation and token: `cerno.exe` and the installer are sent to SignPath, approved by hand and checked with `signtool verify` (see the README's *Code signing policy*). Without them the packages stay unsigned with a warning.
+- **Draft release** (`release`, `v*` tags) — checks that the tag equals the `Cargo.toml` version and that `CHANGELOG.md` has its section, writes `SHA256SUMS.txt`, attests build provenance for every file (`gh attestation verify <file> --repo fly2nbc-oss/Cerno`) and drafts the GitHub release.
+- **`test_rounds`** — a manual run (*Run workflow*) can repeat the Linux and Windows tests up to 99 times to catch a flaky test; the step fails when any round failed.
 
 ## Pull requests
 
 - Keep changes focused on one concern where possible.
 - Describe **what** changed and **why** in the PR description.
 - For UI changes, attach screenshots when practical.
-- `cargo fmt --check`, clippy (`-D warnings`, with and without `--features heic,video` where you can), and tests should pass.
+- The commands of [Checking your build](#checking-your-build) should pass where you can run them; CI runs all of them.
 
 ## Code of conduct
 

@@ -1,3 +1,6 @@
+Cerno
+Copyright 2026 fly2nbc-oss
+
 Cerno includes third-party components. Their terms are in THIRD_PARTY.md
 in this folder. Cerno's own code is under the Apache License, Version 2.0
 (see LICENSE).

@@ -21,6 +21,7 @@
 .idea
 .cursor/
 .claude/
+CLAUDE.local.md
 
 # --- OS / NAS (SynologyDrive) ---
 .DS_Store
