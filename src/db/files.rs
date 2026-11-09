@@ -13,24 +13,32 @@ impl Db {
         ))?;
         let record = stmt
             .query_row(params![path, stamp.size as i64, stamp.mtime_ns], |row| {
-                Ok(FileRecord {
-                    fingerprint: row.get::<_, i64>(0)? as u64,
-                    rating: row
-                        .get::<_, Option<i64>>(1)?
-                        .map_or(Rating::Unrated, Rating::from_value),
-                    label: row
-                        .get::<_, Option<String>>(2)?
-                        .as_deref()
-                        .and_then(Label::from_stored),
-                    keywords: row
-                        .get::<_, Option<String>>(3)?
-                        .as_deref()
-                        .map(crate::keywords::split),
-                    image: image_from_row(row, 4)?,
-                })
+                file_from_row(row, 0)
             })
             .optional()?;
         Ok(record)
+    }
+
+    /// Every file row below `dir` (its subfolders too) with its stamp, as `lookup` reads it:
+    /// one range scan over the path key instead of a query per photo (CER-71 – opening a
+    /// folder of 50 000 files spent 1.8 s on single queries). The caller compares the stamps.
+    pub fn records_under(&self, dir: &Path) -> Result<HashMap<String, (FileStamp, FileRecord)>> {
+        let (from, to) = path_range(dir);
+        let conn = self.conn();
+        let mut stmt = conn.prepare_cached(&format!(
+            "SELECT f.path, f.size, f.mtime_ns, f.fingerprint, f.rating, f.label, f.keywords,
+                    {IMAGE_COLUMNS}
+             FROM files f LEFT JOIN images i ON i.fingerprint = f.fingerprint
+             WHERE f.path >= ?1 AND f.path < ?2"
+        ))?;
+        let rows = stmt.query_map(params![from, to], |row| {
+            let stamp = FileStamp {
+                size: row.get::<_, i64>(1)? as u64,
+                mtime_ns: row.get(2)?,
+            };
+            Ok((row.get::<_, String>(0)?, (stamp, file_from_row(row, 3)?)))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
     /// Everything known for a fingerprint, e.g. after the file was renamed.
@@ -198,4 +206,38 @@ impl Db {
             .execute(params![fingerprint as i64, truncated])?;
         Ok(())
     }
+}
+
+/// A `FileRecord` from `fingerprint, rating, label, keywords, IMAGE_COLUMNS` at `first`.
+fn file_from_row(row: &Row, first: usize) -> rusqlite::Result<FileRecord> {
+    Ok(FileRecord {
+        fingerprint: row.get::<_, i64>(first)? as u64,
+        rating: row
+            .get::<_, Option<i64>>(first + 1)?
+            .map_or(Rating::Unrated, Rating::from_value),
+        label: row
+            .get::<_, Option<String>>(first + 2)?
+            .as_deref()
+            .and_then(Label::from_stored),
+        keywords: row
+            .get::<_, Option<String>>(first + 3)?
+            .as_deref()
+            .map(crate::keywords::split),
+        image: image_from_row(row, first + 4)?,
+    })
+}
+
+/// The keys of every path below `dir`, as `[from, to)` in the index's (binary) text order:
+/// `D:\Fotos\` up to `D:\Fotos]` – the separator's next character –, so `D:\Fotos 2` and
+/// `D:\Fotosammlung` stay out.
+fn path_range(dir: &Path) -> (String, String) {
+    let separator = std::path::MAIN_SEPARATOR;
+    let mut from = dir.to_string_lossy().into_owned();
+    if !from.ends_with(separator) {
+        from.push(separator);
+    }
+    let mut to = from.clone();
+    to.pop();
+    to.push(char::from_u32(separator as u32 + 1).unwrap_or(char::MAX));
+    (from, to)
 }

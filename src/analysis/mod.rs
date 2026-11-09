@@ -429,20 +429,39 @@ impl Analyzer {
     }
 
     /// Fills the score board from the index for unchanged files, so a saved sort order or
-    /// filter applies immediately when an analysed folder is reopened.
-    pub fn preload(&self, paths: &[PathBuf]) {
+    /// filter applies immediately when an analysed folder is reopened. `paths` lie below
+    /// `dir`; `stamps[i]` is the folder listing's for `paths[i]` (`library::stamps_for`), a path
+    /// without one is asked for its own. One range query reads the index rows of the whole
+    /// folder (CER-71).
+    pub fn preload(&self, dir: &Path, paths: &[PathBuf], stamps: &[Option<FileStamp>]) {
         let started = Instant::now();
-        for path in paths {
-            let Ok(stamp) = FileStamp::of(path) else {
+        let records = match self.shared.db.records_under(dir) {
+            Ok(records) => records,
+            Err(err) => {
+                log::warn!("preload: the index could not be read: {err:#}");
+                return;
+            }
+        };
+        let mut found = 0;
+        for (i, path) in paths.iter().enumerate() {
+            let Some(stamp) = stamps
+                .get(i)
+                .copied()
+                .flatten()
+                .or_else(|| FileStamp::of(path).ok())
+            else {
                 continue;
             };
-            if let Ok(Some(record)) = self.shared.db.lookup(&path.to_string_lossy(), stamp) {
+            if let Some((stored, record)) = records.get(path.to_string_lossy().as_ref())
+                && *stored == stamp
+            {
                 remember_embedding(&self.shared, path, record.image.embedding.as_deref());
-                put_known(path, &record, &self.shared.board);
+                put_known(path, record, &self.shared.board);
+                found += 1;
             }
         }
         log::info!(
-            "preloaded {} files from the index in {} ms",
+            "preloaded {found} of {} files from the index in {} ms",
             paths.len(),
             started.elapsed().as_millis()
         );

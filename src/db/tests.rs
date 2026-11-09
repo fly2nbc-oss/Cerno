@@ -379,3 +379,37 @@ fn camera_offsets_per_folder() {
     );
     assert_eq!(db.camera_offsets("/other").unwrap()[&1], 60_000);
 }
+
+#[test]
+fn records_under_reads_the_folder_and_its_subfolders_only() {
+    let db = Db::open_in_memory().unwrap();
+    let s = std::path::MAIN_SEPARATOR;
+    let key = |rel: &str| format!("{s}fotos{s}{}", rel.replace('/', &s.to_string()));
+    let inside = [key("a/1.jpg"), key("a/sub/2.jpg")];
+    let outside = [
+        key("a 2/3.jpg"),
+        key("ab/4.jpg"),
+        key("b/5.jpg"),
+        key("a.jpg"),
+    ];
+    for path in inside.iter().chain(&outside) {
+        db.put_file(path, STAMP, 7, Rating::Stars(2), None).unwrap();
+    }
+    let records = db.records_under(Path::new(&key("a"))).unwrap();
+    let mut found: Vec<&String> = records.keys().collect();
+    found.sort();
+    assert_eq!(found, inside.iter().collect::<Vec<_>>());
+    let (stamp, record) = &records[&inside[0]];
+    assert_eq!(*stamp, STAMP);
+    assert_eq!(record.rating, Rating::Stars(2));
+    assert_eq!(
+        Some(record.clone()),
+        db.lookup(&inside[0], STAMP).unwrap(),
+        "the same record as one lookup"
+    );
+    // A folder key that already ends in the separator (a drive's root) works too.
+    assert_eq!(
+        db.records_under(Path::new(&format!("{s}"))).unwrap().len(),
+        6
+    );
+}

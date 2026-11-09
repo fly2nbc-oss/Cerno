@@ -143,7 +143,12 @@ pub struct FileStamp {
 
 impl FileStamp {
     pub fn of(path: &Path) -> std::io::Result<Self> {
-        let meta = std::fs::metadata(path)?;
+        Self::from_metadata(&std::fs::metadata(path)?)
+    }
+
+    /// From metadata already in hand – a directory listing's (`DirEntry::metadata`, which on
+    /// Windows comes with the listing and opens no file).
+    pub fn from_metadata(meta: &std::fs::Metadata) -> std::io::Result<Self> {
         let mtime = meta
             .modified()?
             .duration_since(UNIX_EPOCH)

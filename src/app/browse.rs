@@ -198,8 +198,11 @@ impl CernoApp {
         // Only needed when the view depends on scores; the analysis fills the board anyway,
         // and on big folders the lookups would delay the first frame.
         let preloading = Instant::now();
-        if self.view_options().depends_on_scores() {
-            self.analyzer.preload(&self.folder.all);
+        if self.view_options().depends_on_scores()
+            && let Some(dir) = &self.folder.dir
+        {
+            let stamps = library::stamps_for(&library.paths, &library.stamps, &self.folder.all);
+            self.analyzer.preload(dir, &self.folder.all, &stamps);
         }
         let preloaded = preloading.elapsed();
         self.analyzer

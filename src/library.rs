@@ -3,6 +3,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::db::FileStamp;
+
 /// File extensions per format, lower case.
 const EXTENSIONS: &[(Format, &[&str])] = &[
     (Format::Jpeg, &["jpg", "jpeg", "jpe", "jfif"]),
@@ -74,6 +76,12 @@ pub fn format_of(path: &Path) -> Option<Format> {
 pub struct Library {
     pub dir: PathBuf,
     pub paths: Arc<Vec<PathBuf>>,
+    /// Size and modification time of `paths[i]` at `stamps[i]`, from the listing itself – on
+    /// Windows it carries them, so the index preload needs no `fs::metadata` per photo
+    /// (CER-71: 2.6 s for 50 000 files). `None` where the metadata could not be read, and
+    /// everywhere but on Windows (`collect`). A list, not a map: hashing 100 000 paths cost
+    /// the scan more than it saved.
+    pub stamps: Vec<Option<FileStamp>>,
 }
 
 impl Library {
@@ -100,9 +108,10 @@ impl Library {
             )
         };
 
-        let mut paths = Vec::new();
-        collect(&dir, subfolders, &mut paths)?;
-        sort(&dir, &mut paths);
+        let mut found = Vec::new();
+        collect(&dir, subfolders, &mut found)?;
+        let (paths, stamps) = sorted(&dir, found).into_iter().unzip();
+        let paths: Vec<PathBuf> = paths;
 
         let index = selected
             .and_then(|selected| paths.iter().position(|p| p == &selected))
@@ -111,6 +120,7 @@ impl Library {
             Library {
                 dir,
                 paths: Arc::new(paths),
+                stamps,
             },
             index,
         ))
@@ -119,13 +129,39 @@ impl Library {
 
 /// The library's order: natural, by the path below `dir` (a photo put back joins its place).
 pub fn sort(dir: &Path, paths: &mut Vec<PathBuf>) {
+    let found = paths.drain(..).map(|path| (path, ())).collect();
+    paths.extend(sorted(dir, found).into_iter().map(|(path, ())| path));
+}
+
+/// `sort` for paths that carry something along.
+fn sorted<T>(dir: &Path, found: Vec<(PathBuf, T)>) -> Vec<(PathBuf, T)> {
     // Each key once, not twice per comparison (a year folder has tens of thousands of files).
-    let mut keyed: Vec<(String, PathBuf)> = paths
-        .drain(..)
-        .map(|path| (relative_key(dir, &path), path))
+    let mut keyed: Vec<(String, (PathBuf, T))> = found
+        .into_iter()
+        .map(|item| (relative_key(dir, &item.0), item))
         .collect();
     keyed.sort_by(|(a, _), (b, _)| natural_cmp(a, b).then_with(|| a.cmp(b)));
-    paths.extend(keyed.into_iter().map(|(_, path)| path));
+    keyed.into_iter().map(|(_, item)| item).collect()
+}
+
+/// The listing's stamps (`Library::stamps`) for `wanted` – the library's paths in their order
+/// with some left out (RAW + JPG: the RAW rides along), so one walk over both finds them
+/// without hashing a path. A path it cannot place gets `None`.
+pub fn stamps_for(
+    paths: &[PathBuf],
+    stamps: &[Option<FileStamp>],
+    wanted: &[PathBuf],
+) -> Vec<Option<FileStamp>> {
+    let mut listed = paths.iter().zip(stamps);
+    wanted
+        .iter()
+        .map(|want| {
+            listed
+                .by_ref()
+                .find(|(path, _)| *path == want)
+                .and_then(|(_, stamp)| *stamp)
+        })
+        .collect()
 }
 
 /// The folders `Library::open` walks: `start`, and with `subfolders` every folder below it
@@ -189,7 +225,11 @@ fn is_hidden(path: &Path) -> bool {
 
 /// Walks `start` with an explicit stack. A failure on the folder the user opened is reported;
 /// a failure deeper down is skipped. Directory symlinks are not followed.
-fn collect(start: &Path, subfolders: bool, out: &mut Vec<PathBuf>) -> io::Result<()> {
+fn collect(
+    start: &Path,
+    subfolders: bool,
+    out: &mut Vec<(PathBuf, Option<FileStamp>)>,
+) -> io::Result<()> {
     let mut stack = vec![(start.to_path_buf(), true)];
     while let Some((dir, is_root)) = stack.pop() {
         let entries = match std::fs::read_dir(&dir) {
@@ -208,14 +248,27 @@ fn collect(start: &Path, subfolders: bool, out: &mut Vec<PathBuf>) -> io::Result
             // `file_type` does not follow symlinks, so a linked folder is not walked.
             if kind.is_symlink() {
                 if path.is_file() && format_of(&path).is_some() {
-                    out.push(path);
+                    // The link's own metadata is not the photo's.
+                    let stamp = FileStamp::of(&path).ok();
+                    out.push((path, stamp));
                 }
                 continue;
             }
             if kind.is_dir() && subfolders {
                 stack.push((path, false));
             } else if kind.is_file() && format_of(&path).is_some() {
-                out.push(path);
+                // Windows lists size and time with the name; elsewhere `metadata` is one more
+                // call per file (a round trip on a network share) whether the preload needs it
+                // or not – there the preload asks for itself, as before CER-71.
+                let stamp = if cfg!(windows) {
+                    entry
+                        .metadata()
+                        .ok()
+                        .and_then(|meta| FileStamp::from_metadata(&meta).ok())
+                } else {
+                    None
+                };
+                out.push((path, stamp));
             }
         }
     }
@@ -299,6 +352,38 @@ mod tests {
         assert!(library.paths[index].ends_with("tiny.jpg"));
         let (from_dir, _) = Library::open(Path::new("tests/fixtures"), false).unwrap();
         assert_eq!(from_dir.paths, library.paths);
+    }
+
+    #[test]
+    fn on_windows_the_listing_stamps_every_photo() {
+        let (library, _) = Library::open(Path::new("tests/fixtures"), true).unwrap();
+        assert!(!library.paths.is_empty());
+        assert_eq!(library.stamps.len(), library.paths.len());
+        for (path, stamp) in library.paths.iter().zip(&library.stamps) {
+            let expected = if cfg!(windows) {
+                FileStamp::of(path).ok()
+            } else {
+                None
+            };
+            assert_eq!(*stamp, expected, "{}", path.display());
+        }
+    }
+
+    #[test]
+    fn stamps_follow_the_paths_that_are_kept() {
+        let stamp = |size| Some(FileStamp { size, mtime_ns: 1 });
+        let paths: Vec<PathBuf> = ["a.jpg", "a.cr3", "b.jpg", "c.jpg"]
+            .map(PathBuf::from)
+            .into();
+        let stamps = [stamp(1), stamp(2), None, stamp(4)];
+        let wanted: Vec<PathBuf> = ["a.jpg", "b.jpg", "c.jpg"].map(PathBuf::from).into();
+        assert_eq!(
+            stamps_for(&paths, &stamps, &wanted),
+            [stamp(1), None, stamp(4)]
+        );
+        // Out of order the rest goes without (the preload then asks the file).
+        let reversed: Vec<PathBuf> = ["c.jpg", "a.jpg"].map(PathBuf::from).into();
+        assert_eq!(stamps_for(&paths, &stamps, &reversed), [stamp(4), None]);
     }
 
     #[test]
