@@ -1173,6 +1173,7 @@ mod tests {
                 media: None,
                 video: false,
                 overlay: overlay::Mode::Off,
+                camera: None,
             };
             let ctx = crate::theme::test_context();
             let panel = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 1200.0));
