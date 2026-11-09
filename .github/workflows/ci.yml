@@ -31,6 +31,72 @@ permissions:
   contents: read
 
 jobs:
+  # Seconds: the workflow (actionlint, which also runs shellcheck over every bash `run:`
+  # block), the shell scripts (shellcheck), the PowerShell scripts (PSScriptAnalyzer), and the
+  # Linux packages' desktop file and AppStream metadata. Each tool is pinned by version and
+  # SHA-256; appstreamcli and desktop-file-validate come from Ubuntu.
+  scripts:
+    name: Lint scripts & package metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Tools
+        run: |
+          tools="$RUNNER_TEMP/lint"
+          mkdir -p "$tools/bin"
+          fetch() { # file url sha256
+            curl -fsSL --retry 3 -o "$tools/$1" "$2"
+            echo "$3  $tools/$1" | sha256sum --check --quiet
+          }
+          fetch actionlint.tar.gz \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          fetch shellcheck.tar.xz \
+            https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz \
+            8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+          fetch PSScriptAnalyzer.nupkg \
+            https://github.com/PowerShell/PSScriptAnalyzer/releases/download/1.25.0/PSScriptAnalyzer.1.25.0.nupkg \
+            14e634c828eb98efb9f40b2918ba90f139ed5eccdf663a2a747736d996995d60
+          tar -xzf "$tools/actionlint.tar.gz" -C "$tools/bin" actionlint
+          tar -xJf "$tools/shellcheck.tar.xz" -C "$tools/bin" --strip-components=1 shellcheck-v0.11.0/shellcheck
+          unzip -q "$tools/PSScriptAnalyzer.nupkg" -d "$tools/PSScriptAnalyzer"
+          # Before the runner's own shellcheck, so actionlint uses the pinned one too.
+          echo "$tools/bin" >> "$GITHUB_PATH"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends appstream desktop-file-utils
+      - name: Workflow (actionlint + shellcheck)
+        run: |
+          shellcheck --version
+          actionlint -version
+          actionlint -color
+      - name: Shell scripts (shellcheck)
+        run: git ls-files -z '*.sh' | xargs -0 shellcheck packaging/linux/AppRun
+      - name: PowerShell scripts (PSScriptAnalyzer)
+        shell: pwsh
+        run: |
+          Import-Module "$env:RUNNER_TEMP/lint/PSScriptAnalyzer/PSScriptAnalyzer.psd1"
+          $findings = git ls-files '*.ps1' | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ }
+          $findings | Format-Table -AutoSize -Wrap | Out-String -Width 200
+          if ($findings) { Write-Output "::error::PSScriptAnalyzer: $(@($findings).Count) findings"; exit 1 }
+      - run: desktop-file-validate packaging/linux/cerno.desktop
+      # --no-net: the newest release's page exists only once its tag is pushed.
+      - run: appstreamcli validate --no-net --strict --explain packaging/linux/io.github.fly2nbc_oss.cerno.metainfo.xml
+      # The newest release in the AppStream file is the version in Cargo.toml, with the date of
+      # its CHANGELOG.md section: a release adds its line there too.
+      - name: AppStream release list is current
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          date=$(sed -n "s/^## \[${version//./\\.}\] – \([0-9-]*\).*/\1/p" CHANGELOG.md)
+          newest=$(grep -o -m 1 '<release version="[^"]*" date="[^"]*"' \
+            packaging/linux/io.github.fly2nbc_oss.cerno.metainfo.xml)
+          if [ "$newest" != "<release version=\"$version\" date=\"$date\"" ]; then
+            echo "::error::The metainfo's newest release is '$newest', expected version $version from $date"
+            exit 1
+          fi
+
   linux:
     name: Lint & test (Linux, HEIC, video)
     runs-on: ubuntu-24.04
@@ -304,13 +370,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libheif-dev libheif-plugin-libde265 libxkbcommon-dev libwayland-dev \
-            patchelf desktop-file-utils libheif-examples libheif-plugin-x265 \
+            patchelf desktop-file-utils zsync libheif-examples libheif-plugin-x265 \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
       - name: cargo-deb
         run: cargo install cargo-deb --version 3.8.0 --locked
       - name: Build (release, HEIC, video)
         run: cargo build --release --locked --features heic,video
-      - run: desktop-file-validate packaging/linux/cerno.desktop
+      # Also writes the AppImage's .zsync (zsyncmake from `zsync`) and runs its `--version`.
       - name: Package
         run: packaging/linux/build.sh
       - name: HEIC photo and video for the install tests
@@ -321,7 +387,9 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-appimage
-          path: dist/linux/cerno_*_x86_64.AppImage
+          path: |
+            dist/linux/cerno_*_x86_64.AppImage
+            dist/linux/cerno_*_x86_64.AppImage.zsync
           if-no-files-found: error
           retention-days: 7
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -379,6 +447,10 @@ jobs:
             exit 1
           fi
           chmod +x pkg/*.AppImage
+          appimage=$(find pkg -name 'cerno_*_x86_64.AppImage')
+          version=$(basename "$appimage" | cut -d_ -f2)
+          said=$(APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --version)
+          if [ "$said" != "cerno $version" ]; then echo "--version said '$said'"; exit 1; fi
           APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a timeout 30 pkg/cerno_*_x86_64.AppImage pkg/smoke.heic \
             >cerno.log 2>&1 || true
           APPIMAGE_EXTRACT_AND_RUN=1 timeout 60 pkg/cerno_*_x86_64.AppImage --check-video pkg/tiny.mp4
@@ -387,6 +459,9 @@ jobs:
         run: |
           apt-get install -y ./pkg/cerno_*_amd64.deb
           apt-get install -y --no-install-recommends xvfb xauth
+          version=$(basename pkg/cerno_*_amd64.deb | cut -d_ -f2)
+          said=$(cerno --version)
+          if [ "$said" != "cerno $version" ]; then echo "--version said '$said'"; exit 1; fi
           ldd /usr/bin/cerno | tee ldd.txt
           if grep -q "not found" ldd.txt; then exit 1; fi
           xvfb-run -a timeout 30 cerno pkg/smoke.heic >cerno.log 2>&1 || true
@@ -401,7 +476,7 @@ jobs:
   release:
     name: Draft release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [linux, windows, package-windows, package-linux, test-linux-packages]
+    needs: [scripts, linux, windows, package-windows, package-linux, test-linux-packages]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -443,6 +518,7 @@ jobs:
           | \`cerno_${VERSION}_x64-portable.zip\` | Windows portable – unzip and run \`Cerno\\cerno.exe\` |
           | \`cerno_${VERSION}_x86_64.AppImage\` | Linux portable – glibc 2.39 or newer (Ubuntu 24.04, Debian 13, Fedora 40 and later) |
           | \`cerno_${VERSION}_amd64.deb\` | Ubuntu 24.04+, Debian 13+ |
+          | \`cerno_${VERSION}_x86_64.AppImage.zsync\` | Not a download: lets [AppImageUpdate](https://github.com/AppImageCommunity/AppImageUpdate) fetch only what changed in the AppImage |
 
           Writing ratings, colour labels, comments and keywords needs [ExifTool](https://exiftool.org/): on Windows Cerno offers to download it the first time it is needed; the .deb recommends it. Videos play inside Cerno: the Windows packages bring GStreamer along, on Linux it comes from the system (the .deb depends on it).
 

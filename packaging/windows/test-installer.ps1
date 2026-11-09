@@ -40,7 +40,7 @@ $absent = $expected | Where-Object { -not (Test-Path "$dir\$_") }
 if ($absent) { throw "not installed: $($absent -join ', ')" }
 if (-not (Test-Path "$dir\uninstall.exe")) { throw "no uninstall.exe" }
 if (-not (Test-Path $uninstallKey)) { throw "no entry in Apps & features" }
-Write-Host "installed: $($expected.Count) files in $dir"
+Write-Output "installed: $($expected.Count) files in $dir"
 
 # The installed exe starts, renders and decodes. It runs until it is stopped, so
 # wait for the log line of the first photo, then close it.
@@ -81,4 +81,4 @@ if ($left) { throw "left behind after uninstall: $($left -join ', ')" }
 if (Test-Path $uninstallKey) { throw "Apps & features entry left behind" }
 if (-not (Test-Path $marker)) { throw "the uninstaller deleted Cerno's data folder" }
 Remove-Item -Force $marker, "$dir\uninstall.exe"
-Write-Host "uninstalled; the data folder was kept"
+Write-Output "uninstalled; the data folder was kept"

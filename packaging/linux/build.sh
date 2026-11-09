@@ -4,11 +4,14 @@
 #   cerno_<version>_amd64.deb        cargo-deb; depends on the system's libheif and GStreamer
 #   cerno_<version>_x86_64.AppImage  portable; bundles libheif and its libde265 plugin, uses
 #                                    the system's GStreamer for videos
+#   cerno_<version>_x86_64.AppImage.zsync
+#                                    the AppImage's block checksums: AppImageUpdate fetches
+#                                    only the changed parts of a newer release
 #
 # Run after `cargo build --release --features heic,video`, on Ubuntu 24.04: it is the
 # oldest base with libheif >= 1.17, and the AppImage runs on distributions with
 # its glibc (2.39) or newer.
-# Needs: cargo-deb, patchelf, libheif-plugin-libde265, curl.
+# Needs: cargo-deb, patchelf, libheif-plugin-libde265, curl, zsync (zsyncmake).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -62,8 +65,9 @@ appdir=target/appimage/Cerno.AppDir
 rm -rf "$appdir"
 plugins=$appdir/usr/lib/libheif/plugins
 doc=$appdir/usr/share/doc/cerno
-mkdir -p "$appdir/usr/bin" "$plugins" "$doc"
+mkdir -p "$appdir/usr/bin" "$plugins" "$doc" "$appdir/usr/share/metainfo"
 install -m755 -s "$bin" "$appdir/usr/bin/cerno"
+install -m644 packaging/linux/io.github.fly2nbc_oss.cerno.metainfo.xml "$appdir/usr/share/metainfo/"
 # linuxdeploy also deploys the plugin's own dependency, libde265, into usr/lib.
 install -m644 "$(dpkg -L libheif-plugin-libde265 | grep '/libheif-libde265\.so$')" "$plugins/"
 cp LICENSE NOTICE THIRD_PARTY.md "$doc/"
@@ -94,6 +98,7 @@ if find "$appdir/usr/lib" -name '*.so*' -printf '%f\n' |
 fi
 # linuxdeploy gives every library `$ORIGIN`, but the plugin sits two levels below
 # usr/lib, where libheif and libde265 are.
+# shellcheck disable=SC2016 # $ORIGIN is for the dynamic loader, not for the shell
 patchelf --set-rpath '$ORIGIN/../..' "$plugins/libheif-libde265.so"
 
 # Both must resolve to the AppDir, or the AppImage would silently use the host's
@@ -111,12 +116,33 @@ bundled "$plugins/libheif-libde265.so" '^libde265[.]so' ||
     { echo "the HEVC plugin does not load the bundled libde265" >&2; exit 1; }
 
 # The LGPL libraries' versions, so their source can be found (Ubuntu source packages).
+# shellcheck disable=SC2016 # ${Package} and ${Version} are dpkg-query's format fields
 find "$appdir/usr/lib" -name '*.so*' -type f -printf '%f\n' | sort |
     while read -r lib; do { dpkg -S "*/$lib" 2>/dev/null || true; } | cut -d: -f1; done |
     sort -u | xargs dpkg-query -W -f='${Package} ${Version}\n' >"$doc/bundled-libraries.txt"
 cat "$doc/bundled-libraries.txt"
 
-ARCH=x86_64 "$tools/appimagetool" --no-appstream --runtime-file "$tools/runtime" \
-    "$appdir" "$dist/cerno_${version}_x86_64.AppImage"
+# The update information points AppImageUpdate at the latest GitHub release's .zsync.
+# appimagetool has zsyncmake write it into the working directory, under the AppImage's
+# name, so it runs in dist/linux. Cerno itself has no updater.
+# --no-appstream: appimagetool looks only for a metainfo named after the desktop file
+# (cerno.appdata.xml); CI's lint job checks ours with appstreamcli.
+appimage=$dist/cerno_${version}_x86_64.AppImage
+here=$PWD
+(cd "$dist" && ARCH=x86_64 "$here/$tools/appimagetool" --no-appstream \
+    --runtime-file "$here/$tools/runtime" \
+    --updateinformation "gh-releases-zsync|fly2nbc-oss|Cerno|latest|cerno_*_x86_64.AppImage.zsync" \
+    "$here/$appdir" "${appimage##*/}")
+if [[ ! -s $appimage.zsync ]]; then
+    echo "appimagetool wrote no $appimage.zsync - is zsyncmake installed?" >&2
+    exit 1
+fi
+
+# The AppImage starts and knows its version (no window, no data folder).
+said=$("$appimage" --version)
+if [[ $said != "cerno $version" ]]; then
+    echo "the AppImage says '$said' to --version, expected 'cerno $version'" >&2
+    exit 1
+fi
 
 (cd "$dist" && ls -l && sha256sum -- *)
