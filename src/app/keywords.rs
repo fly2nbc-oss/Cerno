@@ -271,6 +271,42 @@ mod tests {
         assert_eq!(h.app.view.len(), 4);
     }
 
+    /// Through the card: `Ctrl+Enter` applies what is ticked; applying with nothing ticked ends
+    /// the filter in effect.
+    #[test]
+    fn the_card_applies_and_an_empty_pick_ends_the_filter() {
+        use eframe::egui::{Key, Modifiers};
+
+        let mut h = Harness::new(3);
+        let a = h.app.folder.all[0].clone();
+        h.app.board.set_keywords(&a, words(&["Familie"]));
+        for path in &h.app.folder.all[1..] {
+            h.app.board.set_keywords(path, Vec::new());
+        }
+        let ctrl = Modifiers::COMMAND | Modifiers::CTRL;
+        h.app.open_keywords();
+        if let Layer::Keywords(card) = &mut h.app.layer {
+            card.toggle(card_ui::Row::Word(0));
+        }
+        h.press(Key::Enter, ctrl);
+        assert_eq!(h.layer(), "none");
+        assert!(h.app.options.keywords);
+        assert_eq!(&h.app.view.paths[..], std::slice::from_ref(&a));
+
+        h.app.open_keywords();
+        if let Layer::Keywords(card) = &mut h.app.layer {
+            assert!(
+                card.pick.contains("familie"),
+                "the pick in effect is ticked"
+            );
+            card.toggle(card_ui::Row::Word(0));
+        }
+        h.press(Key::Enter, ctrl);
+        assert!(!h.app.options.keywords, "nothing ticked: the filter ends");
+        assert!(h.app.keywords.applied.is_none());
+        assert_eq!(h.app.view.len(), 3);
+    }
+
     /// A change of this session counts for the suggestions at once; the vocabulary keeps the
     /// folder's spelling.
     #[test]

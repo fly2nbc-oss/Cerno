@@ -531,6 +531,48 @@ fn a_sidecars_hierarchy_follows_a_removed_keyword() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+/// The first write into a new sidecar carries the RAW's own hierarchy like its other marks,
+/// less the paths of a keyword removed with it. Skipped without ExifTool.
+#[test]
+fn a_new_sidecar_carries_the_raws_hierarchy() {
+    if crate::exiftool::locate().is_none() {
+        eprintln!("ExifTool not found – skipped");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("cerno-lr-hier-new-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let in_camera = "II*\0<x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF \
+            xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'><rdf:Description \
+            rdf:about='' xmlns:dc='http://purl.org/dc/elements/1.1/' \
+            xmlns:lr='http://ns.adobe.com/lightroom/1.0/'><dc:subject><rdf:Bag>\
+            <rdf:li>Orte</rdf:li><rdf:li>Bodensee</rdf:li><rdf:li>Anna</rdf:li></rdf:Bag>\
+            </dc:subject><lr:hierarchicalSubject><rdf:Bag><rdf:li>Orte|Bodensee</rdf:li>\
+            <rdf:li>Personen|Anna</rdf:li></rdf:Bag></lr:hierarchicalSubject>\
+            </rdf:Description></rdf:RDF></x:xmpmeta>";
+    let (kept, removed) = (dir.join("IMG_1.NEF"), dir.join("IMG_2.NEF"));
+    std::fs::write(&kept, in_camera).unwrap();
+    std::fs::write(&removed, in_camera).unwrap();
+    let mut exiftool = None;
+
+    write_marks(&mut exiftool, &kept, None, Some(Some(Label::Red)), None).unwrap();
+    assert_eq!(
+        metadata::read_sidecar(&kept).hierarchy,
+        ["Orte|Bodensee", "Personen|Anna"]
+    );
+    let wanted = Description {
+        comment: String::new(),
+        keywords: vec!["Orte".into(), "Anna".into()],
+    };
+    write_marks(&mut exiftool, &removed, None, None, Some(&wanted)).unwrap();
+    assert_eq!(
+        metadata::read_sidecar(&removed).hierarchy,
+        ["Personen|Anna"]
+    );
+    drop(exiftool);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
 /// End-to-end through a real ExifTool; skipped when ExifTool isn't installed.
 #[test]
 fn writes_stars_and_keeps_file_dates() {

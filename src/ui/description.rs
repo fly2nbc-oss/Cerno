@@ -175,12 +175,7 @@ fn fields(
                         .fill(tokens::SURFACE_MUTED)
                         .min_size(vec2(0.0, theme::COMPACT));
                     let hint = if long {
-                        format!(
-                            "{}
-
-{}",
-                            t.keyword_too_long, t.keyword_remove
-                        )
+                        format!("{}\n\n{}", t.keyword_too_long, t.keyword_remove)
                     } else {
                         t.keyword_remove.to_owned()
                     };
