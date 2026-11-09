@@ -20,6 +20,8 @@ The VC++ runtime DLLs that cerno.exe and the libraries import are copied from Vi
 Studio's redist folder (app-local deployment), so neither the zip nor the installer needs
 the VC++ Redistributable on the target machine. Every import of every DLL in the folder
 (and in gstreamer-1.0) is then checked: it must be in the folder or part of Windows.
+The PE headers must say x64 for every binary and GUI subsystem for cerno.exe, and
+`cerno --version` must print the version without creating a data folder.
 #>
 param(
     # The cargo output directory with cerno.exe, the DLLs and licenses\.
@@ -71,16 +73,16 @@ if (-not $CrtDir) {
     if (-not $crt) { throw "no VC++ redist folder under $vs\VC\Redist\MSVC - pass -CrtDir" }
     $CrtDir = $crt.FullName
 }
-Write-Host "dumpbin: $($dumpbin.FullName)"
-Write-Host "VC++ runtime: $CrtDir"
+Write-Output "dumpbin: $($dumpbin.FullName)"
+Write-Output "VC++ runtime: $CrtDir"
 
-function Get-Imports([string]$File) {
+function Get-ImportedDll([string]$File) {
     $lines = & $dumpbin.FullName /nologo /dependents $File
     if ($LASTEXITCODE) { throw "dumpbin failed on $File" }
     $lines | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^[\w.-]+\.dll$' }
 }
 
-function Get-Binaries { Get-ChildItem $stage -File -Recurse | Where-Object Extension -in ".exe", ".dll" }
+function Get-PackageBinary { Get-ChildItem $stage -File -Recurse | Where-Object Extension -in ".exe", ".dll" }
 
 # --- GStreamer (video playback) ------------------------------------------------------
 # The plugins playback needs, each licence-checked (LGPL; dav1d MIT/BSD): the pipeline,
@@ -104,8 +106,8 @@ foreach ($plugin in $plugins) {
 # What cerno.exe and the plugins import from GStreamer's bin folder, until nothing new is.
 do {
     $added = $false
-    foreach ($binary in Get-Binaries) {
-        foreach ($dll in Get-Imports $binary.FullName) {
+    foreach ($binary in Get-PackageBinary) {
+        foreach ($dll in Get-ImportedDll $binary.FullName) {
             if (Test-Path "$stage\$dll") { continue }
             if (Test-Path "$GStreamer\bin\$dll") {
                 Copy-Item "$GStreamer\bin\$dll" $stage
@@ -126,8 +128,8 @@ foreach ($project in "gstreamer-1.0", "gst-plugins-base-1.0", "gst-plugins-bad-1
 # Copy what is imported until nothing new is (msvcp140 itself imports vcruntime140).
 do {
     $added = $false
-    foreach ($binary in Get-Binaries) {
-        foreach ($dll in Get-Imports $binary.FullName) {
+    foreach ($binary in Get-PackageBinary) {
+        foreach ($dll in Get-ImportedDll $binary.FullName) {
             if (Test-Path "$stage\$dll") { continue }
             if (Test-Path "$CrtDir\$dll") {
                 Copy-Item "$CrtDir\$dll" $stage
@@ -141,8 +143,8 @@ do {
 # The VC++ runtime is installed on most machines (and on CI runners) but is not part
 # of Windows, so finding it in System32 does not count.
 $vcRuntime = '^(msvcp|vcruntime|concrt|vccorlib|vcomp)\d'
-$missing = foreach ($binary in Get-Binaries) {
-    foreach ($dll in Get-Imports $binary.FullName) {
+$missing = foreach ($binary in Get-PackageBinary) {
+    foreach ($dll in Get-ImportedDll $binary.FullName) {
         if (Test-Path "$stage\$dll") { continue }
         if ($dll -match '^(api|ext)-ms-win-') { continue } # API sets, resolved by Windows
         if ($dll -notmatch $vcRuntime -and (Test-Path "$env:SystemRoot\System32\$dll")) { continue }
@@ -160,6 +162,62 @@ Get-ChildItem $stage -Recurse -File | ForEach-Object {
     ((Get-ChildItem $stage -Recurse -File | Where-Object {
         $_.DirectoryName -like "*gstreamer-1.0" -or (Test-Path "$GStreamer\bin\$($_.Name)") } |
         Measure-Object Length -Sum).Sum / 1MB)
+
+# --- 64-bit, and cerno.exe a GUI program ----------------------------------------------
+# From the PE headers: an x86 file, or a cerno.exe built without `windows_subsystem` (a debug
+# build: a console window beside Cerno), must not ship.
+function Get-PeHeader([string]$File) {
+    $stream = [IO.File]::OpenRead($File)
+    try {
+        $reader = [IO.BinaryReader]::new($stream)
+        if ($reader.ReadUInt16() -ne 0x5A4D) { throw "$File is no PE file (no MZ header)" }
+        $stream.Position = 0x3C
+        $pe = $reader.ReadUInt32()
+        $stream.Position = $pe
+        if ($reader.ReadUInt32() -ne 0x00004550) { throw "$File is no PE file (no PE signature)" }
+        $machine = $reader.ReadUInt16()
+        # The optional header follows the 20-byte file header; Subsystem is at offset 68 in
+        # PE32 and PE32+ alike.
+        $stream.Position = $pe + 24
+        $magic = $reader.ReadUInt16()
+        $stream.Position = $pe + 24 + 68
+        [pscustomobject]@{ Machine = $machine; Magic = $magic; Subsystem = $reader.ReadUInt16() }
+    } finally {
+        $stream.Dispose()
+    }
+}
+$notX64 = foreach ($binary in Get-PackageBinary) {
+    $header = Get-PeHeader $binary.FullName
+    # IMAGE_FILE_MACHINE_AMD64, PE32+
+    if ($header.Machine -ne 0x8664 -or $header.Magic -ne 0x20B) {
+        "{0} (machine 0x{1:X4}, magic 0x{2:X3})" -f $binary.Name, $header.Machine, $header.Magic
+    }
+}
+if ($notX64) { throw "not x64:`n  $($notX64 -join "`n  ")" }
+$subsystem = (Get-PeHeader "$stage\cerno.exe").Subsystem
+# IMAGE_SUBSYSTEM_WINDOWS_GUI
+if ($subsystem -ne 2) { throw "cerno.exe is no GUI program (subsystem $subsystem, expected 2)" }
+Write-Output "PE headers: every binary x64, cerno.exe a GUI program"
+
+# --- The exe starts and knows its version ---------------------------------------------
+# `--version` opens no window and creates no data folder: a fresh CERNO_DATA_DIR must stay
+# absent. A GUI program has no console, so its line comes through a redirect.
+$dataDir = $env:CERNO_DATA_DIR
+try {
+    $env:CERNO_DATA_DIR = Join-Path ([IO.Path]::GetTempPath()) "cerno-version-$([guid]::NewGuid())"
+    $out = New-TemporaryFile
+    $run = Start-Process -FilePath "$stage\cerno.exe" -ArgumentList "--version" -Wait -PassThru `
+        -NoNewWindow -RedirectStandardOutput $out
+    $said = (Get-Content -Raw $out).Trim()
+    Remove-Item $out
+    if ($run.ExitCode -or $said -ne "cerno $version") {
+        throw "cerno --version said '$said' (exit $($run.ExitCode)), expected 'cerno $version'"
+    }
+    if (Test-Path $env:CERNO_DATA_DIR) { throw "cerno --version created a data folder" }
+    Write-Output "cerno --version: $said"
+} finally {
+    $env:CERNO_DATA_DIR = $dataDir
+}
 
 # --- The package plays a video with its own files ------------------------------------
 # No GStreamer of the system on PATH, so a missing DLL or plugin shows here. The exe is a

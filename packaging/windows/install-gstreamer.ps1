@@ -5,7 +5,7 @@ Installs the GStreamer that `--features video` builds against and that build.ps1
 
 .DESCRIPTION
 The official MSVC build (runtime and development files in one Inno Setup installer since
-1.28), for the current user – no admin rights – into
+1.28), for the current user - no admin rights - into
 %LOCALAPPDATA%\Programs\gstreamer\1.0\msvc_x86_64. The installer is checked against the
 pinned SHA-256 first. Nothing happens when that version is installed already.
 
@@ -19,6 +19,10 @@ Developers: run it once, then before `cargo build --features video`:
     $env:PKG_CONFIG = "$gst\bin\pkg-config.exe"; $env:PKG_CONFIG_PATH = "$gst\lib\pkgconfig"
     $env:PATH = "$gst\bin;$env:PATH"   # for cargo run / cargo test
 #>
+# The root folder is this script's output, which callers read; the progress lines go to the
+# host so they never join it.
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '',
+    Justification = 'Progress lines must stay out of the output, which is the root folder')]
 param(
     [string]$Version = "1.28.7",
     [string]$Sha256 = "032fc6062b8539838fc8da22589cb9b24c5d820baa7f8cc160af9ea08395badf"

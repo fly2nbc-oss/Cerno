@@ -66,6 +66,16 @@ fn no_dlls_from_working_directory() {
 }
 
 fn main() -> eframe::Result {
+    // `cerno --version`: the packages' smoke test. First of all, so it opens no window, sets up
+    // no logging or GStreamer and creates no data folder. The release exe on Windows has no
+    // console: its line shows only through a redirect (`build.ps1` reads it that way).
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--version")) {
+        use std::io::Write as _;
+        // A closed pipe (`cerno --version | true`) is no reason to panic.
+        let _ = writeln!(std::io::stdout(), "cerno {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
     let started = Instant::now();
     // Before any thread: the shipped GStreamer's plugin folder and registry (environment).
     playback::configure_environment();

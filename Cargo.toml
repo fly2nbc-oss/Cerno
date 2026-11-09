@@ -134,6 +134,8 @@ recommends = "libimage-exiftool-perl, mesa-vulkan-drivers, xdg-desktop-portal, f
 assets = [
     ["target/release/cerno", "usr/bin/", "755"],
     ["packaging/linux/cerno.desktop", "usr/share/applications/", "644"],
+    # What software centres show (AppStream); the AppImage carries the same file.
+    ["packaging/linux/io.github.fly2nbc_oss.cerno.metainfo.xml", "usr/share/metainfo/", "644"],
     ["assets/icon.png", "usr/share/icons/hicolor/256x256/apps/cerno.png", "644"],
     ["NOTICE", "usr/share/doc/cerno/", "644"],
     ["THIRD_PARTY.md", "usr/share/doc/cerno/", "644"],

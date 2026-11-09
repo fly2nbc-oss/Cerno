@@ -7,6 +7,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **The AppImage updates with AppImageUpdate** – it now carries update information, and every release has its `.zsync` beside it: [AppImageUpdate](https://github.com/AppImageCommunity/AppImageUpdate) (or AppImageLauncher) fetches only the parts that changed. Cerno itself still downloads nothing; its update check only names a newer version.
+- **A description in software centres** – the `.deb` and the AppImage carry AppStream metadata, so GNOME Software and KDE Discover show what Cerno does, a screenshot and its releases.
+- **`cerno --version`** prints the version and ends, without a window and without creating Cerno's data folder. On Windows the line shows only when the output is redirected (`cerno --version > version.txt`): the program has no console.
+
+### Under the hood
+
+- **The build scripts are checked** – CI lints the workflow (actionlint), the shell scripts (shellcheck) and the PowerShell scripts (PSScriptAnalyzer) and validates the desktop file and the AppStream metadata, on every run. The Windows package checks that every program file is 64-bit and `cerno.exe` a windowed program, and each package must answer `--version` before it ships.
+
 ## [1.14.0] – 2026-11-09
 
 Only one camera's photos, the filter off for a moment with `Shift+T`, a warning when a RAW preview is too small to judge sharpness – and marks that could not be written are no longer lost.
