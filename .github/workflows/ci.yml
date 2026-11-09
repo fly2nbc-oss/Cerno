@@ -506,7 +506,16 @@ jobs:
                 libxcb libwayland-client \
                 gstreamer1-plugins-base gstreamer1-plugins-good gstreamer1-plugins-bad-free \
                 gstreamer1-plugin-libav gstreamer1-plugin-openh264 openh264
+              # Fedora 44 brings libheif along with the GStreamer plugins (gdk-pixbuf2's
+              # glycin-loaders need it; the log names who requires it). It goes again without
+              # its dependents, which load it in their own processes, not in Cerno's.
               heif=$(rpm -qa 'libheif*')
+              if [ -n "$heif" ]; then
+                rpm -q --whatrequires libheif 'libheif.so.1()(64bit)' || true
+                # shellcheck disable=SC2086 # one package name per word
+                rpm -e --nodeps $heif
+                heif=$(rpm -qa 'libheif*')
+              fi
               ;;
             arch)
               pacman -Syu --noconfirm --needed xorg-server-xvfb xorg-xauth mesa vulkan-swrast \
