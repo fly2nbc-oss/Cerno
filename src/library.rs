@@ -425,4 +425,34 @@ mod tests {
         assert!(Format::Raw.marks_in_sidecar() && Format::Video.marks_in_sidecar());
         assert!(!Format::Dng.marks_in_sidecar() && !Format::Png.marks_in_sidecar());
     }
+
+    /// CER-71: how long `Library::open` takes on real folders, read-only (it only lists
+    /// directories). `CERNO_SCAN=<dir>[;<dir>…]`, five runs each with subfolders off and on –
+    /// the first run of a folder not read for a while comes closest to a cold start.
+    /// `CERNO_SCAN=D:/Pictures/2026 cargo test --release -- --ignored --nocapture folder_scan_costs`
+    #[test]
+    #[ignore = "measures real folders named by CERNO_SCAN"]
+    fn folder_scan_costs() {
+        let Ok(dirs) = std::env::var("CERNO_SCAN") else {
+            return;
+        };
+        for dir in dirs.split(';').filter(|dir| !dir.is_empty()) {
+            for subfolders in [false, true] {
+                let mut runs = Vec::new();
+                let mut files = 0;
+                for _ in 0..5 {
+                    let started = std::time::Instant::now();
+                    let (library, _) = Library::open(Path::new(dir), subfolders).unwrap();
+                    runs.push(started.elapsed().as_secs_f64() * 1000.0);
+                    files = library.paths.len();
+                }
+                let shown: Vec<String> = runs.iter().map(|ms| format!("{ms:.0}")).collect();
+                println!(
+                    "{dir} subfolders {}: {files} files, ms {}",
+                    if subfolders { "on" } else { "off" },
+                    shown.join(" / ")
+                );
+            }
+        }
+    }
 }

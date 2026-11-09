@@ -110,6 +110,9 @@ pub(super) fn index_of(paths: &[PathBuf]) -> HashMap<PathBuf, usize> {
 
 impl CernoApp {
     pub(super) fn open(&mut self, ctx: &egui::Context, path: &Path) {
+        // Everything here runs on the UI thread: the log says how long a folder froze it
+        // (CER-71 measures before anything moves to a worker).
+        let started = Instant::now();
         let (library, index) = match Library::open(path, self.folder.subfolders) {
             Ok(opened) => opened,
             Err(err) => {
@@ -153,6 +156,7 @@ impl CernoApp {
                     .primary_of(&opened)
                     .map_or(opened.clone(), Path::to_path_buf)
             });
+        let scanned = started.elapsed();
         let paths = Arc::new(paths);
         self.folder.all_index = index_of(&paths);
         self.folder.pairs = pairs;
@@ -193,13 +197,25 @@ impl CernoApp {
         self.thumbs.clear();
         // Only needed when the view depends on scores; the analysis fills the board anyway,
         // and on big folders the lookups would delay the first frame.
+        let preloading = Instant::now();
         if self.view_options().depends_on_scores() {
             self.analyzer.preload(&self.folder.all);
         }
+        let preloaded = preloading.elapsed();
         self.analyzer
             .set_library(Arc::clone(&self.folder.all), index);
         self.view = View::default();
+        let building = Instant::now();
         self.rebuild_view(ctx, start);
+        log::info!(
+            "open: {} files (subfolders {}), scan {} ms, index {} ms, view {} ms, {} ms in all",
+            self.folder.all.len(),
+            if self.folder.subfolders { "on" } else { "off" },
+            scanned.as_millis(),
+            preloaded.as_millis(),
+            building.elapsed().as_millis(),
+            started.elapsed().as_millis()
+        );
     }
 
     /// Subfolders on or off (`Ctrl+U`, the settings menu); the current folder opens again.
