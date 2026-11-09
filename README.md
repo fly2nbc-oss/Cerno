@@ -16,19 +16,14 @@ Cerno (Latin *cerno* – "I sift, see clearly") helps you go through a folder of
 
 ## What it does
 
-- **Instant switching** – the photos around the current one are loaded in advance; with the keyboard, or the arrows that show when the mouse moves over the photo.
-- **Rate from the keyboard** – stars, reject, colour labels, comment and keywords; `Ctrl+Z` takes the last marks back, newest first.
-- **Two helpers under every photo** – *Aesthetics* and *Sharpness*, both in percent (see [the values](#the-values)). Empty stars fill lightly with Cerno's guess of your rating.
-- **Sort and filter** – by capture time, rating, aesthetics, sharpness; photos or videos only; blurry shots, duplicates, files cut off while copying, similar photos, photos with or without people; *without ✕* hides the rejected ones; a pasted list of file names shows the photos a client chose; a keyword shows the photos that have it (while you type a keyword, Cerno offers the ones the folder already uses); a camera whose clock was off is set right without touching its files. Filters of different kinds work together: *4★* and *Blurry* are the blurry 4-star photos.
-- **Top 10 … Top 250** – the best photos of what the filters leave, for a slideshow or a photo book: by your stars (else Cerno's guess), aesthetics and sharpness, the best of each burst first. Rejected and blurry shots and duplicates never count, and nothing in the photos changes.
-- **Compare** two or four photos side by side, or see the whole folder as a grid. Thin out a burst pair by pair: the better photo stays on the left, the next one comes in on the right.
-- **Whole and 100 % at once** – one photo whole on the left and at 100 % on the right, looking at the eyes or the sharpest spot; both follow as you browse.
-- **RAW + JPG as one photo** – a pair shows once; stars, colour, copy, move and delete take both files.
-- **Straighten, crop and rotate** JPEGs – with the mouse or the keyboard; the original is kept and `Ctrl+Z` brings it back.
-- **Nothing is lost** – deleting moves a photo into a hidden `.originals` folder beside it, after a 5-second countdown you can undo with `Esc`. Later the bin box in the filter bar shows the deleted photos, and `Ctrl+Z` puts one back.
-- **Videos play right here** – with sound: `Space` plays and pauses, `Alt+←`/`Alt+→` jump 5 seconds, the bar under the video seeks and sets the volume.
-- **Formats** – JPEG, HEIC, PNG, TIFF, WebP, BMP, GIF, RAW (its embedded preview) and videos (MP4, MOV, MKV, WebM, AVI, MTS …).
-- **Five languages** – German, English, French, Spanish, Italian.
+- **Instant switching** – the photos around the current one are loaded in advance.
+- **Rate from the keyboard** – stars, reject, colour labels, comment and keywords; `Ctrl+Z` takes marks back, newest first.
+- **Two helpers under every photo** – *Aesthetics* (two local AI models, downloaded once when you ask) and *Sharpness*, both in percent; empty stars fill lightly with Cerno's guess of your rating.
+- **Sort and filter** – by capture time, rating, aesthetics, sharpness, camera or keyword; blurry shots, duplicates, similar photos, photos with or without people, a client's list of file names – and *Top 10 … Top 250*, the best photos for a slideshow or a photo book.
+- **Compare** two or four photos side by side, thin out a burst pair by pair, or see the folder as a grid or grouped into scenes.
+- **RAW + JPG as one photo**, and **straighten, crop and rotate** JPEGs – the original is kept and `Ctrl+Z` brings it back.
+- **Nothing is lost** – deleting moves a photo into a hidden `.originals` folder beside it (empty it yourself – it is not the Recycle Bin); `Ctrl+Z` puts it back.
+- **Formats** – JPEG, HEIC, PNG, TIFF, WebP, BMP, GIF, RAW (its embedded preview) and videos (MP4, MOV, MKV, WebM, AVI, MTS …), which play right here with sound; **five languages** – German, English, French, Spanish, Italian.
 
 ## Install
 
@@ -38,65 +33,33 @@ Download from [Releases](https://github.com/fly2nbc-oss/Cerno/releases):
 |---|---|
 | `cerno_<version>_x64-setup.exe` | Windows 10/11 – installs for your user, no admin rights |
 | `cerno_<version>_x64-portable.zip` | Windows – unzip anywhere and run `Cerno\cerno.exe` |
-| `cerno_<version>_x86_64.AppImage` | Linux (Ubuntu 24.04, Debian 13, Fedora 40 or newer) |
+| `cerno_<version>_x86_64.AppImage` | Linux with glibc 2.39 or newer – tested on Ubuntu 24.04, Debian 13, Fedora 44 and Arch Linux |
 | `cerno_<version>_amd64.deb` | Ubuntu 24.04+ / Debian 13+ – `sudo apt install ./cerno_<version>_amd64.deb` |
 
-The Windows files are not signed yet: SmartScreen asks once (*More info* → *Run anyway*).
+The Windows files are not signed yet: SmartScreen asks once (*More info* → *Run anyway*). The AppImage can be brought up to date with [AppImageUpdate](https://github.com/AppImageCommunity/AppImageUpdate), which fetches only what changed (the release's `.zsync` file); Cerno itself downloads no updates.
 
-The AppImage can be brought up to date with [AppImageUpdate](https://github.com/AppImageCommunity/AppImageUpdate) (or AppImageLauncher): it fetches only what changed in the newest release (the release's `.zsync` file). Cerno itself downloads no updates.
-
-**Writing stars and labels** needs [ExifTool](https://exiftool.org/): on Windows Cerno offers to download it (11 MB) the first time it is needed, and later a newer version when a Cerno update brings one; on Linux install it with the package manager (`apt install libimage-exiftool-perl`). Viewing works without it.
-**Videos** play with GStreamer: the Windows downloads bring it along; on Linux the `.deb` installs it, and the AppImage uses the one every desktop has.
+**Writing stars and labels** needs [ExifTool](https://exiftool.org/): on Windows Cerno offers to download it (11 MB) the first time it is needed; on Linux install it with the package manager (`apt install libimage-exiftool-perl`). Viewing works without it.
+**Videos** play with GStreamer: the Windows downloads bring it along; on Linux the `.deb` installs it, and the AppImage uses the system's (on Fedora, H.264 videos need `openh264` from the `fedora-cisco-openh264` repository).
 
 ## The most important keys
 
 | Key | Does |
 |---|---|
-| `→` / `←`, `Space` | Next / previous photo |
-| `Space` on a video | Play / pause (`Shift+Space`: next, `Alt+←`/`Alt+→`: 5 seconds back / on) |
-| `1`–`5`, `0` | Stars / no stars (`Shift` + digit: rate and go on) |
-| `X` | Reject (again: undo) |
-| `6`–`9` | Colour label red, yellow, green, blue |
+| `→` / `←`, `Space` | Next / previous photo (`Space` on a video: play / pause) |
+| `1`–`5`, `0`, `X`, `6`–`9` | Stars, no stars, reject, colour label (`Shift` + key: and go on) |
 | `Delete` | Delete – `Esc` within 5 s brings it back |
-| `Z`, double click | 100 % zoom (`Ctrl+1` 100 %, `Ctrl+0` the whole photo) |
-| `C` | Compare: this photo stays on the left, browse on the right |
-| `A` / `D` | Compare: keep the left / right one, the other is rejected (`Shift`: and compare the next photo) |
-| `Shift+Z` | The photo whole and at 100 % side by side |
-| `Shift+C` | Four photos at once – the frame is the current photo, `↑`/`↓` a row |
-| `F10` / `T` / `Tab` / `F6` / `F7` | Menu bar / filter bar / details / filmstrip / grid |
-| `F8` | Scenes: the grid with alike photos taken close together grouped, each scene on its own row – `Page Up`/`Page Down` jump from scene to scene |
-| `Shift+T` | Filter off for a moment – again: the same filter back |
-| `Ctrl+F` | Filters with the keyboard: `←`/`→` choose a box, `Space` ticks it or opens its list, `1`–`5`, `6`–`9`, `X` tick their box, `Del` shows all, `Esc` done |
-| `Alt+1` / `Alt+2` / `Alt+0` | Menu bar / details / every bar (like `F10`, `Tab`, `Shift+Tab`) |
-| `Ctrl+Tab` | The details panel's tabs: values, description (there `↑`/`↓` pick a keyword suggestion) |
-| `G` | All faces large – a click zooms to one |
-| `Ctrl+U` | Include subfolders (on / off) |
-| `Ctrl+Z` | Undo the last mark or edit, newest first – on a deleted photo: put it back |
-| `H` | Help: all keys, and tips on working with Cerno |
-
-## The values
-
-- **Aesthetics** – how appealing two AIs find the photo (LAION and V2.5, averaged). 0 % is unappealing, 100 % very appealing; most photos land at 40–60 %. A fixed scale: a photo has the same value in every folder. Needs two image models (CLIP 1.2 GB and V2.5 1.7 GB). Cerno offers to download them once (*Menu bar › Settings › Models & data*), and an interrupted download continues where it stopped.
-- **Sharpness** – how sharp the photo is compared with the other photos in the folder, measured at the eyes when there is a face. "Probably blurry" marks the blurriest ones.
-- **Prediction** – the stars Cerno thinks you would give, learnt from your own ratings (and from the photos you reject, as 0 stars – deleted ones don't count) once there are 15 of them. It shows as lightly filled stars and never sets a rating.
-
-The details panel (`Tab`) shows more – both AIs separately, exposure, histogram, camera data – and explains each value when you rest the pointer on it.
-
-## Where your data is
-
-- **In the photo:** only stars, colour label, comment and keywords (RAW, BMP and video: in an `.xmp` file beside it). File dates are not changed.
-- **In Cerno's index:** all scores – `%LOCALAPPDATA%\Cerno\data` on Windows, `~/.local/share/cerno` on Linux.
-- **Beside your photos:** the hidden `.originals` folder with deleted photos and the originals of edited ones. Empty it yourself once you are sure – it is not the Recycle Bin.
-
-Backup tools that only compare size and date (e.g. `rsync` without `-c`) may miss a changed rating, because the date stays the same.
+| `Z`, `C`, `F7` | 100 % zoom, compare, grid |
+| `F10` / `T` / `Tab` / `F6` | Menu bar / filter bar / details / filmstrip |
+| `Ctrl+Z` | Undo the last mark or edit – on a deleted photo: put it back |
+| `H` | Help: every key, and tips on working with Cerno |
 
 ## Privacy
 
 Cerno works on your computer. Your photos, their names and your ratings never leave it, and there is no telemetry. This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it:
 
-- **Update check, only if you agree:** at the first start Cerno asks whether it may look for a new version; until you say yes it never does. Then it asks GitHub once a day which release is the latest – one request to `github.com/fly2nbc-oss/Cerno/releases/latest`, whose redirect names the version. Nothing about you, your computer or your photos is sent; the request says only that it comes from "Cerno". GitHub sees your IP address, as with any website. A newer version is only named; nothing is downloaded or installed. *Settings ▸ Check for updates* turns it on or off.
-- **Downloads you ask for:** the aesthetics models (from Hugging Face and this repository's releases) and, on Windows, ExifTool (from SourceForge) – only after you click, each checked by size and SHA-256.
-- **Links you click:** *About Cerno* opens GitHub issues with the version and system filled in, and Details › File opens a photo's GPS position in Google Maps or OpenStreetMap – only on a click, in your browser.
+- **Update check, only if you agree** at the first start: then once a day one request to `github.com/fly2nbc-oss/Cerno/releases/latest`, which says only that it comes from "Cerno" (GitHub sees your IP address, as with any website). A newer version is only named, nothing is downloaded. *Settings ▸ Check for updates* turns it off.
+- **Downloads you ask for:** the aesthetics models (Hugging Face, this repository's releases) and, on Windows, ExifTool (SourceForge) – each checked by size and SHA-256.
+- **Links you click:** GitHub issues from *About Cerno*, a photo's GPS position in Google Maps or OpenStreetMap.
 
 ## Code signing policy
 
@@ -111,4 +74,5 @@ Free code signing provided by [SignPath.io](https://about.signpath.io/), certifi
 
 - Building from source and checks: [`CONTRIBUTING.md`](./CONTRIBUTING.md)
 - Changes per version: [`CHANGELOG.md`](./CHANGELOG.md)
+- Reporting a vulnerability, network and file access in detail: [`SECURITY.md`](./SECURITY.md)
 - License: Apache 2.0 ([`LICENSE`](./LICENSE)), third-party components in [`THIRD_PARTY.md`](./THIRD_PARTY.md)
