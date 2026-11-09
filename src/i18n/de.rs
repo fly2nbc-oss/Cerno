@@ -150,6 +150,19 @@ pub static TEXTS: Texts = Texts {
     photos_badge_tooltip: "So viele Fotos zeigt der Filter gerade – auf genau diese wirkt „Sichtbare Fotos“ in der Menüleiste.",
     filtered_position: |pos, shown, total| format!("{pos} / {shown} von {total}"),
     filtered_hint: "Ein Filter blendet Fotos aus. Ein Klick oder T zeigt die Filterleiste.",
+    unsaved_fact: |n| {
+        if n == 1 {
+            "1 Markierung nicht gespeichert".to_owned()
+        } else {
+            format!("{n} Markierungen nicht gespeichert")
+        }
+    },
+    unsaved_tooltip: "Cerno konnte sie nicht in die Dateien schreiben und versucht es erneut. Ein Klick zeigt, welche und warum.",
+    unsaved_text: "Cerno konnte die Markierungen dieser Fotos nicht in ihre Dateien schreiben. Es versucht es von selbst erneut – oder jetzt, etwa nachdem das Programm geschlossen ist, das eine Datei offen hält.",
+    unsaved_exit_text: "Beim Beenden gehen sie verloren: Die Dateien behalten, was sie vorher hatten.",
+    unsaved_more: |n| format!("… und {n} weitere"),
+    unsaved_retrying: "Erneuter Versuch…",
+    unsaved_all_saved: "Alle Markierungen gespeichert.",
     label_red: "Rot",
     label_yellow: "Gelb",
     label_green: "Grün",
@@ -281,7 +294,9 @@ pub static TEXTS: Texts = Texts {
     internal_error: "Interner Fehler – der Befehl wurde abgebrochen, Cerno läuft weiter (Details in crash.log im Datenordner).",
     cannot_open: |path, err| format!("{path} lässt sich nicht öffnen: {err}"),
     no_photos_in: |dir| format!("Keine JPEG- oder HEIC-Dateien in {dir}"),
-    rating_not_saved: |err| format!("Sterne nicht gespeichert – {err}"),
+    rating_not_saved: |name| {
+        format!("Markierung nicht gespeichert: {name} – Cerno versucht es erneut")
+    },
     open_folder: "Ordner öffnen",
     transfer_copy_cmd: "Kopiere alles, was der aktuelle Filter zeigt, nach …",
     transfer_move_cmd: "Verschiebe alles, was der aktuelle Filter zeigt, nach …",
@@ -320,6 +335,8 @@ pub static TEXTS: Texts = Texts {
     btn_download: "Herunterladen",
     btn_cancel: "Abbrechen",
     btn_close: "Schließen (Esc)",
+    btn_retry: "Erneut versuchen",
+    btn_quit_anyway: "Trotzdem beenden",
     aesthetics_offer: |size| {
         format!(
             "Die Ästhetik-Bewertung braucht Bildmodelle ({size}): Menüleiste › Einstellungen › Modelle & Daten."

@@ -102,6 +102,21 @@ impl Harness {
 
     /// One frame with these events, through the input hook like eframe's (`Tab`).
     pub(super) fn frame(&mut self, events: Vec<Event>) {
+        self.window_frame(events, false);
+    }
+
+    /// One frame in which the window's × (or `Alt+F4`) asks to close it; what the app told the
+    /// window (`CancelClose`, `Close`).
+    pub(super) fn close_window(&mut self) -> Vec<egui::ViewportCommand> {
+        self.window_frame(Vec::new(), true)
+    }
+
+    /// One frame; `close`: the window is asked to close. What the app told the window.
+    pub(super) fn window_frame(
+        &mut self,
+        events: Vec<Event>,
+        close: bool,
+    ) -> Vec<egui::ViewportCommand> {
         self.time += 1.0 / 60.0;
         let mut raw = RawInput {
             screen_rect: Some(Rect::from_min_size(
@@ -112,10 +127,22 @@ impl Harness {
             events,
             ..Default::default()
         };
+        if close {
+            raw.viewports
+                .entry(egui::ViewportId::ROOT)
+                .or_default()
+                .events
+                .push(egui::ViewportEvent::Close);
+        }
         self.app.raw_input_hook(&self.ctx, &mut raw);
         let app = &mut self.app;
         let mut output = self.ctx.run_ui(raw, |ui| app.run_frame(ui));
         output.textures_delta.clear();
+        output
+            .viewport_output
+            .remove(&egui::ViewportId::ROOT)
+            .map(|viewport| viewport.commands)
+            .unwrap_or_default()
     }
 
     /// Two frames: an `Area` shows from its second one (egui measures it first).
@@ -145,6 +172,7 @@ impl Harness {
             Layer::Confirm { .. } => "confirm",
             Layer::NameList(_) => "name list",
             Layer::CameraTime(_) => "camera time",
+            Layer::Unsaved { .. } => "unsaved",
         }
     }
 
@@ -485,5 +513,107 @@ mod tests {
         );
         assert_eq!(h.rating_of(0), Some(Rating::Stars(4)));
         assert_eq!(h.app.current, 0);
+    }
+
+    /// What the writer reports: `unsaved` files not written, `asked` tries asked for, of
+    /// which `done` have run.
+    fn report(h: &Harness, unsaved: &[usize], asked: usize, done: usize) {
+        use crate::rating::{UnsavedMark, WriterStatus};
+        let unsaved = unsaved
+            .iter()
+            .map(|&n| UnsavedMark {
+                path: h.app.folder.all[n].clone(),
+                error: "locked by another program".to_owned(),
+            })
+            .collect();
+        h.app.writer.report(WriterStatus {
+            unsaved,
+            retry_asked: asked,
+            retry_done: done,
+            ..WriterStatus::default()
+        });
+    }
+
+    /// Nothing waiting, nothing failed: the window closes at once (ticket CER-57).
+    #[test]
+    fn a_clean_close_is_not_held() {
+        let mut h = Harness::new(2);
+        h.settle();
+        let told = h.close_window();
+        assert!(!told.contains(&egui::ViewportCommand::CancelClose));
+        assert_eq!(h.layer(), "none");
+    }
+
+    /// Marks not written hold the close: the writer tries again first; still not written, the
+    /// card asks – `Enter` tries once more, and once everything is written the window closes
+    /// on its own. `Esc` stays in Cerno.
+    #[test]
+    fn closing_with_marks_not_saved_tries_again_and_asks() {
+        let mut h = Harness::new(2);
+        h.settle();
+        report(&h, &[0], 0, 0);
+        h.frame(Vec::new());
+        let told = h.close_window();
+        assert!(told.contains(&egui::ViewportCommand::CancelClose));
+        assert_eq!(h.app.writer.status().retry_asked, 1, "tried again");
+        assert_eq!(h.layer(), "none", "the try runs first");
+
+        // The try ran, the file is still locked: the card asks.
+        report(&h, &[0], 1, 1);
+        h.settle();
+        assert_eq!(h.layer(), "unsaved");
+        assert!(matches!(h.app.layer, Layer::Unsaved { exiting: true }));
+        h.press(Key::X, NONE);
+        assert_eq!(h.rating_of(0), None, "the card has the keyboard");
+        h.press(Key::Enter, NONE);
+        assert_eq!(h.app.writer.status().retry_asked, 2, "Enter tries again");
+
+        // Written now: Cerno closes as asked.
+        report(&h, &[], 2, 2);
+        let told = h.window_frame(Vec::new(), false);
+        assert!(told.contains(&egui::ViewportCommand::Close));
+        assert_eq!(h.layer(), "none");
+        let told = h.close_window();
+        assert!(
+            !told.contains(&egui::ViewportCommand::CancelClose),
+            "that close goes through"
+        );
+
+        // Another time: `Esc` on the card stays in Cerno, and a new close asks again.
+        let mut h = Harness::new(2);
+        h.settle();
+        report(&h, &[1], 0, 0);
+        h.close_window();
+        report(&h, &[1], 1, 1);
+        h.settle();
+        assert_eq!(h.layer(), "unsaved");
+        h.press(Key::Escape, NONE);
+        assert_eq!(h.layer(), "none");
+        let told = h.close_window();
+        assert!(told.contains(&egui::ViewportCommand::CancelClose));
+    }
+
+    /// The card of the marks not written closes on its own once its try wrote them all.
+    #[test]
+    fn the_card_closes_once_everything_is_written() {
+        let mut h = Harness::new(2);
+        h.settle();
+        report(&h, &[0, 1], 0, 0);
+        h.app.show_unsaved();
+        h.settle();
+        assert!(matches!(h.app.layer, Layer::Unsaved { exiting: false }));
+        h.press(Key::Enter, NONE);
+        assert_eq!(h.app.writer.status().retry_asked, 1);
+        h.settle();
+        assert_eq!(h.layer(), "unsaved", "still trying");
+        report(&h, &[], 1, 1);
+        h.settle();
+        assert_eq!(h.layer(), "none");
+        assert!(
+            h.app
+                .notice
+                .as_ref()
+                .is_some_and(|notice| notice.text == "All marks saved.")
+        );
     }
 }

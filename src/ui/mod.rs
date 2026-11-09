@@ -22,5 +22,6 @@ pub mod palette;
 pub mod side_bar;
 pub mod stars;
 pub mod tabs;
+pub mod unsaved;
 pub mod video_controls;
 pub mod viewer;

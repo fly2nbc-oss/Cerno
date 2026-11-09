@@ -251,6 +251,7 @@ impl CernoApp {
         }
         self.draw_name_list_card(ctx, window);
         self.draw_camera_time_card(ctx, window);
+        self.draw_unsaved_card(ctx, window);
         if matches!(self.layer, Layer::Models) {
             let out = models::overlay(ctx, window, &self.analyzer.status(), &self.exiftool_row());
             if out.close {

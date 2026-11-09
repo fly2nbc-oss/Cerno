@@ -79,6 +79,9 @@ pub struct InfoBar<'a> {
     /// A filter hides photos while the filter bar is hidden: how many photos there are. The
     /// position then says so (ticket CER-55, U8).
     pub filtered: Option<usize>,
+    /// Files whose marks could not be written (ticket CER-57): the facts line says so, in the
+    /// warning colour, and a click opens their card.
+    pub unsaved: usize,
     /// Which bars show: their buttons at the right end are lit.
     pub panels: Panels,
     /// What the photo area shows: the view switcher.
@@ -138,6 +141,8 @@ pub struct InfoBarOutput {
     pub view: Option<View>,
     /// The filtered position was clicked: show the filter bar.
     pub show_filters: bool,
+    /// The marks not saved were clicked: show which and why.
+    pub show_unsaved: bool,
 }
 
 /// Two rows: name / position · date · size (left), stars / scores (centre), exposure / camera
@@ -208,35 +213,79 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     // capture date first.
     let font = FontId::proportional(text::SMALL);
     let separator = "   ·   ";
-    let mut facts_left = x;
     let mut facts = Vec::new();
+    // The parts at the start that are never left out: the filtered position and the marks not
+    // saved – each opens something on a click.
+    let separator_width = painter
+        .layout_no_wrap(separator.to_owned(), font.clone(), tokens::MUTED)
+        .size()
+        .x;
+    let mut cursor = x;
+    let mut leads = 0;
     match bar.filtered {
         // A filter hides photos while the filter bar is hidden – the boxes are saved, so it may
         // be yesterday's: the position says so in the accent, and a click shows the bar.
         Some(total) => {
             let (position, shown) = bar.position;
-            let label = format!(
-                "{}  {}",
-                theme::icon::FILTER,
-                (t.filtered_position)(position, shown, total)
-            );
-            let galley = painter.layout_no_wrap(label, font.clone(), tokens::ACCENT);
-            let area = Rect::from_min_size(pos2(x, row2 - galley.size().y / 2.0), galley.size());
-            let response = ui
-                .interact(area.expand(2.0), ui.id().with("filtered"), Sense::CLICK)
-                .on_hover_cursor(CursorIcon::PointingHand)
-                .on_hover_text(t.filtered_hint);
-            let colour = if response.hovered() {
-                tokens::ACCENT_STRONG
-            } else {
-                tokens::ACCENT
+            let lead = Lead {
+                label: format!(
+                    "{}  {}",
+                    theme::icon::FILTER,
+                    (t.filtered_position)(position, shown, total)
+                ),
+                colour: tokens::ACCENT,
+                hover: Some(tokens::ACCENT_STRONG),
+                id: "filtered",
+                tooltip: t.filtered_hint,
             };
-            left.galley_with_override_text_color(area.min, galley, colour);
-            out.show_filters = response.clicked();
-            facts_left = area.right();
+            let (clicked, right) = lead.show(ui, &left, pos2(cursor, row2), &font);
+            out.show_filters = clicked;
+            cursor = right;
+            leads += 1;
+        }
+        // The position stays first, before the marks not saved.
+        None if bar.unsaved > 0 => {
+            let line = left.text(
+                pos2(cursor, row2),
+                Align2::LEFT_CENTER,
+                format!("{} / {}", bar.position.0, bar.position.1),
+                font.clone(),
+                tokens::MUTED,
+            );
+            cursor = line.right();
+            leads += 1;
         }
         None => facts.push(format!("{} / {}", bar.position.0, bar.position.1)),
     }
+    // Marks that could not be written: a status, so the warning colour – not the accent.
+    if bar.unsaved > 0 {
+        if leads > 0 {
+            left.text(
+                pos2(cursor, row2),
+                Align2::LEFT_CENTER,
+                separator,
+                font.clone(),
+                tokens::MUTED,
+            );
+            cursor += separator_width;
+        }
+        let lead = Lead {
+            label: format!(
+                "{}  {}",
+                theme::icon::TRIANGLE_ALERT,
+                (t.unsaved_fact)(bar.unsaved)
+            ),
+            colour: tokens::STATUS_WARN,
+            hover: None,
+            id: "unsaved",
+            tooltip: t.unsaved_tooltip,
+        };
+        let (clicked, right) = lead.show(ui, &left, pos2(cursor, row2), &font);
+        out.show_unsaved = clicked;
+        cursor = right;
+        leads += 1;
+    }
+    let facts_left = cursor;
     if bar.deleted {
         facts.push(t.deleted_mark.to_owned());
     }
@@ -283,17 +332,10 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
             _ => facts.push(i18n::date(taken)),
         }
     }
-    let lead = if bar.filtered.is_some() {
-        painter
-            .layout_no_wrap(separator.to_owned(), font.clone(), tokens::MUTED)
-            .size()
-            .x
-    } else {
-        0.0
-    };
+    let lead = if leads > 0 { separator_width } else { 0.0 };
     let room = (centre - centre_half - 12.0 - facts_left - lead).max(0.0);
     let mut text = fit_parts(painter, facts, separator, &font, room, Drop::Back);
-    if bar.filtered.is_some() && !text.is_empty() {
+    if leads > 0 && !text.is_empty() {
         text.insert_str(0, separator);
     }
     let line = left.text(
@@ -437,6 +479,39 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
         );
     }
     out
+}
+
+/// A part at the start of the facts line that is never left out and answers a click.
+struct Lead<'a> {
+    label: String,
+    colour: Color32,
+    /// Its colour under the pointer; `None`: a neutral background instead.
+    hover: Option<Color32>,
+    id: &'a str,
+    tooltip: &'a str,
+}
+
+impl Lead<'_> {
+    /// Draws it with its left edge at `at`; whether it was clicked, and where it ends.
+    fn show(self, ui: &Ui, painter: &Painter, at: Pos2, font: &FontId) -> (bool, f32) {
+        let galley = painter.layout_no_wrap(self.label, font.clone(), self.colour);
+        let area = Rect::from_min_size(pos2(at.x, at.y - galley.size().y / 2.0), galley.size());
+        let response = ui
+            .interact(area.expand(2.0), ui.id().with(self.id), Sense::CLICK)
+            .on_hover_cursor(CursorIcon::PointingHand)
+            .on_hover_text(self.tooltip);
+        let colour = match self.hover {
+            Some(hover) if response.hovered() => hover,
+            Some(_) => self.colour,
+            None => {
+                let back = area.expand2(vec2(4.0, 2.0));
+                icons::button_background(painter, back, response.hovered(), false);
+                self.colour
+            }
+        };
+        painter.galley_with_override_text_color(area.min, galley, colour);
+        (response.clicked(), area.right())
+    }
 }
 
 /// Which end of a line loses parts first when it is too wide.
@@ -994,6 +1069,7 @@ mod tests {
             time_offset: None,
             pair: None,
             filtered: None,
+            unsaved: 0,
             panels: Panels::default(),
             views: Views::default(),
         }
@@ -1004,7 +1080,7 @@ mod tests {
     /// and let go; and whether egui gave anything the keyboard focus.
     /// One frame's report: the bar a button switched, the view the switcher asked for, and
     /// whether the filtered position asked for the filter bar.
-    type Reported = (Option<Panel>, Option<View>, bool);
+    type Reported = (Option<Panel>, Option<View>, bool, bool);
 
     fn click(bar: &InfoBar<'_>, at: Pos2) -> (Vec<Reported>, bool) {
         use eframe::egui::{Event, Key, Modifiers, PointerButton};
@@ -1038,7 +1114,7 @@ mod tests {
                 },
                 |ui| {
                     let out = info_bar(ui, bar_rect(), bar);
-                    seen.push((out.panel, out.view, out.show_filters));
+                    seen.push((out.panel, out.view, out.show_filters, out.show_unsaved));
                 },
             );
             output.textures_delta.clear();
@@ -1056,7 +1132,7 @@ mod tests {
     fn a_clicked_button_keeps_no_focus() {
         let menu_bar = block(bar_rect()).panels[3].center();
         let (seen, focused) = click(&bar(false), menu_bar);
-        let panels: Vec<_> = seen.iter().map(|(panel, _, _)| *panel).collect();
+        let panels: Vec<_> = seen.iter().map(|(panel, _, _, _)| *panel).collect();
         assert_eq!(panels, [None, None, Some(Panel::Left), None, None]);
         assert!(!focused);
     }
@@ -1089,9 +1165,69 @@ mod tests {
         );
 
         let (seen, focused) = click(&filtered, at.center());
-        let asked: Vec<bool> = seen.iter().map(|(_, _, filters)| *filters).collect();
+        let asked: Vec<bool> = seen.iter().map(|(_, _, filters, _)| *filters).collect();
         assert_eq!(asked, [false, false, true, false, false]);
         assert!(!focused);
+    }
+
+    /// Marks that could not be written show after the position – in the warning colour, never
+    /// left out however narrow the bar – and a click asks for their card once, without taking
+    /// the keyboard focus (ticket CER-57). With a hidden filter both show, the filter first.
+    #[test]
+    fn marks_not_saved_show_in_the_facts_line() {
+        let unsaved = InfoBar {
+            unsaved: 2,
+            ..bar(false)
+        };
+        let shapes = shapes_of(&unsaved, 1400.0);
+        let (colour, at) = shapes
+            .iter()
+            .find_map(|shape| match shape {
+                Shape::Text(text) if text.galley.text().contains("2 marks not saved") => {
+                    Some((text.override_text_color, text.visual_bounding_rect()))
+                }
+                _ => None,
+            })
+            .expect("the marks not saved");
+        assert_eq!(colour, Some(tokens::STATUS_WARN));
+        let texts = texts_of(&unsaved, 1400.0);
+        let (_, position) = texts
+            .iter()
+            .find(|(text, _)| text == "3 / 120")
+            .expect("the position, first");
+        assert!(position.right() < at.left());
+        assert!(
+            texts
+                .iter()
+                .any(|(text, rect)| text.contains("Auto advance") && rect.left() > at.right())
+        );
+        // Narrow: the other facts go, the marks not saved stay.
+        let narrow = texts_of(&unsaved, 900.0);
+        assert!(
+            narrow
+                .iter()
+                .any(|(text, _)| text.contains("2 marks not saved"))
+        );
+
+        let (seen, focused) = click(&unsaved, at.center());
+        let asked: Vec<bool> = seen.iter().map(|(_, _, _, unsaved)| *unsaved).collect();
+        assert_eq!(asked, [false, false, true, false, false]);
+        assert!(!focused);
+
+        let both = InfoBar {
+            filtered: Some(340),
+            ..unsaved
+        };
+        let texts = texts_of(&both, 1400.0);
+        let (_, filter) = texts
+            .iter()
+            .find(|(text, _)| text.contains("3 / 120 of 340"))
+            .expect("the filtered position");
+        let (_, marks) = texts
+            .iter()
+            .find(|(text, _)| text.contains("2 marks not saved"))
+            .expect("the marks not saved");
+        assert!(filter.right() < marks.left());
     }
 
     /// The block reads, left to right: the view switcher, the four bars in the order of the
@@ -1129,7 +1265,7 @@ mod tests {
             click(&bar, places.views[part].center())
                 .0
                 .iter()
-                .find_map(|(_, view, _)| *view)
+                .find_map(|(_, view, _, _)| *view)
         };
         let photo = Views::default();
         assert_eq!(asked(photo, 1), Some(View::Grid));
@@ -1168,12 +1304,12 @@ mod tests {
             click(&in_grid, filmstrip)
                 .0
                 .iter()
-                .all(|(panel, _, _)| panel.is_none())
+                .all(|(panel, _, _, _)| panel.is_none())
         );
         let (seen, _) = click(&bar(false), filmstrip);
         assert!(
             seen.iter()
-                .any(|(panel, _, _)| *panel == Some(Panel::Bottom))
+                .any(|(panel, _, _, _)| *panel == Some(Panel::Bottom))
         );
     }
 

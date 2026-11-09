@@ -146,6 +146,19 @@ pub static TEXTS: Texts = Texts {
     photos_badge_tooltip: "Cuántas fotos muestra ahora el filtro – «Fotos visibles» de la barra de menú actúa exactamente sobre estas.",
     filtered_position: |pos, shown, total| format!("{pos} / {shown} de {total}"),
     filtered_hint: "Un filtro oculta fotos. Haz clic o pulsa T para mostrar la barra de filtros.",
+    unsaved_fact: |n| {
+        if n == 1 {
+            "1 marca no guardada".to_owned()
+        } else {
+            format!("{n} marcas no guardadas")
+        }
+    },
+    unsaved_tooltip: "Cerno no pudo escribirlas en los archivos y lo vuelve a intentar. Haz clic para ver cuáles y por qué.",
+    unsaved_text: "Cerno no pudo escribir las marcas de estas fotos en sus archivos. Lo vuelve a intentar solo – o ahora, por ejemplo tras cerrar el programa que tiene un archivo abierto.",
+    unsaved_exit_text: "Si sales ahora, se pierden: los archivos conservan lo que tenían.",
+    unsaved_more: |n| format!("… y {n} más"),
+    unsaved_retrying: "Reintentando…",
+    unsaved_all_saved: "Todas las marcas guardadas.",
     label_red: "Rojo",
     label_yellow: "Amarillo",
     label_green: "Verde",
@@ -277,7 +290,7 @@ pub static TEXTS: Texts = Texts {
     internal_error: "Error interno – se detuvo el comando, Cerno sigue funcionando (detalles en crash.log de la carpeta de datos).",
     cannot_open: |path, err| format!("No se puede abrir {path}: {err}"),
     no_photos_in: |dir| format!("No hay archivos JPEG ni HEIC en {dir}"),
-    rating_not_saved: |err| format!("Estrellas no guardadas – {err}"),
+    rating_not_saved: |name| format!("Marca no guardada: {name} – Cerno lo vuelve a intentar"),
     open_folder: "Abrir carpeta",
     transfer_copy_cmd: "Copia todo lo que muestra el filtro actual a …",
     transfer_move_cmd: "Mueve todo lo que muestra el filtro actual a …",
@@ -316,6 +329,8 @@ pub static TEXTS: Texts = Texts {
     btn_download: "Descargar",
     btn_cancel: "Cancelar",
     btn_close: "Cerrar (Esc)",
+    btn_retry: "Reintentar",
+    btn_quit_anyway: "Salir de todos modos",
     aesthetics_offer: |size| {
         format!(
             "La puntuación estética necesita modelos de imagen ({size}): Barra de menú › Configuración › Modelos y datos."

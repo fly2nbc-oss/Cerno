@@ -1,6 +1,6 @@
 //! Copy and move of the photos on screen, and deletion with the countdown.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -73,7 +73,7 @@ impl CernoApp {
             return;
         }
         // A pair's RAW rides along with its JPEG.
-        let riders = sources
+        let riders: HashMap<PathBuf, PathBuf> = sources
             .iter()
             .filter_map(|jpeg| {
                 Some((
@@ -82,6 +82,9 @@ impl CernoApp {
                 ))
             })
             .collect();
+        // Marks not written yet are tried once more first; the job waits for that try.
+        let involved: Vec<PathBuf> = sources.iter().chain(riders.values()).cloned().collect();
+        self.retry_before(&involved);
         // A playing video keeps its file open; the job waits until it is closed.
         self.stop_video();
         self.transfers.push(mode, sources, riders, dest);
@@ -90,7 +93,9 @@ impl CernoApp {
 
     pub(super) fn poll_transfer(&mut self, ctx: &egui::Context) {
         let videos_open = !self.videos_released();
-        let writes_pending = self.writer.status().pending > 0
+        let writer = self.writer.status();
+        let writes_pending = writer.pending > 0
+            || writer.retrying()
             || videos_open
             || self
                 .edits
@@ -165,6 +170,8 @@ impl CernoApp {
         }
         self.listed_follow(&outcome.done);
         for (src, dest) in outcome.done.iter().chain(&outcome.riders) {
+            // Marks not written yet follow too, and are written there.
+            self.writer.moved(src.clone(), dest.clone());
             // The kept original follows into `.originals` at the destination first.
             if let Err(err) = originals::follow(&self.db, src, dest) {
                 log::warn!("kept original of {}: {err:#}", src.display());
@@ -206,9 +213,14 @@ impl CernoApp {
     }
 
     /// Queues a photo for the countdown – a pair's RAW rides along, uncounted.
+    /// Marks not written yet are tried once more meanwhile.
     fn queue_deletion(&mut self, path: PathBuf, now: Instant) {
-        if let Some(raw) = self.folder.pairs.companion(&path) {
-            self.deletions.push_rider(raw.to_path_buf());
+        let rider = self.folder.pairs.companion(&path).map(Path::to_path_buf);
+        let mut involved = vec![path.clone()];
+        involved.extend(rider.clone());
+        self.retry_before(&involved);
+        if let Some(raw) = rider {
+            self.deletions.push_rider(raw);
         }
         self.deletions.push(path, now);
     }
@@ -283,6 +295,8 @@ impl CernoApp {
                     .cloned()
                     .collect();
                 for (path, aside) in &done.deleted {
+                    // A deleted photo takes no marks: those not written are dropped.
+                    self.writer.forget(path.clone());
                     self.folder.pairs.forget(path);
                     self.marks.ratings.remove(path);
                     self.marks.labels.remove(path);

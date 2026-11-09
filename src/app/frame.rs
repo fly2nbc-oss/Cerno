@@ -325,6 +325,7 @@ impl CernoApp {
             time_offset: self.time_offset_of(&path),
             pair: self.pair_note(&path).map(|(note, _)| note),
             filtered: (!toolbar && self.options.is_filtered()).then(|| self.library_total()),
+            unsaved: self.unsaved_count(),
             panels: info_bar::Panels {
                 side_bar: self.side_bar_shown(),
                 toolbar: self.bars.toolbar,
@@ -354,6 +355,9 @@ impl CernoApp {
         }
         if out.show_filters {
             self.click(&ctx, Command::TogglePanel(Panel::Top));
+        }
+        if out.show_unsaved {
+            self.show_unsaved();
         }
         let Some(rect) = details_rect else {
             // The panel is closed: a comment still being typed is written now.

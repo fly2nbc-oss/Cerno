@@ -14,6 +14,7 @@
 //! - `menu`: menus, help, models card, confirmations
 //! - `panels`: which bars show, the language
 //! - `notice`: messages over the photo
+//! - `unsaved`: marks that could not be written – the info bar, their card, closing
 //!
 //! Drawing of the widgets themselves lives in `ui/`.
 
@@ -40,6 +41,7 @@ mod panels;
 mod photos;
 mod target;
 mod undo;
+mod unsaved;
 mod update;
 mod video;
 
@@ -130,6 +132,8 @@ pub struct CernoApp {
     startup: Startup,
     /// The notice that the mark writer stopped was shown (`poll_background`).
     writer_stopped_told: bool,
+    /// Marks that could not be written: what the hint told, the card's try, closing.
+    unsaved: unsaved::Unsaved,
     /// Edit elsewhere: the remembered program, the system's programs, the watched photos.
     external: external::External,
     /// Straighten, crop and turns: the open session, the encoding thread, the writer's work.
@@ -285,6 +289,7 @@ impl CernoApp {
                 first_photo: None,
             },
             writer_stopped_told: false,
+            unsaved: unsaved::Unsaved::default(),
             external,
             edits: editing::Edits::default(),
             videos,
@@ -317,6 +322,7 @@ impl CernoApp {
         self.poll_exiftool(ctx);
         self.poll_editors(ctx);
         self.poll_updates(ctx);
+        self.poll_unsaved(ctx);
         if !self.writer_stopped_told && self.writer.stopped() {
             self.writer_stopped_told = true;
             self.notice = Some(Notice::error(i18n::t().writer_stopped));
@@ -455,6 +461,8 @@ impl eframe::App for CernoApp {
 
     /// eframe drops the app right after this, and only then the window: until every service has
     /// stopped (`Drop` of the analysis, the loader …), the window stays on screen, frozen.
+    /// Marks that could not be written were tried once more before (`poll_unsaved`, while the
+    /// window still answered); those still not written are only logged now.
     fn on_exit(&mut self) {
         let started = Instant::now();
         // A running ExifTool download stops; its `.part` waits for the next attempt.
