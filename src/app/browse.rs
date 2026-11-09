@@ -76,6 +76,8 @@ pub(super) struct Browse {
     pub(super) videos_in: (Weak<Vec<PathBuf>>, bool),
     /// The folder's cameras for the camera box (`cameras`): board version, list, entries.
     pub(super) cameras: (u64, Weak<Vec<PathBuf>>, Arc<Vec<view::CameraEntry>>),
+    /// The filter `Shift+T` set aside, while every photo shows.
+    pub(super) filter_aside: Option<super::filter_aside::FilterAside>,
 }
 
 impl Default for Browse {
@@ -89,6 +91,7 @@ impl Default for Browse {
             percentiles: (u64::MAX, Arc::default()),
             videos_in: (Weak::new(), false),
             cameras: (u64::MAX, Weak::new(), Arc::default()),
+            filter_aside: None,
         }
     }
 }
@@ -154,6 +157,9 @@ impl CernoApp {
         self.scan_deleted();
         self.viewer.pinned = None;
         self.viewer.quad = None;
+        // A filter set aside comes back, as at a start; what of it was about the last folder
+        // goes below.
+        self.put_filter_back();
         // "Similar photos" was about a photo of the previous folder, Top N picked from it, the
         // deleted photos lay beside it.
         self.options.similar = false;
@@ -315,15 +321,16 @@ impl CernoApp {
         self.view.iter().position(|p| p == pinned)
     }
 
-    /// The deleted photos are about this folder: the 🗑 box is never saved.
+    /// The deleted photos are about this folder: the 🗑 box is never saved. A filter set aside
+    /// is saved as it was (`saved_options`).
     pub(super) fn save_options(&self) {
-        let mut filter = self.options.filter;
+        let options = self.saved_options();
+        let mut filter = options.filter;
         filter.set(FilterKind::Deleted, false);
-        self.db.put_setting("sort", self.options.sort.id());
+        self.db.put_setting("sort", options.sort.id());
         self.db.put_setting("filter", &filter.id());
-        self.db
-            .put_flag("hide_rejected", self.options.hide_rejected);
-        self.db.put_setting("media", self.options.media.id());
+        self.db.put_flag("hide_rejected", options.hide_rejected);
+        self.db.put_setting("media", options.media.id());
     }
 
     pub(super) fn pick_folder(&mut self, ctx: &egui::Context) {
@@ -347,8 +354,12 @@ impl CernoApp {
 
     /// New sort or filter: saved, and the view is built again. "Similar photos" switched off
     /// (also by "Show all") forgets the photo it was about; Top N picks again when a filter
-    /// changed – another sort only shows the same photos in another order.
+    /// changed – another sort only shows the same photos in another order. A filter set while
+    /// one is aside (`Shift+T`) discards that one; another sort keeps it.
     pub(super) fn options_changed(&mut self, ctx: &egui::Context) {
+        if self.options.is_filtered() {
+            self.browse.filter_aside = None;
+        }
         if !self.options.similar {
             self.browse.similar_to = None;
         }

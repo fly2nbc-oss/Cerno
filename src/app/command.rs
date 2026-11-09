@@ -157,6 +157,8 @@ pub(super) enum Command {
     Similar,
     /// Details › File's camera button: only this camera's photos (`None`: every camera again).
     FilterCamera(Option<crate::view::CameraPick>),
+    /// `Shift+T`, the info bar's mark: the whole filter aside – every photo – or back.
+    FilterAside,
     /// The filter bar's *Refresh order*.
     RefreshOrder,
 
@@ -390,6 +392,7 @@ impl CernoApp {
             Command::ZoomToFace(index) => self.zoom_to_face(index),
             Command::Similar => self.toggle_similar(ctx),
             Command::FilterCamera(pick) => self.filter_camera(ctx, pick),
+            Command::FilterAside => self.toggle_filter_aside(ctx),
             Command::RefreshOrder => self.refresh_order(ctx),
             Command::Copy => self.begin_transfer(ctx, TransferMode::Copy),
             Command::Move => self.begin_transfer(ctx, TransferMode::Move),

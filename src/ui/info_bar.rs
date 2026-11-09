@@ -85,6 +85,10 @@ pub struct InfoBar<'a> {
     /// A filter hides photos while the filter bar is hidden: how many photos there are. The
     /// position then says so (ticket CER-55, U8).
     pub filtered: Option<usize>,
+    /// `Shift+T` has set the filter aside: a muted mark says so – whether the filter bar shows
+    /// or not, it shows nothing ticked meanwhile – and a click brings the filter back (ticket
+    /// CER-60).
+    pub filter_aside: bool,
     /// Which bars show: their buttons at the right end are lit.
     pub panels: Panels,
     /// What the photo area shows: the view switcher.
@@ -144,6 +148,8 @@ pub struct InfoBarOutput {
     pub view: Option<View>,
     /// The filtered position was clicked: show the filter bar.
     pub show_filters: bool,
+    /// The mark of the filter set aside was clicked: bring it back.
+    pub restore_filter: bool,
 }
 
 /// Two rows: name / position · date · size (left), stars / scores (centre), exposure / camera
@@ -216,33 +222,52 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     let separator = "   ·   ";
     let mut facts_left = x;
     let mut facts = Vec::new();
+    // A clickable mark leads the line: the filter icon and its text.
+    let mut lead_mark = |text: String, colours: (Color32, Color32), tooltip: &str, id: &str| {
+        let label = format!("{}  {text}", theme::icon::FILTER);
+        let galley = painter.layout_no_wrap(label, font.clone(), colours.0);
+        let area = Rect::from_min_size(pos2(x, row2 - galley.size().y / 2.0), galley.size());
+        let response = ui
+            .interact(area.expand(2.0), ui.id().with(id), Sense::CLICK)
+            .on_hover_cursor(CursorIcon::PointingHand)
+            .on_hover_text(tooltip);
+        let colour = if response.hovered() {
+            colours.1
+        } else {
+            colours.0
+        };
+        left.galley_with_override_text_color(area.min, galley, colour);
+        facts_left = area.right();
+        response.clicked()
+    };
     match bar.filtered {
         // A filter hides photos while the filter bar is hidden – the boxes are saved, so it may
         // be yesterday's: the position says so in the accent, and a click shows the bar.
         Some(total) => {
             let (position, shown) = bar.position;
-            let label = format!(
-                "{}  {}",
-                theme::icon::FILTER,
-                (t.filtered_position)(position, shown, total)
+            out.show_filters = lead_mark(
+                (t.filtered_position)(position, shown, total),
+                (tokens::ACCENT, tokens::ACCENT_STRONG),
+                t.filtered_hint,
+                "filtered",
             );
-            let galley = painter.layout_no_wrap(label, font.clone(), tokens::ACCENT);
-            let area = Rect::from_min_size(pos2(x, row2 - galley.size().y / 2.0), galley.size());
-            let response = ui
-                .interact(area.expand(2.0), ui.id().with("filtered"), Sense::CLICK)
-                .on_hover_cursor(CursorIcon::PointingHand)
-                .on_hover_text(t.filtered_hint);
-            let colour = if response.hovered() {
-                tokens::ACCENT_STRONG
-            } else {
-                tokens::ACCENT
-            };
-            left.galley_with_override_text_color(area.min, galley, colour);
-            out.show_filters = response.clicked();
-            facts_left = area.right();
         }
-        None => facts.push(format!("{} / {}", bar.position.0, bar.position.1)),
+        None => {
+            // The filter set aside waits: muted – it hides nothing now –, a click brings it
+            // back.
+            if bar.filter_aside {
+                let key = i18n::with_shift("T");
+                out.restore_filter = lead_mark(
+                    (t.filter_aside_mark)(&key),
+                    (tokens::MUTED, tokens::TEXT),
+                    &(t.filter_aside_hint)(&key),
+                    "filter-aside",
+                );
+            }
+            facts.push(format!("{} / {}", bar.position.0, bar.position.1));
+        }
     }
+    let marked = bar.filtered.is_some() || bar.filter_aside;
     if bar.deleted {
         facts.push(t.deleted_mark.to_owned());
     }
@@ -296,7 +321,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
             _ => facts.push(i18n::date(taken)),
         }
     }
-    let lead = if bar.filtered.is_some() {
+    let lead = if marked {
         painter
             .layout_no_wrap(separator.to_owned(), font.clone(), tokens::MUTED)
             .size()
@@ -310,7 +335,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     let (job, warned) = facts_job(
         kept,
         separator,
-        bar.filtered.is_some(),
+        marked,
         warn.as_ref().map(|(index, _)| *index),
         &font,
     );
@@ -1077,6 +1102,7 @@ mod tests {
             time_offset: None,
             pair: None,
             filtered: None,
+            filter_aside: false,
             panels: Panels::default(),
             views: Views::default(),
         }
@@ -1085,9 +1111,10 @@ mod tests {
     /// What each frame reported – the bar a button switched, the view a switcher part asked
     /// for – while the pointer moves to `at`, presses and lets go, and then `Space` is pressed
     /// and let go; and whether egui gave anything the keyboard focus.
-    /// One frame's report: the bar a button switched, the view the switcher asked for, and
-    /// whether the filtered position asked for the filter bar.
-    type Reported = (Option<Panel>, Option<View>, bool);
+    /// One frame's report: the bar a button switched, the view the switcher asked for,
+    /// whether the filtered position asked for the filter bar, and whether the mark of a filter
+    /// set aside asked for it back.
+    type Reported = (Option<Panel>, Option<View>, bool, bool);
 
     fn click(bar: &InfoBar<'_>, at: Pos2) -> (Vec<Reported>, bool) {
         use eframe::egui::{Event, Key, Modifiers, PointerButton};
@@ -1121,7 +1148,7 @@ mod tests {
                 },
                 |ui| {
                     let out = info_bar(ui, bar_rect(), bar);
-                    seen.push((out.panel, out.view, out.show_filters));
+                    seen.push((out.panel, out.view, out.show_filters, out.restore_filter));
                 },
             );
             output.textures_delta.clear();
@@ -1139,7 +1166,7 @@ mod tests {
     fn a_clicked_button_keeps_no_focus() {
         let menu_bar = block(bar_rect()).panels[3].center();
         let (seen, focused) = click(&bar(false), menu_bar);
-        let panels: Vec<_> = seen.iter().map(|(panel, _, _)| *panel).collect();
+        let panels: Vec<_> = seen.iter().map(|(panel, ..)| *panel).collect();
         assert_eq!(panels, [None, None, Some(Panel::Left), None, None]);
         assert!(!focused);
     }
@@ -1172,8 +1199,40 @@ mod tests {
         );
 
         let (seen, focused) = click(&filtered, at.center());
-        let asked: Vec<bool> = seen.iter().map(|(_, _, filters)| *filters).collect();
+        let asked: Vec<bool> = seen.iter().map(|(_, _, filters, _)| *filters).collect();
         assert_eq!(asked, [false, false, true, false, false]);
+        assert!(!focused);
+    }
+
+    /// While `Shift+T` has set the filter aside, a muted mark leads the facts line – the
+    /// position follows as usual – and a click on it asks for the filter back, once, without
+    /// taking the keyboard focus (ticket CER-60).
+    #[test]
+    fn a_filter_set_aside_shows_and_comes_back_with_a_click() {
+        let plain = texts_of(&bar(false), 1400.0);
+        assert!(!plain.iter().any(|(text, _)| text.contains("Filter off")));
+
+        let aside = InfoBar {
+            filter_aside: true,
+            ..bar(false)
+        };
+        let texts = texts_of(&aside, 1400.0);
+        let (mark, at) = texts
+            .iter()
+            .find(|(text, _)| text.contains("Filter off – Shift+T"))
+            .expect("the mark");
+        assert!(mark.starts_with(theme::icon::FILTER));
+        assert!(
+            texts.iter().any(|(text, rect)| text.contains("3 / 120")
+                && rect.left() > at.right()
+                && (rect.center().y - at.center().y).abs() < 2.0),
+            "the position follows on the same line"
+        );
+
+        let (seen, focused) = click(&aside, at.center());
+        let asked: Vec<bool> = seen.iter().map(|(.., back)| *back).collect();
+        assert_eq!(asked, [false, false, true, false, false]);
+        assert!(seen.iter().all(|(_, _, filters, _)| !filters));
         assert!(!focused);
     }
 
@@ -1212,7 +1271,7 @@ mod tests {
             click(&bar, places.views[part].center())
                 .0
                 .iter()
-                .find_map(|(_, view, _)| *view)
+                .find_map(|(_, view, ..)| *view)
         };
         let photo = Views::default();
         assert_eq!(asked(photo, 1), Some(View::Grid));
@@ -1251,13 +1310,10 @@ mod tests {
             click(&in_grid, filmstrip)
                 .0
                 .iter()
-                .all(|(panel, _, _)| panel.is_none())
+                .all(|(panel, ..)| panel.is_none())
         );
         let (seen, _) = click(&bar(false), filmstrip);
-        assert!(
-            seen.iter()
-                .any(|(panel, _, _)| *panel == Some(Panel::Bottom))
-        );
+        assert!(seen.iter().any(|(panel, ..)| *panel == Some(Panel::Bottom)));
     }
 
     /// The facts line leaves out whole parts instead of running under the scores.

@@ -179,6 +179,9 @@ impl CernoApp {
             if self.browse.top_pick.remove(src) {
                 self.browse.top_pick.insert(dest.clone());
             }
+            if let Some(aside) = &mut self.browse.filter_aside {
+                aside.follow(src, dest);
+            }
         }
     }
 

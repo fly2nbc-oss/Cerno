@@ -155,6 +155,13 @@ pub static TEXTS: Texts = Texts {
     photos_badge_tooltip: "How many photos the filter shows now – the menu bar's “Photos on screen” works on exactly these.",
     filtered_position: |pos, shown, total| format!("{pos} / {shown} of {total}"),
     filtered_hint: "A filter hides photos. Click or press T to show the filter bar.",
+    filter_aside_mark: |key| format!("Filter off – {key}"),
+    filter_aside_hint: |key| {
+        format!(
+            "The filter is set aside: every photo shows. Click or press {key} to bring it back."
+        )
+    },
+    filter_aside_none: |key| format!("No filter is on – {key} has nothing to set aside."),
     label_red: "Red",
     label_yellow: "Yellow",
     label_green: "Green",
@@ -715,6 +722,7 @@ pub static TEXTS: Texts = Texts {
     help_panels: [
         ("F10", "Menu bar"),
         ("T", "Filter bar"),
+        ("Shift+T", "Filter off for a moment / back"),
         ("Tab", "Details panel"),
         ("F6", "Filmstrip"),
         ("Shift+Tab", "All four panels"),

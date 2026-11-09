@@ -28,6 +28,7 @@ mod exiftool;
 mod external;
 mod faces;
 mod files;
+mod filter_aside;
 mod frame;
 mod gate;
 mod keys;
