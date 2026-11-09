@@ -239,6 +239,7 @@ pub static TEXTS: Texts = Texts {
     view_faces: "Visages",
     faces_video: "Les vidéos ne sont pas analysées pour les visages",
     filmstrip_in_grid: "Inutile dans la grille – F7 revient à la photo",
+    grid_no_date: "sans date",
     faces_button: |n| {
         if n == 1 {
             "Afficher 1 visage en grand (G)".to_owned()

@@ -209,6 +209,7 @@ pub static TEXTS: Texts = Texts {
     view_faces: "Volti",
     faces_video: "Nei video non si cercano volti",
     filmstrip_in_grid: "Non serve nella griglia – F7 torna alla foto",
+    grid_no_date: "senza data",
     faces_button: |n| {
         if n == 1 {
             "Mostra 1 volto in grande (G)".to_owned()

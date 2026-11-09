@@ -530,9 +530,7 @@ impl CernoApp {
             rating: known.rating,
             label: known.label,
             // A camera whose clock was off counts with the time set right.
-            taken_ms: known
-                .taken_ms
-                .map(|taken| taken + self.camera_time.offset(known.camera)),
+            taken_ms: self.camera_time.corrected(known.taken_ms, known.camera),
             camera: known.camera,
             serial: known.serial,
             fingerprint: known.fingerprint,

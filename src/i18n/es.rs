@@ -220,6 +220,7 @@ pub static TEXTS: Texts = Texts {
     view_faces: "Caras",
     faces_video: "En los vídeos no se buscan caras",
     filmstrip_in_grid: "No hace falta en la cuadrícula – F7 vuelve a la foto",
+    grid_no_date: "sin fecha",
     faces_button: |n| {
         if n == 1 {
             "Mostrar 1 cara en grande (G)".to_owned()

@@ -35,6 +35,11 @@ impl CameraTime {
             .copied()
             .unwrap_or(0)
     }
+
+    /// A capture time with its camera's offset: what sorting, series and the grid's date go by.
+    pub(super) fn corrected(&self, taken_ms: Option<i64>, camera: Option<u64>) -> Option<i64> {
+        taken_ms.map(|taken| taken + self.offset(camera))
+    }
 }
 
 /// The two photos of a comparison, as far as their clocks go.

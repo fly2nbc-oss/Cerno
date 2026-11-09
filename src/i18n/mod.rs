@@ -135,6 +135,13 @@ fn format_date(t: &Texts, taken: &str) -> String {
     }
 }
 
+/// The day of a capture time in milliseconds (`12.09.2026`), without the time of day: the
+/// grid's floating date.
+pub fn format_day(t: &Texts, ms: i64) -> String {
+    let taken = crate::metadata::format_millis(ms);
+    format_date(t, taken.get(..10).unwrap_or(&taken))
+}
+
 /// `48.52160° N, 9.05760° E` with the language's compass letters.
 pub fn coordinates(lat: f64, lon: f64) -> String {
     format_coordinates(t(), lat, lon)
@@ -426,6 +433,9 @@ pub struct Texts {
     pub faces_video: &'static str,
     /// Why the filmstrip button is greyed out in the grid.
     pub filmstrip_in_grid: &'static str,
+    /// The grid's floating date over photos without a capture time (they stand last in
+    /// capture-time order).
+    pub grid_no_date: &'static str,
     /// The faces button's tooltip while the photo has faces large enough to judge.
     pub faces_button: fn(usize) -> String,
     /// The menu button's name: it switches the menu bar on the left.
@@ -1100,6 +1110,10 @@ mod tests {
         assert_eq!(format_date(de, "2026-09-12 14:03"), "12.09.2026 14:03");
         assert_eq!(format_date(en, "2026-09-12 14:03"), "2026-09-12 14:03");
         assert_eq!(format_date(de, "odd"), "odd");
+        // 2026-09-12 23:59 UTC: the day alone, in the language's style.
+        let ms = 1_789_257_540_000;
+        assert_eq!(format_day(de, ms), "12.09.2026");
+        assert_eq!(format_day(en, ms), "2026-09-12");
         assert_eq!(
             format_coordinates(de, 48.5216, -9.0576),
             "48.52160° N, 9.05760° W"

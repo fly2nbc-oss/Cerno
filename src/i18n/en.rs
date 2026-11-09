@@ -219,6 +219,7 @@ pub static TEXTS: Texts = Texts {
     view_faces: "Faces",
     faces_video: "Videos are not searched for faces",
     filmstrip_in_grid: "Not needed in the grid – F7 back to the photo",
+    grid_no_date: "no date",
     faces_button: |n| {
         if n == 1 {
             "Show 1 face large (G)".to_owned()

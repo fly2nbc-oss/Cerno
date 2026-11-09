@@ -218,6 +218,7 @@ pub static TEXTS: Texts = Texts {
     view_faces: "Gesichter",
     faces_video: "Videos werden nicht nach Gesichtern durchsucht",
     filmstrip_in_grid: "Im Raster nicht nötig – F7 zurück zum Foto",
+    grid_no_date: "ohne Datum",
     faces_button: |n| {
         if n == 1 {
             "1 Gesicht groß zeigen (G)".to_owned()

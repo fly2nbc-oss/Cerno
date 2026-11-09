@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **The date while the grid scrolls** – in capture-time order, scrolling the grid (`F7`) shows the day of the top row in a small pill at the top, so you see where you are in a long folder; it fades about 1.5 s after scrolling stops. It follows a camera clock set right, says *no date* for the photos without a capture time at the end, and stays away in every other order. The grid keeps its regular rows – no day headings – so `↑`/`↓` still move exactly one row.
+
 ## [1.14.0] – 2026-11-09
 
 Only one camera's photos, the filter off for a moment with `Shift+T`, a warning when a RAW preview is too small to judge sharpness – and marks that could not be written are no longer lost.
