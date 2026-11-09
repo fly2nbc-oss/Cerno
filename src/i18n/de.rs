@@ -221,6 +221,7 @@ pub static TEXTS: Texts = Texts {
     filmstrip_in_grid: "Im Raster nicht nötig – F7 zurück zum Foto",
     filmstrip_in_scenes: "In den Szenen nicht nötig – F8 zurück zum Foto",
     scene_untimed: "Ohne Aufnahmezeit",
+    scene_singles: "Einzelne Fotos",
     faces_button: |n| {
         if n == 1 {
             "1 Gesicht groß zeigen (G)".to_owned()

@@ -431,6 +431,8 @@ pub struct Texts {
     pub filmstrip_in_scenes: &'static str,
     /// The scene view's header over the photos without a capture time (they come last).
     pub scene_untimed: &'static str,
+    /// The scene view's header over single photos collected in a row (each a scene of one).
+    pub scene_singles: &'static str,
     /// The faces button's tooltip while the photo has faces large enough to judge.
     pub faces_button: fn(usize) -> String,
     /// The menu button's name: it switches the menu bar on the left.

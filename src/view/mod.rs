@@ -17,6 +17,7 @@ mod filter;
 mod nav;
 mod options;
 mod scenes;
+mod sections;
 mod series;
 mod top;
 
@@ -28,6 +29,7 @@ pub use filter::*;
 pub use nav::*;
 pub use options::*;
 pub use scenes::*;
+pub use sections::*;
 pub use top::*;
 
 /// Photos taken at most this far apart belong to one series.

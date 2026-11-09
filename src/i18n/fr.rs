@@ -242,6 +242,7 @@ pub static TEXTS: Texts = Texts {
     filmstrip_in_grid: "Inutile dans la grille – F7 revient à la photo",
     filmstrip_in_scenes: "Inutile dans les scènes – F8 revient à la photo",
     scene_untimed: "Sans heure de prise de vue",
+    scene_singles: "Photos isolées",
     faces_button: |n| {
         if n == 1 {
             "Afficher 1 visage en grand (G)".to_owned()

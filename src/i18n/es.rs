@@ -223,6 +223,7 @@ pub static TEXTS: Texts = Texts {
     filmstrip_in_grid: "No hace falta en la cuadrícula – F7 vuelve a la foto",
     filmstrip_in_scenes: "No hace falta en las escenas – F8 vuelve a la foto",
     scene_untimed: "Sin hora de captura",
+    scene_singles: "Fotos sueltas",
     faces_button: |n| {
         if n == 1 {
             "Mostrar 1 cara en grande (G)".to_owned()

@@ -222,6 +222,7 @@ pub static TEXTS: Texts = Texts {
     filmstrip_in_grid: "Not needed in the grid – F7 back to the photo",
     filmstrip_in_scenes: "Not needed in the scenes – F8 back to the photo",
     scene_untimed: "No capture time",
+    scene_singles: "Single photos",
     faces_button: |n| {
         if n == 1 {
             "Show 1 face large (G)".to_owned()

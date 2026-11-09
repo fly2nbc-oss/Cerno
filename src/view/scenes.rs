@@ -171,32 +171,6 @@ fn dot(a: &[f32], b: &[f32]) -> f32 {
     a.iter().zip(b).map(|(x, y)| x * y).sum()
 }
 
-/// Which scene holds view index `index`.
-pub fn scene_of(scenes: &[Scene], index: usize) -> Option<usize> {
-    let at = scenes.partition_point(|s| s.range.end <= index);
-    scenes
-        .get(at)
-        .filter(|s| s.range.contains(&index))
-        .map(|_| at)
-}
-
-/// Page Down (`down`) / Page Up in the scene view: the next scene's first photo; back, the
-/// current scene's first photo, or – already there – the previous scene's. At either end
-/// nothing moves.
-pub fn scene_step(scenes: &[Scene], current: usize, down: bool) -> usize {
-    let Some(at) = scene_of(scenes, current) else {
-        return current;
-    };
-    if down {
-        scenes.get(at + 1).map_or(current, |s| s.range.start)
-    } else if current > scenes[at].range.start {
-        scenes[at].range.start
-    } else {
-        at.checked_sub(1)
-            .map_or(current, |before| scenes[before].range.start)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -405,34 +379,5 @@ mod tests {
             next = scene.range.end;
         }
         assert_eq!(next, photos.len());
-    }
-
-    #[test]
-    fn page_keys_jump_from_scene_to_scene() {
-        let scene = |range: Range<usize>| Scene {
-            range,
-            time: None,
-            cameras: Vec::new(),
-        };
-        let all = [scene(0..3), scene(3..4), scene(4..9)];
-        assert_eq!(scene_of(&all, 0), Some(0));
-        assert_eq!(scene_of(&all, 3), Some(1));
-        assert_eq!(scene_of(&all, 8), Some(2));
-        assert_eq!(scene_of(&all, 9), None);
-        assert_eq!(scene_step(&all, 1, true), 3);
-        assert_eq!(scene_step(&all, 3, true), 4);
-        assert_eq!(
-            scene_step(&all, 6, true),
-            6,
-            "the last scene: nothing moves"
-        );
-        assert_eq!(
-            scene_step(&all, 6, false),
-            4,
-            "back to the scene's start first"
-        );
-        assert_eq!(scene_step(&all, 4, false), 3);
-        assert_eq!(scene_step(&all, 3, false), 0);
-        assert_eq!(scene_step(&all, 0, false), 0, "the first: nothing moves");
     }
 }

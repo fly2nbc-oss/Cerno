@@ -212,6 +212,7 @@ pub static TEXTS: Texts = Texts {
     filmstrip_in_grid: "Non serve nella griglia – F7 torna alla foto",
     filmstrip_in_scenes: "Non serve nelle scene – F8 torna alla foto",
     scene_untimed: "Senza ora di scatto",
+    scene_singles: "Foto singole",
     faces_button: |n| {
         if n == 1 {
             "Mostra 1 volto in grande (G)".to_owned()

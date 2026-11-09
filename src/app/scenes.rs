@@ -13,17 +13,18 @@ use eframe::egui::{self, Rect};
 use crate::i18n;
 use crate::metadata;
 use crate::ui::scenes;
-use crate::view::{self, Scene, ScenePhoto, SortKey, ViewOptions};
+use crate::view::{self, ScenePhoto, Section, SortKey, ViewOptions};
 
 use super::CernoApp;
 use super::command::Command;
 
-/// The scenes of the view they were cut from, and which order the view was built in.
+/// The scene view's sections of the view they were cut from, and which order the view was
+/// built in.
 #[derive(Default)]
 pub(super) struct SceneState {
-    /// The view's list and build the scenes belong to.
+    /// The view's list and build the sections belong to.
     from: (Weak<Vec<PathBuf>>, u64),
-    scenes: Arc<Vec<Scene>>,
+    sections: Arc<Vec<Section>>,
     /// The view was built for the scene view (capture-time order); set with every build.
     pub(super) ordered: bool,
 }
@@ -65,13 +66,14 @@ impl CernoApp {
         }
     }
 
-    /// The scenes of the view as it is built now – cut again only when it was built again, so
-    /// nothing moves while the analysis brings new scores (`Refresh order` takes them in).
-    pub(super) fn scenes(&mut self) -> Arc<Vec<Scene>> {
+    /// The scene view's sections – its scenes, single photos collected – of the view as it is
+    /// built now: cut again only when it was built again, so nothing moves while the analysis
+    /// brings new scores (`Refresh order` takes them in).
+    pub(super) fn sections(&mut self) -> Arc<Vec<Section>> {
         let from = (Arc::downgrade(&self.view.paths), self.browse.view_version);
         let state = &self.viewer.scene_state;
         if Weak::ptr_eq(&state.from.0, &from.0) && state.from.1 == from.1 {
-            return Arc::clone(&state.scenes);
+            return Arc::clone(&state.sections);
         }
         let facts: Vec<_> = self.view.iter().map(|p| self.facts(p)).collect();
         let embeddings: Vec<_> = self
@@ -90,22 +92,23 @@ impl CernoApp {
                 embedding: embedding.as_deref(),
             })
             .collect();
-        let scenes = Arc::new(view::scenes(&photos));
+        let sections = Arc::new(view::sections(&view::scenes(&photos)));
         self.viewer.scene_state.from = from;
-        self.viewer.scene_state.scenes = Arc::clone(&scenes);
-        scenes
+        self.viewer.scene_state.sections = Arc::clone(&sections);
+        sections
     }
 
-    /// Page Down / Page Up in the scene view: the next scene's first photo, or back.
+    /// Page Down / Page Up in the scene view: the next section's first photo, or back –
+    /// collected single photos are one stop.
     pub(super) fn scene_jump(&mut self, ctx: &egui::Context, down: bool) {
-        let scenes = self.scenes();
-        let target = view::scene_step(&scenes, self.current, down);
+        let ranges = ranges(&self.sections());
+        let target = view::section_step(&ranges, self.current, down);
         self.go_to(ctx, target, if down { 1 } else { -1 });
     }
 
     /// `↓`/`↑` in the scene view: a row, into the next or previous scene too.
     pub(super) fn scene_row(&mut self, ctx: &egui::Context, down: bool) {
-        let ranges = ranges(&self.scenes());
+        let ranges = ranges(&self.sections());
         let target = scenes::row_step(&ranges, self.viewer.grid_columns, self.current, down);
         self.go_to(ctx, target, if down { 1 } else { -1 });
     }
@@ -114,8 +117,8 @@ impl CernoApp {
     pub(super) fn draw_scenes(&mut self, ui: &mut egui::Ui, rect: Rect) {
         let ctx = ui.ctx().clone();
         let paths = Arc::clone(&self.view.paths);
-        let scenes = self.scenes();
-        let ranges = ranges(&scenes);
+        let sections = self.sections();
+        let ranges = ranges(&sections);
         let follow = self.viewer.grid_shown != Some(self.current);
         self.viewer.grid_shown = Some(self.current);
         let percentiles = self.percentiles();
@@ -135,9 +138,9 @@ impl CernoApp {
             &self.thumbs,
             |i| self.cell_info(i, percentiles, around),
             |s| {
-                scenes
+                sections
                     .get(s)
-                    .map(|s| self.scene_header(s))
+                    .map(|s| self.section_header(s))
                     .unwrap_or_default()
             },
         );
@@ -157,15 +160,20 @@ impl CernoApp {
         }
     }
 
-    /// A scene's header line: its time, how many photos, its cameras.
-    fn scene_header(&self, scene: &Scene) -> String {
+    /// A section's header line: *Single photos* for collected ones, its time, how many photos,
+    /// a scene's cameras.
+    fn section_header(&self, section: &Section) -> String {
         let t = i18n::t();
-        let mut parts = vec![match scene.time {
+        let mut parts = Vec::new();
+        if section.singles {
+            parts.push(t.scene_singles.to_owned());
+        }
+        parts.push(match section.time {
             Some((start, end)) => time_range(start, end),
             None => t.scene_untimed.to_owned(),
-        }];
-        parts.push((t.photos_count)(scene.range.len()));
-        let cameras: Vec<String> = scene
+        });
+        parts.push((t.photos_count)(section.range.len()));
+        let cameras: Vec<String> = section
             .cameras
             .iter()
             .filter_map(|&id| self.board.camera_name(id))
@@ -177,8 +185,8 @@ impl CernoApp {
     }
 }
 
-fn ranges(scenes: &[Scene]) -> Vec<Range<usize>> {
-    scenes.iter().map(|s| s.range.clone()).collect()
+fn ranges(sections: &[Section]) -> Vec<Range<usize>> {
+    sections.iter().map(|s| s.range.clone()).collect()
 }
 
 /// `23.08.2026 19:16–19:24` in the language's date style; one time when both fall in one
@@ -235,8 +243,10 @@ mod tests {
         let expected: Vec<PathBuf> = [1, 2, 3, 4, 0, 5].map(|k| paths[k].clone()).into();
         assert_eq!(order, expected);
         assert_eq!(current_path(&h), paths[0], "the same photo");
-        let scenes: Vec<Range<usize>> = ranges(&h.app.scenes());
-        assert_eq!(scenes, [0..2, 2..3, 3..4, 4..5, 5..6]);
+        // The series, the three single photos collected, the photo without a time.
+        let sections = h.app.sections();
+        assert_eq!(ranges(&sections), [0..2, 2..5, 5..6]);
+        assert!(sections[1].singles && !sections[0].singles && !sections[2].singles);
         h.settle();
         assert_eq!(h.app.options.sort, SortKey::Name, "not saved");
 
@@ -257,8 +267,6 @@ mod tests {
         h.press(Key::PageDown, NONE);
         assert_eq!(h.app.current, 2, "past the series");
         h.press(Key::PageDown, NONE);
-        h.press(Key::PageDown, NONE);
-        h.press(Key::PageDown, NONE);
         assert_eq!(
             current_path(&h),
             paths[5],
@@ -267,17 +275,14 @@ mod tests {
         h.press(Key::PageDown, NONE);
         assert_eq!(h.app.current, 5, "the last scene: nothing moves");
         h.press(Key::PageUp, NONE);
-        assert_eq!(h.app.current, 4);
+        assert_eq!(h.app.current, 2, "the single photos are one stop");
         h.press(Key::Home, NONE);
         h.press(Key::ArrowRight, NONE);
         assert_eq!(h.app.current, 1, "→ one photo");
         h.press(Key::ArrowDown, NONE);
-        assert_eq!(h.app.current, 2, "↓ the next scene's row");
+        assert_eq!(h.app.current, 3, "↓ the single photos' row, same column");
         h.press(Key::ArrowUp, NONE);
-        assert_eq!(
-            h.app.current, 0,
-            "↑ the row above, in the column ↓ ended in"
-        );
+        assert_eq!(h.app.current, 1, "↑ back, the column kept");
     }
 
     /// `F7` and `F8` switch between grid and scenes; `Esc`, `Enter` and the view switcher's
