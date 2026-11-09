@@ -81,7 +81,7 @@ pub fn grid(ctx: &Context, area: Rect, shown: &Shown<'_>) -> GridOutput {
             .position(|key| i.consume_key(eframe::egui::Modifiers::NONE, *key))
             .filter(|n| *n < count)
     });
-    Area::new(Id::new("faces-grid"))
+    Area::new(Id::unique("faces-grid"))
         .order(Order::Foreground)
         .fixed_pos(area.min)
         .show(ctx, |ui| {
@@ -142,7 +142,7 @@ pub fn grid(ctx: &Context, area: Rect, shown: &Shown<'_>) -> GridOutput {
                     )
                     .shrink(6.0);
                     let response = ui
-                        .interact(cell, Id::new(("faces-grid-cell", i)), Sense::click())
+                        .interact(cell, Id::unique(("faces-grid-cell", i)), Sense::click())
                         .on_hover_cursor(CursorIcon::PointingHand)
                         .on_hover_text(t.faces_zoom_hint);
                     on_face |= response.hovered();

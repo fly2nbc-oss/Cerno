@@ -142,7 +142,7 @@ pub fn toolbar(
                             ui.painter(),
                             boxes.inner_rect,
                             boxes.content_size.x,
-                            boxes.state.offset.x,
+                            boxes.state.clamped_offset().x,
                         );
                     },
                     |ui| {
@@ -631,7 +631,11 @@ fn count_badge(ui: &mut Ui, shown: usize, total: usize, filtered: bool) -> (bool
             vec2(CLEAR, CLEAR),
         );
         let clear = ui
-            .interact(clear_rect, ui.id().with("clear-filters"), Sense::click())
+            .interact(
+                clear_rect,
+                ui.scope_id().with("clear-filters"),
+                Sense::click(),
+            )
             .on_hover_cursor(CursorIcon::PointingHand)
             .on_hover_text(t.filter_clear);
         if clear.hovered() {

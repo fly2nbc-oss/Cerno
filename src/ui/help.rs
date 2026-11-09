@@ -77,7 +77,7 @@ pub fn overlay(
     t: &Texts,
     update: &UpdateLine,
 ) -> HelpOutput {
-    Area::new(Id::new("help"))
+    Area::new(Id::unique("help"))
         .order(Order::Foreground)
         .fixed_pos(window.min)
         .show(ctx, |ui| {
@@ -146,7 +146,7 @@ fn card_with_content(
     extra: Extra<'_>,
 ) -> HelpOutput {
     const MARGIN_Y: f32 = 20.0;
-    let height_id = Id::new(("help-height", welcome, page));
+    let height_id = Id::unique(("help-height", welcome, page));
     let max_height = (space.height() - 48.0).max(200.0);
     let height = ui
         .data(|d| d.get_temp::<f32>(height_id))
@@ -161,7 +161,7 @@ fn card_with_content(
         ),
     );
     // Swallows clicks on the card, so only the backdrop closes the page.
-    ui.interact(card, Id::new(("help-card", welcome)), Sense::click());
+    ui.interact(card, Id::unique(("help-card", welcome)), Sense::click());
     theme::paint_card(ui.painter(), card, radius::XL);
     let mut inner = ui.new_child(
         UiBuilder::new()
@@ -265,7 +265,7 @@ fn content(
             strip,
             &labels,
             current,
-            Id::new("help-tab"),
+            Id::unique("help-tab"),
             Widths::Natural,
         ) {
             out.page = Some(Page::ALL[i]);
@@ -645,7 +645,11 @@ fn header_button(
     paint: impl FnOnce(&Painter, Pos2, Color32),
 ) -> bool {
     let response = ui
-        .interact(area, ui.id().with(("help-button", tooltip)), Sense::click())
+        .interact(
+            area,
+            ui.scope_id().with(("help-button", tooltip)),
+            Sense::click(),
+        )
         .on_hover_cursor(CursorIcon::PointingHand);
     let painter = ui.painter();
     icons::button_background(painter, area, response.hovered(), false);
@@ -687,7 +691,7 @@ mod tests {
                 output.textures_delta.clear();
             }
             let content = ctx
-                .data(|d| d.get_temp::<f32>(Id::new(("help-height", true, Page::Keys))))
+                .data(|d| d.get_temp::<f32>(Id::unique(("help-height", true, Page::Keys))))
                 .expect("content height");
             assert!(
                 content + 40.0 <= window.height() - 48.0,
@@ -753,7 +757,7 @@ mod tests {
                     output.textures_delta.clear();
                 }
                 let content = ctx
-                    .data(|d| d.get_temp::<f32>(Id::new(("help-height", false, page))))
+                    .data(|d| d.get_temp::<f32>(Id::unique(("help-height", false, page))))
                     .expect("content height");
                 assert!(
                     content + 40.0 <= window.height() - 48.0,

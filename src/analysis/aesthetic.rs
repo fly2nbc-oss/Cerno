@@ -117,7 +117,7 @@ impl Encoder {
         provider: Option<ExecutionProviderDispatch>,
         backend: &'static str,
     ) -> Result<Self> {
-        let mut builder = Session::builder().map_err(|e| anyhow!("{e}"))?;
+        let mut builder = super::models::session_builder()?;
         if let Some(provider) = provider {
             // DirectML can't use ORT's memory pattern optimisation.
             builder = builder

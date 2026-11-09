@@ -74,7 +74,7 @@ pub fn show<R>(
 pub fn close_button(ui: &Ui, top_right: Pos2, tooltip: &str) -> bool {
     let area = Rect::from_min_size(pos2(top_right.x - 28.0, top_right.y), vec2(28.0, 28.0));
     let response = ui
-        .interact(area, ui.id().with("modal-close"), Sense::click())
+        .interact(area, ui.scope_id().with("modal-close"), Sense::click())
         .on_hover_cursor(CursorIcon::PointingHand);
     let painter: &Painter = ui.painter();
     icons::button_background(painter, area, response.hovered(), false);

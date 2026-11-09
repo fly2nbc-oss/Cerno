@@ -50,7 +50,7 @@ pub fn show(ctx: &Context, window: Rect, card: &Card<'_>) -> Output {
     } else {
         t.btn_close
     };
-    let modal = modal::show(ctx, window, Id::new("unsaved"), 520.0, |ui| {
+    let modal = modal::show(ctx, window, Id::unique("unsaved"), 520.0, |ui| {
         let mut out = Output::default();
         let top_right = ui.max_rect().right_top() + vec2(8.0, -8.0);
         ui.label(

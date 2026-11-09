@@ -208,7 +208,7 @@ pub fn show<A: Copy>(ui: &mut Ui, rect: Rect, state: &mut State, bar: &Bar<A>) -
         Stroke::new(1.0, tokens::LINE),
     );
     let mut panel = ui.new_child(UiBuilder::new().max_rect(rect).id_salt("side-bar"));
-    let id = Id::new("side-bar");
+    let id = Id::unique("side-bar");
     ScrollArea::vertical()
         .auto_shrink(false)
         .id_salt("side-bar-scroll")

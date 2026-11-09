@@ -156,7 +156,7 @@ pub fn show<A: Copy>(
         .min(window.bottom() - height - 8.0)
         .max(window.top() + 8.0);
     let card = Rect::from_min_size(pos2(left, top), vec2(width, height));
-    let id = Id::new("row-list");
+    let id = Id::unique("row-list");
 
     Area::new(id)
         .order(Order::Foreground)

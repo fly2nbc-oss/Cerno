@@ -19,6 +19,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ### Under the hood
 
+- **All dependencies on their latest versions** – among them egui / eframe 0.37, ONNX Runtime 1.31 (ort 2.0.0-rc.15), rusqlite 0.41 (SQLite 3.54), rfd 0.18 and moxcms 0.9. The aesthetics scores stay the same. Characters that none of Cerno's fonts has, such as Japanese file names, now come from the system's fonts. Photos with an unusual colour profile (not sRGB, Adobe RGB or Display P3) are analysed once more; ratings and marks stay.
 - **rustls-webpki, webpki-roots and zip 9** updated for six advisories (RUSTSEC-2026-0367/68/69/81/82/83).
 
 ## [1.13.0] – 2026-10-15

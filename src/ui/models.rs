@@ -68,7 +68,7 @@ pub fn overlay(
     exiftool: &ExifToolRow,
 ) -> ModelsOutput {
     let escape = ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape));
-    let modal = modal::show(ctx, window, Id::new("models"), 520.0, |ui| {
+    let modal = modal::show(ctx, window, Id::unique("models"), 520.0, |ui| {
         content(ui, status, exiftool)
     });
     let mut out = modal.inner;
@@ -248,7 +248,7 @@ fn models_folder(ui: &mut Ui) {
         icons::copy_button(
             ui,
             vec2(button, button),
-            Id::new("models_path_copied_until"),
+            Id::unique("models_path_copied_until"),
             &text,
             t.copy_path,
             t.path_copied,

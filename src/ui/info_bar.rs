@@ -203,7 +203,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     let centre = rect.center().x;
     for (area, tooltip) in paint_meters(painter, centre, row2, laid) {
         if let Some(tooltip) = tooltip {
-            ui.interact(area, ui.id().with(("meter", tooltip)), Sense::hover())
+            ui.interact(area, ui.scope_id().with(("meter", tooltip)), Sense::hover())
                 .on_hover_text(tooltip);
         }
     }
@@ -414,14 +414,14 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     let mut on_warning = false;
     if let (Some((_, tooltip)), Some(area)) = (warn, warned) {
         on_warning = ui
-            .interact(area, ui.id().with("small-preview"), Sense::hover())
+            .interact(area, ui.scope_id().with("small-preview"), Sense::hover())
             .on_hover_text(i18n::keep_together(&tooltip))
             .hovered();
     }
     if let Some(tooltip) = date_tooltip
         && !on_warning
     {
-        ui.interact(line, ui.id().with("facts-line"), Sense::hover())
+        ui.interact(line, ui.scope_id().with("facts-line"), Sense::hover())
             .on_hover_text(tooltip);
     }
 
@@ -481,7 +481,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     if let Some(label) = bar.label {
         let dot = Rect::from_center_size(pos2(stars_left - 14.0, row1), Vec2::splat(12.0));
         painter.circle_filled(dot.center(), 5.0, crate::theme::label_color(label));
-        ui.interact(dot, ui.id().with("label-dot"), Sense::hover())
+        ui.interact(dot, ui.scope_id().with("label-dot"), Sense::hover())
             .on_hover_text(i18n::label_name(label));
     }
     if bar.incomplete {
@@ -498,7 +498,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
             pos2(icon.x - NOTE_ICON / 2.0, row1 - 9.0),
             pos2(right, row1 + 9.0),
         );
-        ui.interact(area, ui.id().with("incomplete"), Sense::hover())
+        ui.interact(area, ui.scope_id().with("incomplete"), Sense::hover())
             .on_hover_text(t.incomplete_tooltip);
     }
     let hint = hint_stars(bar.rating, bar.personal);
@@ -508,7 +508,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
         let response = ui
             .interact(
                 star.expand(STAR_GAP / 2.0),
-                ui.id().with(("star", n)),
+                ui.scope_id().with(("star", n)),
                 Sense::click(),
             )
             .on_hover_cursor(CursorIcon::PointingHand);
@@ -572,7 +572,7 @@ impl Lead<'_> {
         let galley = painter.layout_no_wrap(self.label, font.clone(), self.colour);
         let area = Rect::from_min_size(pos2(at.x, at.y - galley.size().y / 2.0), galley.size());
         let response = ui
-            .interact(area.expand(2.0), ui.id().with(self.id), Sense::CLICK)
+            .interact(area.expand(2.0), ui.scope_id().with(self.id), Sense::CLICK)
             .on_hover_cursor(CursorIcon::PointingHand)
             .on_hover_text(self.tooltip);
         let colour = match self.hover {
@@ -915,7 +915,7 @@ fn view_switcher(ui: &Ui, places: &Block, views: Views, out: &mut InfoBarOutput)
             },
         };
         let active = view == current;
-        let response = ui.interact(cell, ui.id().with(("view", k)), Sense::CLICK);
+        let response = ui.interact(cell, ui.scope_id().with(("view", k)), Sense::CLICK);
         let hovered = response.hovered() && !disabled;
         let painter = ui.painter();
         if active {
@@ -985,7 +985,7 @@ fn icon_button(
     disabled: bool,
     paint: impl FnOnce(&Painter, Pos2, Color32),
 ) -> bool {
-    let response = ui.interact(area, ui.id().with(("icon", tooltip)), Sense::CLICK);
+    let response = ui.interact(area, ui.scope_id().with(("icon", tooltip)), Sense::CLICK);
     let hovered = response.hovered() && !disabled;
     let painter = ui.painter();
     icons::button_background(painter, area, hovered, active && !disabled);

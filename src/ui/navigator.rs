@@ -39,7 +39,7 @@ pub fn navigator(
     let photo = place(area, aspect);
     let card = photo.expand(PAD);
     // Never focusable: `Space` must not click it again.
-    let response = ui.interact(card, Id::new("navigator"), Sense::CLICK | Sense::DRAG);
+    let response = ui.interact(card, Id::unique("navigator"), Sense::CLICK | Sense::DRAG);
     let painter = ui.painter().with_clip_rect(area);
     theme::paint_card(&painter, card, radius::LG);
     painter.image(

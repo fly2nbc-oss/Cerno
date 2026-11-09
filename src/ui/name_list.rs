@@ -36,7 +36,7 @@ pub fn show(ctx: &Context, window: Rect, text: &mut String, preview: &Preview<'_
             i.consume_key(Modifiers::NONE, Key::Escape),
         )
     });
-    let modal = modal::show(ctx, window, Id::new("name-list"), 560.0, |ui| {
+    let modal = modal::show(ctx, window, Id::unique("name-list"), 560.0, |ui| {
         let mut out = Output::default();
         let top_right = ui.max_rect().right_top() + vec2(8.0, -8.0);
         ui.label(
@@ -57,7 +57,7 @@ pub fn show(ctx: &Context, window: Rect, text: &mut String, preview: &Preview<'_
             )
         });
         // The cursor goes into the field when the card opens.
-        let focused_id = Id::new("name-list-focused");
+        let focused_id = Id::unique("name-list-focused");
         if !ui.data(|d| d.get_temp::<bool>(focused_id).unwrap_or(false)) {
             field.request_focus();
             ui.data_mut(|d| d.insert_temp(focused_id, true));
@@ -104,7 +104,7 @@ pub fn show(ctx: &Context, window: Rect, text: &mut String, preview: &Preview<'_
     out.apply |= apply_key && preview.found > 0;
     out.close |= escape || modal.outside;
     if out.apply || out.close {
-        ctx.data_mut(|d| d.remove::<bool>(Id::new("name-list-focused")));
+        ctx.data_mut(|d| d.remove::<bool>(Id::unique("name-list-focused")));
     }
     out
 }

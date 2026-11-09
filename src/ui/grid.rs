@@ -179,7 +179,7 @@ pub fn draw(
                     ui,
                     &painter,
                     cell,
-                    Id::new(("grid", index)),
+                    Id::unique(("grid", index)),
                     thumbs.get_or_request(path).as_ref(),
                     empty,
                     cell_info,
@@ -227,7 +227,7 @@ fn zoom_steps(ui: &Ui, rect: Rect) -> i32 {
     if zoom == 1.0 {
         return 0;
     }
-    let id = ui.id().with("grid-zoom");
+    let id = ui.scope_id().with("grid-zoom");
     ui.data_mut(|d| {
         let carry = d.get_temp_mut_or_default::<f32>(id);
         *carry += zoom.ln();
