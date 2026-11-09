@@ -740,8 +740,7 @@ pub static TEXTS: Texts = Texts {
         (
             "Viste",
             &[
-                ("F2 – F5", "Foto · griglia · scene · volti"),
-                ("G", "Tutti i volti in grande, come F5"),
+                ("F2 – F5", "Foto · griglia · scene · volti (G)"),
                 ("Esc, Invio", "Torna alla foto"),
                 ("F, F11", "Schermo intero"),
             ],

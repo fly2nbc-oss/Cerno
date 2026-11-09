@@ -632,6 +632,47 @@ mod tests {
         assert!(!h.app.viewer.split && h.app.viewer.scenes);
     }
 
+    /// The filter mode's pill stands at the top of the photo area, centred under the filter
+    /// bar; a notice goes below it; while the first box's list is open below the box the pill
+    /// steps aside and the notice takes its place.
+    #[test]
+    fn the_filter_pill_stands_under_the_filter_bar_and_makes_way() {
+        let mut h = Harness::new(3);
+        h.settle();
+        h.press(Key::F, Modifiers::COMMAND);
+        h.settle();
+        let window = Rect::from_min_size(pos2(0.0, 0.0), vec2(SCREEN[0], SCREEN[1]));
+        let layout = h.app.layout(window);
+        let bar = layout.toolbar.expect("the filter bar shows");
+        let area = layout.area;
+        let painter = h.ctx.layer_painter(egui::LayerId::background());
+        let stack = h.app.top_stack(&painter, area);
+        let (_, pill) = stack.pill.clone().expect("the pill");
+        assert!(pill.top() >= bar.bottom(), "{pill:?} under {bar:?}");
+        assert!(pill.top() - area.top() < 20.0, "at the top: {pill:?}");
+        assert!((pill.center().x - area.center().x).abs() < 0.5, "centred");
+        h.app.notice = Some(super::super::notice::Notice::hint("A hint"));
+        let stack = h.app.top_stack(&painter, area);
+        let notice = stack.notice.expect("the notice");
+        assert!(notice.top() >= pill.bottom() + 8.0 - 0.01, "below the pill");
+        assert_eq!(stack.bottom(), Some(notice.bottom()));
+        // The first box's list below the box: the pill steps aside, the notice moves up.
+        h.press(Key::Home, NONE);
+        h.press(Key::Space, NONE);
+        h.settle();
+        assert_eq!(h.layer(), "list");
+        let stack = h.app.top_stack(&painter, area);
+        assert!(stack.pill.is_none());
+        assert!(
+            stack
+                .notice
+                .is_some_and(|n| (n.top() - pill.top()).abs() < 0.5)
+        );
+        h.press(Key::Escape, NONE);
+        h.settle();
+        assert!(h.app.top_stack(&painter, area).pill.is_some(), "back");
+    }
+
     /// In the scene view the sort box is greyed out: in the filter mode `Space` on it names
     /// the reason and opens no list; outside the scenes it opens its list again.
     #[test]

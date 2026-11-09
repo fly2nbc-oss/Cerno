@@ -634,7 +634,7 @@ fn section(
         }
         y += 22.0;
     }
-    let keys_width = (width * 0.38).min(190.0);
+    let keys_width = (width * 0.40).min(190.0);
     for (keys, action) in rows {
         let caps_height = keycaps(painter, pos2(x, y), keys_width, keys, draw);
         let description = painter.layout(

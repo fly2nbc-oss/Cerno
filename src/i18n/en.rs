@@ -747,8 +747,7 @@ pub static TEXTS: Texts = Texts {
         (
             "Views",
             &[
-                ("F2 – F5", "Photo · grid · scenes · faces"),
-                ("G", "All faces large, like F5"),
+                ("F2 – F5", "Photo · grid · scenes · faces (G)"),
                 ("Esc, Enter", "Back to the photo"),
                 ("F, F11", "Full screen"),
             ],
