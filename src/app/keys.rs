@@ -797,6 +797,41 @@ mod tests {
         assert!(checked > 50, "only {checked} keys");
     }
 
+    /// The keys the 1.15 features brought each ask for exactly one thing – no key is bound
+    /// twice: `F8`, `Shift+Z`, `Ctrl+F`, `Alt+1`/`2`/`0`, `Shift+A`/`D`, Page Up/Down (a
+    /// screen in the grid, a scene in the scene view, a photo else – one command, `run`
+    /// decides by the view).
+    #[test]
+    fn the_new_keys_each_ask_for_one_thing() {
+        let (plain, shift, ctrl, alt) = (
+            Modifiers::NONE,
+            Modifiers::SHIFT,
+            Modifiers::COMMAND,
+            Modifiers::ALT,
+        );
+        let cases = [
+            (Key::F8, plain, Command::ToggleScenes),
+            (Key::Z, shift, Command::Split),
+            (Key::F, ctrl, Command::FilterMode),
+            (Key::Num1, alt, Command::TogglePanel(Panel::Left)),
+            (Key::Num2, alt, Command::TogglePanel(Panel::Right)),
+            (Key::Num0, alt, Command::AllPanels),
+            (Key::A, shift, Command::KeepLeft { next: true }),
+            (Key::D, shift, Command::KeepRight { next: true }),
+            (Key::PageDown, plain, Command::PageDown),
+            (Key::PageUp, plain, Command::PageUp),
+        ];
+        for (pressed, modifiers, command) in cases {
+            // The video's keys go along every frame (`Command::Video`, empty here).
+            let commands: Vec<Command> = read(vec![key(pressed, pressed, modifiers)], modifiers)
+                .commands(&[])
+                .into_iter()
+                .filter(|c| !matches!(c, Command::Video { .. }))
+                .collect();
+            assert_eq!(commands, [command], "{pressed:?} with {modifiers:?}");
+        }
+    }
+
     #[test]
     fn azerty_six_is_red_and_does_not_zoom_out() {
         let plain = Modifiers::NONE;
