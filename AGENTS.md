@@ -1,8 +1,17 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for AI coding agents (Claude Code, Codex, Cursor, Copilot …) and for people working on this repository. `CLAUDE.md` only imports this file; personal notes go into the untracked `CLAUDE.local.md`.
 
 Cerno (Latin *cerno* – "I sift, discern, see clearly") is a **pure-Rust desktop photo viewer and culling tool** for Windows and Linux: switch between photos instantly, rate them 1–5 stars from the keyboard, zoom to 100 %, and sort/filter by automatic sharpness and aesthetics scores. UI is **egui/eframe on wgpu** – there is no WebView. The parent mono-repo `../CLAUDE.md` covers shared conventions; this file covers Cerno specifics.
+
+## Standards
+
+This project follows the latest versions of two documents in the parent folder
+(outside this repository): `repo_standard_v*.md` (setup, docs, CI, release) and
+`ui_design_system_v*.md` (UI, where the project has one). Read them before changing
+those areas; where this file says something different, this file wins.
+
+Cerno's deliberate differences from the repo standard: no Dependabot (there is no pull-request flow; actions are bumped by hand, see *Actions pinned by commit*), `cargo audit` instead of `cargo deny`, and the `stable` toolchain instead of a `rust-toolchain.toml`.
 
 ## Commands
 
@@ -322,6 +331,15 @@ packaging/linux/     build.sh (.deb, AppImage), AppRun, cerno.desktop
 6. Verify face detection / eye sharpness on real portraits (so far only unit tests and a run on photos without faces).
 7. Linux verification (build, libheif, WebGPU on AMD/Vulkan).
 8. ✅ Packages in CI: NSIS installer, portable zip, AppImage, `.deb` (see `packaging/`); the icons are in `assets/` (`icon.ico` for the installer, `icon.png` for the `.desktop` entry – on Wayland the window icon comes from there via the app id `cerno`, not from `with_icon`). Open: an updater in Cerno (the check only names a version; the AppImage updates through AppImageUpdate and its `.zsync`); signing waits for the SignPath project. Before each release: `cargo audit` (on 2026-09-28 only `ttf-parser` "unmaintained" via egui, reads just the system font), check the vcpkg pin for libheif/libde265 fixes (they parse HEIC from untrusted sources, C code), and record which ONNX Runtime binary `ort`'s `download-binaries` fetched (`ort` 2.0.0-rc.15: ONNX Runtime 1.31.0, `ort-sys`'s `build/download/dist.tsv`).
+
+## Release
+
+1. Raise the version in `Cargo.toml` (the only source; help and About show it).
+2. In the same commit: `CHANGELOG.md`'s `[Unreleased]` becomes `## [X.Y.Z] – YYYY-MM-DD` under a new empty `[Unreleased]`, and the AppStream metainfo gets its `<release>` line (the `scripts` job checks both). A visible UI change also renews `screenshots/cerno-main.jpg`.
+3. Push `main`, wait for a green CI.
+4. Only when the owner says so: `git tag -a vX.Y.Z -m "Cerno X.Y.Z"`, `git push origin vX.Y.Z`.
+5. CI builds, signs (once SignPath is set up), attests and drafts the release; it stops when the tag differs from `Cargo.toml` or the CHANGELOG has no section for it. Look at the draft: notes, files, `SHA256SUMS.txt`.
+6. Publish: `gh release edit vX.Y.Z --draft=false --latest` (the AppImage's update information follows *latest*).
 
 ## Gotchas
 
