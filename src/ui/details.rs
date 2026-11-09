@@ -12,9 +12,11 @@ use crate::analysis::{ModelState, Status, aesthetic, exposure};
 use crate::db::Scores;
 use crate::histogram::RgbHistogram;
 use crate::i18n;
+use crate::library;
 use crate::metadata;
 use crate::overlay;
 use crate::playback::MediaInfo;
+use crate::raw;
 use crate::theme::{self, text, tokens};
 use crate::ui::{icons, video_controls};
 use crate::view::is_blurry;
@@ -370,6 +372,16 @@ fn file(ui: &mut Ui, d: &Details<'_>) -> bool {
                     format!("{w} × {h} ({})", t.preview_word),
                     t.explain_raw_preview,
                 );
+                // A preview this small can't show critical focus at 100 % (ticket CER-62).
+                if let Some(px) = raw::small_preview(library::format_of(d.path), [w, h]) {
+                    coloured_row(
+                        ui,
+                        t.row_sharpness_check,
+                        t.small_preview_value.to_owned(),
+                        &(t.small_preview_tooltip)(px),
+                        tokens::STATUS_WARN,
+                    );
+                }
                 plain_row(ui, t.row_load_time, format!("{load_ms} ms"));
             }
             (None, Some(([w, h], load_ms))) => {
@@ -1036,6 +1048,117 @@ mod tests {
             hovered.iter().any(|(text, _)| *text == explanation),
             "the explanation shows while the pointer rests on the row"
         );
+    }
+
+    /// A RAW whose preview is too small to judge sharpness says so in File, under its size and
+    /// in the warning colour; a full-size preview and a JPEG of that size don't (CER-62).
+    #[test]
+    fn a_small_preview_is_named_under_its_size() {
+        let status = status();
+        let rows = |path: &str, raw_preview: bool, size: [u32; 2]| {
+            let details = Details {
+                path: Path::new(path),
+                scores: None,
+                personal: None,
+                frame_percentile: None,
+                eyes_percentile: None,
+                attributes: None,
+                histogram: None,
+                status: &status,
+                file: Some((size, 40)),
+                file_bytes: None,
+                jpeg: None,
+                raw_preview,
+                position: None,
+                media: None,
+                video: false,
+                overlay: overlay::Mode::Off,
+            };
+            let ctx = crate::theme::test_context();
+            let panel = Rect::from_min_size(pos2(0.0, 0.0), vec2(WIDTH, 1200.0));
+            let mut output = ctx.run_ui(
+                RawInput {
+                    screen_rect: Some(panel),
+                    ..Default::default()
+                },
+                |ui| {
+                    draw(ui, panel, &details, &mut false);
+                },
+            );
+            output.textures_delta.clear();
+            output
+                .shapes
+                .into_iter()
+                .filter_map(|clipped| match clipped.shape {
+                    Shape::Text(text) => Some((
+                        text.galley.text().to_owned(),
+                        text.visual_bounding_rect(),
+                        text.galley.job.sections[0].format.color,
+                    )),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let t = i18n::t();
+        let small = rows("D:/Fotos/DSC_1.ARW", true, [1616, 1080]);
+        let find = |wanted: &str| {
+            small
+                .iter()
+                .find(|(text, _, _)| text == wanted)
+                .unwrap_or_else(|| panic!("{wanted:?} is drawn"))
+        };
+        let size = find("1616 × 1080 (preview)");
+        let (_, label, _) = find(t.row_sharpness_check);
+        let (_, value, colour) = find(t.small_preview_value);
+        assert!(label.top() > size.1.bottom(), "under the size");
+        assert!(value.right() <= WIDTH, "inside the panel");
+        assert!(label.right() < value.left(), "label and value apart");
+        assert_eq!(*colour, tokens::STATUS_WARN);
+        for (path, raw_preview, size) in [
+            ("D:/Fotos/DSC_1.ARW", true, [6000, 4000]),
+            ("D:/Fotos/IMG_1.dng", true, [4032, 3024]),
+            ("D:/Fotos/IMG_1.jpg", false, [1616, 1080]),
+        ] {
+            assert!(
+                !rows(path, raw_preview, size)
+                    .iter()
+                    .any(|(text, _, _)| text == t.small_preview_value),
+                "{path} {size:?}"
+            );
+        }
+        assert!(
+            rows("D:/Fotos/IMG_1.DNG", true, [1024, 768])
+                .iter()
+                .any(|(text, _, _)| text == t.small_preview_value),
+            "a DNG too"
+        );
+    }
+
+    /// The row's label and value fit beside each other in every language.
+    #[test]
+    fn the_small_preview_row_fits_in_every_language() {
+        let ctx = crate::theme::test_context();
+        let mut output = ctx.run_ui(RawInput::default(), |ui| {
+            let painter = ui.painter();
+            let width = |text: &str| {
+                painter
+                    .layout_no_wrap(
+                        text.to_owned(),
+                        FontId::proportional(text::SMALL),
+                        tokens::TEXT,
+                    )
+                    .size()
+                    .x
+                    * 1.05
+            };
+            let room = WIDTH - (PAD + 14.0) - PAD - 8.0;
+            for lang in i18n::Lang::ALL {
+                let t = lang.texts();
+                let needed = width(t.row_sharpness_check) + width(t.small_preview_value);
+                assert!(needed <= room, "{lang:?}: {needed} > {room}");
+            }
+        });
+        output.textures_delta.clear();
     }
 
     /// The File section shows the coordinates and links them to both maps; a click opens the

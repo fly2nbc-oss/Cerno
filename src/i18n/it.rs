@@ -163,6 +163,11 @@ pub static TEXTS: Texts = Texts {
     },
     zoom: |percent| format!("Zoom {percent:.0} %"),
     zoom_preview: |percent| format!("Zoom {percent:.0} % dell'anteprima"),
+    small_preview_tooltip: |px| {
+        format!(
+            "Anteprima di soli {px} px – troppo piccola per giudicare la nitidezza; scattare in RAW+JPG"
+        )
+    },
     digital_zoom: |ratio| format!("Zoom digitale {ratio:.1}×"),
     button_toolbar: "Barra dei filtri",
     button_details: "Pannello dettagli",
@@ -334,6 +339,8 @@ pub static TEXTS: Texts = Texts {
     row_complete: "Completo",
     incomplete_value: "no – manca la fine",
     explain_raw_preview: "Per i file RAW Cerno mostra il JPEG incorporato dalla fotocamera, senza sviluppo RAW. Colore ed esposizione sono quelli della fotocamera e il 100 % è la dimensione di questa anteprima, non del sensore. Istogramma ed esposizione misurano l'anteprima.",
+    row_sharpness_check: "Controllo nitidezza",
+    small_preview_value: "anteprima troppo piccola",
     row_container: "Contenitore",
     row_duration: "Durata",
     row_video: "Video",

@@ -176,6 +176,9 @@ pub static TEXTS: Texts = Texts {
     },
     zoom: |percent| format!("Zoom {percent:.0} %"),
     zoom_preview: |percent| format!("Zoom {percent:.0} % der Vorschau"),
+    small_preview_tooltip: |px| {
+        format!("Vorschau nur {px} px – für die Schärfe zu klein; RAW+JPG fotografieren")
+    },
     digital_zoom: |ratio| format!("{ratio:.1}× Digitalzoom"),
     button_toolbar: "Filterleiste",
     button_details: "Detailansicht",
@@ -352,6 +355,8 @@ pub static TEXTS: Texts = Texts {
     row_complete: "Vollständig",
     incomplete_value: "nein – das Ende fehlt",
     explain_raw_preview: "Bei RAW-Dateien zeigt Cerno das JPEG, das die Kamera eingebettet hat – keine RAW-Entwicklung. Farbe und Belichtung sind die der Kamera, 100 % ist die Größe dieser Vorschau, nicht die des Sensors. Histogramm und Belichtung messen die Vorschau.",
+    row_sharpness_check: "Schärfeprüfung",
+    small_preview_value: "Vorschau zu klein",
     row_container: "Container",
     row_duration: "Dauer",
     row_video: "Video",
