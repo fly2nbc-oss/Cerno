@@ -86,6 +86,8 @@ pub enum Placement {
     Beside(Rect),
     /// Centred over this area: the photo (`E`).
     Over(Rect),
+    /// Below a box of the filter bar, its left edge at the box's (the filter mode's lists).
+    Below(Rect),
 }
 
 /// The highlighted row (keyboard or mouse).
@@ -148,6 +150,7 @@ pub fn show<A: Copy>(
             area.center().x - width / 2.0,
             area.center().y - height / 2.0,
         ),
+        Placement::Below(field) => (field.left(), field.bottom() + 4.0),
     };
     let left = left
         .min(window.right() - width - 8.0)

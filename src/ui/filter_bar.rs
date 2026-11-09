@@ -2,6 +2,10 @@
 //! camera or all, then the filter groups (rating, colour, blurry / duplicates) and "similar
 //! photos". Right, what comes of it: the analysis status, the sort, the count with its reset.
 //! What acts on the photos shown is the menu bar's *Visible photos* (since 1.11).
+//!
+//! The filter mode (`Ctrl+F`, `app/filter_mode.rs`) walks the bar with a frame Cerno draws
+//! itself – never egui's focus, or `Space` would click a box again: [`Slot`] names each place
+//! in the bar's order, [`slots`] lists those there now, [`step`] and [`settle`] move the frame.
 
 use eframe::egui::containers::scroll_area::ScrollBarVisibility;
 use eframe::egui::{
@@ -41,6 +45,91 @@ pub struct ToolbarInfo<'a> {
     pub camera: Option<&'a str>,
 }
 
+/// One place of the filter mode's frame, in the bar's reading order: the first box, the
+/// camera box, "without ✕", every filter box, "similar photos", the file list's chip (while a
+/// list filters), *Refresh order* (while it shows) and the sort.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Slot {
+    Scope,
+    Camera,
+    WithoutRejected,
+    Filter(FilterKind),
+    Similar,
+    NameList,
+    Refresh,
+    Sort,
+}
+
+/// The slots the bar shows now, left to right. `name_list`: the file list's chip is there (a
+/// list filters); `stale`: *Refresh order* is.
+pub fn slots(name_list: bool, stale: bool) -> Vec<Slot> {
+    let mut out = vec![Slot::Scope, Slot::Camera, Slot::WithoutRejected];
+    out.extend(
+        FilterKind::GROUPS
+            .iter()
+            .flat_map(|group| group.iter().map(|&kind| Slot::Filter(kind))),
+    );
+    out.push(Slot::Similar);
+    if name_list {
+        out.push(Slot::NameList);
+    }
+    if stale {
+        out.push(Slot::Refresh);
+    }
+    out.push(Slot::Sort);
+    out
+}
+
+/// Where the frame goes with an arrow or `Home` / `End`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Step {
+    Prev,
+    Next,
+    First,
+    Last,
+}
+
+/// The frame's next place: one box on or back, stopping at the bar's ends (like `←`/`→` at the
+/// first and last photo), or the first or last box.
+pub fn step(slots: &[Slot], cursor: Slot, step: Step) -> Slot {
+    let Some(&last) = slots.last() else {
+        return cursor;
+    };
+    let here = settle(slots, cursor);
+    let at = slots.iter().position(|&slot| slot == here).unwrap_or(0);
+    match step {
+        Step::Prev => slots[at.saturating_sub(1)],
+        Step::Next => slots[(at + 1).min(slots.len() - 1)],
+        Step::First => slots[0],
+        Step::Last => last,
+    }
+}
+
+/// The frame stays where it is, or – when its box has gone (the file list ended, the order
+/// was refreshed) – goes to the box before it.
+pub fn settle(slots: &[Slot], cursor: Slot) -> Slot {
+    if slots.contains(&cursor) {
+        return cursor;
+    }
+    let all = self::slots(true, true);
+    let rank = |slot: Slot| all.iter().position(|&s| s == slot).unwrap_or(0);
+    slots
+        .iter()
+        .rev()
+        .find(|&&slot| rank(slot) < rank(cursor))
+        .or(slots.first())
+        .copied()
+        .unwrap_or(cursor)
+}
+
+/// The filter mode's frame: on which box, and whether it just moved there (the boxes then
+/// scroll so it shows).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cursor {
+    pub slot: Slot,
+    pub scroll: bool,
+}
+
 #[derive(Default)]
 pub struct ToolbarOutput {
     pub options_changed: bool,
@@ -48,16 +137,74 @@ pub struct ToolbarOutput {
     pub download_model: bool,
     /// The "similar" chip was clicked; the app picks the photo it is about (like `M`).
     pub toggle_similar: bool,
+    /// The box a click went to: in the filter mode the frame goes there.
+    pub clicked: Option<Slot>,
+    /// Where the frame's box is: a list opened from the keyboard opens below it.
+    pub cursor_rect: Option<Rect>,
     /// Where the count is: it holds the right end (tests).
     #[cfg(test)]
     pub count: Option<Rect>,
 }
 
+/// What the slots of one side of the bar reported: a click, the frame's box.
+struct Places {
+    cursor: Option<Cursor>,
+    clicked: Option<Slot>,
+    cursor_rect: Option<Rect>,
+}
+
+impl Places {
+    fn new(cursor: Option<Cursor>) -> Self {
+        Self {
+            cursor,
+            clicked: None,
+            cursor_rect: None,
+        }
+    }
+
+    /// `slot` was drawn as `response`: a click is noted, and the frame is drawn around it when
+    /// it is the frame's – painted only, so nothing changes its width (and scrolled into view
+    /// when it just moved there).
+    fn place(&mut self, ui: &Ui, slot: Slot, response: &Response) {
+        if response.clicked() {
+            self.clicked = Some(slot);
+        }
+        let Some(cursor) = self.cursor.filter(|c| c.slot == slot) else {
+            return;
+        };
+        let rect = response.rect;
+        // The boxes scroll sideways: the frame reaches a little past their visible part.
+        let painter = ui.painter().with_clip_rect(ui.clip_rect().expand(4.0));
+        painter.rect_stroke(
+            rect.expand(1.0),
+            radius::MD + 1,
+            Stroke::new(2.0, tokens::ACCENT),
+            StrokeKind::Outside,
+        );
+        // At once: a key's step is no reason to animate, and the frame must not lag behind.
+        if cursor.scroll {
+            ui.scroll_to_rect_animation(
+                rect.expand(8.0),
+                None,
+                eframe::egui::style::ScrollAnimation::none(),
+            );
+        }
+        self.cursor_rect = Some(rect);
+    }
+
+    fn merge(&mut self, other: Places) {
+        self.clicked = self.clicked.or(other.clicked);
+        self.cursor_rect = self.cursor_rect.or(other.cursor_rect);
+    }
+}
+
+/// The filter bar; `cursor`: the filter mode's frame while the mode is on.
 pub fn toolbar(
     ui: &mut Ui,
     rect: Rect,
     options: &mut ViewOptions,
     info: &ToolbarInfo<'_>,
+    cursor: Option<Cursor>,
 ) -> ToolbarOutput {
     let t = i18n::t();
     ui.painter().rect_filled(rect, 0.0, tokens::SURFACE);
@@ -73,6 +220,8 @@ pub fn toolbar(
     // The right side works on copies: both sides can't borrow `options` at once.
     let mut sort = options.sort;
     let mut clear = false;
+    let mut left = Places::new(cursor);
+    let mut right = Places::new(cursor);
     ui.scope_builder(
         UiBuilder::new()
             .max_rect(rect.shrink2(vec2(12.0, 0.0)))
@@ -90,8 +239,10 @@ pub fn toolbar(
                 .show(
                     ui,
                     |ui| {
-                        scope_box(ui, options, info.has_videos);
-                        camera_box(ui, options, info.cameras, info.camera);
+                        let scope = scope_box(ui, options, info.has_videos);
+                        left.place(ui, Slot::Scope, &scope);
+                        let camera = camera_box(ui, options, info.cameras, info.camera);
+                        left.place(ui, Slot::Camera, &camera);
                         separator(ui);
                         let boxes = ScrollArea::horizontal()
                             .id_salt("filter-boxes")
@@ -102,7 +253,9 @@ pub fn toolbar(
                                     ui.spacing_mut().item_spacing.x = 6.0;
                                     // It hides instead of picking out: before the boxes, on
                                     // its own.
-                                    if without_rejected(ui, options.hide_rejected) {
+                                    let without = without_rejected(ui, options.hide_rejected);
+                                    left.place(ui, Slot::WithoutRejected, &without);
+                                    if without.clicked() {
                                         options.toggle_hide_rejected();
                                     }
                                     separator(ui);
@@ -112,7 +265,10 @@ pub fn toolbar(
                                         }
                                         for &kind in *group {
                                             let on = options.filter.contains(kind);
-                                            if filter_box(ui, kind, on, info.has_deleted) {
+                                            let response =
+                                                filter_box(ui, kind, on, info.has_deleted);
+                                            left.place(ui, Slot::Filter(kind), &response);
+                                            if response.clicked() {
                                                 options.toggle_filter(kind);
                                             }
                                         }
@@ -120,21 +276,25 @@ pub fn toolbar(
                                     separator(ui);
                                     // Last, so its label – the photo's name while on – moves
                                     // nothing.
-                                    similar_clicked =
+                                    let similar =
                                         similar_chip(ui, options.similar, info.similar_to);
+                                    left.place(ui, Slot::Similar, &similar);
+                                    similar_clicked = similar.clicked();
                                     // While a pasted list filters: how much of it was found; a
                                     // click shows every photo again.
                                     if let Some((found, total)) =
                                         info.name_list.filter(|_| options.name_list)
-                                        && chip(
+                                    {
+                                        let list = chip(
                                             ui,
                                             true,
                                             Face::Text(&(t.name_list_chip)(found, total)),
                                         )
-                                        .on_hover_text(t.name_list_chip_tooltip)
-                                        .clicked()
-                                    {
-                                        options.name_list = false;
+                                        .on_hover_text(t.name_list_chip_tooltip);
+                                        left.place(ui, Slot::NameList, &list);
+                                        if list.clicked() {
+                                            options.name_list = false;
+                                        }
                                     }
                                 });
                             });
@@ -153,7 +313,7 @@ pub fn toolbar(
                             count_badge(ui, info.shown, info.total, before.is_filtered());
                         clear = cleared;
                         count_rect = Some(slot);
-                        ComboBox::from_id_salt("sort")
+                        let sorted = ComboBox::from_id_salt("sort")
                             .icon(combo_chevron)
                             .width(sort_width(ui))
                             .selected_text((t.sort)(sort.label()))
@@ -161,14 +321,17 @@ pub fn toolbar(
                                 for key in SortKey::ALL {
                                     ui.selectable_value(&mut sort, key, key.label());
                                 }
-                            });
-                        if info.stale
-                            && ui
+                            })
+                            .response;
+                        right.place(ui, Slot::Sort, &sorted);
+                        if info.stale {
+                            let refresh = ui
                                 .add(theme::secondary_button(t.refresh_order).compact())
-                                .on_hover_text(t.refresh_order_tooltip)
-                                .clicked()
-                        {
-                            out.refresh = true;
+                                .on_hover_text(t.refresh_order_tooltip);
+                            right.place(ui, Slot::Refresh, &refresh);
+                            if refresh.clicked() {
+                                out.refresh = true;
+                            }
                         }
                         let Status { done, total, .. } = *info.status;
                         if done < total {
@@ -191,13 +354,16 @@ pub fn toolbar(
     let _ = count_rect;
     out.toggle_similar = similar_clicked;
     out.options_changed = *options != before;
+    left.merge(right);
+    out.clicked = left.clicked;
+    out.cursor_rect = left.cursor_rect;
     out
 }
 
 /// Photos, videos or both – or the best N photos (`Scope`). As wide as its longest choice in
 /// this language, and outlined in the accent while Top N is on. "Videos only" is greyed out in
 /// a folder without videos, unless it is the current choice and has to be switched back.
-fn scope_box(ui: &mut Ui, options: &mut ViewOptions, has_videos: bool) {
+fn scope_box(ui: &mut Ui, options: &mut ViewOptions, has_videos: bool) -> Response {
     let t = i18n::t();
     let current = Scope::of(options);
     let response = ComboBox::from_id_salt("scope")
@@ -234,6 +400,7 @@ fn scope_box(ui: &mut Ui, options: &mut ViewOptions, has_videos: bool) {
             StrokeKind::Inside,
         );
     }
+    response
 }
 
 /// Only the photos of one camera: "All cameras", then the folder's cameras with their photo
@@ -247,7 +414,7 @@ fn camera_box(
     options: &mut ViewOptions,
     cameras: &[CameraEntry],
     chosen: Option<&str>,
-) {
+) -> Response {
     /// Indent of a body below its model in the list.
     const BODY_INDENT: f32 = 12.0;
     let t = i18n::t();
@@ -311,6 +478,7 @@ fn camera_box(
             StrokeKind::Inside,
         );
     }
+    response
 }
 
 /// The camera box is as wide as "All cameras" in this language, or as a typical camera with a
@@ -383,9 +551,9 @@ fn separator(ui: &mut Ui) {
 }
 
 /// One filter as a chip – rejected (`X`) and no stars (`0`) as symbols, like the keys that set
-/// them – or a colour as a square. Whether it was clicked. The 🗑 box is greyed out while the
-/// folder has no deleted photos, unless it is on and has to be switched off.
-fn filter_box(ui: &mut Ui, kind: FilterKind, on: bool, has_deleted: bool) -> bool {
+/// them – or a colour as a square. The 🗑 box is greyed out while the folder has no deleted
+/// photos, unless it is on and has to be switched off.
+fn filter_box(ui: &mut Ui, kind: FilterKind, on: bool, has_deleted: bool) -> Response {
     let t = i18n::t();
     match kind {
         // Colours as small squares: five names would not fit next to the rest.
@@ -397,11 +565,10 @@ fn filter_box(ui: &mut Ui, kind: FilterKind, on: bool, has_deleted: bool) -> boo
                 theme::label_color(label),
                 i18n::label_name(label),
             )
-            .changed()
         }
-        FilterKind::Rejected => chip(ui, on, Face::Rejected)
-            .on_hover_text(format!("{} (X)", kind.label()))
-            .clicked(),
+        FilterKind::Rejected => {
+            chip(ui, on, Face::Rejected).on_hover_text(format!("{} (X)", kind.label()))
+        }
         FilterKind::Deleted => {
             let enabled = has_deleted || on;
             let tooltip = if enabled {
@@ -411,23 +578,24 @@ fn filter_box(ui: &mut Ui, kind: FilterKind, on: bool, has_deleted: bool) -> boo
             };
             chip_with(ui, on, Face::Deleted, enabled)
                 .on_hover_text(format!("{}\n{tooltip}", kind.label()))
-                .clicked()
         }
-        FilterKind::Unrated => chip(ui, on, Face::NoStars)
-            .on_hover_text(format!("{} (0)", kind.label()))
-            .clicked(),
-        FilterKind::Stars(n) => chip(ui, on, Face::Text(&format!("{n}★")))
-            .on_hover_text(kind.label())
-            .clicked(),
-        FilterKind::Blurry => chip(ui, on, Face::Text(&kind.label()))
-            .on_hover_text(t.filter_blurry_tooltip)
-            .clicked(),
-        FilterKind::Duplicate => chip(ui, on, Face::Text(&kind.label()))
-            .on_hover_text(t.filter_duplicate_tooltip)
-            .clicked(),
-        FilterKind::Incomplete => chip(ui, on, Face::Incomplete)
-            .on_hover_text(format!("{}\n{}", kind.label(), t.filter_incomplete_tooltip))
-            .clicked(),
+        FilterKind::Unrated => {
+            chip(ui, on, Face::NoStars).on_hover_text(format!("{} (0)", kind.label()))
+        }
+        FilterKind::Stars(n) => {
+            chip(ui, on, Face::Text(&format!("{n}★"))).on_hover_text(kind.label())
+        }
+        FilterKind::Blurry => {
+            chip(ui, on, Face::Text(&kind.label())).on_hover_text(t.filter_blurry_tooltip)
+        }
+        FilterKind::Duplicate => {
+            chip(ui, on, Face::Text(&kind.label())).on_hover_text(t.filter_duplicate_tooltip)
+        }
+        FilterKind::Incomplete => chip(ui, on, Face::Incomplete).on_hover_text(format!(
+            "{}\n{}",
+            kind.label(),
+            t.filter_incomplete_tooltip
+        )),
         // Icons without text: the names are in the tooltip.
         FilterKind::People | FilterKind::NoPeople => chip(
             ui,
@@ -436,20 +604,17 @@ fn filter_box(ui: &mut Ui, kind: FilterKind, on: bool, has_deleted: bool) -> boo
                 crossed: kind == FilterKind::NoPeople,
             },
         )
-        .on_hover_text(format!("{}\n{}", kind.label(), t.filter_people_tooltip))
-        .clicked(),
+        .on_hover_text(format!("{}\n{}", kind.label(), t.filter_people_tooltip)),
     }
 }
 
-/// "without ✕": the word and the reject cross. Whether it was clicked.
-fn without_rejected(ui: &mut Ui, on: bool) -> bool {
+/// "without ✕": the word and the reject cross.
+fn without_rejected(ui: &mut Ui, on: bool) -> Response {
     let t = i18n::t();
-    chip(ui, on, Face::Without(t.filter_without))
-        .on_hover_text(format!(
-            "{}\n{}",
-            t.filter_hide_rejected, t.filter_hide_rejected_tooltip
-        ))
-        .clicked()
+    chip(ui, on, Face::Without(t.filter_without)).on_hover_text(format!(
+        "{}\n{}",
+        t.filter_hide_rejected, t.filter_hide_rejected_tooltip
+    ))
 }
 
 /// What a chip shows.
@@ -684,8 +849,8 @@ fn progress(ui: &mut Ui, done: usize, total: usize) {
 }
 
 /// "≈ Similar", or "≈ like IMG_0012" while on (a long name shortened, whole in the tooltip).
-/// Whether it was clicked; the app decides which photo it is about.
-fn similar_chip(ui: &mut Ui, on: bool, reference: Option<&str>) -> bool {
+/// On a click the app decides which photo it is about.
+fn similar_chip(ui: &mut Ui, on: bool, reference: Option<&str>) -> Response {
     const LONGEST: usize = 18;
     let t = i18n::t();
     let label = match reference.filter(|_| on) {
@@ -701,9 +866,7 @@ fn similar_chip(ui: &mut Ui, on: bool, reference: Option<&str>) -> bool {
         Some(name) => format!("{}\n{explain}", (t.menu_similar_to)(name)),
         None => explain,
     };
-    chip(ui, on, Face::Text(&label))
-        .on_hover_text(tooltip)
-        .clicked()
+    chip(ui, on, Face::Text(&label)).on_hover_text(tooltip)
 }
 
 /// A colour label as a small square – filled and ticked when on; the name is the tooltip.
@@ -872,7 +1035,7 @@ mod tests {
                         cameras,
                         camera,
                     };
-                    count = toolbar(ui, screen, &mut options, &info).count;
+                    count = toolbar(ui, screen, &mut options, &info, None).count;
                 },
             );
             output.textures_delta.clear();
@@ -960,7 +1123,7 @@ mod tests {
                         cameras: &[],
                         camera: None,
                     };
-                    toolbar(ui, bar, &mut options, &info);
+                    toolbar(ui, bar, &mut options, &info, None);
                 },
             );
             output.textures_delta.clear();
@@ -1038,7 +1201,7 @@ mod tests {
                         cameras: &[],
                         camera: None,
                     };
-                    let out = toolbar(ui, screen, &mut options, &info);
+                    let out = toolbar(ui, screen, &mut options, &info, None);
                     let count = out.count.expect("the count is drawn");
                     // The × is the last thing in the count, at its right end.
                     cross = Some(pos2(count.right() - 8.0 - 8.0, count.center().y));
@@ -1204,7 +1367,7 @@ mod tests {
                             cameras,
                             camera: None,
                         };
-                        toolbar(ui, bar, &mut options, &info);
+                        toolbar(ui, bar, &mut options, &info, None);
                     },
                 );
                 output.textures_delta.clear();
@@ -1263,5 +1426,161 @@ mod tests {
         assert_eq!(left_of(&few, &progress), left_of(&one, &progress));
         assert_eq!(left_of(&all, &progress), left_of(&few, &progress));
         assert!(left_of(&few, &progress) < count.left());
+    }
+
+    /// Every box of the bar in its reading order: the file list's chip and *Refresh order*
+    /// only while they show, the sort last.
+    #[test]
+    fn the_slots_follow_the_bar() {
+        let plain = slots(false, false);
+        assert_eq!(
+            plain[..3],
+            [Slot::Scope, Slot::Camera, Slot::WithoutRejected]
+        );
+        assert_eq!(plain[3], Slot::Filter(FilterKind::Rejected));
+        assert_eq!(plain.len(), 3 + FilterKind::ALL.len() + 2);
+        assert_eq!(plain[plain.len() - 2..], [Slot::Similar, Slot::Sort]);
+        let all = slots(true, true);
+        assert_eq!(
+            all[all.len() - 4..],
+            [Slot::Similar, Slot::NameList, Slot::Refresh, Slot::Sort]
+        );
+    }
+
+    /// The frame stops at the bar's ends, and `Home` / `End` reach them.
+    #[test]
+    fn the_frame_stops_at_the_ends() {
+        let all = slots(false, false);
+        assert_eq!(step(&all, Slot::Scope, Step::Prev), Slot::Scope);
+        assert_eq!(step(&all, Slot::Scope, Step::Next), Slot::Camera);
+        assert_eq!(step(&all, Slot::Sort, Step::Next), Slot::Sort);
+        assert_eq!(step(&all, Slot::Similar, Step::Next), Slot::Sort);
+        assert_eq!(step(&all, Slot::Camera, Step::Last), Slot::Sort);
+        assert_eq!(step(&all, Slot::Sort, Step::First), Slot::Scope);
+        assert_eq!(
+            step(&all, Slot::Filter(FilterKind::Stars(5)), Step::Next),
+            Slot::Filter(FilterKind::Colour(crate::metadata::Label::Red))
+        );
+    }
+
+    /// A box that goes away (the order refreshed, the list ended) leaves the frame on the box
+    /// before it; from there the arrows go on as usual.
+    #[test]
+    fn a_box_that_goes_takes_the_frame_back_one() {
+        let now = slots(false, false);
+        assert_eq!(settle(&now, Slot::Refresh), Slot::Similar);
+        assert_eq!(settle(&now, Slot::NameList), Slot::Similar);
+        assert_eq!(settle(&now, Slot::Sort), Slot::Sort);
+        assert_eq!(step(&now, Slot::Refresh, Step::Next), Slot::Sort);
+        assert_eq!(
+            step(&now, Slot::NameList, Step::Prev),
+            Slot::Filter(FilterKind::NoPeople)
+        );
+    }
+
+    /// The bar drawn `frames` times in a window `width` wide with the filter mode's frame on
+    /// `cursor`: the texts, the frame's box, and every ring the accent draws 2 px wide.
+    fn framed(
+        width: f32,
+        cursor: Option<Cursor>,
+        frames: usize,
+    ) -> (Vec<(String, Rect)>, Option<Rect>, Vec<Rect>) {
+        let ctx = crate::theme::test_context();
+        let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(width, TOOLBAR_HEIGHT));
+        let done = status(1, 1);
+        let mut last = None;
+        for _ in 0..frames {
+            let mut at = None;
+            let mut output = ctx.run_ui(
+                RawInput {
+                    screen_rect: Some(screen),
+                    ..Default::default()
+                },
+                |ui| {
+                    let mut options = ViewOptions::default();
+                    let info = ToolbarInfo {
+                        stale: false,
+                        status: &done,
+                        similar_to: None,
+                        shown: 340,
+                        total: 340,
+                        has_videos: true,
+                        has_deleted: false,
+                        name_list: None,
+                        cameras: &[],
+                        camera: None,
+                    };
+                    at = toolbar(ui, screen, &mut options, &info, cursor).cursor_rect;
+                },
+            );
+            output.textures_delta.clear();
+            let mut texts = Vec::new();
+            let mut rings = Vec::new();
+            for clipped in &output.shapes {
+                match &clipped.shape {
+                    Shape::Text(text) => {
+                        texts.push((text.galley.text().to_owned(), text.visual_bounding_rect()));
+                    }
+                    Shape::Rect(rect)
+                        if rect.stroke.width == 2.0 && rect.stroke.color == tokens::ACCENT =>
+                    {
+                        rings.push(rect.rect);
+                    }
+                    _ => {}
+                }
+            }
+            last = Some((texts, at, rings));
+        }
+        last.expect("frames")
+    }
+
+    /// The frame is painted around its box and moves no box: every chip stays where it was
+    /// without it.
+    #[test]
+    fn the_frame_moves_no_box() {
+        let four = Cursor {
+            slot: Slot::Filter(FilterKind::Stars(4)),
+            scroll: false,
+        };
+        let (plain, none, no_rings) = framed(1800.0, None, 2);
+        let (with, at, rings) = framed(1800.0, Some(four), 2);
+        assert_eq!(none, None);
+        assert!(no_rings.is_empty());
+        for chip in ["1★", "4★", "5★", "Blurry"] {
+            assert_eq!(left_of(&plain, chip), left_of(&with, chip), "{chip}");
+        }
+        let at = at.expect("the frame's box");
+        assert_eq!(rings.len(), 1, "{rings:?}");
+        assert!(rings[0].contains_rect(at), "{rings:?} around {at:?}");
+        let four_star = with.iter().find(|(text, _)| text == "4★").map(|(_, r)| *r);
+        assert!(four_star.is_some_and(|r| at.contains_rect(r)));
+        // The combo boxes and the sort take the frame too.
+        for slot in [Slot::Scope, Slot::Camera, Slot::Sort] {
+            let cursor = Cursor {
+                slot,
+                scroll: false,
+            };
+            assert!(framed(1800.0, Some(cursor), 2).1.is_some(), "{slot:?}");
+        }
+    }
+
+    /// In a narrow window the boxes scroll: a frame moved to a box out of sight brings it into
+    /// view.
+    #[test]
+    fn the_frame_scrolls_its_box_into_view() {
+        let width = 720.0;
+        let last = Slot::Filter(FilterKind::NoPeople);
+        let still = Cursor {
+            slot: last,
+            scroll: false,
+        };
+        let (_, hidden, _) = framed(width, Some(still), 3);
+        assert!(hidden.expect("drawn").right() > width, "out of sight first");
+        let moved = Cursor {
+            slot: last,
+            scroll: true,
+        };
+        let (_, shown, _) = framed(width, Some(moved), 4);
+        assert!(shown.expect("drawn").right() < width, "{shown:?}");
     }
 }

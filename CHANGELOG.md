@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **Filters with the keyboard (`Ctrl+F`)** – the filter bar shows, even when it is switched off, and a blue frame stands on one of its boxes. `←`/`→` and `Home`/`End` move the frame, `Space` or `Enter` tick or untick the box – on photos / videos / Top N, the camera box and the sort they open its list below the box (arrows, `Enter`, `Esc`). The keys you mark with tick their own box: `0` no stars, `1`–`5` the stars, `6`–`9` the colours, `X` the rejected ones. `Del` shows all again (the sort stays), `Esc` or `Ctrl+F` end the mode, and a filter bar that was off goes again. While the mode is on, the keys don't rate or browse; a pill at the bottom names the box and the keys. The mode starts on the box it last ended on.
+- **`Alt+1`, `Alt+2`, `Alt+0` for the bars** – the menu bar, the details panel and every bar at once, besides `F10`, `Tab` and `Shift+Tab`. The digits count by their place on the keyboard, so they work on AZERTY too. The bar buttons' tooltips and the help name them.
+
 ## [1.14.0] – 2026-11-09
 
 Only one camera's photos, the filter off for a moment with `Shift+T`, a warning when a RAW preview is too small to judge sharpness – and marks that could not be written are no longer lost.

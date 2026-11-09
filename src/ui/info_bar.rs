@@ -753,7 +753,7 @@ pub fn corner_buttons(ui: &Ui, window: Rect, side_bar: bool) -> InfoBarOutput {
     help_button(ui, places.help, &mut out);
     separator(ui.painter(), rect, places.separators[0]);
     // The menu bar's button takes the first bar's place: right of the line, next to help.
-    let tooltip = format!("{} (F10)", t.button_side_bar);
+    let tooltip = format!("{} (F10, Alt+1)", t.button_side_bar);
     if icon_button(
         ui,
         places.panels[0],
@@ -865,11 +865,26 @@ fn buttons(ui: &Ui, rect: Rect, panels: Panels, views: Views, out: &mut InfoBarO
                 format!("{} (F6)", t.button_filmstrip),
                 false,
             ),
-            Panel::Right => (panels.details, format!("{} (Tab)", t.button_details), false),
-            Panel::Top => (panels.toolbar, format!("{} (T)", t.button_toolbar), false),
+            Panel::Right => (
+                panels.details,
+                format!("{} (Tab, Alt+2)", t.button_details),
+                false,
+            ),
+            // The filter mode shows the bar too: the button names it.
+            Panel::Top => (
+                panels.toolbar,
+                format!(
+                    "{} (T)
+{} ({})",
+                    t.button_toolbar,
+                    t.filter_mode_name,
+                    i18n::with_ctrl("F")
+                ),
+                false,
+            ),
             Panel::Left => (
                 panels.side_bar,
-                format!("{} (F10)", t.button_side_bar),
+                format!("{} (F10, Alt+1)", t.button_side_bar),
                 false,
             ),
         };

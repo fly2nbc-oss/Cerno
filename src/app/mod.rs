@@ -9,6 +9,7 @@
 //! - `gate`: one action at a time on a photo
 //! - `exiftool`: ExifTool – found or not, its download, the offer
 //! - `keys`: the keyboard
+//! - `filter_mode`: the filter bar from the keyboard (`Ctrl+F`)
 //! - `photos`: the photo area, compare mode, mouse zoom and pan
 //! - `frame`: the layout and the bars around the photo
 //! - `menu`: menus, help, models card, confirmations
@@ -30,6 +31,7 @@ mod external;
 mod faces;
 mod files;
 mod filter_aside;
+mod filter_mode;
 mod frame;
 mod gate;
 mod keys;
@@ -118,6 +120,8 @@ pub struct CernoApp {
     viewer: photos::Viewer,
     /// Which bars show, and the details panel's stage and tab.
     bars: panels::Bars,
+    /// The filter bar from the keyboard (`Ctrl+F`): its frame, while the mode is on.
+    filter_mode: filter_mode::FilterMode,
     /// What lies over the window: the help page, the list beside a menu bar row or a card.
     layer: layer::Layer,
     /// The menu bar's groups, its keyboard and its counts.
@@ -280,6 +284,7 @@ impl CernoApp {
             target,
             viewer: photos::Viewer::default(),
             bars,
+            filter_mode: filter_mode::FilterMode::default(),
             layer: layer::Layer::None,
             menu_bar,
             pressed: keys::Pressed::default(),

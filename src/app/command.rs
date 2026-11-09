@@ -161,6 +161,12 @@ pub(super) enum Command {
     FilterAside,
     /// The filter bar's *Refresh order*.
     RefreshOrder,
+    /// `Ctrl+F`: the filter mode on or off.
+    FilterMode,
+    /// The filter mode's list of the first box: photos, videos or both, or the best N.
+    SetScope(crate::view::Scope),
+    /// The filter mode's list of the sort box.
+    SetSort(crate::view::SortKey),
 
     // Visible photos.
     Copy,
@@ -394,6 +400,17 @@ impl CernoApp {
             Command::FilterCamera(pick) => self.filter_camera(ctx, pick),
             Command::FilterAside => self.toggle_filter_aside(ctx),
             Command::RefreshOrder => self.refresh_order(ctx),
+            Command::FilterMode => self.toggle_filter_mode(),
+            Command::SetScope(scope) => {
+                if crate::view::Scope::of(&self.options) != scope {
+                    self.change_options(ctx, |options| scope.apply(options));
+                }
+            }
+            Command::SetSort(sort) => {
+                if self.options.sort != sort {
+                    self.change_options(ctx, |options| options.sort = sort);
+                }
+            }
             Command::Copy => self.begin_transfer(ctx, TransferMode::Copy),
             Command::Move => self.begin_transfer(ctx, TransferMode::Move),
             Command::DeleteSelection => self.delete_selection(ctx),

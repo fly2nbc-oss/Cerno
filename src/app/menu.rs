@@ -35,12 +35,15 @@ pub(super) enum ListKind {
     /// *Edit elsewhere*: the system's programs, one picked by hand, the system's chooser.
     Editors,
     Languages,
+    /// The filter mode (`Ctrl+F`): a box of the filter bar's choices – photos / videos / Top N,
+    /// the camera, the sort –, below the box.
+    Filter(super::filter_mode::Choices),
 }
 
-/// The list open beside a row of the bar, or over the photo.
+/// The list open beside a row of the bar, over the photo, or below a box of the filter bar.
 pub(super) struct RowList {
     kind: ListKind,
-    /// The row it opened from; `None`: `E` opened it, over the photo.
+    /// The row or box it opened from; `None`: `E` opened it, over the photo.
     at: Option<Rect>,
     state: palette::State,
 }
@@ -233,16 +236,20 @@ impl CernoApp {
         if self.layer.is_list()
             && let Layer::List(mut list) = std::mem::take(&mut self.layer)
         {
-            let placement = match list.at {
-                Some(row) => palette::Placement::Beside(row),
-                None => palette::Placement::Over(self.layout(window).area),
+            let placement = match (list.at, list.kind) {
+                (Some(field), ListKind::Filter(_)) => palette::Placement::Below(field),
+                (Some(row), _) => palette::Placement::Beside(row),
+                (None, _) => palette::Placement::Over(self.layout(window).area),
             };
             let entries = match list.kind {
                 ListKind::Editors => self.editor_rows(),
                 ListKind::Languages => language_rows(),
+                ListKind::Filter(choices) => self.filter_choice_rows(choices),
             };
             let out = palette::show(ctx, window, &mut list.state, &entries, placement);
-            if !out.close {
+            // A filter box's list closes with the pick, like the box's own list.
+            let picked = matches!(list.kind, ListKind::Filter(_)) && out.run.is_some();
+            if !out.close && !picked {
                 self.layer = Layer::List(list);
             }
             if let Some(action) = out.run {
@@ -637,12 +644,13 @@ impl CernoApp {
 
     /// The list beside a row of the bar. "Edit elsewhere" asks the system for its programs
     /// now, once per file type.
-    fn open_row_list(&mut self, kind: ListKind, at: Option<Rect>) {
+    pub(super) fn open_row_list(&mut self, kind: ListKind, at: Option<Rect>) {
         if kind == ListKind::Editors {
             self.prepare_editors();
         }
-        // Opened by `E`: that press typed an "e" too, which is not the list's letter.
-        let state = if at.is_none() {
+        // Opened by `E`: that press typed an "e" too, which is not the list's letter. A filter
+        // box's list opens with `Space` or `Enter`, which the list would take as a pick.
+        let state = if at.is_none() || matches!(kind, ListKind::Filter(_)) {
             palette::State::opened_by_key()
         } else {
             palette::State::default()

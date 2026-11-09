@@ -306,6 +306,10 @@ pub struct Texts {
     pub bulk_delete_top: &'static str,
     /// The filter bar's last box: only photos like the chosen one.
     pub filter_similar: &'static str,
+    /// The filter mode's keys (`Ctrl+F`), under the box its frame stands on.
+    pub filter_mode_hint: &'static str,
+    /// The filter mode in the filter bar button's tooltip, as in the help.
+    pub filter_mode_name: &'static str,
     /// That box while it is on, with the (shortened) name of the photo it is about.
     pub filter_similar_to: fn(&str) -> String,
     pub menu_similar_to: fn(&str) -> String,
@@ -813,7 +817,7 @@ pub struct Texts {
     pub help_cull: [HelpRow; 6],
     pub help_video: [HelpRow; 5],
     pub help_view: [HelpRow; 8],
-    pub help_panels: [HelpRow; 7],
+    pub help_panels: [HelpRow; 8],
     pub help_edit: [HelpRow; 5],
     pub help_more: [HelpRow; 3],
 }

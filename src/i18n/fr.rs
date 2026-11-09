@@ -101,6 +101,8 @@ pub static TEXTS: Texts = Texts {
     top_tooltip: "Photos, vidéos ou les deux – ou seulement les meilleures photos, selon vos étoiles (sinon la prédiction), l'esthétique et la netteté, la meilleure de chaque série d'abord. Les photos rejetées ou floues et les doublons ne comptent pas. La sélection reste jusqu'à ce qu'un filtre change ou que vous choisissiez « Actualiser l'ordre ». Rien n'est modifié dans les photos.",
     bulk_delete_top: "Pas avec Top – ce sont les meilleures photos",
     filter_similar: "≈ Semblables",
+    filter_mode_hint: "←/→ choisir · Espace : cocher ou ouvrir · 0–9, X cocher · Suppr : tout afficher · Esc : terminé",
+    filter_mode_name: "Filtres au clavier",
     filter_similar_to: |name| format!("≈ comme {name}"),
     menu_similar_to: |name| format!("Semblables à {name}"),
     similar_tooltip: |percent| {
@@ -779,12 +781,13 @@ pub static TEXTS: Texts = Texts {
         ("F, F11", "Plein écran"),
     ],
     help_panels: [
-        ("F10", "Barre de menu"),
+        ("F10, Alt+1", "Barre de menu"),
         ("T", "Barre de filtres"),
+        ("Ctrl+F", "Filtres au clavier"),
         ("Maj+T", "Filtre coupé un instant / rétabli"),
-        ("Tab", "Panneau de détails"),
+        ("Tab, Alt+2", "Panneau de détails"),
         ("F6", "Pellicule"),
-        ("Maj+Tab", "Les quatre panneaux"),
+        ("Maj+Tab, Alt+0", "Les quatre panneaux"),
         ("Ctrl+Tab", "Onglet suivant des détails"),
     ],
     help_edit: [

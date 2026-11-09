@@ -107,6 +107,16 @@ impl CernoApp {
                 transfer_text(mode, &progress),
                 progress.fraction(),
             );
+            slot += 1;
+        }
+        // The filter mode (`Ctrl+F`): the box the frame stands on, and its keys.
+        if let Some(caption) = self.filter_mode_caption() {
+            overlays::filter_mode(
+                ui,
+                overlays::bottom_slot(area, slot),
+                &caption,
+                i18n::t().filter_mode_hint,
+            );
         }
         let now = Instant::now();
         let opacity = self.notice.as_ref().and_then(|n| n.opacity(now));
