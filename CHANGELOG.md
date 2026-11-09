@@ -34,6 +34,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 - **The build scripts are checked** – CI lints the workflow (actionlint), the shell scripts (shellcheck) and the PowerShell scripts (PSScriptAnalyzer) and validates the desktop file and the AppStream metadata, on every run. The Windows package checks that every program file is 64-bit and `cerno.exe` a windowed program, and the Windows folder, the AppImage and the `.deb` must answer `--version` before they ship.
 - **Keywords are in the index** – every photo is read once more after the update (without decoding it) to learn its keywords.
+- **Repository standard** – `SECURITY.md` says how to report a vulnerability privately and lists every network connection and what Cerno writes or moves; the README is shorter. Releases stop without their CHANGELOG section, carry a build provenance attestation (`gh attestation verify <file> --repo fly2nbc-oss/Cerno`) and are drafted with `gh release create`; zizmor checks the workflow, and every build is `--locked`. The AppImage is install-tested on Fedora 44 and Arch Linux as well – the notes no longer name Fedora 40, which was never tested.
 
 ## [1.14.0] – 2026-11-09
 
