@@ -3,7 +3,8 @@
   AppStream metadata: what software centres show for Cerno. The .deb installs it into
   /usr/share/metainfo, the AppImage carries it in the same place. CI checks it with
   `appstreamcli validate`, and that the newest release below is Cargo.toml's version with
-  its date in CHANGELOG.md – a release adds its line at the top.
+  its date in CHANGELOG.md – a release adds its line at the top (on a release branch with a
+  placeholder date until CHANGELOG.md gets the version's section).
 -->
 <component type="desktop-application">
   <id>io.github.fly2nbc_oss.cerno</id>
@@ -79,6 +80,9 @@
   </keywords>
 
   <releases>
+    <release version="1.15.0" date="2026-11-09">
+      <url type="details">https://github.com/fly2nbc-oss/Cerno/releases/tag/v1.15.0</url>
+    </release>
     <release version="1.14.0" date="2026-11-09">
       <url type="details">https://github.com/fly2nbc-oss/Cerno/releases/tag/v1.14.0</url>
     </release>

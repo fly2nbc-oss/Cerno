@@ -101,15 +101,23 @@ jobs:
       # --no-net: the newest release's page exists only once its tag is pushed.
       - run: appstreamcli validate --no-net --strict --explain packaging/linux/io.github.fly2nbc_oss.cerno.metainfo.xml
       # The newest release in the AppStream file is the version in Cargo.toml, with the date of
-      # its CHANGELOG.md section: a release adds its line there too.
+      # its CHANGELOG.md section: a release adds its line there too. On a release branch the
+      # version is raised before that section exists: there the CHANGELOG may still say
+      # [Unreleased] and the metainfo's date is a placeholder – never on main or a tag.
       - name: AppStream release list is current
         run: |
           version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
           date=$(sed -n "s/^## \[${version//./\\.}\] – \([0-9-]*\).*/\1/p" CHANGELOG.md)
           newest=$(grep -o -m 1 '<release version="[^"]*" date="[^"]*"' \
             packaging/linux/io.github.fly2nbc_oss.cerno.metainfo.xml)
+          placeholder="^<release version=\"${version//./\\.}\" date=\"[0-9]{4}-[0-9]{2}-[0-9]{2}\"$"
+          if [ -z "$date" ] && [ "$GITHUB_REF" != refs/heads/main ] && [ "$GITHUB_REF_TYPE" != tag ] \
+            && grep -q '^## \[Unreleased\]' CHANGELOG.md && [[ "$newest" =~ $placeholder ]]; then
+            echo "::warning::CHANGELOG.md has no section for $version yet – the release commit adds it with the metainfo's date"
+            exit 0
+          fi
           if [ "$newest" != "<release version=\"$version\" date=\"$date\"" ]; then
-            echo "::error::The metainfo's newest release is '$newest', expected version $version from $date"
+            echo "::error::The metainfo's newest release is '$newest', expected version $version from ${date:-its CHANGELOG.md section (none found)}"
             exit 1
           fi
 
