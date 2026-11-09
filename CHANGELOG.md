@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **Scene view (`F8`)** – a view like the grid in which photos taken close together that look alike are grouped into scenes. Every scene starts a new row under a slim line with its time, its number of photos and the camera(s); every photo keeps its cell, nothing is hidden. Series and single photos join one scene when they follow within 2 minutes, the scene stays within 10 minutes, and they look like the scene's first photos (the same measure as *similar photos*); without the aesthetics models only series group. Photos without a capture time come last. The scene view always shows capture-time order, the filters still apply. `Page Up`/`Page Down` jump to the previous / next scene, `↑`/`↓` go a row, `+`/`−` change the size, and marks, deleting and `Ctrl+Z` work on the framed photo as in the grid. `Enter`, a double click, `Esc` or `F8` open the photo, `F7` switches to the grid. It is the fourth part of the info bar's view switcher. The single view, the filmstrip, the grid and Top N stay as they are.
+
 ## [1.14.0] – 2026-11-09
 
 Only one camera's photos, the filter off for a moment with `Shift+T`, a warning when a RAW preview is too small to judge sharpness – and marks that could not be written are no longer lost.

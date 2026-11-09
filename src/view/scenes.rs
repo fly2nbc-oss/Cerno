@@ -19,11 +19,11 @@ use super::SIMILAR_MIN;
 /// series and single photos with a capture time and an embedding): of neighbouring blocks at
 /// least 0.85 alike were 77 % within 5 s, 57 % at 5–15 s, 45 % at 15–30 s, 34 % at 30–60 s,
 /// 30 % at 1–2 min, 19 % at 2–5 min and 2.5 % more than an hour apart; past 2 min a longer
-/// window added few scenes (5046 scenes at 2 min, 5207 at 1 min, 4956 at 5 min).
+/// window joined few more (5046 scenes at 2 min, 5207 at 1 min, 4959 at 5 min).
 pub const SCENE_GAP_MS: i64 = 120_000;
 /// No scene spans more than this from its first photo to its last – a guard against a slow
-/// drift, not a tuned value: at a 2 min gap 5, 10, 20, 30 and 60 min gave the same scenes
-/// except one (the longest measured scene took 5.4 min).
+/// drift, not a tuned value: at a 2 min gap 10, 20, 30 and 60 min and no cap at all gave the
+/// same 5046 scenes; 5 min would have cut the largest (92 photos in 5.4 min, a long series).
 pub const SCENE_SPAN_MS: i64 = 600_000;
 
 /// What the scenes look at for one photo of the view.
