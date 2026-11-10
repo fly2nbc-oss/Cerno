@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+## [1.15.1] – 2026-11-10
+
+Large folders open faster with a sort or filter, and the Windows packages bring GStreamer 1.28.8.
+
 ### Changed
 
 - **Large folders open faster with a sort or filter** – with a sort by aesthetics, sharpness, stars or time, or any filter, opening a folder read every photo's file date once more and asked the index photo by photo; the window stood still meanwhile. Now the folder listing brings the dates along (on Windows) and the index is read once per folder: a year folder with 1 246 photos opens in 20 ms instead of 140 ms, a folder with 50 000 photos and subfolders on in 0.25 s instead of 6 s.
