@@ -183,11 +183,11 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2 # zizmor: ignore[cache-poisoning]
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
-      # The installer (527 MB) is kept between runs: its server sometimes cuts transfers off.
+      # The installer (543 MB) is kept between runs: its server sometimes cuts transfers off.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0 # zizmor: ignore[cache-poisoning]
         with:
           path: ${{ runner.temp }}/gstreamer-download
-          key: gstreamer-installer-1.28.7
+          key: gstreamer-installer-1.28.8
       - name: GStreamer
         run: ./packaging/windows/install-gstreamer.ps1 -Download "$env:RUNNER_TEMP/gstreamer-download"
       # A runner has no GPU: D3D12 runs on WARP, Windows' software device. `test_rounds`
@@ -277,7 +277,7 @@ jobs:
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0 # zizmor: ignore[cache-poisoning]
         with:
           path: ${{ runner.temp }}/gstreamer-download
-          key: gstreamer-installer-1.28.7
+          key: gstreamer-installer-1.28.8
       - name: GStreamer
         run: ./packaging/windows/install-gstreamer.ps1 -Download "$env:RUNNER_TEMP/gstreamer-download"
       - name: Build (release, HEIC, video)

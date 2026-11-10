@@ -27,8 +27,8 @@ the pinned SHA-256 is used without downloading.
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '',
     Justification = 'Progress lines must stay out of the output, which is the root folder')]
 param(
-    [string]$Version = "1.28.7",
-    [string]$Sha256 = "032fc6062b8539838fc8da22589cb9b24c5d820baa7f8cc160af9ea08395badf",
+    [string]$Version = "1.28.8",
+    [string]$Sha256 = "e4c41ee6ee9c6c32a45d198463ec08d79bac3bd5fa58adc93d13fe4a08abc9d9",
     # Where the installer is kept; empty: the temp folder, deleted after the install.
     [string]$Download = ""
 )

@@ -4,7 +4,7 @@ GStreamer (video playback)
 A Windows build of Cerno with the video feature plays videos through
 GStreamer. Its libraries are loaded at run time as separate DLLs beside
 cerno.exe, its plugins from the gstreamer-1.0 folder. They come from the
-official GStreamer 1.28.7 MSVC build, unchanged. The licence texts of each
+official GStreamer 1.28.8 MSVC build, unchanged. The licence texts of each
 project are in the gstreamer folder next to this file.
 
     Component                      License
@@ -27,20 +27,20 @@ project are in the gstreamer folder next to this file.
 You may replace these DLLs with other builds that keep a compatible
 interface. Cerno then uses the versions you supply.
 
-Corresponding source of GStreamer 1.28.7:
+Corresponding source of GStreamer 1.28.8:
 
-    https://gstreamer.freedesktop.org/src/gstreamer/gstreamer-1.28.7.tar.xz
-    https://gstreamer.freedesktop.org/src/gst-plugins-base/gst-plugins-base-1.28.7.tar.xz
-    https://gstreamer.freedesktop.org/src/gst-plugins-good/gst-plugins-good-1.28.7.tar.xz
-    https://gstreamer.freedesktop.org/src/gst-plugins-bad/gst-plugins-bad-1.28.7.tar.xz
-    https://gstreamer.freedesktop.org/src/gst-plugins-ugly/gst-plugins-ugly-1.28.7.tar.xz
-    https://gstreamer.freedesktop.org/src/gst-libav/gst-libav-1.28.7.tar.xz
+    https://gstreamer.freedesktop.org/src/gstreamer/gstreamer-1.28.8.tar.xz
+    https://gstreamer.freedesktop.org/src/gst-plugins-base/gst-plugins-base-1.28.8.tar.xz
+    https://gstreamer.freedesktop.org/src/gst-plugins-good/gst-plugins-good-1.28.8.tar.xz
+    https://gstreamer.freedesktop.org/src/gst-plugins-bad/gst-plugins-bad-1.28.8.tar.xz
+    https://gstreamer.freedesktop.org/src/gst-plugins-ugly/gst-plugins-ugly-1.28.8.tar.xz
+    https://gstreamer.freedesktop.org/src/gst-libav/gst-libav-1.28.8.tar.xz
 
 The libraries GStreamer bundles (FFmpeg, GLib and the others above) were
-built by GStreamer's cerbero at the tag 1.28.7; the recipes there name each
+built by GStreamer's cerbero at the tag 1.28.8; the recipes there name each
 version and where its source comes from:
 
-    https://gitlab.freedesktop.org/gstreamer/cerbero/-/tree/1.28.7/recipes
+    https://gitlab.freedesktop.org/gstreamer/cerbero/-/tree/1.28.8/recipes
 
 On Linux, Cerno uses the distribution's GStreamer. The .deb package
 depends on the distribution's GStreamer packages; the AppImage uses the
