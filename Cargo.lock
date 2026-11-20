@@ -659,7 +659,7 @@ dependencies = [
 
 [[package]]
 name = "cerno"
-version = "1.15.1"
+version = "1.15.2"
 dependencies = [
  "anyhow",
  "directories",

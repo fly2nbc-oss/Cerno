@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+## [1.15.2] – 2026-11-20
+
+No code signing for the Windows packages: the prepared signing and its policy are gone.
+
 ### Removed
 
 - The code signing policy and the prepared SignPath signing: the SignPath Foundation declined Cerno, and no other signing is planned. The Windows packages stay unsigned (SmartScreen asks once).
