@@ -91,7 +91,6 @@ packaging/linux/build.sh           # dist/linux: .deb (needs cargo-deb) and AppI
 - **Test & build (Windows)** (`windows`, every run) — the Windows commands above; GStreamer is installed, and without a GPU the player uses WARP. Pull requests also build the release.
 - **Packages** (`package-windows`, `package-linux`; pushes to `main`, tags and manual runs) — the installer, the portable zip, the AppImage with its `.zsync` and the `.deb`, kept 7 days as run artifacts. The Windows job installs, starts and uninstalls the installer; the Linux packages answer `--version`.
 - **Install tests** (`test-linux-packages`) — the `.deb` on bare Ubuntu 24.04 and Debian 13, the AppImage there and on Fedora 44 and Arch Linux: each opens a HEIC photo under Xvfb and plays a video without a window.
-- **Signing** — on `v*` tags only, and only once the `release` environment has the SignPath organisation and token: `cerno.exe` and the installer are sent to SignPath, approved by hand and checked with `signtool verify` (see the README's *Code signing policy*). Without them the packages stay unsigned with a warning.
 - **Draft release** (`release`, `v*` tags) — checks that the tag equals the `Cargo.toml` version and that `CHANGELOG.md` has its section, writes `SHA256SUMS.txt`, attests build provenance for every file (`gh attestation verify <file> --repo fly2nbc-oss/Cerno`) and drafts the GitHub release.
 - **`test_rounds`** — a manual run (*Run workflow*) can repeat the Linux and Windows tests up to 99 times to catch a flaky test; the step fails when any round failed.
 

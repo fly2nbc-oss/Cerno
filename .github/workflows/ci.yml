@@ -6,8 +6,7 @@ name: CI
 # attestation.
 #
 # Every action is pinned to a commit, its version as a comment: a tag that is moved
-# can't bring other code into this workflow, least of all into the job with the
-# SignPath token. Bumping one is by hand (AGENTS.md, "Actions pinned by commit");
+# can't bring other code into this workflow. Bumping one is by hand (AGENTS.md, "Actions pinned by commit");
 # zizmor in the `scripts` job checks the workflow on every run.
 #
 # The caches (cargo, vcpkg's binary cache, the GStreamer installer) carry
@@ -221,16 +220,10 @@ jobs:
     name: Package (Windows installer, portable)
     if: github.event_name != 'pull_request'
     runs-on: windows-latest
-    # A tag waits for two approvals in SignPath (cerno.exe, the installer), up to 30 min each.
-    timeout-minutes: ${{ startsWith(github.ref, 'refs/tags/v') && 150 || 90 }}
-    # SignPath's secret and variable live in the `release` environment, for v* tags only.
-    environment: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || '' }}
+    timeout-minutes: 90
     permissions:
       contents: read
-      # SignPath's connector downloads the uploaded artifact from this run.
-      actions: read
     env:
-      SIGNING: ${{ startsWith(github.ref, 'refs/tags/v') && vars.SIGNPATH_ORGANIZATION_ID != '' }}
       # libheif from vcpkg at the revision pinned in Cargo.toml, in target\vcpkg where
       # build.rs looks for the DLLs. Built packages are cached as vcpkg binary cache.
       VCPKG_ROOT: ${{ github.workspace }}\target\vcpkg
@@ -286,92 +279,8 @@ jobs:
           $env:PKG_CONFIG_PATH = "$env:GSTREAMER_ROOT\lib\pkgconfig"
           cargo build --release --locked --features heic,video
           if ($LASTEXITCODE) { exit 1 }
-      # Code signing (README: Code signing policy): only on v* tags, and only once the SignPath
-      # project exists – without its variable the packages stay unsigned, as before.
-      - name: Signing not set up
-        if: startsWith(github.ref, 'refs/tags/v') && env.SIGNING != 'true'
-        run: echo "::warning::SIGNPATH_ORGANIZATION_ID is not set – the Windows packages are unsigned."
-      # The artifact configurations in SignPath check every signed file's product version
-      # against this parameter (SignPath Foundation: metadata restrictions on all signed files).
-      - name: Version for SignPath
-        id: version
-        if: env.SIGNING == 'true'
-        shell: bash
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-      - name: Upload cerno.exe for signing
-        id: unsigned-exe
-        if: env.SIGNING == 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: unsigned-exe
-          path: target/release/cerno.exe
-          if-no-files-found: error
-          retention-days: 1
-      - name: Sign cerno.exe (SignPath, approved by hand)
-        if: env.SIGNING == 'true'
-        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: cerno
-          signing-policy-slug: release-signing
-          artifact-configuration-slug: exe
-          github-artifact-id: ${{ steps.unsigned-exe.outputs.artifact-id }}
-          parameters: |
-            version: "${{ steps.version.outputs.version }}"
-          wait-for-completion: true
-          wait-for-completion-timeout-in-seconds: 1800
-          output-artifact-directory: signed/exe
-      # The folder, the zip and the installer are built from the signed exe.
-      - name: Use the signed cerno.exe
-        if: env.SIGNING == 'true'
-        run: Copy-Item signed/exe/cerno.exe target/release/cerno.exe -Force
       - name: Package
         run: ./packaging/windows/build.ps1
-      - name: Upload the installer for signing
-        id: unsigned-setup
-        if: env.SIGNING == 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: unsigned-setup
-          path: dist/windows/cerno_*_x64-setup.exe
-          if-no-files-found: error
-          retention-days: 1
-      - name: Sign the installer (SignPath, approved by hand)
-        if: env.SIGNING == 'true'
-        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: cerno
-          signing-policy-slug: release-signing
-          artifact-configuration-slug: setup
-          github-artifact-id: ${{ steps.unsigned-setup.outputs.artifact-id }}
-          parameters: |
-            version: "${{ steps.version.outputs.version }}"
-          wait-for-completion: true
-          wait-for-completion-timeout-in-seconds: 1800
-          output-artifact-directory: signed/setup
-      # The uninstaller is written at install time and stays unsigned; so do others' DLLs.
-      - name: Use and check the signed files
-        if: env.SIGNING == 'true'
-        run: |
-          $setup = Get-Item dist/windows/cerno_*_x64-setup.exe
-          Copy-Item (Join-Path signed/setup $setup.Name) $setup.FullName -Force
-          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
-            Sort-Object FullName | Select-Object -Last 1
-          foreach ($file in @((Resolve-Path dist/windows/Cerno/cerno.exe).Path, $setup.FullName)) {
-            & $signtool.FullName verify /pa /v $file
-            if ($LASTEXITCODE) { Write-Error "not signed: $file"; exit 1 }
-          }
-          # The zip holds the same signed exe as the folder.
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $zip = [IO.Compression.ZipFile]::OpenRead((Get-Item dist/windows/cerno_*_x64-portable.zip).FullName)
-          $inside = $zip.Entries | Where-Object { $_.FullName -match '(^|/)cerno\.exe$' } | Select-Object -First 1
-          $zip.Dispose()
-          if ($inside.Length -ne (Get-Item dist/windows/Cerno/cerno.exe).Length) {
-            Write-Error "the portable zip holds another cerno.exe"; exit 1
-          }
       - name: Install, start and uninstall
         run: >
           ./packaging/windows/test-installer.ps1
@@ -621,8 +530,6 @@ jobs:
           Writing ratings, colour labels, comments and keywords needs [ExifTool](https://exiftool.org/): on Windows Cerno offers to download it the first time it is needed; the .deb recommends it. Videos play inside Cerno: the Windows packages bring GStreamer along, on Linux it comes from the system (the .deb depends on it).
 
           Every file was built by this repository's CI from the tag and carries a build provenance attestation: \`gh attestation verify <file> --repo fly2nbc-oss/Cerno\` checks it.
-
-          Code signing policy: what is signed, by whom and how – see [Code signing policy](https://github.com/fly2nbc-oss/Cerno#code-signing-policy) in the README.
           EOF
       - name: Build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2

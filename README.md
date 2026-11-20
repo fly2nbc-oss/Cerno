@@ -36,7 +36,7 @@ Download from [Releases](https://github.com/fly2nbc-oss/Cerno/releases):
 | `cerno_<version>_x86_64.AppImage` | Linux with glibc 2.39 or newer – tested on Ubuntu 24.04, Debian 13, Fedora 44 and Arch Linux |
 | `cerno_<version>_amd64.deb` | Ubuntu 24.04+ / Debian 13+ – `sudo apt install ./cerno_<version>_amd64.deb` |
 
-The Windows files are not signed yet: SmartScreen asks once (*More info* → *Run anyway*). The AppImage can be brought up to date with [AppImageUpdate](https://github.com/AppImageCommunity/AppImageUpdate), which fetches only what changed (the release's `.zsync` file); Cerno itself downloads no updates.
+The Windows files are not signed: SmartScreen asks once (*More info* → *Run anyway*). The AppImage can be brought up to date with [AppImageUpdate](https://github.com/AppImageCommunity/AppImageUpdate), which fetches only what changed (the release's `.zsync` file); Cerno itself downloads no updates.
 
 **Writing stars and labels** needs [ExifTool](https://exiftool.org/): on Windows Cerno offers to download it (11 MB) the first time it is needed; on Linux install it with the package manager (`apt install libimage-exiftool-perl`). Viewing works without it.
 **Videos** play with GStreamer: the Windows downloads bring it along; on Linux the `.deb` installs it, and the AppImage uses the system's (on Fedora, H.264 videos need `openh264` from the `fedora-cisco-openh264` repository).
@@ -61,15 +61,6 @@ Cerno works on your computer. Your photos, their names and your ratings never le
 - **Update check, only if you agree** at the first start: then once a day one request to `github.com/fly2nbc-oss/Cerno/releases/latest`, which says only that it comes from "Cerno" (GitHub sees your IP address, as with any website). A newer version is only named, nothing is downloaded. *Settings ▸ Check for updates* turns it off.
 - **Downloads you ask for:** the aesthetics models (Hugging Face, this repository's releases) and, on Windows, ExifTool (SourceForge) – each checked by size and SHA-256.
 - **Links you click:** GitHub issues from *About Cerno*, a photo's GPS position in Google Maps or OpenStreetMap.
-
-## Code signing policy
-
-Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/) – for the Windows releases from the one in which the SignPath Foundation has accepted the project; earlier ones are unsigned.
-
-- **What is signed:** only what this repository builds – `cerno.exe` and the installer `cerno_<version>_x64-setup.exe`, in the CI run of the release's tag, from the source at that tag. The libraries of others in the package (GStreamer, libheif, ONNX Runtime, the VC++ runtime) keep their own signatures or have none, and the uninstaller, which the installer writes on your computer, is not signed.
-- **Committers and reviewers:** [fly2nbc-oss](https://github.com/fly2nbc-oss), the author.
-- **Approvers:** fly2nbc-oss – every signing request is approved by hand.
-- **Privacy:** see [Privacy](#privacy). Cerno sends nothing but the update check, which runs only once you have agreed to it at the first start and can be turned off again.
 
 ## More
 

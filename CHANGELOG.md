@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Removed
+
+- The code signing policy and the prepared SignPath signing: the SignPath Foundation declined Cerno, and no other signing is planned. The Windows packages stay unsigned (SmartScreen asks once).
+
 ## [1.15.1] – 2026-11-10
 
 Large folders open faster with a sort or filter, and the Windows packages bring GStreamer 1.28.8.
