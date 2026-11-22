@@ -793,7 +793,7 @@ fn reencode_keeps_the_colour_profile() {
         w: 40,
         h: 30,
     };
-    let cropped = crate::edit::render_crop(&path, rect, &FileLocks::default()).unwrap();
+    let cropped = crate::edit::render_edit(&path, None, Some(rect), &FileLocks::default()).unwrap();
     apply_pixels(&mut exiftool, &path, &cropped, &db).unwrap();
 
     let after = std::fs::read(&path).unwrap();
@@ -859,8 +859,13 @@ fn quarter_turn_and_reencode_keep_file_dates() {
         [u32::MAX; 2],
     )
     .unwrap();
-    let jpeg =
-        crate::edit::render_rotation(&path, 2.0_f64.to_radians(), &FileLocks::default()).unwrap();
+    let jpeg = crate::edit::render_edit(
+        &path,
+        Some(2.0_f64.to_radians()),
+        None,
+        &FileLocks::default(),
+    )
+    .unwrap();
     apply_pixels(&mut exiftool, &path, &jpeg, &db).unwrap();
     let after = fs::read(&path).unwrap();
     let after_meta = metadata::read(&after);

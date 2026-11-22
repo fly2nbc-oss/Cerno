@@ -21,7 +21,7 @@ Cerno (Latin *cerno* – "I sift, see clearly") helps you go through a folder of
 - **Two helpers under every photo** – *Aesthetics* (two local AI models, downloaded once when you ask) and *Sharpness*, both in percent; empty stars fill lightly with Cerno's guess of your rating.
 - **Sort and filter** – by capture time, rating, aesthetics, sharpness, camera or keyword; blurry shots, duplicates, similar photos, photos with or without people, a client's list of file names – and *Top 10 … Top 250*, the best photos for a slideshow or a photo book.
 - **Compare** two or four photos side by side, thin out a burst pair by pair, or see the folder as a grid or grouped into scenes.
-- **RAW + JPG as one photo**, and **straighten, crop and rotate** JPEGs – the original is kept and `Ctrl+Z` brings it back.
+- **RAW + JPG as one photo**, and **crop and straighten** (one tool, `R`) **and rotate** JPEGs – the original is kept and `Ctrl+Z` brings it back.
 - **Nothing is lost** – deleting moves a photo into a hidden `.originals` folder beside it (empty it yourself – it is not the Recycle Bin); `Ctrl+Z` puts it back.
 - **Formats** – JPEG, HEIC, PNG, TIFF, WebP, BMP, GIF, RAW (its embedded preview) and videos (MP4, MOV, MKV, WebM, AVI, MTS …), which play right here with sound; **five languages** – German, English, French, Spanish, Italian.
 

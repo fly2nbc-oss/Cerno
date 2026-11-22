@@ -597,10 +597,9 @@ pub static TEXTS: Texts = Texts {
         )
     },
 
-    cmd_straighten: "Raddrizza",
     cmd_rotate_ccw: "Ruota di 90° a sinistra",
     cmd_rotate_cw: "Ruota di 90° a destra",
-    cmd_crop: "Ritaglio",
+    cmd_crop: "Ritaglia e raddrizza",
     cmd_undo: "Annulla modifica",
     edit_not_jpeg: "Raddrizza, ritaglio, rotazione e Ctrl+Z solo per JPEG.",
     video_play_hint: "Riproduci (Spazio)",
@@ -660,8 +659,7 @@ pub static TEXTS: Texts = Texts {
     raw_preview_fact: "Anteprima RAW",
     preview_word: "anteprima",
     edit_failed: |detail| format!("Non scritto: {detail}"),
-    edit_hint_straighten: "Rotella o ←/→ ruota, Maiusc più fine · Invio applica, Esc annulla",
-    edit_hint_crop: "Frecce spostano · +/− dimensione, Maiusc più fine · A: proporzioni · X: orizzontale/verticale · Invio applica, Esc annulla",
+    edit_hint_crop: "Rotella o , . ruota · frecce spostano · +/− dimensione · A: proporzioni · X: orizzontale/verticale · Maiusc più fine · Invio applica, Esc annulla",
     ratio_original: "Originale",
     crop_landscape: "Orizzontale",
     crop_portrait: "Verticale",
@@ -758,7 +756,7 @@ pub static TEXTS: Texts = Texts {
                 "Maiusc con 0–9, X, V, A o D segna e passa alla successiva; con C, Tab o F fa di più: quattro foto, tutte le barre, tutte le foto.",
                 "Nella griglia (F6) ↑ ↓ cambiano riga, + − la dimensione, Invio apre la foto.",
                 "Nelle scene (F7) ogni scena inizia una riga; Pag su e Pag giù saltano da una scena all'altra.",
-                "Raddrizza (S): rotellina e frecce ruotano, Maiusc più fine. Ritaglio (R): traccia una cornice o spostala con le frecce, +/− ne cambia la dimensione, A il formato, X scambia orizzontale/verticale.",
+                "Ritaglia e raddrizza (R): la rotella o , e . ruotano la foto, Maiusc più fine. Traccia una cornice o spostala con le frecce, +/− ne cambiano la dimensione, A cambia le proporzioni, X la mette orizzontale/verticale. Invio salva entrambi in una volta.",
                 "La barra dei menu (F10 o il pulsante in basso a destra) raccoglie ciò che agisce su questa foto, sulle foto visibili e sulla vista, più le impostazioni – tutto con il mouse.",
                 "Nella descrizione, Invio porta il cursore nel campo delle parole chiave.",
             ],
@@ -848,7 +846,7 @@ pub static TEXTS: Texts = Texts {
         (
             "Modificare",
             &[
-                ("S, R", "Raddrizza / ritaglio"),
+                ("R", "Ritaglia e raddrizza"),
                 ("Invio, Esc", "Applica / annulla"),
                 ("Ctrl+←, Ctrl+→", "Ruota di 90°"),
                 ("Ctrl+Z", "Annulla"),

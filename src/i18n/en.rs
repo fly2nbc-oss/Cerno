@@ -618,10 +618,9 @@ pub static TEXTS: Texts = Texts {
         )
     },
 
-    cmd_straighten: "Straighten",
     cmd_rotate_ccw: "Rotate 90° counter-clockwise",
     cmd_rotate_cw: "Rotate 90° clockwise",
-    cmd_crop: "Crop",
+    cmd_crop: "Crop and straighten",
     cmd_undo: "Undo",
     edit_not_jpeg: "Straighten, crop, turns and Ctrl+Z work on JPEG only.",
     video_play_hint: "Play (Space)",
@@ -679,8 +678,7 @@ pub static TEXTS: Texts = Texts {
     raw_preview_fact: "RAW preview",
     preview_word: "preview",
     edit_failed: |detail| format!("Not written: {detail}"),
-    edit_hint_straighten: "Wheel or ←/→ rotates, Shift is finer · Enter applies, Esc cancels",
-    edit_hint_crop: "Arrows move · +/− size, Shift finer · A: ratio · X: landscape/portrait · Enter applies, Esc cancels",
+    edit_hint_crop: "Wheel or , . turns · arrows move · +/− size · A: ratio · X: landscape/portrait · Shift finer · Enter applies, Esc cancels",
     ratio_original: "Original",
     crop_landscape: "Landscape",
     crop_portrait: "Portrait",
@@ -777,7 +775,7 @@ pub static TEXTS: Texts = Texts {
                 "Shift with 0–9, X, V, A or D marks and moves on; with C, Tab or F it does more: four photos, every bar, all photos.",
                 "In the grid (F6) ↑ ↓ move a row, + − change the size, Enter opens the photo.",
                 "In the scenes (F7) every scene starts a new row; PgUp PgDn jump from scene to scene.",
-                "Straighten (S): the wheel and the arrows turn, Shift is finer. Crop (R): draw a frame or move it with the arrows, +/− size it, A changes the ratio, X turns it.",
+                "Crop and straighten (R): the wheel or , and . turn the photo, Shift is finer. Draw a frame or move it with the arrows, +/− change its size, A changes the ratio, X turns it landscape/portrait. Enter saves both at once.",
                 "The menu bar (F10 or the button at the bottom right) holds what acts on this photo, the photos on screen and the view, and the settings – all with the mouse.",
                 "On the description tab Enter puts the cursor into the keyword field.",
             ],
@@ -867,7 +865,7 @@ pub static TEXTS: Texts = Texts {
         (
             "Edit",
             &[
-                ("S, R", "Straighten / crop"),
+                ("R", "Crop and straighten"),
                 ("Enter, Esc", "Apply / cancel"),
                 ("Ctrl+←, Ctrl+→", "Rotate 90°"),
                 ("Ctrl+Z", "Undo"),

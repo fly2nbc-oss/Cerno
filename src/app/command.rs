@@ -114,7 +114,6 @@ pub(super) enum Command {
 
     // This photo.
     DeleteCurrent,
-    Straighten,
     Crop,
     /// A quarter turn; `true` clockwise.
     Rotate(bool),
@@ -235,12 +234,9 @@ impl Command {
     /// Needs the single photo: the grid steps aside for it (keys and menu bar).
     fn needs_photo(&self) -> bool {
         match self {
-            Self::Straighten
-            | Self::Crop
-            | Self::Compare
-            | Self::Split
-            | Self::NextOverlay
-            | Self::SetOverlay(_) => true,
+            Self::Crop | Self::Compare | Self::Split | Self::NextOverlay | Self::SetOverlay(_) => {
+                true
+            }
             Self::Zoom(keys) => keys.toggle || keys.actual,
             _ => false,
         }
@@ -380,16 +376,12 @@ impl CernoApp {
                 self.db.put_flag("auto_advance", self.marks.auto_advance);
             }
             Command::DeleteCurrent => self.delete_current(ctx),
-            // Straighten and crop need the photo alone: the four-up view and the split view end
+            // Crop and straighten needs the photo alone: the four-up view and the split view end
             // first (from the menu bar too – up to 1.11 its rows opened the session unseen
             // behind the four).
-            Command::Straighten => {
-                self.alone_for_editing();
-                self.begin_straighten();
-            }
             Command::Crop => {
                 self.alone_for_editing();
-                self.begin_crop();
+                self.begin_edit();
             }
             Command::Rotate(clockwise) => self.rotate_quarter(clockwise),
             Command::Undo => self.undo(ctx),
@@ -600,7 +592,6 @@ mod tests {
     #[test]
     fn the_grid_steps_aside_for_what_needs_the_photo() {
         for command in [
-            Command::Straighten,
             Command::Crop,
             Command::Compare,
             Command::Split,

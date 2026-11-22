@@ -121,7 +121,6 @@ struct KeyInput {
     open: bool,
     /// `Ctrl+U`: subfolders on or off.
     subfolders: bool,
-    straighten: bool,
     crop: bool,
     rotate_cw: bool,
     rotate_ccw: bool,
@@ -294,7 +293,6 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         zoom_actual: ctrl_digit(&i.events, Key::Num1),
         open: i.modifiers.command && i.key_pressed(Key::O),
         subfolders: i.modifiers.command_only() && i.key_pressed(Key::U),
-        straighten: plain && i.key_pressed(Key::S),
         crop: plain && i.key_pressed(Key::R),
         rotate_cw: i.modifiers.command && !i.modifiers.shift && i.key_pressed(Key::ArrowRight),
         rotate_ccw: i.modifiers.command && !i.modifiers.shift && i.key_pressed(Key::ArrowLeft),
@@ -391,7 +389,6 @@ impl KeyInput {
         push(self.show_photo, Command::ShowView(View::Photo));
         push(self.toggle_grid, Command::ToggleGrid);
         push(self.toggle_scenes, Command::ToggleScenes);
-        push(self.straighten, Command::Straighten);
         push(self.crop, Command::Crop);
         push(self.rotate_ccw, Command::Rotate(false));
         push(self.rotate_cw, Command::Rotate(true));
@@ -901,6 +898,7 @@ mod tests {
             (Key::F3, plain),
             (Key::F4, plain),
             (Key::T, plain),
+            (Key::S, plain),
             (Key::G, plain),
             (Key::Questionmark, shift),
             (Key::Z, shift),

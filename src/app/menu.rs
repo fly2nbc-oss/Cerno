@@ -487,9 +487,6 @@ impl CernoApp {
                     .toggle(self.viewer.quad.is_some()),
             ),
             Item::Row(jpeg_only(
-                Row::new(Command::Straighten, t.cmd_straighten, key("S")).disabled(edit),
-            )),
-            Item::Row(jpeg_only(
                 Row::new(Command::Crop, t.cmd_crop, key("R")).disabled(edit),
             )),
             Item::Segments(turns),

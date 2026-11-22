@@ -1,5 +1,5 @@
-//! Straighten, crop, quarter turns and `Ctrl+Z`: the session, its keys and pointer, and
-//! handing the work to the writer.
+//! Crop and straighten (`R`, one session since 1.16), quarter turns and `Ctrl+Z`: the
+//! session, its keys and pointer, and handing the work to the writer.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -46,10 +46,10 @@ fn undo_target(counting_down: bool, current_deleted: bool, journal: bool) -> Und
     }
 }
 
-/// Straighten, crop and quarter turns.
+/// Crop and straighten, quarter turns.
 #[derive(Default)]
 pub(super) struct Edits {
-    /// Straighten or crop, while it is open. The saved zoom comes back on Enter or Esc.
+    /// Crop and straighten, while it is open. The saved zoom comes back on Enter or Esc.
     pub(super) session: Option<EditSession>,
     /// Encodes a confirmed edit. Joined on exit so the write is not lost.
     pub(super) thread: Option<std::thread::JoinHandle<()>>,
@@ -61,32 +61,68 @@ pub(super) struct EditSession {
     /// The photo being edited; the session ends if another one becomes current.
     pub(super) path: PathBuf,
     pub(super) zoom: viewer::Zoom,
-    kind: EditKind,
+    tool: Tool,
 }
 
 #[cfg(test)]
 impl EditSession {
-    /// A straighten session on `path`, without the checks `begin_straighten` makes (tests).
-    pub(super) fn straightening(path: PathBuf) -> Self {
+    /// A session on `path` (as if 400×300), without the checks `begin_edit` makes (tests).
+    pub(super) fn editing(path: PathBuf) -> Self {
         Self {
             path,
             zoom: viewer::Zoom::default(),
-            kind: EditKind::Straighten { radians: 0.0 },
+            tool: Tool::new([400, 300]),
         }
     }
 }
 
-enum EditKind {
-    Straighten {
-        radians: f64,
-    },
-    Crop {
-        ratio: Ratio,
-        landscape: bool,
-        image_size: [u32; 2],
-        crop: edit::Crop,
-        gesture: Option<CropGesture>,
-    },
+/// The angle and the frame together: the photo turns under the frame (scaled so the original
+/// frame stays full), the frame lies over the turned photo, and `Enter` writes both at once –
+/// one new JPEG instead of two.
+struct Tool {
+    /// Fine angle, ±45°.
+    radians: f64,
+    ratio: Ratio,
+    landscape: bool,
+    image_size: [u32; 2],
+    /// In pixels of the turned photo, which keeps the original's size.
+    crop: edit::Crop,
+    gesture: Option<CropGesture>,
+}
+
+impl Tool {
+    fn new(image_size: [u32; 2]) -> Self {
+        let landscape = image_size[0] >= image_size[1];
+        let aspect = edit::ratio_aspect(Ratio::Original, image_size[0], image_size[1], landscape);
+        Self {
+            radians: 0.0,
+            ratio: Ratio::Original,
+            landscape,
+            image_size,
+            crop: edit::Crop::max_centered(
+                f64::from(image_size[0]),
+                f64::from(image_size[1]),
+                aspect,
+            ),
+            gesture: None,
+        }
+    }
+
+    /// The part of the photo to keep, or `None` for all of it (or a frame too small to write).
+    fn rect(&self) -> Option<edit::PixelRect> {
+        let [w, h] = self.image_size;
+        if self.crop.covers_image(f64::from(w), f64::from(h)) {
+            return None;
+        }
+        let rect = edit::PixelRect::from_crop(self.crop, w, h);
+        let short = rect.w.min(rect.h);
+        (!rect.is_entire(w, h) && (short >= edit::MIN_CROP_SIDE || short >= w.min(h)))
+            .then_some(rect)
+    }
+
+    fn turned(&self) -> Option<f64> {
+        (self.radians.abs() >= 1e-8).then_some(self.radians)
+    }
 }
 
 /// A drag on the crop, from where the button went down.
@@ -121,11 +157,6 @@ impl CropGesture {
 /// A drawn frame shorter than this (in points) was a click: the frame before it comes back.
 const DRAW_MIN: f32 = 6.0;
 
-enum PixelJob {
-    Rotate(f64),
-    Crop(edit::PixelRect),
-}
-
 struct EditKeyInput {
     enter: bool,
     escape: bool,
@@ -140,7 +171,8 @@ struct EditKeyInput {
     command: bool,
     flip: bool,
     cycle: bool,
-    wheel: f64,
+    /// Wheel, `,` and `.`: the fine angle.
+    turn: f64,
 }
 
 /// One keyboard step of the crop frame: 1 % of the photo's long side, with Shift one pixel
@@ -206,6 +238,38 @@ fn wheel_rotation(events: &[Event]) -> f64 {
     turns
 }
 
+/// `,` turns anticlockwise, `.` clockwise, by one step (Shift finer). By the key's place too:
+/// Shift turns them into `;` and `:` on German layouts.
+fn turn_keys(events: &[Event]) -> f64 {
+    let mut turn = 0.0;
+    for event in events {
+        if let Event::Key {
+            key,
+            physical_key,
+            pressed: true,
+            modifiers,
+            ..
+        } = event
+        {
+            if modifiers.alt || modifiers.command {
+                continue;
+            }
+            let place = physical_key.unwrap_or(*key);
+            let step = if modifiers.shift {
+                edit::FINER_STEP
+            } else {
+                edit::FINE_STEP
+            };
+            if place == Key::Comma || *key == Key::Comma {
+                turn -= step;
+            } else if place == Key::Period || *key == Key::Period {
+                turn += step;
+            }
+        }
+    }
+    turn
+}
+
 fn refit_crop(ratio: Ratio, landscape: bool, image_size: [u32; 2], crop: &mut edit::Crop) {
     let aspect = edit::ratio_aspect(ratio, image_size[0], image_size[1], landscape);
     *crop = edit::Crop::max_centered(f64::from(image_size[0]), f64::from(image_size[1]), aspect);
@@ -244,45 +308,9 @@ impl CernoApp {
         matches!(self.loader.get(self.current), Lookup::Ready(_))
     }
 
-    pub(super) fn begin_straighten(&mut self) {
-        if matches!(
-            self.edits.session,
-            Some(EditSession {
-                kind: EditKind::Straighten { .. },
-                ..
-            })
-        ) {
-            self.cancel_edit();
-            return;
-        }
-        if !self.can_edit() {
-            return;
-        }
-        let Some(path) = self.view.get(self.current).cloned() else {
-            return;
-        };
-        let zoom = self
-            .edits
-            .session
-            .take()
-            .map(|session| session.zoom)
-            .unwrap_or(self.viewer.zoom);
-        self.viewer.zoom = viewer::Zoom::default();
-        self.edits.session = Some(EditSession {
-            path,
-            zoom,
-            kind: EditKind::Straighten { radians: 0.0 },
-        });
-    }
-
-    pub(super) fn begin_crop(&mut self) {
-        if matches!(
-            self.edits.session,
-            Some(EditSession {
-                kind: EditKind::Crop { .. },
-                ..
-            })
-        ) {
+    /// `R`: crop and straighten the photo shown; again ends it, as `Esc` does.
+    pub(super) fn begin_edit(&mut self) {
+        if self.edits.session.is_some() {
             self.cancel_edit();
             return;
         }
@@ -293,30 +321,15 @@ impl CernoApp {
             return;
         };
         let image_size = image.original_size;
-        let landscape = image_size[0] >= image_size[1];
-        let aspect = edit::ratio_aspect(Ratio::Original, image_size[0], image_size[1], landscape);
-        let crop =
-            edit::Crop::max_centered(f64::from(image_size[0]), f64::from(image_size[1]), aspect);
         let Some(path) = self.view.get(self.current).cloned() else {
             return;
         };
-        let zoom = self
-            .edits
-            .session
-            .take()
-            .map(|session| session.zoom)
-            .unwrap_or(self.viewer.zoom);
+        let zoom = self.viewer.zoom;
         self.viewer.zoom = viewer::Zoom::default();
         self.edits.session = Some(EditSession {
             path,
             zoom,
-            kind: EditKind::Crop {
-                ratio: Ratio::Original,
-                landscape,
-                image_size,
-                crop,
-                gesture: None,
-            },
+            tool: Tool::new(image_size),
         });
     }
 
@@ -340,32 +353,14 @@ impl CernoApp {
             self.notice = Some(Notice::hint(i18n::t().edit_cancelled));
             return;
         }
-        let path = session.path;
-        match session.kind {
-            EditKind::Straighten { radians } if radians.abs() < 1e-8 => {}
-            EditKind::Straighten { radians } => {
-                self.spawn_edit(path, PixelJob::Rotate(radians));
-            }
-            EditKind::Crop {
-                image_size, crop, ..
-            } => {
-                if crop.covers_image(f64::from(image_size[0]), f64::from(image_size[1])) {
-                    return;
-                }
-                let rect = edit::PixelRect::from_crop(crop, image_size[0], image_size[1]);
-                if rect.is_entire(image_size[0], image_size[1]) {
-                    return;
-                }
-                let short = rect.w.min(rect.h);
-                if short < edit::MIN_CROP_SIDE && short < image_size[0].min(image_size[1]) {
-                    return;
-                }
-                self.spawn_edit(path, PixelJob::Crop(rect));
-            }
+        let (radians, rect) = (session.tool.turned(), session.tool.rect());
+        if radians.is_none() && rect.is_none() {
+            return;
         }
+        self.spawn_edit(session.path, radians, rect);
     }
 
-    fn spawn_edit(&mut self, path: PathBuf, job: PixelJob) {
+    fn spawn_edit(&mut self, path: PathBuf, radians: Option<f64>, rect: Option<edit::PixelRect>) {
         self.edits.busy = true;
         self.notice = Some(Notice::working(i18n::t().edit_writing));
         let channel = self.writer.channel();
@@ -374,10 +369,8 @@ impl CernoApp {
             .name("cerno-edit".into())
             .spawn(move || {
                 // A panic would never report back, and `edit_busy` would block every edit.
-                let result = crate::decode::catch_panic(|| match job {
-                    PixelJob::Rotate(radians) => edit::render_rotation(&path, radians, &files),
-                    PixelJob::Crop(rect) => edit::render_crop(&path, rect, &files),
-                });
+                let result =
+                    crate::decode::catch_panic(|| edit::render_edit(&path, radians, rect, &files));
                 match result {
                     Ok(jpeg) => channel.replace_pixels(path, jpeg),
                     Err(err) => channel.fail(path, format!("{err:#}")),
@@ -392,7 +385,7 @@ impl CernoApp {
         }
     }
 
-    /// In a straighten or crop session it waits for `Enter` or `Esc`: the render would read
+    /// In a crop and straighten session it waits for `Enter` or `Esc`: the render would read
     /// the file before or after the turn, and one of the two would be lost.
     pub(super) fn rotate_quarter(&mut self, clockwise: bool) {
         if self.viewer.pinned.is_some() {
@@ -514,7 +507,7 @@ impl CernoApp {
                 command: input.modifiers.command,
                 flip: input.modifiers.is_none() && input.key_pressed(Key::X),
                 cycle: input.modifiers.is_none() && input.key_pressed(Key::A),
-                wheel: wheel_rotation(&input.events),
+                turn: wheel_rotation(&input.events) + turn_keys(&input.events),
             }
         });
         if input.escape {
@@ -534,87 +527,60 @@ impl CernoApp {
         let Some(session) = self.edits.session.as_mut() else {
             return;
         };
-        match &mut session.kind {
-            EditKind::Straighten { radians } if !input.command => {
-                let step = if input.shift {
-                    edit::FINER_STEP
-                } else {
-                    edit::FINE_STEP
-                };
-                let mut delta = input.wheel;
-                if input.left {
-                    delta -= step;
-                }
-                if input.right {
-                    delta += step;
-                }
-                *radians = edit::clamp_angle(*radians + delta);
+        let Tool {
+            radians,
+            ratio,
+            landscape,
+            image_size,
+            crop,
+            gesture,
+        } = &mut session.tool;
+        if !input.command && input.turn != 0.0 {
+            *radians = edit::clamp_angle(*radians + input.turn);
+        }
+        if input.flip {
+            *landscape = !*landscape;
+            refit_crop(*ratio, *landscape, *image_size, crop);
+            *gesture = None;
+        }
+        if input.cycle {
+            *ratio = ratio.next();
+            refit_crop(*ratio, *landscape, *image_size, crop);
+            *gesture = None;
+        }
+        // The keyboard instead of the mouse: arrows slide the frame, + and − resize it about
+        // its centre; Ctrl+arrows stay the quarter turns.
+        if !input.command && gesture.is_none() {
+            let step = crop_step(*image_size, input.shift);
+            let (w, h) = (f64::from(image_size[0]), f64::from(image_size[1]));
+            let dx = f64::from(i8::from(input.right) - i8::from(input.left)) * step;
+            let dy = f64::from(i8::from(input.down) - i8::from(input.up)) * step;
+            if dx != 0.0 || dy != 0.0 {
+                *crop = crop.translate(dx, dy, w, h);
             }
-            EditKind::Crop {
-                ratio,
-                landscape,
-                image_size,
-                crop,
-                gesture,
-            } => {
-                if input.flip {
-                    *landscape = !*landscape;
-                    refit_crop(*ratio, *landscape, *image_size, crop);
-                    *gesture = None;
-                }
-                if input.cycle {
-                    *ratio = ratio.next();
-                    refit_crop(*ratio, *landscape, *image_size, crop);
-                    *gesture = None;
-                }
-                // The keyboard instead of the mouse: arrows slide the frame, + and − resize it
-                // about its centre; Ctrl+arrows stay the quarter turns.
-                if !input.command && gesture.is_none() {
-                    let step = crop_step(*image_size, input.shift);
-                    let (w, h) = (f64::from(image_size[0]), f64::from(image_size[1]));
-                    let dx = f64::from(i8::from(input.right) - i8::from(input.left)) * step;
-                    let dy = f64::from(i8::from(input.down) - i8::from(input.up)) * step;
-                    if dx != 0.0 || dy != 0.0 {
-                        *crop = crop.translate(dx, dy, w, h);
-                    }
-                    let resize = f64::from(i8::from(input.grow) - i8::from(input.shrink)) * step;
-                    if resize != 0.0 {
-                        *crop = crop.resize_about_centre(
-                            resize,
-                            w,
-                            h,
-                            edit::min_side(image_size[0], image_size[1]),
-                        );
-                    }
-                }
+            let resize = f64::from(i8::from(input.grow) - i8::from(input.shrink)) * step;
+            if resize != 0.0 {
+                *crop = crop.resize_about_centre(
+                    resize,
+                    w,
+                    h,
+                    edit::min_side(image_size[0], image_size[1]),
+                );
             }
-            EditKind::Straighten { .. } => {}
         }
     }
 
     pub(super) fn handle_edit_pointer(&mut self, ui: &egui::Ui, frame: &viewer::Frame) {
-        let Some(EditSession {
-            kind: EditKind::Crop { .. },
-            ..
-        }) = self.edits.session.as_ref()
-        else {
+        let Some(session) = self.edits.session.as_ref() else {
             return;
         };
+        let (image_size, crop, active) = (
+            session.tool.image_size,
+            session.tool.crop,
+            session.tool.gesture.as_ref().map(CropGesture::kind),
+        );
         let response = edit_ui::pointer_area(ui, frame.area);
         let photo = self.viewer.zoom.image_rect(frame);
-        let (image_size, crop, active) = match &self.edits.session {
-            Some(EditSession {
-                kind:
-                    EditKind::Crop {
-                        image_size,
-                        crop,
-                        gesture,
-                        ..
-                    },
-                ..
-            }) => (*image_size, *crop, gesture.as_ref().map(CropGesture::kind)),
-            _ => return,
-        };
         let movable = crop.can_move(f64::from(image_size[0]), f64::from(image_size[1]));
         let screen = edit_ui::crop_to_screen(photo, image_size, crop);
         let under = |pos| edit_ui::gesture(edit_ui::hit_test(screen, pos), movable);
@@ -639,12 +605,8 @@ impl CernoApp {
                     before: crop,
                 },
             };
-            if let Some(EditSession {
-                kind: EditKind::Crop { gesture: slot, .. },
-                ..
-            }) = self.edits.session.as_mut()
-            {
-                *slot = Some(gesture);
+            if let Some(session) = self.edits.session.as_mut() {
+                session.tool.gesture = Some(gesture);
             }
         }
         if response.dragged()
@@ -654,7 +616,7 @@ impl CernoApp {
         }
         if response.drag_stopped()
             && let Some(EditSession {
-                kind: EditKind::Crop { gesture, crop, .. },
+                tool: Tool { gesture, crop, .. },
                 ..
             }) = self.edits.session.as_mut()
         {
@@ -671,8 +633,8 @@ impl CernoApp {
 
     fn drag_crop(&mut self, photo: Rect, image_size: [u32; 2], pos: Pos2) {
         let Some(EditSession {
-            kind:
-                EditKind::Crop {
+            tool:
+                Tool {
                     crop,
                     gesture,
                     landscape,
@@ -715,51 +677,37 @@ impl CernoApp {
         }
     }
 
-    /// The angle the photo is drawn at while straightening.
+    /// The angle the photo is drawn at while it is being straightened.
     pub(super) fn straighten_angle(&self) -> Option<f64> {
-        match &self.edits.session {
-            Some(EditSession {
-                kind: EditKind::Straighten { radians },
-                ..
-            }) => Some(*radians),
-            _ => None,
-        }
+        self.edits
+            .session
+            .as_ref()
+            .and_then(|session| session.tool.turned())
     }
 
-    /// Grid or crop frame over the photo, with the banner that names the keys.
+    /// The crop frame over the turned photo, a fine grid inside it while the photo is turned,
+    /// and the banner with the angle, the ratio and the keys.
     pub(super) fn draw_edit_overlay(&self, ui: &egui::Ui, frame: &viewer::Frame) {
         let Some(session) = &self.edits.session else {
             return;
         };
+        let tool = &session.tool;
         let photo = self.viewer.zoom.image_rect(frame);
-        match &session.kind {
-            EditKind::Straighten { radians } => {
-                let painter = ui.painter().with_clip_rect(photo);
-                edit_ui::grid(&painter, photo);
-                edit_ui::banner(
-                    ui.painter(),
-                    frame.area,
-                    &format!("{:+.2}°", radians.to_degrees()),
-                    i18n::t().edit_hint_straighten,
-                );
-            }
-            EditKind::Crop {
-                ratio,
-                landscape,
-                image_size,
-                crop,
-                ..
-            } => {
-                let screen = edit_ui::crop_to_screen(photo, *image_size, *crop);
-                edit_ui::crop_frame(ui.painter(), photo, screen);
-                edit_ui::banner(
-                    ui.painter(),
-                    frame.area,
-                    &crop_caption(*ratio, *landscape),
-                    i18n::t().edit_hint_crop,
-                );
-            }
+        let screen = edit_ui::crop_to_screen(photo, tool.image_size, tool.crop);
+        if tool.turned().is_some() {
+            edit_ui::grid(&ui.painter().with_clip_rect(screen), screen);
         }
+        edit_ui::crop_frame(ui.painter(), photo, screen);
+        edit_ui::banner(
+            ui.painter(),
+            frame.area,
+            &format!(
+                "{:+.2}° · {}",
+                tool.radians.to_degrees(),
+                crop_caption(tool.ratio, tool.landscape)
+            ),
+            i18n::t().edit_hint_crop,
+        );
     }
 }
 
@@ -815,5 +763,37 @@ mod tests {
         assert_eq!(size_keys(&[ctrl]), (false, false));
         assert_eq!(crop_step([4000, 3000], false), 40.0);
         assert_eq!(crop_step([4000, 3000], true), 1.0);
+    }
+
+    /// `,` and `.` turn by one step, with Shift a finer one – also where Shift types `;`
+    /// (German); with Ctrl or Alt they don't turn.
+    #[test]
+    fn comma_and_period_turn_the_photo() {
+        let (plain, shift) = (egui::Modifiers::NONE, egui::Modifiers::SHIFT);
+        assert_eq!(
+            turn_keys(&[press(Key::Period, None, plain)]),
+            edit::FINE_STEP
+        );
+        assert_eq!(
+            turn_keys(&[press(Key::Comma, None, plain)]),
+            -edit::FINE_STEP
+        );
+        assert_eq!(
+            turn_keys(&[press(Key::Semicolon, Some(Key::Comma), shift)]),
+            -edit::FINER_STEP
+        );
+        let ctrl = press(Key::Period, None, egui::Modifiers::COMMAND);
+        assert_eq!(turn_keys(&[ctrl]), 0.0);
+    }
+
+    /// Nothing to write until the photo is turned or the frame is smaller than the photo.
+    #[test]
+    fn the_tool_writes_only_what_changed() {
+        let mut tool = Tool::new([4000, 3000]);
+        assert_eq!((tool.turned(), tool.rect()), (None, None));
+        tool.radians = edit::FINE_STEP;
+        assert!(tool.turned().is_some() && tool.rect().is_none());
+        tool.crop = tool.crop.resize_about_centre(-400.0, 4000.0, 3000.0, 32.0);
+        assert!(tool.rect().is_some());
     }
 }

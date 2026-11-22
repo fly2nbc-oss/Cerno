@@ -375,21 +375,27 @@ pub fn encode_jpeg(width: u32, height: u32, rgb: &[u8]) -> Result<Vec<u8>> {
     Ok(jpeg)
 }
 
-/// Full-resolution clockwise rotation, encoded as a new JPEG. Orientation is already applied.
-pub fn render_rotation(path: &Path, radians: f64, files: &FileLocks) -> Result<Vec<u8>> {
-    let (width, height, rgb) = decode_jpeg(path, files)?;
-    let turned = rotate_cover(&rgb, width, height, radians);
-    encode_jpeg(width, height, &turned)
-}
-
-/// Full-resolution crop, encoded as a new JPEG.
-pub fn render_crop(path: &Path, rect: PixelRect, files: &FileLocks) -> Result<Vec<u8>> {
-    let (width, height, rgb) = decode_jpeg(path, files)?;
-    if rect.x + rect.w > width || rect.y + rect.h > height {
-        bail!("crop extends outside the photo");
+/// Crop and straighten at full resolution in one go: turned first (the frame was laid over the
+/// turned photo, which keeps the original's size), then cut out – one new JPEG.
+pub fn render_edit(
+    path: &Path,
+    radians: Option<f64>,
+    rect: Option<PixelRect>,
+    files: &FileLocks,
+) -> Result<Vec<u8>> {
+    let (width, height, mut rgb) = decode_jpeg(path, files)?;
+    if let Some(radians) = radians {
+        rgb = rotate_cover(&rgb, width, height, radians);
     }
-    let cropped = copy_rect(&rgb, width, rect);
-    encode_jpeg(rect.w, rect.h, &cropped)
+    match rect {
+        Some(rect) => {
+            if rect.x + rect.w > width || rect.y + rect.h > height {
+                bail!("crop extends outside the photo");
+            }
+            encode_jpeg(rect.w, rect.h, &copy_rect(&rgb, width, rect))
+        }
+        None => encode_jpeg(width, height, &rgb),
+    }
 }
 
 fn decode_jpeg(path: &Path, files: &FileLocks) -> Result<(u32, u32, Vec<u8>)> {
@@ -403,6 +409,27 @@ fn decode_jpeg(path: &Path, files: &FileLocks) -> Result<(u32, u32, Vec<u8>)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Turned and cut out in one go: one JPEG of the frame's size; turned alone keeps the size.
+    #[test]
+    fn turn_and_crop_write_one_jpeg() {
+        let path = Path::new("tests/fixtures/tiny.jpg");
+        let files = FileLocks::default();
+        let size = |jpeg: &[u8]| {
+            let decoded = decode::decode_for_edit(jpeg, 1).unwrap();
+            (decoded.width, decoded.height)
+        };
+        let turned = render_edit(path, Some(20.0 * FINE_STEP), None, &files).unwrap();
+        assert_eq!(size(&turned), (16, 16));
+        let rect = PixelRect {
+            x: 2,
+            y: 4,
+            w: 12,
+            h: 8,
+        };
+        let both = render_edit(path, Some(20.0 * FINE_STEP), Some(rect), &files).unwrap();
+        assert_eq!(size(&both), (12, 8));
+    }
 
     /// `+` / `−`: about the centre, in the frame's own aspect, never outside the photo nor
     /// beyond the largest frame or below the shortest side.

@@ -597,8 +597,8 @@ mod tests {
             "the grid steps aside"
         );
         let ctx = h.ctx.clone();
-        h.app.run(&ctx, Command::Straighten, Source::Menu, &[]);
-        assert!(!h.app.viewer.split, "straightening needs the photo alone");
+        h.app.run(&ctx, Command::Crop, Source::Menu, &[]);
+        assert!(!h.app.viewer.split, "cropping needs the photo alone");
         h.press(Key::Escape, NONE);
         h.app.run(&ctx, Command::Split, Source::Menu, &[]);
         assert!(h.app.viewer.split);
@@ -751,12 +751,12 @@ mod tests {
         ));
     }
 
-    /// The menu bar's Straighten and Crop end the four-up view first, like `S` and `R`.
+    /// The menu bar's *Crop and straighten* ends the four-up view first, like `R`.
     #[test]
-    fn straighten_from_the_menu_ends_the_four_up_view() {
+    fn cropping_from_the_menu_ends_the_four_up_view() {
         let mut h = Harness::new(5);
         h.settle();
-        for command in [Command::Straighten, Command::Crop] {
+        for command in [Command::Crop, Command::Crop] {
             h.press(Key::C, Modifiers::SHIFT);
             assert!(h.app.viewer.quad.is_some());
             let ctx = h.ctx.clone();
@@ -771,7 +771,7 @@ mod tests {
     fn the_update_question_waits_for_an_edit_session() {
         let mut h = Harness::asking_about_updates(1);
         let path = h.app.view.paths.first().cloned().expect("a photo");
-        h.app.edits.session = Some(EditSession::straightening(path));
+        h.app.edits.session = Some(EditSession::editing(path));
         h.settle();
         assert_eq!(h.layer(), "none");
         h.app.edits.session = None;
@@ -1088,7 +1088,7 @@ mod tests {
         h.press(Key::F, Modifiers::COMMAND);
         assert!(h.app.filter_mode.is_on());
         let path = h.app.view.paths.first().cloned().expect("a photo");
-        h.app.edits.session = Some(EditSession::straightening(path));
+        h.app.edits.session = Some(EditSession::editing(path));
         h.press(Key::Num4, NONE);
         assert!(!h.app.filter_mode.is_on());
         assert!(!h.app.options.filter.contains(FilterKind::Stars(4)));

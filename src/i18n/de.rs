@@ -625,10 +625,9 @@ pub static TEXTS: Texts = Texts {
         )
     },
 
-    cmd_straighten: "Ausrichten",
     cmd_rotate_ccw: "90° gegen den Uhrzeigersinn",
     cmd_rotate_cw: "90° im Uhrzeigersinn",
-    cmd_crop: "Ausschnitt",
+    cmd_crop: "Zuschneiden und ausrichten",
     cmd_undo: "Rückgängig",
     edit_not_jpeg: "Ausrichten, Ausschnitt, Drehen und Strg+Z gibt es nur für JPEG.",
     video_play_hint: "Abspielen (Leertaste)",
@@ -688,8 +687,7 @@ pub static TEXTS: Texts = Texts {
     raw_preview_fact: "RAW-Vorschau",
     preview_word: "Vorschau",
     edit_failed: |detail| format!("Nicht geschrieben: {detail}"),
-    edit_hint_straighten: "Mausrad oder ←/→ dreht, Umschalt feiner · Enter übernimmt, Esc verwirft",
-    edit_hint_crop: "Pfeile verschieben · +/− Größe, Umschalt feiner · A: Seitenverhältnis · X: Quer/Hoch · Enter übernimmt, Esc verwirft",
+    edit_hint_crop: "Mausrad oder , . dreht · Pfeile verschieben · +/− Größe · A: Format · X: Quer/Hoch · Umschalt feiner · Enter übernimmt, Esc verwirft",
     ratio_original: "Original",
     crop_landscape: "Querformat",
     crop_portrait: "Hochformat",
@@ -786,7 +784,7 @@ pub static TEXTS: Texts = Texts {
                 "Umschalt mit 0–9, X, V, A oder D markiert und geht weiter; mit C, Tab oder F macht es mehr: vier Fotos, alle Leisten, alle Fotos.",
                 "Im Raster (F6) rücken ↑ ↓ eine Reihe, + − ändern die Größe, Enter öffnet das Foto.",
                 "In den Szenen (F7) beginnt jede Szene eine neue Reihe; Bild↑ Bild↓ springen von Szene zu Szene.",
-                "Ausrichten (S): Mausrad und Pfeile drehen, Umschalt feiner. Ausschnitt (R): Rahmen aufziehen oder mit den Pfeilen schieben, +/− ändern die Größe, A wechselt das Format, X dreht Quer/Hoch.",
+                "Zuschneiden und ausrichten (R): Mausrad oder , und . drehen das Foto, Umschalt feiner. Rahmen aufziehen oder mit den Pfeilen schieben, +/− ändern die Größe, A wechselt das Format, X dreht Quer/Hoch. Enter speichert beides auf einmal.",
                 "Die Menüleiste (F10 oder der Knopf unten rechts) hält, was auf dieses Foto, die sichtbaren Fotos und die Ansicht wirkt, dazu die Einstellungen – alles mit der Maus.",
                 "In der Beschreibung setzt Enter den Cursor ins Stichwortfeld.",
             ],
@@ -879,7 +877,7 @@ pub static TEXTS: Texts = Texts {
         (
             "Bearbeiten",
             &[
-                ("S, R", "Ausrichten / Ausschnitt"),
+                ("R", "Zuschneiden und ausrichten"),
                 ("Enter, Esc", "Übernehmen / verwerfen"),
                 ("Strg+←, Strg+→", "90° drehen"),
                 ("Strg+Z", "Rückgängig"),

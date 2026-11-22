@@ -627,10 +627,9 @@ pub static TEXTS: Texts = Texts {
         )
     },
 
-    cmd_straighten: "Enderezar",
     cmd_rotate_ccw: "Girar 90° a la izquierda",
     cmd_rotate_cw: "Girar 90° a la derecha",
-    cmd_crop: "Recorte",
+    cmd_crop: "Recortar y enderezar",
     cmd_undo: "Deshacer",
     edit_not_jpeg: "Enderezar, recortar, girar y Ctrl+Z solo funcionan con JPEG.",
     video_play_hint: "Reproducir (Espacio)",
@@ -688,8 +687,7 @@ pub static TEXTS: Texts = Texts {
     raw_preview_fact: "Vista previa RAW",
     preview_word: "vista previa",
     edit_failed: |detail| format!("No se ha escrito: {detail}"),
-    edit_hint_straighten: "Rueda o ←/→ gira, Mayús más fino · Intro aplica, Esc cancela",
-    edit_hint_crop: "Flechas mueven · +/− tamaño, Mayús más fino · A: proporción · X: horizontal/vertical · Intro aplica, Esc cancela",
+    edit_hint_crop: "Rueda o , . gira · flechas mueven · +/− tamaño · A: proporción · X: horizontal/vertical · Mayús más fino · Intro aplica, Esc cancela",
     ratio_original: "Original",
     crop_landscape: "Horizontal",
     crop_portrait: "Vertical",
@@ -786,7 +784,7 @@ pub static TEXTS: Texts = Texts {
                 "Mayús con 0–9, X, V, A o D marca y pasa a la siguiente; con C, Tab o F hace más: cuatro fotos, todas las barras, todas las fotos.",
                 "En la cuadrícula (F6), ↑ ↓ cambian de fila, + − el tamaño, Intro abre la foto.",
                 "En las escenas (F7), cada escena empieza una fila; Re Pág y Av Pág saltan de escena en escena.",
-                "Enderezar (S): la rueda y las flechas giran, Mayús más fino. Recorte (R): traza un marco o muévelo con las flechas, +/− cambia su tamaño, A el formato, X cambia horizontal/vertical.",
+                "Recortar y enderezar (R): la rueda o , y . giran la foto, Mayús más fino. Traza un marco o muévelo con las flechas, +/− cambian su tamaño, A cambia la proporción, X lo pone horizontal/vertical. Intro guarda ambos a la vez.",
                 "La barra de menú (F10 o el botón abajo a la derecha) reúne lo que actúa sobre esta foto, las fotos visibles y la vista, y los ajustes – todo con el ratón.",
                 "En la descripción, Intro lleva el cursor al campo de palabras clave.",
             ],
@@ -879,7 +877,7 @@ pub static TEXTS: Texts = Texts {
         (
             "Editar",
             &[
-                ("S, R", "Enderezar / recortar"),
+                ("R", "Recortar y enderezar"),
                 ("Intro, Esc", "Aplicar / cancelar"),
                 ("Ctrl+←, Ctrl+→", "Girar 90°"),
                 ("Ctrl+Z", "Deshacer"),

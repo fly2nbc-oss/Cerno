@@ -650,10 +650,9 @@ pub static TEXTS: Texts = Texts {
         )
     },
 
-    cmd_straighten: "Redresser",
     cmd_rotate_ccw: "Pivoter de 90° vers la gauche",
     cmd_rotate_cw: "Pivoter de 90° vers la droite",
-    cmd_crop: "Recadrer",
+    cmd_crop: "Recadrer et redresser",
     cmd_undo: "Annuler la retouche",
     edit_not_jpeg: "Redressement, recadrage, rotation et Ctrl+Z uniquement pour les JPEG.",
     video_play_hint: "Lire (Espace)",
@@ -713,8 +712,7 @@ pub static TEXTS: Texts = Texts {
     raw_preview_fact: "Aperçu RAW",
     preview_word: "aperçu",
     edit_failed: |detail| format!("Pas enregistré : {detail}"),
-    edit_hint_straighten: "Molette ou ←/→ pour tourner, Maj plus fin · Entrée applique, Échap annule",
-    edit_hint_crop: "Flèches : déplacer · +/− : taille, Maj plus fin · A : format · X : paysage/portrait · Entrée applique, Échap annule",
+    edit_hint_crop: "Molette ou , . : tourner · flèches : déplacer · +/− : taille · A : format · X : paysage/portrait · Maj plus fin · Entrée applique, Échap annule",
     ratio_original: "Original",
     crop_landscape: "Paysage",
     crop_portrait: "Portrait",
@@ -811,7 +809,7 @@ pub static TEXTS: Texts = Texts {
                 "Maj avec 0–9, X, V, A ou D marque et passe à la suivante ; avec C, Tab ou F elle en fait plus : quatre photos, toutes les barres, toutes les photos.",
                 "Dans la grille (F6), ↑ ↓ changent de ligne, + − la taille, Entrée ouvre la photo.",
                 "Dans les scènes (F7), chaque scène commence une ligne ; Pg préc et Pg suiv sautent de scène en scène.",
-                "Redresser (S) : la molette et les flèches tournent, Maj plus fin. Recadrer (R) : tracez un cadre ou déplacez-le avec les flèches, +/− change sa taille, A le format, X bascule paysage/portrait.",
+                "Recadrer et redresser (R) : la molette ou , et . tournent la photo, Maj plus fin. Tracer un cadre ou le déplacer avec les flèches, +/− changent sa taille, A change le format, X passe en paysage/portrait. Entrée enregistre les deux d'un coup.",
                 "La barre de menu (F10 ou le bouton en bas à droite) réunit ce qui agit sur cette photo, les photos affichées et la vue, plus les réglages – tout à la souris.",
                 "Dans la description, Entrée place le curseur dans le champ des mots-clés.",
             ],
@@ -901,7 +899,7 @@ pub static TEXTS: Texts = Texts {
         (
             "Retouche",
             &[
-                ("S, R", "Redresser / recadrer"),
+                ("R", "Recadrer et redresser"),
                 ("Entrée, Échap", "Appliquer / annuler"),
                 ("Ctrl+←, Ctrl+→", "Pivoter de 90°"),
                 ("Ctrl+Z", "Annuler"),

@@ -596,8 +596,7 @@ pub struct Texts {
     /// Colour label submenu: remove the colour.
     pub label_none: &'static str,
 
-    // Straighten and crop.
-    pub cmd_straighten: &'static str,
+    // Crop and straighten (`R`), quarter turns.
     pub cmd_rotate_ccw: &'static str,
     pub cmd_rotate_cw: &'static str,
     pub cmd_crop: &'static str,
@@ -668,8 +667,7 @@ pub struct Texts {
     /// After a size or a section title that is about a RAW file's preview.
     pub preview_word: &'static str,
     pub edit_failed: fn(&str) -> String,
-    /// Banner hints while straightening and cropping.
-    pub edit_hint_straighten: &'static str,
+    /// The banner hint while cropping and straightening (`R`).
     pub edit_hint_crop: &'static str,
     pub ratio_original: &'static str,
     pub crop_landscape: &'static str,
