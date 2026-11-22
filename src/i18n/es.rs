@@ -112,7 +112,7 @@ pub static TEXTS: Texts = Texts {
     top_tooltip: "Fotos, vídeos o ambos – o solo las mejores fotos, según tus estrellas (si no, la predicción), la estética y la nitidez, la mejor de cada serie primero. Las fotos rechazadas o borrosas y los duplicados no cuentan. La selección se mantiene hasta que cambie un filtro o elijas «Actualizar orden». En las fotos no cambia nada.",
     bulk_delete_top: "No con Top – son las mejores fotos",
     filter_similar: "≈ Parecidas",
-    filter_mode_hint: "←/→ elegir · Espacio: marcar o abrir · 0–9, X marcar · Supr: mostrar todo · Esc: listo",
+    filter_mode_hint: "←/→ elegir · Espacio: marcar o abrir · 0–9, X marcar · Retroceso: mostrar todo · Esc: listo",
     filter_mode_name: "Filtros con el teclado",
     filter_similar_to: |name| format!("≈ como {name}"),
     menu_similar_to: |name| format!("Parecidas a {name}"),
@@ -237,17 +237,17 @@ pub static TEXTS: Texts = Texts {
     view_scenes: "Escenas",
     view_faces: "Caras",
     faces_video: "En los vídeos no se buscan caras",
-    filmstrip_in_grid: "No hace falta en la cuadrícula – F2 vuelve a la foto",
+    filmstrip_in_grid: "No hace falta en la cuadrícula – F5 vuelve a la foto",
     grid_no_date: "sin fecha",
-    filmstrip_in_scenes: "No hace falta en las escenas – F2 vuelve a la foto",
+    filmstrip_in_scenes: "No hace falta en las escenas – F5 vuelve a la foto",
     sort_in_scenes: "La vista de escenas siempre sigue la hora de captura – este orden vuelve fuera de ella",
     scene_untimed: "Sin hora de captura",
     scene_singles: "Fotos sueltas",
     faces_button: |n| {
         if n == 1 {
-            "Mostrar 1 cara en grande (F5, G)".to_owned()
+            "Mostrar 1 cara en grande (F8)".to_owned()
         } else {
-            format!("Mostrar {n} caras en grande (F5, G)")
+            format!("Mostrar {n} caras en grande (F8)")
         }
     },
     button_side_bar: "Barra de menú",
@@ -710,8 +710,9 @@ pub static TEXTS: Texts = Texts {
             &[
                 "La rueda del ratón sobre la tira de miniaturas recorre las fotos; sobre la foto, acerca y aleja.",
                 "Arrastra una carpeta a la ventana para abrirla. Mantén pulsado → para avanzar sin parar.",
-                "En la cuadrícula (F3), ↑ ↓ cambian de fila, + − el tamaño, Intro abre la foto.",
-                "En las escenas (F4), cada escena empieza una fila; Re Pág y Av Pág saltan de escena en escena.",
+                "Mayús con 0–9, X, A o D marca y pasa a la siguiente; con C, Tab o T hace más: cuatro fotos, todas las barras, todas las fotos.",
+                "En la cuadrícula (F6), ↑ ↓ cambian de fila, + − el tamaño, Intro abre la foto.",
+                "En las escenas (F7), cada escena empieza una fila; Re Pág y Av Pág saltan de escena en escena.",
                 "Enderezar (S): la rueda y las flechas giran, Mayús más fino. Recorte (R): traza un marco o muévelo con las flechas, +/− cambia su tamaño, A el formato, X cambia horizontal/vertical.",
                 "La barra de menú (F10 o el botón abajo a la derecha) reúne lo que actúa sobre esta foto, las fotos visibles y la vista, y los ajustes – todo con el ratón.",
                 "En la descripción, Intro lleva el cursor al campo de palabras clave.",
@@ -756,9 +757,9 @@ pub static TEXTS: Texts = Texts {
         (
             "Vistas",
             &[
-                ("F2 – F5", "Foto · cuadrícula · escenas · caras (G)"),
+                ("F5 – F8", "Foto · cuadrícula · escenas · caras"),
                 ("Esc, Intro", "Volver a la foto"),
-                ("F, F11", "Pantalla completa"),
+                ("F11", "Pantalla completa"),
             ],
         ),
         (
@@ -788,7 +789,7 @@ pub static TEXTS: Texts = Texts {
                 ("F10, Alt+1", "Barra de menú"),
                 ("Tab, Alt+2", "Panel de detalles"),
                 ("T, Alt+3", "Barra de filtros"),
-                ("F6, Alt+4", "Tira de miniaturas"),
+                ("F9, Alt+4", "Tira de miniaturas"),
                 ("Mayús+Tab, Alt+0", "Los cuatro paneles"),
                 ("Ctrl+Tab", "Pestaña siguiente de detalles"),
             ],

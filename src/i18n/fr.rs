@@ -118,7 +118,7 @@ pub static TEXTS: Texts = Texts {
     top_tooltip: "Photos, vidéos ou les deux – ou seulement les meilleures photos, selon vos étoiles (sinon la prédiction), l'esthétique et la netteté, la meilleure de chaque série d'abord. Les photos rejetées ou floues et les doublons ne comptent pas. La sélection reste jusqu'à ce qu'un filtre change ou que vous choisissiez « Actualiser l'ordre ». Rien n'est modifié dans les photos.",
     bulk_delete_top: "Pas avec Top – ce sont les meilleures photos",
     filter_similar: "≈ Semblables",
-    filter_mode_hint: "←/→ choisir · Espace : cocher ou ouvrir · 0–9, X cocher · Suppr : tout afficher · Esc : terminé",
+    filter_mode_hint: "←/→ choisir · Espace : cocher ou ouvrir · 0–9, X cocher · Retour arrière : tout afficher · Esc : terminé",
     filter_mode_name: "Filtres au clavier",
     filter_similar_to: |name| format!("≈ comme {name}"),
     menu_similar_to: |name| format!("Semblables à {name}"),
@@ -258,17 +258,17 @@ pub static TEXTS: Texts = Texts {
     view_scenes: "Scènes",
     view_faces: "Visages",
     faces_video: "Les vidéos ne sont pas analysées pour les visages",
-    filmstrip_in_grid: "Inutile dans la grille – F2 revient à la photo",
+    filmstrip_in_grid: "Inutile dans la grille – F5 revient à la photo",
     grid_no_date: "sans date",
-    filmstrip_in_scenes: "Inutile dans les scènes – F2 revient à la photo",
+    filmstrip_in_scenes: "Inutile dans les scènes – F5 revient à la photo",
     sort_in_scenes: "La vue par scènes suit toujours la date de prise – ce tri revient en dehors",
     scene_untimed: "Sans heure de prise de vue",
     scene_singles: "Photos isolées",
     faces_button: |n| {
         if n == 1 {
-            "Afficher 1 visage en grand (F5, G)".to_owned()
+            "Afficher 1 visage en grand (F8)".to_owned()
         } else {
-            format!("Afficher {n} visages en grand (F5, G)")
+            format!("Afficher {n} visages en grand (F8)")
         }
     },
     button_side_bar: "Barre de menu",
@@ -735,8 +735,9 @@ pub static TEXTS: Texts = Texts {
             &[
                 "La molette sur la pellicule fait défiler les photos ; sur la photo, elle zoome.",
                 "Déposez un dossier sur la fenêtre pour l'ouvrir. Maintenez → pour faire défiler les photos.",
-                "Dans la grille (F3), ↑ ↓ changent de ligne, + − la taille, Entrée ouvre la photo.",
-                "Dans les scènes (F4), chaque scène commence une ligne ; Pg préc et Pg suiv sautent de scène en scène.",
+                "Maj avec 0–9, X, A ou D marque et passe à la suivante ; avec C, Tab ou T elle en fait plus : quatre photos, toutes les barres, toutes les photos.",
+                "Dans la grille (F6), ↑ ↓ changent de ligne, + − la taille, Entrée ouvre la photo.",
+                "Dans les scènes (F7), chaque scène commence une ligne ; Pg préc et Pg suiv sautent de scène en scène.",
                 "Redresser (S) : la molette et les flèches tournent, Maj plus fin. Recadrer (R) : tracez un cadre ou déplacez-le avec les flèches, +/− change sa taille, A le format, X bascule paysage/portrait.",
                 "La barre de menu (F10 ou le bouton en bas à droite) réunit ce qui agit sur cette photo, les photos affichées et la vue, plus les réglages – tout à la souris.",
                 "Dans la description, Entrée place le curseur dans le champ des mots-clés.",
@@ -781,9 +782,9 @@ pub static TEXTS: Texts = Texts {
         (
             "Vues",
             &[
-                ("F2 – F5", "Photo · grille · scènes · visages (G)"),
+                ("F5 – F8", "Photo · grille · scènes · visages"),
                 ("Esc, Entrée", "Retour à la photo"),
-                ("F, F11", "Plein écran"),
+                ("F11", "Plein écran"),
             ],
         ),
         (
@@ -810,7 +811,7 @@ pub static TEXTS: Texts = Texts {
                 ("F10, Alt+1", "Barre de menu"),
                 ("Tab, Alt+2", "Panneau de détails"),
                 ("T, Alt+3", "Barre de filtres"),
-                ("F6, Alt+4", "Pellicule"),
+                ("F9, Alt+4", "Pellicule"),
                 ("Maj+Tab, Alt+0", "Les quatre panneaux"),
                 ("Ctrl+Tab", "Onglet suivant des détails"),
             ],

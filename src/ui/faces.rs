@@ -1,4 +1,4 @@
-//! The faces of the current photo as a grid over the photo (`G`, for group photos): a click on
+//! The faces of the current photo as a grid over the photo (`F8`, for group photos): a click on
 //! a face, or its number, zooms to it. What is drawn comes from `app/faces.rs`.
 
 use eframe::egui::{
@@ -51,11 +51,11 @@ pub struct GridOutput {
 }
 
 /// All faces large over the photo area, numbered left to right; a click or its number (1–9)
-/// zooms to one, Esc, `G` or a click beside them closes.
+/// zooms to one, Esc, `F8` or a click beside them closes.
 pub fn grid(ctx: &Context, area: Rect, shown: &Shown<'_>) -> GridOutput {
     let t = i18n::t();
     let mut out = GridOutput::default();
-    // Esc (`G` closes it in `handle_keys`, where the arrows still move to another photo; the
+    // Esc (`F8` closes it in `handle_keys`, where the arrows still move to another photo; the
     // other keys pause while it is open).
     if ctx.input_mut(|i| i.consume_key(eframe::egui::Modifiers::NONE, Key::Escape)) {
         out.close = true;

@@ -108,7 +108,7 @@ pub static TEXTS: Texts = Texts {
     top_tooltip: "Foto, video o entrambi – oppure solo le foto migliori, secondo le tue stelle (altrimenti la previsione), l'estetica e la nitidezza, prima la migliore di ogni serie. Le foto scartate o sfocate e i duplicati non contano. La scelta resta finché cambia un filtro o scegli «Aggiorna ordine». Nelle foto non cambia nulla.",
     bulk_delete_top: "Non con Top – sono le foto migliori",
     filter_similar: "≈ Simili",
-    filter_mode_hint: "←/→ scegli · Spazio: spunta o apri · 0–9, X spunta · Canc: mostra tutto · Esc: fine",
+    filter_mode_hint: "←/→ scegli · Spazio: spunta o apri · 0–9, X spunta · Backspace: mostra tutto · Esc: fine",
     filter_mode_name: "Filtri da tastiera",
     filter_similar_to: |name| format!("≈ come {name}"),
     menu_similar_to: |name| format!("Simili a {name}"),
@@ -226,17 +226,17 @@ pub static TEXTS: Texts = Texts {
     view_scenes: "Scene",
     view_faces: "Volti",
     faces_video: "Nei video non si cercano volti",
-    filmstrip_in_grid: "Non serve nella griglia – F2 torna alla foto",
+    filmstrip_in_grid: "Non serve nella griglia – F5 torna alla foto",
     grid_no_date: "senza data",
-    filmstrip_in_scenes: "Non serve nelle scene – F2 torna alla foto",
+    filmstrip_in_scenes: "Non serve nelle scene – F5 torna alla foto",
     sort_in_scenes: "La vista per scene segue sempre l'ora di scatto – questo ordinamento torna fuori da essa",
     scene_untimed: "Senza ora di scatto",
     scene_singles: "Foto singole",
     faces_button: |n| {
         if n == 1 {
-            "Mostra 1 volto in grande (F5, G)".to_owned()
+            "Mostra 1 volto in grande (F8)".to_owned()
         } else {
-            format!("Mostra {n} volti in grande (F5, G)")
+            format!("Mostra {n} volti in grande (F8)")
         }
     },
     button_side_bar: "Barra dei menu",
@@ -694,8 +694,9 @@ pub static TEXTS: Texts = Texts {
             &[
                 "La rotellina sopra la striscia di miniature scorre le foto; sopra la foto ingrandisce e riduce.",
                 "Trascina una cartella sulla finestra per aprirla. Tieni premuto → per scorrere le foto.",
-                "Nella griglia (F3) ↑ ↓ cambiano riga, + − la dimensione, Invio apre la foto.",
-                "Nelle scene (F4) ogni scena inizia una riga; Pag su e Pag giù saltano da una scena all'altra.",
+                "Maiusc con 0–9, X, A o D segna e passa alla successiva; con C, Tab o T fa di più: quattro foto, tutte le barre, tutte le foto.",
+                "Nella griglia (F6) ↑ ↓ cambiano riga, + − la dimensione, Invio apre la foto.",
+                "Nelle scene (F7) ogni scena inizia una riga; Pag su e Pag giù saltano da una scena all'altra.",
                 "Raddrizza (S): rotellina e frecce ruotano, Maiusc più fine. Ritaglio (R): traccia una cornice o spostala con le frecce, +/− ne cambia la dimensione, A il formato, X scambia orizzontale/verticale.",
                 "La barra dei menu (F10 o il pulsante in basso a destra) raccoglie ciò che agisce su questa foto, sulle foto visibili e sulla vista, più le impostazioni – tutto con il mouse.",
                 "Nella descrizione, Invio porta il cursore nel campo delle parole chiave.",
@@ -740,9 +741,9 @@ pub static TEXTS: Texts = Texts {
         (
             "Viste",
             &[
-                ("F2 – F5", "Foto · griglia · scene · volti (G)"),
+                ("F5 – F8", "Foto · griglia · scene · volti"),
                 ("Esc, Invio", "Torna alla foto"),
-                ("F, F11", "Schermo intero"),
+                ("F11", "Schermo intero"),
             ],
         ),
         (
@@ -769,7 +770,7 @@ pub static TEXTS: Texts = Texts {
                 ("F10, Alt+1", "Barra dei menu"),
                 ("Tab, Alt+2", "Pannello dettagli"),
                 ("T, Alt+3", "Barra dei filtri"),
-                ("F6, Alt+4", "Striscia di miniature"),
+                ("F9, Alt+4", "Striscia di miniature"),
                 ("Maiusc+Tab, Alt+0", "Tutti e quattro i pannelli"),
                 ("Ctrl+Tab", "Scheda successiva dei dettagli"),
             ],

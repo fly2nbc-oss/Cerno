@@ -22,7 +22,7 @@ const LANGUAGE_FADE: Duration = Duration::from_millis(450);
 pub(super) struct Bars {
     /// The menu bar on the left is switched on (the menu button, saved as `side_bar`).
     pub(super) side_bar: bool,
-    /// Filter bar (`T`), filmstrip (`F6`) and details panel (`Tab`).
+    /// Filter bar (`T`), filmstrip (`F9`) and details panel (`Tab`).
     pub(super) toolbar: bool,
     pub(super) filmstrip: bool,
     pub(super) details: DetailsMode,
@@ -103,7 +103,7 @@ impl CernoApp {
         }
     }
 
-    /// Buttons and `F10` / `T` / `Tab` / `F6`. The details panel comes back at the stage it
+    /// Buttons and `F10` / `T` / `Tab` / `F9`. The details panel comes back at the stage it
     /// had.
     pub(super) fn toggle_panel(&mut self, panel: Panel) {
         match panel {

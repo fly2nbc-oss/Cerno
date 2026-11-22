@@ -856,7 +856,7 @@ pub struct Texts {
     pub setup_line: fn(bool, bool) -> String,
     /// The shortcuts page, by task in reading order: browse, rate and sort out, views, compare,
     /// zoom and check, panels, filter, edit, video, more. Keys of one family share a row
-    /// (`0 – 5`, `F2 – F5`, `T, Alt+3`); `Shift+…` says once what Shift adds.
+    /// (`0 – 5`, `F5 – F8`, `T, Alt+3`); `Shift+…` says once what Shift adds.
     pub help_keys: [KeySection; 10],
 }
 

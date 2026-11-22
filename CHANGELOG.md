@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Changed
+
+- **Keys reviewed** – the views move to `F5` photo, `F6` grid, `F7` scenes and `F8` faces, still in the order of the view switcher; the filmstrip moves to `F9` (`Alt+4` stays). Full screen is `F11` alone and the faces grid `F8` alone: `F` and `G` are free, like `F3` and `F4`. In the filter mode (`Ctrl+F`) Backspace shows all photos – `Del` now only ever means deleting. The help's tips say what Shift does: with `0`–`9`, `X`, `A` or `D` it marks and moves on, with `C`, `Tab` or `T` it does more.
+
 ## [1.15.2] – 2026-11-20
 
 No code signing for the Windows packages: the prepared signing and its policy are gone.

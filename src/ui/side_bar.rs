@@ -4,7 +4,7 @@
 //! filters in the filter bar, the panels' buttons in the info bar.
 //!
 //! It is for the mouse (since 1.12, the user's decision of 2026-10-10 – the bar is for
-//! beginners; `F10` shows and hides it like `T`, `Tab` and `F6` the other bars): it takes no
+//! beginners; `F10` shows and hides it like `T`, `Tab` and `F9` the other bars): it takes no
 //! key. Its rows never take egui's focus (`Sense::CLICK`), so `Space` can't click one again.
 
 use std::collections::BTreeSet;

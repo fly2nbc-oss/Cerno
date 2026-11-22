@@ -106,7 +106,7 @@ pub static TEXTS: Texts = Texts {
     top_tooltip: "Fotos, Videos oder beides – oder nur die besten Fotos, nach deinen Sternen (sonst die Vorhersage), Ästhetik und Schärfe, aus jeder Serie zuerst das beste. Abgelehnte und unscharfe Fotos und Dubletten zählen nicht. Die Auswahl bleibt, bis sich ein Filter ändert oder du „Reihenfolge aktualisieren“ wählst. An den Fotos wird nichts geändert.",
     bulk_delete_top: "Nicht bei „Top“ – das wären die besten Fotos",
     filter_similar: "≈ Ähnliche",
-    filter_mode_hint: "←/→ wählen · Leertaste: an/aus oder öffnen · 0–9, X anhaken · Entf: alle zeigen · Esc: fertig",
+    filter_mode_hint: "←/→ wählen · Leertaste: an/aus oder öffnen · 0–9, X anhaken · Rücktaste: alle zeigen · Esc: fertig",
     filter_mode_name: "Filter per Tastatur",
     filter_similar_to: |name| format!("≈ wie {name}"),
     menu_similar_to: |name| format!("Ähnlich zu {name}"),
@@ -235,17 +235,17 @@ pub static TEXTS: Texts = Texts {
     view_scenes: "Szenen",
     view_faces: "Gesichter",
     faces_video: "Videos werden nicht nach Gesichtern durchsucht",
-    filmstrip_in_grid: "Im Raster nicht nötig – F2 zurück zum Foto",
+    filmstrip_in_grid: "Im Raster nicht nötig – F5 zurück zum Foto",
     grid_no_date: "ohne Datum",
-    filmstrip_in_scenes: "In den Szenen nicht nötig – F2 zurück zum Foto",
+    filmstrip_in_scenes: "In den Szenen nicht nötig – F5 zurück zum Foto",
     sort_in_scenes: "Die Szenenansicht ordnet immer nach Aufnahmezeit – außerhalb gilt wieder diese Sortierung",
     scene_untimed: "Ohne Aufnahmezeit",
     scene_singles: "Einzelne Fotos",
     faces_button: |n| {
         if n == 1 {
-            "1 Gesicht groß zeigen (F5, G)".to_owned()
+            "1 Gesicht groß zeigen (F8)".to_owned()
         } else {
-            format!("{n} Gesichter groß zeigen (F5, G)")
+            format!("{n} Gesichter groß zeigen (F8)")
         }
     },
     button_side_bar: "Menüleiste",
@@ -710,8 +710,9 @@ pub static TEXTS: Texts = Texts {
             &[
                 "Das Mausrad über dem Filmstreifen blättert durch die Fotos, über dem Foto zoomt es.",
                 "Einen Ordner aufs Fenster ziehen öffnet ihn. → gedrückt halten läuft durch die Fotos.",
-                "Im Raster (F3) rücken ↑ ↓ eine Reihe, + − ändern die Größe, Enter öffnet das Foto.",
-                "In den Szenen (F4) beginnt jede Szene eine neue Reihe; Bild↑ Bild↓ springen von Szene zu Szene.",
+                "Umschalt mit 0–9, X, A oder D markiert und geht weiter; mit C, Tab oder T macht es mehr: vier Fotos, alle Leisten, alle Fotos.",
+                "Im Raster (F6) rücken ↑ ↓ eine Reihe, + − ändern die Größe, Enter öffnet das Foto.",
+                "In den Szenen (F7) beginnt jede Szene eine neue Reihe; Bild↑ Bild↓ springen von Szene zu Szene.",
                 "Ausrichten (S): Mausrad und Pfeile drehen, Umschalt feiner. Ausschnitt (R): Rahmen aufziehen oder mit den Pfeilen schieben, +/− ändern die Größe, A wechselt das Format, X dreht Quer/Hoch.",
                 "Die Menüleiste (F10 oder der Knopf unten rechts) hält, was auf dieses Foto, die sichtbaren Fotos und die Ansicht wirkt, dazu die Einstellungen – alles mit der Maus.",
                 "In der Beschreibung setzt Enter den Cursor ins Stichwortfeld.",
@@ -756,9 +757,9 @@ pub static TEXTS: Texts = Texts {
         (
             "Ansichten",
             &[
-                ("F2 – F5", "Foto · Raster · Szenen · Gesichter (G)"),
+                ("F5 – F8", "Foto · Raster · Szenen · Gesichter"),
                 ("Esc, Enter", "Zurück zum Foto"),
-                ("F, F11", "Vollbild"),
+                ("F11", "Vollbild"),
             ],
         ),
         (
@@ -788,7 +789,7 @@ pub static TEXTS: Texts = Texts {
                 ("F10, Alt+1", "Menüleiste"),
                 ("Tab, Alt+2", "Detailansicht"),
                 ("T, Alt+3", "Filterleiste"),
-                ("F6, Alt+4", "Filmstreifen"),
+                ("F9, Alt+4", "Filmstreifen"),
                 ("Umschalt+Tab, Alt+0", "Alle vier Leisten"),
                 ("Strg+Tab", "Nächster Reiter der Details"),
             ],

@@ -1,4 +1,4 @@
-//! The faces of the current photo, for the grid of all faces (`G`). Where they are comes from
+//! The faces of the current photo, for the grid of all faces (`F8`). Where they are comes from
 //! the index (`Db::faces_of`); a photo analysed before 1.7 has no rows yet, and its faces are
 //! looked for once more – only when the grid shows it, then stored. The pictures are cut from
 //! the photo at full size on a thread, for the current photo only; nothing is analysed while
@@ -46,7 +46,7 @@ pub(super) struct Faces {
     path: Option<PathBuf>,
     found: Option<Arc<Found>>,
     rx: Option<mpsc::Receiver<Result<Found, String>>>,
-    /// `G`: every face over the photo.
+    /// `F8`: every face over the photo.
     pub(super) grid_open: bool,
     /// A face to zoom to (0..1 box), once the photo's frame is known.
     pub(super) zoom_to: Option<[f32; 4]>,
@@ -103,7 +103,7 @@ impl State {
 }
 
 impl CernoApp {
-    /// `G`: every face of the photo large over it, or the photo again.
+    /// `F8`: every face of the photo large over it, or the photo again.
     pub(super) fn toggle_face_grid(&mut self) {
         self.viewer.faces.grid_open = !self.viewer.faces.grid_open;
     }

@@ -1,4 +1,4 @@
-//! The grid (`F3`): every photo of the view as a thumbnail cell. The cursor is the current
+//! The grid (`F6`): every photo of the view as a thumbnail cell. The cursor is the current
 //! photo, so marks, deleting and moving on work as in the single view. Only the rows on screen
 //! are drawn. While it scrolls in capture-time order, the top row's date floats over it.
 

@@ -112,7 +112,7 @@ pub static TEXTS: Texts = Texts {
     top_tooltip: "Photos, videos or both – or only the best photos, by your stars (else the prediction), aesthetics and sharpness, the best of each series first. Rejected and blurry photos and duplicates don't count. The choice stays until a filter changes or you choose Refresh order. Nothing in the photos changes.",
     bulk_delete_top: "Not with Top – these are the best photos",
     filter_similar: "≈ Similar",
-    filter_mode_hint: "←/→ choose · Space: tick or open · 0–9, X tick · Del: show all · Esc: done",
+    filter_mode_hint: "←/→ choose · Space: tick or open · 0–9, X tick · Backspace: show all · Esc: done",
     filter_mode_name: "Filters with the keyboard",
     filter_similar_to: |name| format!("≈ like {name}"),
     menu_similar_to: |name| format!("Similar to {name}"),
@@ -236,17 +236,17 @@ pub static TEXTS: Texts = Texts {
     view_scenes: "Scenes",
     view_faces: "Faces",
     faces_video: "Videos are not searched for faces",
-    filmstrip_in_grid: "Not needed in the grid – F2 back to the photo",
+    filmstrip_in_grid: "Not needed in the grid – F5 back to the photo",
     grid_no_date: "no date",
-    filmstrip_in_scenes: "Not needed in the scenes – F2 back to the photo",
+    filmstrip_in_scenes: "Not needed in the scenes – F5 back to the photo",
     sort_in_scenes: "The scene view is always in capture-time order – this sort applies again outside it",
     scene_untimed: "No capture time",
     scene_singles: "Single photos",
     faces_button: |n| {
         if n == 1 {
-            "Show 1 face large (F5, G)".to_owned()
+            "Show 1 face large (F8)".to_owned()
         } else {
-            format!("Show {n} faces large (F5, G)")
+            format!("Show {n} faces large (F8)")
         }
     },
     button_side_bar: "Menu bar",
@@ -701,8 +701,9 @@ pub static TEXTS: Texts = Texts {
             &[
                 "The mouse wheel over the filmstrip steps through the photos; over the photo it zooms.",
                 "Drop a folder onto the window to open it. Hold → to run through the photos.",
-                "In the grid (F3) ↑ ↓ move a row, + − change the size, Enter opens the photo.",
-                "In the scenes (F4) every scene starts a new row; PgUp PgDn jump from scene to scene.",
+                "Shift with 0–9, X, A or D marks and moves on; with C, Tab or T it does more: four photos, every bar, all photos.",
+                "In the grid (F6) ↑ ↓ move a row, + − change the size, Enter opens the photo.",
+                "In the scenes (F7) every scene starts a new row; PgUp PgDn jump from scene to scene.",
                 "Straighten (S): the wheel and the arrows turn, Shift is finer. Crop (R): draw a frame or move it with the arrows, +/− size it, A changes the ratio, X turns it.",
                 "The menu bar (F10 or the button at the bottom right) holds what acts on this photo, the photos on screen and the view, and the settings – all with the mouse.",
                 "On the description tab Enter puts the cursor into the keyword field.",
@@ -747,9 +748,9 @@ pub static TEXTS: Texts = Texts {
         (
             "Views",
             &[
-                ("F2 – F5", "Photo · grid · scenes · faces (G)"),
+                ("F5 – F8", "Photo · grid · scenes · faces"),
                 ("Esc, Enter", "Back to the photo"),
-                ("F, F11", "Full screen"),
+                ("F11", "Full screen"),
             ],
         ),
         (
@@ -776,7 +777,7 @@ pub static TEXTS: Texts = Texts {
                 ("F10, Alt+1", "Menu bar"),
                 ("Tab, Alt+2", "Details panel"),
                 ("T, Alt+3", "Filter bar"),
-                ("F6, Alt+4", "Filmstrip"),
+                ("F9, Alt+4", "Filmstrip"),
                 ("Shift+Tab, Alt+0", "All four panels"),
                 ("Ctrl+Tab", "Next tab of the details"),
             ],

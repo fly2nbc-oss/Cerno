@@ -207,7 +207,7 @@ impl CernoApp {
         }
     }
 
-    /// The grid (`F3`) instead of the photo: a click moves the cursor (the current photo), a
+    /// The grid (`F6`) instead of the photo: a click moves the cursor (the current photo), a
     /// double click opens it, Ctrl + wheel changes the size.
     fn draw_grid(&mut self, ui: &mut egui::Ui, rect: Rect) {
         let ctx = ui.ctx().clone();

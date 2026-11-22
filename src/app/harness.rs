@@ -257,44 +257,44 @@ mod tests {
         assert_eq!(h.layer(), "models");
     }
 
-    /// `G` closes the faces grid before anything else reads the frame's keys.
+    /// `F8` closes the faces grid before anything else reads the frame's keys.
     #[test]
     fn g_and_x_in_one_frame_only_close_the_faces_grid() {
         let mut h = Harness::new(3);
         h.settle();
         h.app.viewer.faces.grid_open = true;
-        h.frame(presses(&[(Key::G, NONE), (Key::X, NONE)]));
+        h.frame(presses(&[(Key::F8, NONE), (Key::X, NONE)]));
         assert!(!h.app.viewer.faces.grid_open);
         assert_eq!(h.rating_of(0), None);
     }
 
-    /// `F5` opens and closes the faces grid like `G`; over it `F2`, `F3` and `F4` go to the
+    /// `F8` opens and closes the faces grid; over it `F5`, `F6` and `F7` go to the
     /// photo, the grid and the scenes, as the view switcher's parts do – also when the faces
     /// grid lies over the grid.
     #[test]
     fn the_view_keys_work_over_the_faces_grid() {
         let mut h = Harness::new(3);
         h.settle();
-        h.press(Key::F5, NONE);
+        h.press(Key::F8, NONE);
         assert!(h.app.viewer.faces.grid_open);
-        h.press(Key::F5, NONE);
+        h.press(Key::F8, NONE);
         assert!(!h.app.viewer.faces.grid_open);
-        h.press(Key::F3, NONE);
-        h.press(Key::F5, NONE);
+        h.press(Key::F6, NONE);
+        h.press(Key::F8, NONE);
         assert!(h.app.viewer.faces.grid_open && h.app.viewer.grid);
-        h.press(Key::F3, NONE);
+        h.press(Key::F6, NONE);
         assert!(
             !h.app.viewer.faces.grid_open && h.app.viewer.grid,
-            "F3: the grid"
+            "F6: the grid"
         );
-        h.press(Key::G, NONE);
-        h.press(Key::F4, NONE);
-        assert!(!h.app.viewer.faces.grid_open && h.app.viewer.scenes, "F4");
+        h.press(Key::F8, NONE);
+        h.press(Key::F7, NONE);
+        assert!(!h.app.viewer.faces.grid_open && h.app.viewer.scenes, "F7");
+        h.press(Key::F8, NONE);
         h.press(Key::F5, NONE);
-        h.press(Key::F2, NONE);
         assert!(
             !h.app.viewer.faces.grid_open && !h.app.viewer.grid,
-            "F2: the photo"
+            "F5: the photo"
         );
     }
 
@@ -365,7 +365,7 @@ mod tests {
     fn c_in_the_grid_leaves_the_grid_first() {
         let mut h = Harness::new(3);
         h.settle();
-        h.press(Key::F3, NONE);
+        h.press(Key::F6, NONE);
         assert!(h.app.viewer.grid);
         h.press(Key::C, NONE);
         assert!(!h.app.viewer.grid);
@@ -588,7 +588,7 @@ mod tests {
         assert!(!h.app.viewer.split && h.app.viewer.quad.is_some());
         h.press(Key::C, alt);
         assert!(h.app.viewer.split && h.app.viewer.quad.is_none());
-        h.press(Key::F3, NONE);
+        h.press(Key::F6, NONE);
         assert!(!h.app.viewer.split && h.app.viewer.grid);
         h.press(Key::C, alt);
         assert!(
@@ -606,7 +606,7 @@ mod tests {
     }
 
     /// The scene view and the split view end each other as the grid and the split view do:
-    /// `F4` ends the split view, `Alt+C` leaves the scenes for the photo.
+    /// `F7` ends the split view, `Alt+C` leaves the scenes for the photo.
     #[test]
     fn the_split_view_and_the_scenes_end_each_other() {
         let alt = Modifiers::ALT;
@@ -614,7 +614,7 @@ mod tests {
         h.settle();
         h.press(Key::C, alt);
         assert!(h.app.viewer.split);
-        h.press(Key::F4, NONE);
+        h.press(Key::F7, NONE);
         assert!(!h.app.viewer.split && h.app.viewer.scenes && h.app.viewer.grid);
         h.press(Key::C, alt);
         assert!(
@@ -679,7 +679,7 @@ mod tests {
     fn the_scene_view_greys_the_sort_box_out() {
         let mut h = Harness::new(3);
         h.settle();
-        h.press(Key::F4, NONE);
+        h.press(Key::F7, NONE);
         assert!(h.app.viewer.scenes);
         h.press(Key::F, Modifiers::COMMAND);
         h.press(Key::End, NONE);
@@ -695,7 +695,7 @@ mod tests {
                 .is_some_and(|notice| notice.text == reason)
         );
         h.press(Key::Escape, NONE);
-        h.press(Key::F4, NONE);
+        h.press(Key::F7, NONE);
         assert!(!h.app.viewer.scenes);
         h.press(Key::F, Modifiers::COMMAND);
         h.press(Key::Space, NONE);
@@ -806,7 +806,7 @@ mod tests {
         assert_eq!(h.rating_of(0), Some(Rating::Rejected));
     }
 
-    /// `F10` switches the menu bar like `T`, `Tab` and `F6` the other bars: it stays while
+    /// `F10` switches the menu bar like `T`, `Tab` and `F9` the other bars: it stays while
     /// the photos change, takes no key, and is saved.
     #[test]
     fn f10_switches_the_menu_bar_and_it_stays() {
@@ -986,8 +986,9 @@ mod tests {
     }
 
     /// `Ctrl+F` shows the filter bar although it is off and takes the keys: the arrows move
-    /// the frame, not the photo; `4` ticks 4★ and rates nothing; `Del` shows all and deletes
-    /// nothing; `Esc` ends the mode, the bar goes again and the keys are the photo's.
+    /// the frame, not the photo; `4` ticks 4★ and rates nothing; `Del` does nothing, Backspace
+    /// shows all and nothing is deleted; `Esc` ends the mode, the bar goes again and the keys
+    /// are the photo's.
     #[test]
     fn the_filter_mode_takes_the_keys_until_esc() {
         let ctrl = Modifiers::COMMAND;
@@ -1011,7 +1012,10 @@ mod tests {
         h.press(Key::X, NONE);
         assert!(h.app.options.filter.contains(FilterKind::Rejected));
         h.press(Key::Delete, NONE);
-        assert!(!h.app.options.is_filtered(), "Del shows all");
+        assert!(h.app.options.is_filtered(), "Del does nothing in the mode");
+        assert!(h.app.deletions.countdown(Instant::now()).is_none());
+        h.press(Key::Backspace, NONE);
+        assert!(!h.app.options.is_filtered(), "Backspace shows all");
         assert_eq!(h.app.view.len(), 3, "and deletes nothing");
         assert!(h.app.deletions.countdown(Instant::now()).is_none());
         h.press(Key::Space, NONE);

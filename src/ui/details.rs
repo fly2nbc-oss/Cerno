@@ -52,7 +52,7 @@ impl DetailsMode {
 }
 
 /// What the panel shows: the analysis values or the photo's comment and keywords (`Ctrl+Tab`
-/// steps between them). Its faces are `G`'s grid over the photo – the faces tab is gone since
+/// steps between them). Its faces are `F8`'s grid over the photo – the faces tab is gone since
 /// 1.10, a saved `faces` opens the values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DetailsTab {

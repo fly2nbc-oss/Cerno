@@ -130,9 +130,9 @@ pub(super) enum Command {
     Reveal,
 
     // The view.
-    /// `F3`.
+    /// `F6`.
     ToggleGrid,
-    /// `F4`: the scene view.
+    /// `F7`: the scene view.
     ToggleScenes,
     /// The view switcher: the photo, the grid, the scenes or the faces.
     ShowView(View),
@@ -158,7 +158,7 @@ pub(super) enum Command {
     Fullscreen,
     /// `Esc`: one thing at a time (`escape_target`).
     Escape,
-    /// `G`: every face over the photo.
+    /// `F8`: every face over the photo.
     FaceGrid,
     /// A face of the faces grid, large.
     ZoomToFace(usize),
@@ -390,7 +390,7 @@ impl CernoApp {
             }
             Command::EditWithOther => self.pick_editor(),
             Command::EditWithChooser => self.edit_with_chooser(),
-            // From the scene view `F3` goes to the grid, from the grid `F4` to the scenes.
+            // From the scene view `F6` goes to the grid, from the grid `F7` to the scenes.
             Command::ToggleGrid => self.set_grid(!self.viewer.grid || self.viewer.scenes),
             Command::ToggleScenes => self.set_scenes(!self.viewer.scenes),
             Command::ShowView(view) => self.show_view(view),

@@ -556,7 +556,7 @@ impl CernoApp {
                     .toggle(self.viewer.split),
             ),
             Item::Segments(overlay),
-            Item::Row(Row::new(Command::Fullscreen, t.cmd_fullscreen, key("F"))),
+            Item::Row(Row::new(Command::Fullscreen, t.cmd_fullscreen, key("F11"))),
         ]
     }
 

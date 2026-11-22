@@ -74,8 +74,8 @@ struct KeyInput {
     space: bool,
     /// The video keys (fresh presses): `Space`, `Alt+←`/`Alt+→`, `,`/`.`, `↑`/`↓`.
     video: super::video::VideoKeys,
-    /// `G` or `F5`: every face over the photo. (The details panel's tabs are `Ctrl+Tab`, taken
-    /// in `raw_input_hook`.)
+    /// `F8`: every face over the photo. (The details panel's tabs are `Ctrl+Tab`, taken in
+    /// `raw_input_hook`.)
     face_grid: bool,
     /// `E`: edit the photo in the remembered program (or choose one).
     edit_elsewhere: bool,
@@ -89,13 +89,13 @@ struct KeyInput {
     toggle_toolbar: bool,
     /// `Shift+T`: the whole filter aside – every photo – or back.
     filter_aside: bool,
-    /// `F6` or `Alt+4`: the filmstrip.
+    /// `F9` or `Alt+4`: the filmstrip.
     toggle_filmstrip: bool,
-    /// `F2`: the single photo, from the grid, the scene view or the faces grid.
+    /// `F5`: the single photo, from the grid, the scene view or the faces grid.
     show_photo: bool,
-    /// `F3`: the grid, or back to the photo.
+    /// `F6`: the grid, or back to the photo.
     toggle_grid: bool,
-    /// `F4`: the scene view, or back to the photo.
+    /// `F7`: the scene view, or back to the photo.
     toggle_scenes: bool,
     help: bool,
     language: bool,
@@ -253,22 +253,22 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
                 plain && i.key_pressed(Key::ArrowUp),
             ),
         },
-        face_grid: plain && (i.key_pressed(Key::G) || i.key_pressed(Key::F5)),
+        face_grid: plain && i.key_pressed(Key::F8),
         edit_elsewhere: plain && i.key_pressed(Key::E),
         // Ctrl+O opens a folder.
         overlay: plain && i.key_pressed(Key::O),
         similar: plain && i.key_pressed(Key::M),
-        // F and F11 full screen; T (`toggle_toolbar`) is the filter bar.
-        toggle_fullscreen: i.key_pressed(Key::F11) || (plain && i.key_pressed(Key::F)),
+        // F11 full screen; T (`toggle_toolbar`) is the filter bar.
+        toggle_fullscreen: i.key_pressed(Key::F11),
         escape: i.key_pressed(Key::Escape),
         toggle_toolbar: (plain && i.key_pressed(Key::T)) || alt_digit(&i.events, Key::Num3),
         filter_aside: i.modifiers.shift_only() && i.key_pressed(Key::T),
-        toggle_filmstrip: i.key_pressed(Key::F6) || alt_digit(&i.events, Key::Num4),
-        // The views in the order of the info bar's switcher: photo, grid, scenes, faces (`F5`,
-        // with `face_grid`). Without modifiers: `Alt+F4` closes the window on Windows.
-        show_photo: plain && i.key_pressed(Key::F2),
-        toggle_grid: plain && i.key_pressed(Key::F3),
-        toggle_scenes: plain && i.key_pressed(Key::F4),
+        toggle_filmstrip: i.key_pressed(Key::F9) || alt_digit(&i.events, Key::Num4),
+        // The views in the order of the info bar's switcher: photo, grid, scenes, faces (`F8`,
+        // with `face_grid`). Without modifiers, like every view key.
+        show_photo: plain && i.key_pressed(Key::F5),
+        toggle_grid: plain && i.key_pressed(Key::F6),
+        toggle_scenes: plain && i.key_pressed(Key::F7),
         help: i.key_pressed(Key::F1)
             || i.key_pressed(Key::Questionmark)
             || (plain && i.key_pressed(Key::H)),
@@ -297,7 +297,7 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
 }
 
 /// The keys of one frame in the filter mode (`Ctrl+F`), in this order: the frame moves, `Space`
-/// or `Enter` act on its box, the marking keys tick their box, `Del` shows all, `Esc` (after a
+/// or `Enter` act on its box, the marking keys tick their box, Backspace shows all, `Esc` (after a
 /// deletion counting down) or `Ctrl+F` end the mode. Arrows repeat while held; the rest counts fresh presses only. Digits
 /// count by their place on the keyboard, as when marking.
 pub(super) fn read_filter_keys(i: &egui::InputState) -> Vec<Action> {
@@ -328,7 +328,8 @@ pub(super) fn read_filter_keys(i: &egui::InputState) -> Vec<Action> {
     if fresh(&i.events, Key::X) {
         out.push(Action::Tick(FilterKind::Rejected));
     }
-    if fresh(&i.events, Key::Delete) {
+    // Backspace, not `Del`: `Del` means deleting everywhere else.
+    if fresh(&i.events, Key::Backspace) {
         out.push(Action::ShowAll);
     }
     if i.key_pressed(Key::Escape) {
@@ -355,8 +356,7 @@ impl KeyInput {
         .collect()
     }
 
-    /// Over the faces grid: the view `F2`, `F3` or `F4` asks for (`F5` closes the grid, like
-    /// `G`).
+    /// Over the faces grid: the view `F5`, `F6` or `F7` asks for (`F8` closes the grid).
     fn view_over_faces(&self) -> Option<View> {
         [
             (self.show_photo, View::Photo),
@@ -483,12 +483,10 @@ impl CernoApp {
             self.open(ctx, &path);
         }
         let tabs = std::mem::take(&mut self.pressed.tabs);
-        // The faces grid closes with `G` or `F5` too – read here, before the grid draws: it
-        // would see the press that opened it and close in the same frame.
+        // The faces grid closes with `F8` too – read here, before the grid draws: it would see
+        // the press that opened it and close in the same frame.
         if self.viewer.faces.grid_open
-            && ctx.input(|i| {
-                i.modifiers.is_none() && (i.key_pressed(Key::G) || i.key_pressed(Key::F5))
-            })
+            && ctx.input(|i| i.modifiers.is_none() && i.key_pressed(Key::F8))
         {
             self.viewer.faces.grid_open = false;
             return;
@@ -511,7 +509,7 @@ impl CernoApp {
                     return;
                 }
                 // The other views' keys do what the view switcher's parts do: the faces grid
-                // can lie over the grid, where `F3` toggling the grid would close it.
+                // can lie over the grid, where `F6` toggling the grid would close it.
                 if let Some(view) = keys.view_over_faces() {
                     self.show_view(view);
                     return;
@@ -764,7 +762,7 @@ mod tests {
     }
 
     /// One key cap of the English help as key presses: `Ctrl+←`, a range – `0 – 5`, `6 – 9`,
-    /// `F2 – F5` – as every key in it, `Shift+…` (every digit and `X` with Shift). The mouse gives none, and neither does `Tab` – it is taken in
+    /// `F5 – F8` – as every key in it, `Shift+…` (every digit and `X` with Shift). The mouse gives none, and neither does `Tab` – it is taken in
     /// `raw_input_hook`, before `read_keys`.
     fn presses(cap: &str) -> Vec<(Key, Modifiers)> {
         let (modifiers, name) = [
@@ -835,12 +833,13 @@ mod tests {
         assert!(checked > 50, "only {checked} keys");
     }
 
-    /// The keys the 1.15 features brought each ask for exactly one thing – no key is bound
-    /// twice: the views `F2`–`F5` in the order of the info bar's switcher, `Alt+C`, `Ctrl+F`,
-    /// `Alt+1`/`2`/`3`/`4`/`0`, `Shift+A`/`D`, Page Up/Down (a screen in the grid, a scene in
-    /// the scene view, a photo else – one command, `run` decides by the view). `F7`, `F8`
-    /// (the grid and the scenes until 1.15) and `Shift+Z` (the split view before `Alt+C`) are
-    /// free: they do nothing.
+    /// The view and bar keys each ask for exactly one thing – no key is bound twice: the views
+    /// `F5`–`F8` in the order of the info bar's switcher (since 1.16; `F2`–`F5` before),
+    /// `F9` the filmstrip, `Alt+C`, `Ctrl+F`, `Alt+1`/`2`/`3`/`4`/`0`, `Shift+A`/`D`, Page
+    /// Up/Down (a screen in the grid, a scene in the scene view, a photo else – one command,
+    /// `run` decides by the view). `F3`, `F4`, `F`, `G` (taken by views, full screen and the
+    /// faces grid until 1.16) and `Shift+Z` (the split view before `Alt+C`) are free: they do
+    /// nothing.
     #[test]
     fn the_new_keys_each_ask_for_one_thing() {
         let (plain, shift, ctrl, alt) = (
@@ -850,11 +849,11 @@ mod tests {
             Modifiers::ALT,
         );
         let cases = [
-            (Key::F2, plain, Command::ShowView(View::Photo)),
-            (Key::F3, plain, Command::ToggleGrid),
-            (Key::F4, plain, Command::ToggleScenes),
-            (Key::F5, plain, Command::FaceGrid),
-            (Key::G, plain, Command::FaceGrid),
+            (Key::F5, plain, Command::ShowView(View::Photo)),
+            (Key::F6, plain, Command::ToggleGrid),
+            (Key::F7, plain, Command::ToggleScenes),
+            (Key::F8, plain, Command::FaceGrid),
+            (Key::F11, plain, Command::Fullscreen),
             (Key::C, alt, Command::Split),
             (Key::F, ctrl, Command::FilterMode),
             (Key::Num1, alt, Command::TogglePanel(Panel::Left)),
@@ -862,7 +861,7 @@ mod tests {
             (Key::Num3, alt, Command::TogglePanel(Panel::Top)),
             (Key::T, plain, Command::TogglePanel(Panel::Top)),
             (Key::Num4, alt, Command::TogglePanel(Panel::Bottom)),
-            (Key::F6, plain, Command::TogglePanel(Panel::Bottom)),
+            (Key::F9, plain, Command::TogglePanel(Panel::Bottom)),
             (Key::Num0, alt, Command::AllPanels),
             (Key::A, shift, Command::KeepLeft { next: true }),
             (Key::D, shift, Command::KeepRight { next: true }),
@@ -878,15 +877,21 @@ mod tests {
                 .collect();
             assert_eq!(commands, [command], "{pressed:?} with {modifiers:?}");
         }
-        for (pressed, modifiers) in [(Key::F7, plain), (Key::F8, plain), (Key::Z, shift)] {
+        for (pressed, modifiers) in [
+            (Key::F3, plain),
+            (Key::F4, plain),
+            (Key::F, plain),
+            (Key::G, plain),
+            (Key::Z, shift),
+        ] {
             assert_eq!(
                 read(vec![key(pressed, pressed, modifiers)], modifiers),
                 KeyInput::default(),
                 "{pressed:?} with {modifiers:?} is free"
             );
         }
-        // The views take no modifier: `Alt+F4` closes the window, `Ctrl+F4` is nothing.
-        for pressed in [Key::F2, Key::F3, Key::F4, Key::F5] {
+        // The views take no modifier.
+        for pressed in [Key::F5, Key::F6, Key::F7, Key::F8] {
             for modifiers in [alt, ctrl, shift] {
                 assert_eq!(
                     read(vec![key(pressed, pressed, modifiers)], modifiers),
@@ -1035,7 +1040,7 @@ mod tests {
     }
 
     /// `M` filters similar photos; `Ctrl+M` and `Ctrl+K` do nothing since 1.12. `F10` is the
-    /// menu bar, with any modifier like `F6`.
+    /// menu bar, with any modifier like `F9`.
     #[test]
     fn m_filters_similar_photos_and_f10_is_the_menu_bar() {
         let plain = Modifiers::NONE;
@@ -1059,13 +1064,13 @@ mod tests {
     }
 
     #[test]
-    fn f3_the_grid_and_page_keys_on_their_own() {
+    fn f6_the_grid_and_page_keys_on_their_own() {
         let plain = Modifiers::NONE;
-        assert!(read(vec![key(Key::F3, Key::F3, plain)], plain).toggle_grid);
-        let scenes = read(vec![key(Key::F4, Key::F4, plain)], plain);
+        assert!(read(vec![key(Key::F6, Key::F6, plain)], plain).toggle_grid);
+        let scenes = read(vec![key(Key::F7, Key::F7, plain)], plain);
         assert!(
             scenes.toggle_scenes && !scenes.toggle_grid,
-            "F4: the scene view"
+            "F7: the scene view"
         );
         assert!(scenes.commands(&[]).contains(&Command::ToggleScenes));
         let keys = read(vec![key(Key::PageDown, Key::PageDown, plain)], plain);
@@ -1220,14 +1225,14 @@ mod tests {
         );
     }
 
-    /// `G` or `F5` alone shows every face; with Shift it is nothing any more.
+    /// `F8` alone shows every face; `G` (until 1.16) and `Shift+F8` are nothing.
     #[test]
-    fn g_and_f5_are_the_face_grid() {
+    fn f8_is_the_face_grid() {
         let plain = Modifiers::NONE;
         let shift = Modifiers::SHIFT;
-        assert!(read(vec![key(Key::G, Key::G, plain)], plain).face_grid);
-        assert!(read(vec![key(Key::F5, Key::F5, plain)], plain).face_grid);
-        assert!(!read(vec![key(Key::G, Key::G, shift)], shift).face_grid);
+        assert!(read(vec![key(Key::F8, Key::F8, plain)], plain).face_grid);
+        assert!(!read(vec![key(Key::G, Key::G, plain)], plain).face_grid);
+        assert!(!read(vec![key(Key::F8, Key::F8, shift)], shift).face_grid);
     }
 
     /// `Alt+1`–`Alt+4` and `Alt+0` switch the menu bar, the details, the filter bar, the
@@ -1278,7 +1283,7 @@ mod tests {
         }
     }
 
-    /// `Ctrl+F` is the filter mode; plain `F` stays full screen.
+    /// `Ctrl+F` is the filter mode; full screen is `F11` alone since 1.16.
     #[test]
     fn ctrl_f_is_the_filter_mode() {
         let ctrl = Modifiers::COMMAND;
@@ -1286,8 +1291,11 @@ mod tests {
         assert!(keys.filter_mode && !keys.toggle_fullscreen);
         assert!(keys.commands(&[]).contains(&Command::FilterMode));
         let plain = Modifiers::NONE;
-        let keys = read(vec![key(Key::F, Key::F, plain)], plain);
-        assert!(keys.toggle_fullscreen && !keys.filter_mode);
+        assert_eq!(
+            read(vec![key(Key::F, Key::F, plain)], plain),
+            KeyInput::default()
+        );
+        assert!(read(vec![key(Key::F11, Key::F11, plain)], plain).toggle_fullscreen);
     }
 
     /// The filter mode's keys of one headless frame.
@@ -1308,8 +1316,9 @@ mod tests {
     }
 
     /// In the filter mode the marking keys tick their box – digits by their place, as when
-    /// marking –, the arrows move the frame, `Space` and `Enter` act, `Del` shows all, `Esc`
-    /// and `Ctrl+F` end it.
+    /// marking –, the arrows move the frame, `Space` and `Enter` act, Backspace shows all
+    /// (`Del` means deleting everywhere else, so here it is nothing), `Esc` and `Ctrl+F` end
+    /// it.
     #[test]
     fn the_filter_mode_reads_its_own_keys() {
         let plain = Modifiers::NONE;
@@ -1330,7 +1339,8 @@ mod tests {
             one(Key::X, Key::X),
             vec![Action::Tick(FilterKind::Rejected)]
         );
-        assert_eq!(one(Key::Delete, Key::Delete), vec![Action::ShowAll]);
+        assert_eq!(one(Key::Backspace, Key::Backspace), vec![Action::ShowAll]);
+        assert!(one(Key::Delete, Key::Delete).is_empty());
         assert_eq!(one(Key::Space, Key::Space), vec![Action::Activate]);
         assert_eq!(one(Key::Enter, Key::Enter), vec![Action::Activate]);
         assert_eq!(one(Key::Escape, Key::Escape), vec![Action::Escape]);
@@ -1354,6 +1364,5 @@ mod tests {
         assert!(read_mode(vec![key(Key::Num4, Key::Num4, shift)], shift).is_empty());
         assert!(read_mode(vec![key(Key::ArrowRight, Key::ArrowRight, ctrl)], ctrl).is_empty());
         assert!(one(Key::T, Key::T).is_empty());
-        assert!(one(Key::Backspace, Key::Backspace).is_empty());
     }
 }

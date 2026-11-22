@@ -38,7 +38,7 @@ pub(super) struct Viewer {
     pub(super) zoom: viewer::Zoom,
     /// The check overlay over the photos (`O`).
     pub(super) overlay: overlay::Mode,
-    /// The grid (`F3`) instead of the single photo.
+    /// The grid (`F6`) instead of the single photo.
     pub(super) grid: bool,
     /// Its cell size, an index into `grid::STEPS`.
     pub(super) grid_step: usize,
@@ -47,11 +47,11 @@ pub(super) struct Viewer {
     /// Columns and cells per page of the last drawn grid, for `↑`/`↓` and Page Up / Down.
     pub(super) grid_columns: usize,
     pub(super) grid_page: usize,
-    /// The grid shows the scene view (`F4`): every scene from a new row under its header.
+    /// The grid shows the scene view (`F7`): every scene from a new row under its header.
     pub(super) scenes: bool,
     /// The scenes and the order the view was built in.
     pub(super) scene_state: super::scenes::SceneState,
-    /// The current photo's faces and the faces grid (`G`).
+    /// The current photo's faces and the faces grid (`F8`).
     pub(super) faces: super::faces::Faces,
 }
 
@@ -320,7 +320,7 @@ impl CernoApp {
         }));
     }
 
-    /// `F3`: the grid instead of the single photo, or back. While it shows only its cursor
+    /// `F6`: the grid instead of the single photo, or back. While it shows only its cursor
     /// photo is decoded, and the thumbnail cache keeps what it shows. Not during a straighten
     /// or crop session.
     pub(super) fn set_grid(&mut self, on: bool) {
@@ -346,7 +346,7 @@ impl CernoApp {
     }
 
     /// The info bar's view switcher: the photo, the grid, the scenes or the faces of the photo
-    /// – what `F2`/`Esc`, `F3`, `F4` and `F5`/`G` do.
+    /// – what `F5`/`Esc`, `F6`, `F7` and `F8` do.
     pub(super) fn show_view(&mut self, view: crate::ui::info_bar::View) {
         use crate::ui::info_bar::View;
         match view {
