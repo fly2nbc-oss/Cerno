@@ -251,6 +251,12 @@ pub struct Texts {
     pub pin_fact: &'static str,
     pub cmd_pin: &'static str,
     pub cmd_clear_pins: fn(usize) -> String,
+    /// *Visible photos ▸ Pinned photos of every folder (n)*: the collection (CER-74).
+    pub cmd_open_pins: fn(usize) -> String,
+    /// The collection's name: window title and where a folder's name would be.
+    pub pins_title: &'static str,
+    pub pins_hint: &'static str,
+    pub pins_folder_only: &'static str,
     pub pins_none: &'static str,
     pub confirm_clear_pins_title: &'static str,
     pub confirm_clear_pins_text: fn(usize) -> String,

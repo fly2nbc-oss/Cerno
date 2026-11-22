@@ -106,8 +106,10 @@ pub(super) enum Command {
     SetLabel(Option<Label>, Advance),
     /// `V` / `Shift+V`: mark in Cerno alone (CER-74).
     Pin(Advance),
-    /// *Visible photos ▸ Clear marks (n)*: asks first.
+    /// *Visible photos ▸ Unpin all (n)*: asks first.
     ClearPins,
+    /// *Visible photos ▸ Pinned photos of every folder (n)*.
+    OpenPins,
     AutoAdvance,
 
     // This photo.
@@ -366,6 +368,7 @@ impl CernoApp {
                 self.toggle_pin(ctx, self.advance(advance), advance == Advance::Yes);
             }
             Command::ClearPins => self.ask_clear_pins(),
+            Command::OpenPins => self.open_pins(ctx),
             Command::ToggleLabel(label, advance) => {
                 self.toggle_label(ctx, label, self.advance(advance));
             }

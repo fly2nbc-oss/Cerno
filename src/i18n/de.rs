@@ -34,6 +34,10 @@ pub static TEXTS: Texts = Texts {
     pin_fact: "Vorgemerkt",
     cmd_pin: "Vormerken",
     cmd_clear_pins: |n| format!("Vormerkungen aufheben ({n})"),
+    cmd_open_pins: |n| format!("Vorgemerkte Fotos aller Ordner ({n})"),
+    pins_title: "Vorgemerkte Fotos",
+    pins_hint: "Vorgemerkte Fotos aller Ordner – ein Ordner öffnen beendet die Sammlung",
+    pins_folder_only: "Geht nur in einem Ordner, nicht in den vorgemerkten Fotos",
     pins_none: "Kein Foto vorgemerkt",
     confirm_clear_pins_title: "Alle Vormerkungen aufheben?",
     confirm_clear_pins_text: |n| {

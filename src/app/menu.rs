@@ -533,10 +533,18 @@ impl CernoApp {
         use palette::Row;
         let t = i18n::t();
         let mut items = vec![
+            Item::Row(
+                Row::new(Command::OpenPins, (t.cmd_open_pins)(self.pins.len()), None)
+                    .hint(t.pins_hint)
+                    .toggle(self.folder.collection)
+                    .disabled(self.pins.is_empty().then_some(t.pins_none)),
+            ),
             Item::Row(Row::new(Command::NameList, t.menu_name_list, None).hint(t.name_list_intro)),
             Item::Row(Row::new(Command::Keywords, t.menu_keywords, None).hint(t.keywords_intro)),
             Item::Row(
-                Row::new(Command::CameraTime, t.menu_camera_time, None).hint(t.camera_time_intro),
+                Row::new(Command::CameraTime, t.menu_camera_time, None)
+                    .hint(t.camera_time_intro)
+                    .disabled(self.folder.collection.then_some(t.pins_folder_only)),
             ),
         ];
         items.extend(self.bulk_rows().into_iter().map(Item::Row));
@@ -600,7 +608,8 @@ impl CernoApp {
                     t.cmd_subfolders,
                     Some(i18n::with_ctrl("U")),
                 )
-                .toggle(self.folder.subfolders),
+                .toggle(self.folder.subfolders)
+                .disabled(self.folder.collection.then_some(t.pins_folder_only)),
             ),
             Item::Row(
                 Row::new(Command::Pairs, t.cmd_pairs, None)

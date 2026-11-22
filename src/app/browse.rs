@@ -19,8 +19,29 @@ use super::notice::Notice;
 use super::{CLIP_OFFER_SHOWN, CernoApp};
 
 /// The open folder.
+/// What a folder – or the pinned photos of every folder – brought to show
+/// (`CernoApp::take_library`).
+pub(super) struct Taken {
+    pub(super) dir: Option<PathBuf>,
+    pub(super) collection: bool,
+    /// Every file found, riders too, as the listing had them.
+    pub(super) scanned: Arc<Vec<PathBuf>>,
+    pub(super) stamps: Vec<Option<crate::db::FileStamp>>,
+    /// The photos to show, riders taken out.
+    pub(super) paths: Vec<PathBuf>,
+    pub(super) pairs: crate::pairs::Pairs,
+    /// The photo to start at.
+    pub(super) start: Option<PathBuf>,
+    /// Its index in `scanned`, for the analysis.
+    pub(super) index: usize,
+    pub(super) started: Instant,
+}
+
 pub(super) struct Folder {
     pub(super) dir: Option<PathBuf>,
+    /// The pinned photos of every folder are open instead of a folder (CER-74): `dir` is
+    /// their common folder, or `None` when they lie on different drives.
+    pub(super) collection: bool,
     /// Every photo of the folder, in name order.
     pub(super) all: Arc<Vec<PathBuf>>,
     /// What sorting and filtering look at, and the analysis works on: `all`, plus the deleted
@@ -46,6 +67,7 @@ impl Folder {
     pub(super) fn restore(db: &crate::db::Db) -> Self {
         Self {
             dir: None,
+            collection: false,
             all: Arc::new(Vec::new()),
             library: Arc::new(Vec::new()),
             all_index: HashMap::new(),
@@ -128,21 +150,6 @@ impl CernoApp {
                 return;
             }
         };
-        // Marks that could not be written are tried again with every folder.
-        if !self.writer.status().unsaved.is_empty() {
-            self.writer.retry(None);
-        }
-        // An error (e.g. the index could not be opened at start) stays until it is read.
-        if !self.notice.as_ref().is_some_and(|notice| notice.error) {
-            self.notice = library.paths.is_empty().then(|| {
-                Notice::hint((i18n::t().no_photos_in)(&library.dir.display().to_string()))
-            });
-            // No dialog at start: once the first folder with photos is open, a quiet hint says
-            // where the models are downloaded – all of them while CLIP is missing, else V2.5.
-            if !library.paths.is_empty() {
-                self.offer_models();
-            }
-        }
         // RAW + JPG of one name: the RAW rides along with the JPEG; a Live Photo's clip with its
         // picture (`pairs`).
         let rules = self.folder.modes().rules();
@@ -156,19 +163,79 @@ impl CernoApp {
         let start = path
             .is_file()
             .then(|| library.paths.get(index).cloned())
-            .flatten()
-            .map(|opened| {
-                pairs
-                    .primary_of(&opened)
-                    .map_or(opened.clone(), Path::to_path_buf)
-            });
-        let scanned = started.elapsed();
+            .flatten();
+        let Library {
+            dir,
+            paths: scanned,
+            stamps,
+        } = library;
+        self.take_library(
+            ctx,
+            Taken {
+                dir: Some(dir),
+                collection: false,
+                scanned,
+                stamps,
+                paths,
+                pairs,
+                start,
+                index,
+                started,
+            },
+        );
+    }
+
+    /// Shows what `open` (a folder) or `open_pins` (the pinned photos of every folder) found.
+    pub(super) fn take_library(&mut self, ctx: &egui::Context, taken: Taken) {
+        let Taken {
+            dir,
+            collection,
+            scanned,
+            stamps,
+            paths,
+            pairs,
+            start,
+            index,
+            started,
+        } = taken;
+        // Marks that could not be written are tried again with every folder.
+        if !self.writer.status().unsaved.is_empty() {
+            self.writer.retry(None);
+        }
+        // An error (e.g. the index could not be opened at start) stays until it is read.
+        if !self.notice.as_ref().is_some_and(|notice| notice.error) {
+            let t = i18n::t();
+            self.notice = if collection {
+                Some(Notice::hint(if paths.is_empty() {
+                    t.pins_none
+                } else {
+                    t.pins_hint
+                }))
+            } else {
+                scanned.is_empty().then(|| {
+                    let dir = dir.as_deref().unwrap_or(Path::new(""));
+                    Notice::hint((t.no_photos_in)(&dir.display().to_string()))
+                })
+            };
+            // No dialog at start: once the first folder with photos is open, a quiet hint says
+            // where the models are downloaded – all of them while CLIP is missing, else V2.5.
+            if !scanned.is_empty() {
+                self.offer_models();
+            }
+        }
+        let start = start.map(|opened| {
+            pairs
+                .primary_of(&opened)
+                .map_or(opened.clone(), Path::to_path_buf)
+        });
+        let scan_time = started.elapsed();
         let paths = Arc::new(paths);
         self.folder.all_index = index_of(&paths);
         self.folder.pairs = pairs;
         self.folder.all = paths;
         self.folder.library = Arc::clone(&self.folder.all);
-        self.folder.dir = Some(library.dir);
+        self.folder.dir = dir;
+        self.folder.collection = collection;
         self.load_camera_offsets();
         self.scan_raw_marks();
         // Found in the background; the 🗑 box shows them once they are known.
@@ -207,7 +274,7 @@ impl CernoApp {
         if self.view_options().depends_on_scores()
             && let Some(dir) = &self.folder.dir
         {
-            let stamps = library::stamps_for(&library.paths, &library.stamps, &self.folder.all);
+            let stamps = library::stamps_for(&scanned, &stamps, &self.folder.all);
             self.analyzer.preload(dir, &self.folder.all, &stamps);
         }
         let preloaded = preloading.elapsed();
@@ -220,7 +287,7 @@ impl CernoApp {
             "open: {} files (subfolders {}), scan {} ms, index {} ms, view {} ms, {} ms in all",
             self.folder.all.len(),
             if self.folder.subfolders { "on" } else { "off" },
-            scanned.as_millis(),
+            scan_time.as_millis(),
             preloaded.as_millis(),
             building.elapsed().as_millis(),
             started.elapsed().as_millis()
@@ -229,6 +296,10 @@ impl CernoApp {
 
     /// Subfolders on or off (`Ctrl+U`, the settings menu); the current folder opens again.
     pub(super) fn toggle_subfolders(&mut self, ctx: &egui::Context) {
+        if self.folder.collection {
+            self.notice = Some(Notice::hint(i18n::t().pins_folder_only));
+            return;
+        }
         self.folder.subfolders = !self.folder.subfolders;
         self.db.put_flag("subfolders", self.folder.subfolders);
         if let Some(dir) = self.folder.dir.clone() {
@@ -567,6 +638,11 @@ impl CernoApp {
 
     fn update_title(&self, ctx: &egui::Context) {
         let title = match self.view.get(self.current) {
+            Some(path) if self.folder.collection => format!(
+                "{} – {} – Cerno",
+                self.photo_name(path),
+                i18n::t().pins_title
+            ),
             Some(path) => format!("{} – Cerno", self.photo_name(path)),
             None => "Cerno".to_owned(),
         };
@@ -616,7 +692,14 @@ impl CernoApp {
             .dir
             .as_ref()
             .map(|dir| library::display_name(dir, path))
-            .unwrap_or_else(|| library::file_name_lossy(path))
+            .unwrap_or_else(|| {
+                // The pinned photos on different drives: the whole path says where.
+                if self.folder.collection {
+                    path.display().to_string()
+                } else {
+                    library::file_name_lossy(path)
+                }
+            })
     }
 
     /// Whether the folder has a video (the filter bar's *Videos only*), looked up once per

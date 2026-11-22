@@ -1183,4 +1183,42 @@ mod tests {
         h.press(Key::V, NONE);
         assert!(h.app.pins.is_empty());
     }
+
+    /// The pinned photos of every folder open as one collection: names below their common
+    /// folder, a RAW beside a pinned JPEG rides along, `Ctrl+U` stays put, a photo unpinned
+    /// leaves, and opening a folder ends it.
+    #[test]
+    fn the_pinned_photos_of_every_folder_open_as_one() {
+        let mut h = Harness::new(3);
+        h.app.marks.auto_advance = false;
+        h.settle();
+        let other = h.dir.join("other");
+        std::fs::create_dir_all(&other).unwrap();
+        let far = other.join("IMG_9.jpg");
+        std::fs::copy("tests/fixtures/tiny.jpg", &far).unwrap();
+        let raw = other.join("IMG_9.dng");
+        std::fs::write(&raw, b"raw").unwrap();
+        for path in [h.dir.join("IMG_2.jpg"), far.clone()] {
+            h.app.db.set_pin(&path.to_string_lossy(), true).unwrap();
+        }
+        h.app.reload_pins();
+        h.app.open_pins(&h.ctx.clone());
+        h.settle();
+        assert!(h.app.folder.collection);
+        assert_eq!(h.app.view.len(), 2);
+        assert_eq!(h.app.folder.dir.as_deref(), Some(h.dir.as_path()));
+        assert_eq!(h.app.folder.pairs.companion(&far), Some(raw.as_path()));
+        assert_eq!(h.app.photo_name(&far), "other/IMG_9.jpg");
+        let subfolders = h.app.folder.subfolders;
+        // What `Ctrl+U` runs (the key itself is refused in tests).
+        h.app.toggle_subfolders(&h.ctx.clone());
+        assert!(h.app.folder.collection);
+        assert_eq!(h.app.folder.subfolders, subfolders);
+        h.press(Key::V, NONE);
+        assert_eq!(h.app.view.len(), 1, "unpinned: out of the collection");
+        assert_eq!(h.app.pins.len(), 1);
+        let dir = h.dir.clone();
+        h.app.open(&h.ctx.clone(), &dir);
+        assert!(!h.app.folder.collection);
+    }
 }

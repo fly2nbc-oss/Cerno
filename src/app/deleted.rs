@@ -125,7 +125,8 @@ impl CernoApp {
     /// must not delay the first photo).
     pub(super) fn scan_deleted(&mut self) {
         self.deleted = Deleted::default();
-        let Some(dir) = self.folder.dir.clone() else {
+        // The pinned photos of every folder: the 🗑 box is a folder's.
+        let Some(dir) = self.folder.dir.clone().filter(|_| !self.folder.collection) else {
             return;
         };
         let (db, subfolders) = (Arc::clone(&self.db), self.folder.subfolders);
