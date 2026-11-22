@@ -110,7 +110,7 @@ pub static TEXTS: Texts = Texts {
     rename_keeps: "keeps its name (no capture time)",
     rename_unchanged: "has this name already",
     rename_apply: "Rename",
-    rename_keys: "↑ ↓ or Alt+1 – Alt+4 choose · Enter renames · Esc cancels",
+    rename_keys: "↑ ↓ or F1 – F4 choose · Enter renames · Esc cancels",
     rename_empty: "The name is empty",
     rename_bad_char: |c| format!("“{c}” can't be in a file name"),
     rename_reserved: "Windows keeps this name for itself",
@@ -831,7 +831,6 @@ pub static TEXTS: Texts = Texts {
                 ("C, Shift+C", "Compare two / four photos"),
                 ("Alt+C", "Whole photo and 100 % side by side"),
                 ("A, D", "Keep left / right"),
-                ("Shift+A, Shift+D", "Keep, then compare the next"),
             ],
         ),
         (
@@ -878,7 +877,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 ("Space", "Play / pause"),
                 ("Enter", "Live Photo: play the motion"),
-                ("Shift+Space", "Next photo"),
+                ("Shift+Space", "Skip the video, next photo"),
                 ("Alt+←, Alt+→", "5 s back / on"),
                 (",, .", "One frame back / on"),
                 ("↑, ↓", "Volume"),

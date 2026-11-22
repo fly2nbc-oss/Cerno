@@ -1,10 +1,10 @@
 //! The rename card (`F2` the current photo, `Shift+F2` every photo shown): the four patterns
-//! with what each makes of the name, `↑`/`↓` or `Alt+1`–`Alt+4` choose; for one photo the new
+//! with what each makes of the name, `↑`/`↓` or `F1`–`F4` choose; for one photo the new
 //! name in a field that can be overwritten, for several the list *old → new*. `Enter` renames,
 //! `Esc` cancels – both taken before the field sees them.
 
 use eframe::egui::{
-    Align, Button, Context, Event, FontId, Id, InputState, Key, Layout, Modifiers, Rect, RichText,
+    Align, Button, Context, FontId, Id, InputState, Key, Layout, Modifiers, Rect, RichText,
     ScrollArea, TextEdit, vec2,
 };
 
@@ -23,6 +23,8 @@ pub struct State {
     pub edited: bool,
     /// The Event pattern's text.
     pub text: String,
+    /// The card has been drawn once: the `F2` that opened it doesn't also choose pattern 2.
+    pub shown: bool,
 }
 
 /// One pattern row: its name and what it makes of the (first) photo's name – `None` when the
@@ -60,23 +62,12 @@ pub struct Output {
 
 const WIDTH: f32 = 560.0;
 
-/// `Alt` alone and `1`–`4`, by the digit's place (AZERTY types `&`, `é` …): taken out of the
-/// input, so the field never sees it.
-fn take_alt_digit(i: &mut InputState) -> Option<usize> {
-    let digits = [Key::Num1, Key::Num2, Key::Num3, Key::Num4];
-    let at = i.events.iter().position(|event| {
-        matches!(event, Event::Key { key, physical_key, pressed: true, modifiers, .. }
-            if *modifiers == Modifiers::ALT && digits.contains(&physical_key.unwrap_or(*key)))
-    })?;
-    let Event::Key {
-        key, physical_key, ..
-    } = i.events.remove(at)
-    else {
-        return None;
-    };
-    digits
-        .iter()
-        .position(|d| *d == physical_key.unwrap_or(key))
+/// `F1`–`F4` choose a pattern. Function keys type nothing, so the name field never gets a
+/// character from them (`Alt`+digit did: the digit landed in the name).
+fn take_pattern_key(i: &mut InputState) -> Option<usize> {
+    [Key::F1, Key::F2, Key::F3, Key::F4]
+        .into_iter()
+        .position(|key| i.consume_key(Modifiers::NONE, key))
 }
 
 pub fn show(ctx: &Context, window: Rect, state: &mut State, view: &View) -> Output {
@@ -86,23 +77,28 @@ pub fn show(ctx: &Context, window: Rect, state: &mut State, view: &View) -> Outp
             .get(i)
             .is_some_and(|row| row.example.is_some())
     };
-    let (enter, escape, up, down, alt) = ctx.input_mut(|i| {
+    let (enter, escape, up, down, chosen) = ctx.input_mut(|i| {
         (
             i.consume_key(Modifiers::NONE, Key::Enter)
                 || i.consume_key(Modifiers::COMMAND, Key::Enter),
             i.consume_key(Modifiers::NONE, Key::Escape),
             i.consume_key(Modifiers::NONE, Key::ArrowUp),
             i.consume_key(Modifiers::NONE, Key::ArrowDown),
-            take_alt_digit(i),
+            if state.shown {
+                take_pattern_key(i)
+            } else {
+                None
+            },
         )
     });
+    state.shown = true;
     let pick = |to: usize, state: &mut State| {
         if choosable(to) && to != state.pattern {
             state.pattern = to;
             state.edited = false;
         }
     };
-    if let Some(to) = alt {
+    if let Some(to) = chosen {
         pick(to, state);
     }
     let count = view.patterns.len();
@@ -124,7 +120,7 @@ pub fn show(ctx: &Context, window: Rect, state: &mut State, view: &View) -> Outp
         ui.add_space(12.0);
         for (i, row) in view.patterns.iter().enumerate() {
             let example = row.example.as_deref().unwrap_or(t.rename_no_time);
-            let text = format!("Alt+{}   {}   ·   {example}", i + 1, row.label);
+            let text = format!("F{}   {}   ·   {example}", i + 1, row.label);
             let button = Button::selectable(state.pattern == i, text);
             let response = ui.add_enabled(row.example.is_some(), button);
             if response.clicked() {
@@ -240,7 +236,7 @@ pub fn show(ctx: &Context, window: Rect, state: &mut State, view: &View) -> Outp
 #[cfg(test)]
 mod tests {
     use super::*;
-    use eframe::egui::{RawInput, pos2};
+    use eframe::egui::{Event, RawInput, pos2};
 
     fn view(blocked: Option<String>) -> View<'static> {
         View {
@@ -300,12 +296,13 @@ mod tests {
         }
     }
 
-    /// `Enter` renames (not while greyed out), `Esc` cancels; `Alt+2` and the arrows choose a
+    /// `Enter` renames (not while greyed out), `Esc` cancels; `F2` and the arrows choose a
     /// pattern – past one without a capture time – and choosing sets the name again.
     #[test]
     fn keys_choose_patterns_and_rename() {
         let mut state = State {
             edited: true,
+            shown: true,
             ..State::default()
         };
         assert!(frames(&mut state, vec![key(Key::Enter, Modifiers::NONE)], None).apply);
@@ -318,7 +315,7 @@ mod tests {
             .apply
         );
         assert!(frames(&mut state, vec![key(Key::Escape, Modifiers::NONE)], None).close);
-        frames(&mut state, vec![key(Key::Num2, Modifiers::ALT)], None);
+        frames(&mut state, vec![key(Key::F2, Modifiers::NONE)], None);
         assert_eq!(state.pattern, 1);
         assert!(!state.edited, "a pattern chosen sets the name again");
         frames(&mut state, vec![key(Key::ArrowDown, Modifiers::NONE)], None);
@@ -328,7 +325,7 @@ mod tests {
         );
         frames(&mut state, vec![key(Key::ArrowUp, Modifiers::NONE)], None);
         assert_eq!(state.pattern, 1);
-        frames(&mut state, vec![key(Key::Num3, Modifiers::ALT)], None);
+        frames(&mut state, vec![key(Key::F3, Modifiers::NONE)], None);
         assert_eq!(state.pattern, 1, "no capture time: not chosen");
     }
 }

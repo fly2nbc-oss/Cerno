@@ -1217,8 +1217,9 @@ mod tests {
         h.press(Key::V, NONE);
         assert_eq!(h.app.view.len(), 1, "unpinned: out of the collection");
         assert_eq!(h.app.pins.len(), 1);
-        let dir = h.dir.clone();
-        h.app.open(&h.ctx.clone(), &dir);
+        // Off again: the folder it was opened from comes back.
+        h.app.open_pins(&h.ctx.clone());
         assert!(!h.app.folder.collection);
+        assert_eq!(h.app.view.len(), 3);
     }
 }

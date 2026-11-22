@@ -98,7 +98,7 @@ pub static TEXTS: Texts = Texts {
     rename_keeps: "mantiene il nome (nessuna ora di scatto)",
     rename_unchanged: "ha già questo nome",
     rename_apply: "Rinomina",
-    rename_keys: "↑ ↓ o Alt+1 – Alt+4 scelgono · Invio rinomina · Esc annulla",
+    rename_keys: "↑ ↓ o F1 – F4 scelgono · Invio rinomina · Esc annulla",
     rename_empty: "Il nome è vuoto",
     rename_bad_char: |c| format!("«{c}» non può stare in un nome di file"),
     rename_reserved: "Windows riserva questo nome",
@@ -812,7 +812,6 @@ pub static TEXTS: Texts = Texts {
                 ("C, Maiusc+C", "Confronta due / quattro foto"),
                 ("Alt+C", "Foto intera e 100 % affiancate"),
                 ("A, D", "Tieni sinistra / destra"),
-                ("Maiusc+A, Maiusc+D", "Tieni e confronta la successiva"),
             ],
         ),
         (
@@ -859,7 +858,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 ("Spazio", "Riproduci / pausa"),
                 ("Invio", "Live Photo: riproduci il movimento"),
-                ("Maiusc+Spazio", "Foto successiva"),
+                ("Maiusc+Spazio", "Salta il video, foto successiva"),
                 ("Alt+←, Alt+→", "5 s indietro / avanti"),
                 (",, .", "Un fotogramma indietro / avanti"),
                 ("↑, ↓", "Volume"),

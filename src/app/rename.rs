@@ -55,6 +55,21 @@ fn invalid_text(invalid: Invalid) -> String {
 }
 
 impl CernoApp {
+    /// The capture time a file states itself – EXIF `DateTimeOriginal` of a photo, set right
+    /// by its camera's offset, or a video's creation date – for a photo not in the index yet.
+    fn capture_time_of(&self, path: &Path) -> Option<i64> {
+        if library::format_of(path) == Some(library::Format::Video) {
+            return quicktime::read(path)
+                .ok()?
+                .wall_clock()
+                .and_then(metadata::millis_of);
+        }
+        let bytes = self.files.read(path).ok()?;
+        let camera = metadata::read_for(path, &bytes).camera;
+        let model = camera.model.as_deref().map(metadata::camera_id);
+        self.camera_time.corrected(camera.taken_ms, model)
+    }
+
     /// `F2` / `Shift+F2`: the card for the current photo or for every photo shown.
     pub(super) fn open_rename(&mut self, all: bool) {
         let t = i18n::t();
@@ -87,16 +102,13 @@ impl CernoApp {
         let mut items: Vec<(Option<i64>, Item)> = paths
             .into_iter()
             .map(|path| {
-                // A video has no index row: its capture time comes from its own header.
+                // The index's capture time, else the file's own: a photo the analysis hasn't
+                // reached yet is read now, a video (no index row) by its header. Never the
+                // file date.
                 let taken = self
                     .facts(&path)
                     .and_then(|facts| facts.taken_ms)
-                    .or_else(|| {
-                        (library::format_of(&path) == Some(library::Format::Video))
-                            .then(|| quicktime::read(&path).ok()?.wall_clock())
-                            .flatten()
-                            .and_then(metadata::millis_of)
-                    });
+                    .or_else(|| self.capture_time_of(&path));
                 let item = Item {
                     rider: self.folder.pairs.companion(&path).map(Path::to_path_buf),
                     clock: taken.map(metadata::clock_of),
@@ -128,6 +140,7 @@ impl CernoApp {
             },
             edited,
             text,
+            shown: false,
         };
         self.layer = Layer::Rename(Card {
             all,
@@ -418,7 +431,7 @@ mod tests {
         assert_eq!(h.app.view.get(h.app.current), Some(&first));
     }
 
-    /// `Shift+F2` with `Alt+3`: every photo shown gets the Android pattern; two of the same
+    /// `Shift+F2` with `F3`: every photo shown gets the Android pattern; two of the same
     /// second take `_1`, one without a capture time keeps its name.
     #[test]
     fn shift_f2_renames_every_photo_shown() {
@@ -430,7 +443,7 @@ mod tests {
         h.press(Key::F2, Modifiers::SHIFT);
         assert_eq!(h.layer(), "rename");
         h.settle();
-        h.press(Key::Num3, Modifiers::ALT);
+        h.press(Key::F3, NONE);
         h.press(Key::Enter, NONE);
         finish(&mut h);
         let dir = dir(&h);

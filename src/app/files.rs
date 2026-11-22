@@ -168,7 +168,7 @@ impl CernoApp {
             self.rebuild_view(ctx, None);
             // The pinned photos stay pinned where they went: the collection is gathered again.
             if self.folder.collection {
-                self.open_pins(ctx);
+                self.gather_pins(ctx);
             }
         }
     }

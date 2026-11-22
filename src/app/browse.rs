@@ -42,6 +42,9 @@ pub(super) struct Folder {
     /// The pinned photos of every folder are open instead of a folder (CER-74): `dir` is
     /// their common folder, or `None` when they lie on different drives.
     pub(super) collection: bool,
+    /// Where the collection was opened from – the photo shown, else the folder: switching the
+    /// collection off goes back there.
+    pub(super) before_pins: Option<PathBuf>,
     /// Every photo of the folder, in name order.
     pub(super) all: Arc<Vec<PathBuf>>,
     /// What sorting and filtering look at, and the analysis works on: `all`, plus the deleted
@@ -68,6 +71,7 @@ impl Folder {
         Self {
             dir: None,
             collection: false,
+            before_pins: None,
             all: Arc::new(Vec::new()),
             library: Arc::new(Vec::new()),
             all_index: HashMap::new(),

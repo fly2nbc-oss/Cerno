@@ -105,10 +105,28 @@ impl CernoApp {
         self.sync_library();
     }
 
-    /// *Visible photos ▸ Pinned photos of every folder*: every pinned photo still there, as one
-    /// collection – shown, marked, copied, moved like a folder's photos. Their RAWs and Live
-    /// Photo clips are looked for beside them, so they ride along again.
+    /// *Visible photos ▸ Pinned photos of every folder*: on, the collection opens; off again,
+    /// the folder it was opened from comes back, at the photo shown then.
     pub(super) fn open_pins(&mut self, ctx: &egui::Context) {
+        if self.folder.collection {
+            if let Some(back) = self.folder.before_pins.take() {
+                self.open(ctx, &back);
+            }
+            return;
+        }
+        self.folder.before_pins = self
+            .view
+            .get(self.current)
+            .filter(|path| !self.is_deleted(path))
+            .cloned()
+            .or_else(|| self.folder.dir.clone());
+        self.gather_pins(ctx);
+    }
+
+    /// Every pinned photo still there, as one collection – shown, marked, copied, moved like a
+    /// folder's photos. Their RAWs and Live Photo clips are looked for beside them, so they
+    /// ride along again.
+    pub(super) fn gather_pins(&mut self, ctx: &egui::Context) {
         let started = Instant::now();
         let pinned: HashSet<PathBuf> = self
             .pins

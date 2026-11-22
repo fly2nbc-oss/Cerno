@@ -110,7 +110,7 @@ pub static TEXTS: Texts = Texts {
     rename_keeps: "bleibt (keine Aufnahmezeit)",
     rename_unchanged: "heißt schon so",
     rename_apply: "Umbenennen",
-    rename_keys: "↑ ↓ oder Alt+1 – Alt+4 wählen · Enter benennt um · Esc bricht ab",
+    rename_keys: "↑ ↓ oder F1 – F4 wählen · Enter benennt um · Esc bricht ab",
     rename_empty: "Der Name ist leer",
     rename_bad_char: |c| format!("„{c}“ geht nicht in einem Dateinamen"),
     rename_reserved: "Diesen Namen reserviert Windows",
@@ -840,10 +840,6 @@ pub static TEXTS: Texts = Texts {
                 ("C, Umschalt+C", "Zwei / vier Fotos vergleichen"),
                 ("Alt+C", "Ganz und 100 % nebeneinander"),
                 ("A, D", "Links / rechts behalten"),
-                (
-                    "Umschalt+A, Umschalt+D",
-                    "Behalten, mit dem nächsten weiter",
-                ),
             ],
         ),
         (
@@ -890,7 +886,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 ("Leertaste", "Abspielen / anhalten"),
                 ("Enter", "Live Photo: Bewegung abspielen"),
-                ("Umschalt+Leertaste", "Nächstes Foto"),
+                ("Umschalt+Leertaste", "Video überspringen, nächstes Foto"),
                 ("Alt+←, Alt+→", "5 s zurück / vor"),
                 (",, .", "Ein Bild zurück / vor"),
                 ("↑, ↓", "Lautstärke"),
