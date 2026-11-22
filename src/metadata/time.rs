@@ -188,9 +188,8 @@ fn local_offset_secs(unix_secs: i64) -> i64 {
 
 #[cfg(target_os = "linux")]
 fn local_offset_secs(unix_secs: i64) -> i64 {
-    let Ok(time) = libc::time_t::try_from(unix_secs) else {
-        return 0;
-    };
+    // `time_t` is 64 bits on the Linux targets Cerno is built for (x86_64).
+    let time: libc::time_t = unix_secs;
     // SAFETY: `tm` is plain data; `localtime_r` fills it or returns null.
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
     if unsafe { libc::localtime_r(&time, &mut tm) }.is_null() {
