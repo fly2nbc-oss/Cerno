@@ -182,17 +182,33 @@ pub fn show(ctx: &Context, window: Rect, state: &mut State, view: &View) -> Outp
                     .max_height(240.0)
                     .auto_shrink([false, true])
                     .show_rows(ui, height, rows.len(), |ui, range| {
+                        // The new name stands out in the accent (it is what gets chosen); a
+                        // photo that keeps its name stays muted.
                         for (old, new, changes) in &rows[range] {
-                            let colour = if *changes {
-                                tokens::TEXT
-                            } else {
-                                tokens::MUTED
+                            let font = FontId::proportional(text::SMALL);
+                            let mut job = eframe::egui::text::LayoutJob::default();
+                            let mut part = |text: &str, color| {
+                                job.append(
+                                    text,
+                                    0.0,
+                                    eframe::egui::TextFormat {
+                                        font_id: font.clone(),
+                                        color,
+                                        ..Default::default()
+                                    },
+                                );
                             };
-                            ui.label(
-                                RichText::new(format!("{old}  →  {new}"))
-                                    .font(FontId::proportional(text::SMALL))
-                                    .color(colour),
+                            part(old, tokens::MUTED);
+                            part("  →  ", tokens::MUTED);
+                            part(
+                                new,
+                                if *changes {
+                                    tokens::ACCENT_STRONG
+                                } else {
+                                    tokens::MUTED
+                                },
                             );
+                            ui.label(job);
                         }
                     });
             }

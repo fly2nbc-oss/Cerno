@@ -20,7 +20,7 @@ use xmp::*;
 pub use camera::{maps_url, osm_url};
 #[cfg(test)]
 pub use iptc::iptc_description;
-pub use time::{Clock, clock_of, format_millis, millis_of};
+pub use time::{Clock, clock_of, format_millis, local_millis, millis_of};
 
 /// Microsoft's EXIF rating tag (IFD0 0x4746), written by Windows Explorer.
 const EXIF_RATING: exif::Tag = exif::Tag(exif::Context::Tiff, 0x4746);

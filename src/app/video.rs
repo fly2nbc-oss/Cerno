@@ -112,12 +112,10 @@ impl CernoApp {
         self.folder.pairs.motion(path).map(Path::to_path_buf)
     }
 
-    /// `Enter` on a Live Photo: its clip plays once over the picture, which shows again at
-    /// the end. `Space` moves on, as on any photo.
-    pub(super) fn play_live(&mut self, ctx: &egui::Context) {
-        if let Some(clip) = self.current_live() {
-            self.play_path(ctx, clip);
-        }
+    /// `Space` on a Live Photo: its clip plays once over the picture, which shows again at the
+    /// end; `Space` while it plays pauses it. `Shift+Space` and the arrows move on.
+    pub(super) fn play_live(&mut self, ctx: &egui::Context, clip: PathBuf) {
+        self.play_path(ctx, clip);
     }
 
     /// `Space` or the play button on the current video: start it, or play / pause. A

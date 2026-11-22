@@ -145,3 +145,62 @@ pub(super) fn format_datetime(exif: &str) -> Option<String> {
     let time = time.get(..5)?;
     (date.len() == 10 && !date.starts_with("0000")).then(|| format!("{date} {time}"))
 }
+
+/// A file time as local wall-clock milliseconds, like a capture time – for renaming a photo
+/// whose file states none (the user's decision of 2026-11-22: the file date only then).
+pub fn local_millis(time: std::time::SystemTime) -> Option<i64> {
+    let utc_ms =
+        i64::try_from(time.duration_since(std::time::UNIX_EPOCH).ok()?.as_millis()).ok()?;
+    Some(utc_ms + local_offset_secs(utc_ms.div_euclid(1000)) * 1000)
+}
+
+/// The local time zone's offset from UTC at that moment, summer time included.
+#[cfg(windows)]
+fn local_offset_secs(unix_secs: i64) -> i64 {
+    use windows::Win32::Foundation::{FILETIME, SYSTEMTIME};
+    use windows::Win32::System::Time::{
+        FileTimeToSystemTime, SystemTimeToFileTime, SystemTimeToTzSpecificLocalTime,
+    };
+    const TICKS: i64 = 10_000_000;
+    const EPOCH_1601: i64 = 11_644_473_600;
+    let Ok(ticks) = u64::try_from((unix_secs + EPOCH_1601) * TICKS) else {
+        return 0;
+    };
+    let file_time = FILETIME {
+        dwLowDateTime: ticks as u32,
+        dwHighDateTime: (ticks >> 32) as u32,
+    };
+    let (mut utc, mut local) = (SYSTEMTIME::default(), SYSTEMTIME::default());
+    let mut local_file = FILETIME::default();
+    // SAFETY: every pointer is to a live local of the right type.
+    let ok = unsafe {
+        FileTimeToSystemTime(&file_time, &mut utc).is_ok()
+            && SystemTimeToTzSpecificLocalTime(None, &utc, &mut local).is_ok()
+            && SystemTimeToFileTime(&local, &mut local_file).is_ok()
+    };
+    if !ok {
+        return 0;
+    }
+    let local_ticks =
+        (u64::from(local_file.dwHighDateTime) << 32) | u64::from(local_file.dwLowDateTime);
+    (local_ticks as i64 - ticks as i64) / TICKS
+}
+
+#[cfg(target_os = "linux")]
+fn local_offset_secs(unix_secs: i64) -> i64 {
+    let Ok(time) = libc::time_t::try_from(unix_secs) else {
+        return 0;
+    };
+    // SAFETY: `tm` is plain data; `localtime_r` fills it or returns null.
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    if unsafe { libc::localtime_r(&time, &mut tm) }.is_null() {
+        0
+    } else {
+        tm.tm_gmtoff
+    }
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+fn local_offset_secs(_unix_secs: i64) -> i64 {
+    0
+}

@@ -57,17 +57,26 @@ fn invalid_text(invalid: Invalid) -> String {
 impl CernoApp {
     /// The capture time a file states itself – EXIF `DateTimeOriginal` of a photo, set right
     /// by its camera's offset, or a video's creation date – for a photo not in the index yet.
+    /// Only a file that states none falls back on its modification date (local time).
     fn capture_time_of(&self, path: &Path) -> Option<i64> {
-        if library::format_of(path) == Some(library::Format::Video) {
-            return quicktime::read(path)
-                .ok()?
-                .wall_clock()
-                .and_then(metadata::millis_of);
-        }
-        let bytes = self.files.read(path).ok()?;
-        let camera = metadata::read_for(path, &bytes).camera;
-        let model = camera.model.as_deref().map(metadata::camera_id);
-        self.camera_time.corrected(camera.taken_ms, model)
+        let stated = if library::format_of(path) == Some(library::Format::Video) {
+            quicktime::read(path)
+                .ok()
+                .and_then(|movie| movie.wall_clock())
+                .and_then(metadata::millis_of)
+        } else {
+            self.files.read(path).ok().and_then(|bytes| {
+                let camera = metadata::read_for(path, &bytes).camera;
+                let model = camera.model.as_deref().map(metadata::camera_id);
+                self.camera_time.corrected(camera.taken_ms, model)
+            })
+        };
+        stated.or_else(|| {
+            std::fs::metadata(path)
+                .and_then(|meta| meta.modified())
+                .ok()
+                .and_then(metadata::local_millis)
+        })
     }
 
     /// `F2` / `Shift+F2`: the card for the current photo or for every photo shown.
@@ -103,8 +112,8 @@ impl CernoApp {
             .into_iter()
             .map(|path| {
                 // The index's capture time, else the file's own: a photo the analysis hasn't
-                // reached yet is read now, a video (no index row) by its header. Never the
-                // file date.
+                // reached yet is read now, a video (no index row) by its header; the file
+                // date only where the file states no time.
                 let taken = self
                     .facts(&path)
                     .and_then(|facts| facts.taken_ms)
@@ -432,7 +441,7 @@ mod tests {
     }
 
     /// `Shift+F2` with `F3`: every photo shown gets the Android pattern; two of the same
-    /// second take `_1`, one without a capture time keeps its name.
+    /// second take `_1`; one whose file states no capture time is named by its file date.
     #[test]
     fn shift_f2_renames_every_photo_shown() {
         let mut h = Harness::new(3);
@@ -440,6 +449,16 @@ mod tests {
         let paths: Vec<PathBuf> = (0..3).filter_map(|i| h.app.view.get(i).cloned()).collect();
         h.app.board.put_taken(&paths[0], at(0));
         h.app.board.put_taken(&paths[1], at(0));
+        let modified = std::fs::metadata(&paths[2])
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(crate::metadata::local_millis)
+            .expect("a file date");
+        let c = crate::metadata::clock_of(modified);
+        let by_date = format!(
+            "{:04}{:02}{:02}_{:02}{:02}{:02}.jpg",
+            c.year, c.month, c.day, c.hour, c.minute, c.second
+        );
         h.press(Key::F2, Modifiers::SHIFT);
         assert_eq!(h.layer(), "rename");
         h.settle();
@@ -449,7 +468,10 @@ mod tests {
         let dir = dir(&h);
         assert!(dir.join("20260823_191546.jpg").exists());
         assert!(dir.join("20260823_191546_1.jpg").exists());
-        assert!(paths[2].exists(), "no capture time: kept");
+        assert!(
+            dir.join(&by_date).exists() && !paths[2].exists(),
+            "no EXIF: the file date ({by_date})"
+        );
         assert!(!paths[0].exists() && !paths[1].exists());
     }
 }

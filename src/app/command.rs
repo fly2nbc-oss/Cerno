@@ -330,11 +330,17 @@ impl CernoApp {
                 self.set_grid(false);
             }
             Command::Video { keys, space } => {
-                // On a video shown alone the video keys act on it; Space plays and pauses there
-                // and moves on everywhere else.
+                // On a video shown alone the video keys act on it; Space plays and pauses there,
+                // plays a Live Photo's motion (the user's choice of 2026-11-22: as on a video,
+                // the arrows still browse) and moves on everywhere else.
                 run.on_video = self.current_video().is_some();
                 if run.on_video {
                     self.video_keys(ctx, keys);
+                } else if space && let Some(clip) = self.current_live() {
+                    // A held Space doesn't start it again and again.
+                    if keys.toggle {
+                        self.play_live(ctx, clip);
+                    }
                 } else if space {
                     self.go_to(ctx, self.current.saturating_add(1), 1);
                 }
@@ -345,15 +351,12 @@ impl CernoApp {
                 if from_grid {
                     self.set_grid(false);
                 }
-                // On the description tab `Enter` puts the cursor into the keyword field; on a
-                // Live Photo it plays the motion.
+                // On the description tab `Enter` puts the cursor into the keyword field.
                 if !self.viewer.grid
                     && self.bars.details != DetailsMode::Off
                     && self.bars.details_tab == DetailsTab::Description
                 {
                     self.drafts.focus_keyword = true;
-                } else if !from_grid {
-                    self.play_live(ctx);
                 }
             }
             Command::SetRating(rating, advance) => {
