@@ -44,6 +44,7 @@ mod notice;
 mod pairs;
 mod panels;
 mod photos;
+mod rename;
 mod scenes;
 mod target;
 mod undo;
@@ -105,6 +106,9 @@ pub struct CernoApp {
     keywords: keywords::Keywords,
     /// Camera clocks set right in the open folder (*Camera time …*).
     camera_time: camera_time::CameraTime,
+    /// The rename waiting or running is recorded for `Ctrl+Z` (not when it is the taking
+    /// back).
+    renaming_records: bool,
     /// What is shown, after sorting, filtering and hiding pending deletions.
     view: View,
     current: usize,
@@ -283,6 +287,7 @@ impl CernoApp {
             name_list: name_list::NameList::default(),
             keywords: keywords::Keywords::default(),
             camera_time: camera_time::CameraTime::default(),
+            renaming_records: false,
             view: View::default(),
             current: 0,
             options,

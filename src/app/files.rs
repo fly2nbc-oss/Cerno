@@ -43,6 +43,7 @@ impl CernoApp {
         let title = match mode {
             TransferMode::Copy => t.transfer_copy_cmd,
             TransferMode::Move => t.transfer_move_cmd,
+            TransferMode::Rename => t.rename_title,
         };
         let mut dialog = rfd::FileDialog::new().set_title(title);
         if let Some(dir) = &self.folder.dir {
@@ -116,6 +117,10 @@ impl CernoApp {
     }
 
     fn finish_transfer(&mut self, ctx: &egui::Context, outcome: TransferOutcome) {
+        if outcome.mode == TransferMode::Rename {
+            self.finish_rename(ctx, &outcome);
+            return;
+        }
         let t = i18n::t();
         let (name, err) = outcome
             .failed
@@ -164,8 +169,9 @@ impl CernoApp {
         }
     }
 
+    /// Files moved or renamed: what knows them by path follows.
     pub(super) fn retarget_moved(&mut self, outcome: &TransferOutcome) {
-        if outcome.mode != TransferMode::Move {
+        if !outcome.moves() {
             return;
         }
         self.listed_follow(&outcome.done);
@@ -189,6 +195,7 @@ impl CernoApp {
             if let Some(aside) = &mut self.browse.filter_aside {
                 aside.follow(src, dest);
             }
+            self.marks.journal.follow(src, dest);
         }
     }
 

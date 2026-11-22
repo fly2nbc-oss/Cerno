@@ -277,6 +277,32 @@ pub struct Texts {
     pub align_same_camera: &'static str,
     pub menu_camera_time: &'static str,
     pub camera_time_title: &'static str,
+    /// Menu bar › This photo: the rename card (`F2`).
+    pub cmd_rename: &'static str,
+    /// Menu bar › Visible photos: the rename card for every photo shown (`Shift+F2`).
+    pub cmd_rename_all: fn(usize) -> String,
+    pub rename_title: &'static str,
+    pub rename_all_title: fn(usize) -> String,
+    /// The rename patterns in `rename::Pattern::ALL`'s order.
+    pub rename_patterns: [&'static str; 4],
+    pub rename_name: &'static str,
+    pub rename_text: &'static str,
+    pub rename_no_time: &'static str,
+    pub rename_keeps: &'static str,
+    pub rename_unchanged: &'static str,
+    pub rename_apply: &'static str,
+    pub rename_keys: &'static str,
+    pub rename_empty: &'static str,
+    pub rename_bad_char: fn(char) -> String,
+    pub rename_reserved: &'static str,
+    pub rename_ending: &'static str,
+    pub rename_too_long: &'static str,
+    pub rename_taken: &'static str,
+    pub rename_nothing: &'static str,
+    /// The batch card: how many photos of those shown get a new name.
+    pub rename_count: fn(usize, usize) -> String,
+    /// After a rename: renamed, skipped, and the first failure (name, error).
+    pub rename_done: fn(usize, usize, &str, &str) -> String,
     pub camera_time_intro: &'static str,
     pub camera_time_reset: &'static str,
     pub camera_time_invalid: &'static str,
@@ -570,6 +596,7 @@ pub struct Texts {
     pub busy_editing: &'static str,
     pub busy_copying: &'static str,
     pub busy_moving: &'static str,
+    pub busy_renaming: &'static str,
     /// Why a deleted photo takes no mark or edit.
     pub busy_deleted: &'static str,
     /// Straighten, crop, quarter turns and Ctrl+Z are off while the index is the in-memory fallback.
@@ -590,6 +617,7 @@ pub struct Texts {
     pub undo_what_reject: &'static str,
     pub undo_what_colour: &'static str,
     pub undo_what_edit: &'static str,
+    pub undo_what_rename: &'static str,
     /// After `Ctrl+Z` took a mark back: the photo's name, what it has now (`3 stars`,
     /// `Unrated`, `No colour`, a colour).
     pub undo_mark_done: fn(&str, &str) -> String,

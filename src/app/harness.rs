@@ -173,6 +173,7 @@ impl Harness {
             Layer::NameList(_) => "name list",
             Layer::Keywords(_) => "keywords",
             Layer::CameraTime(_) => "camera time",
+            Layer::Rename(_) => "rename",
             Layer::Unsaved { .. } => "unsaved",
         }
     }

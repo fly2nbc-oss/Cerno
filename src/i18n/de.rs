@@ -62,6 +62,50 @@ pub static TEXTS: Texts = Texts {
     align_same_camera: "Beide Fotos stammen von derselben Kamera",
     menu_camera_time: "Kamerazeit angleichen …",
     camera_time_title: "Kamerazeit angleichen",
+    cmd_rename: "Umbenennen …",
+    cmd_rename_all: |n| {
+        if n == 1 {
+            "Umbenennen (1 Foto) …".to_owned()
+        } else {
+            format!("Umbenennen ({n} Fotos) …")
+        }
+    },
+    rename_title: "Umbenennen",
+    rename_all_title: |n| {
+        if n == 1 {
+            "1 Foto umbenennen".to_owned()
+        } else {
+            format!("{n} Fotos umbenennen")
+        }
+    },
+    rename_patterns: [
+        "Standard",
+        "Dropbox / OneDrive",
+        "Android / Samsung",
+        "Datum, Text, Zähler",
+    ],
+    rename_name: "Neuer Name",
+    rename_text: "Text",
+    rename_no_time: "Keine Aufnahmezeit – Namen selbst eingeben",
+    rename_keeps: "bleibt (keine Aufnahmezeit)",
+    rename_unchanged: "heißt schon so",
+    rename_apply: "Umbenennen",
+    rename_keys: "↑ ↓ oder Alt+1 – Alt+4 wählen · Enter benennt um · Esc bricht ab",
+    rename_empty: "Der Name ist leer",
+    rename_bad_char: |c| format!("„{c}“ geht nicht in einem Dateinamen"),
+    rename_reserved: "Diesen Namen reserviert Windows",
+    rename_ending: "Punkt oder Leerzeichen am Ende geht nicht",
+    rename_too_long: "Der Name ist zu lang",
+    rename_taken: "Eine andere Datei heißt schon so",
+    rename_nothing: "Kein Foto bekommt einen neuen Namen",
+    rename_count: |n, total| format!("{n} von {total} Fotos bekommen einen neuen Namen"),
+    rename_done: |done, skipped, name, err| {
+        let mut text = format!("{done} umbenannt, {skipped} übersprungen");
+        if !name.is_empty() {
+            text.push_str(&format!(" – {name}: {err}"));
+        }
+        text
+    },
     camera_time_intro: "Ging die Uhr einer Kamera falsch, verschiebt ein Versatz die Aufnahmezeit all ihrer Fotos in diesem Ordner – für die Sortierung nach Aufnahmezeit, die Serien und die Anzeige. Nur im Index, die Dateien behalten ihre Zeit.",
     camera_time_reset: "Zurücksetzen",
     camera_time_invalid: "Versatz als +h:mm:ss oder −h:mm:ss, z. B. +1:30:00",
@@ -574,6 +618,7 @@ pub static TEXTS: Texts = Texts {
     busy_editing: "Die Bearbeitung ist noch offen – Enter übernimmt, Esc verwirft",
     busy_copying: "Das Foto wird gerade kopiert – gleich wieder möglich",
     busy_moving: "Das Foto wird gerade verschoben",
+    busy_renaming: "Wird gerade umbenannt",
     busy_deleted: "Gelöschtes Foto – erst zurücklegen (Strg+Z)",
     edit_needs_index: "Bearbeiten braucht den Index, und der ließ sich nicht öffnen",
     exiftool_missing: "Sterne, Farben und Bearbeiten brauchen ExifTool – Menüleiste › Einstellungen › Modelle & Daten",
@@ -593,6 +638,7 @@ pub static TEXTS: Texts = Texts {
     undo_what_reject: "Ablehnung",
     undo_what_colour: "Farbe",
     undo_what_edit: "Bearbeitung",
+    undo_what_rename: "Umbenennung",
     undo_mark_done: |name, value| format!("Rückgängig – {name}: {value}"),
     cmd_restore: "Zurücklegen",
     restored: |n, renamed, name| match (n, renamed) {
@@ -810,6 +856,7 @@ pub static TEXTS: Texts = Texts {
                 ("Strg+←, Strg+→", "90° drehen"),
                 ("Strg+Z", "Rückgängig"),
                 ("E", "In anderem Programm bearbeiten"),
+                ("F2, Umschalt+F2", "Dieses / alle gezeigten umbenennen"),
             ],
         ),
         (

@@ -35,6 +35,7 @@ mod playback;
 mod process;
 mod rating;
 mod raw;
+mod rename;
 mod sidecar;
 mod sync;
 mod system;

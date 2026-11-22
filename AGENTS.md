@@ -64,6 +64,7 @@ packaging/linux/build.sh           # dist/linux: cerno_<v>_amd64.deb, cerno_<v>_
 - **ExifTool writes every mark**; no package ships it. Windows downloads the pinned official package on request (`tools::EXIFTOOL`, via `download.rs`, into `data/tools/exiftool`); Linux takes it from the distribution (`system::exiftool_install_command`). **Without ExifTool or older than 12.24, every mark and edit is greyed out with the reason** (`Blocked::NoExifTool` / `ExifToolOld` / `ExifToolLoading`, `app/exiftool.rs`); viewing, delete, copy, move still work.
 - **Marks not written are kept, not lost**: a failed write keeps its marks in `rating::unsaved` with the error, retries after 5 s / 30 s / 2 min, then on folder open, the card's *Try again*, before copy/move/delete of that photo (`retry_before`) and at exit. The info bar shows `⚠ n marks not saved` (`ui/unsaved.rs`). A failed write releases its hold with `Held::unchanged()` (no generation bump). Not kept across restarts.
 - **File dates must never change**: ExifTool with `-P -overwrite_original_in_place`, and `filetimes.rs` snapshots and restores mtime/creation time around every write.
+- **Renaming** (`F2` the current photo, `Shift+F2` every photo shown; the user's decisions of 2026-11-22): a card offers four patterns – *Standard* `2026_08_23__191546` (the author's own, ≈ 54 000 files), *Dropbox / OneDrive* `2026-08-23 19.15.46`, *Android / Samsung* `20260823_191546`, *Date, text, counter* `2026-08-23_Roadtrip_001` (text = folder name to start with, counter in capture order) – chosen with `↑`/`↓` or `Alt+1`–`Alt+4`; one photo's name can be typed over (`rename::check`: Windows' forbidden characters, reserved names, a dot or space at the end), several show *old → new*. The time is the corrected capture time (`Facts::taken_ms`, camera offsets added); no time: the date patterns are greyed out, a batch leaves the photo as it is. A taken name gets `_1`, `_2` … (as in the author's archive), the extension stays, a RAW riding along takes the same new name, sidecars go along. Pure planning in `rename.rs` (`plan`, `rename_one`, `order` – a chain from its free end, a ring through a hidden `.cerno-rename-…` name); the files are renamed by the transfer worker (`transfer::Mode::Rename`, `run_renames`), gated by `Change::Rename` (`Blocked::Renaming` while it runs). `finish_rename` re-keys what knows a photo by path (marks, pairs, `ScoreBoard::rename`, `folder.all` sorted again, pinned, journal) after `retarget_moved`; `Ctrl+Z` gives every photo of the last rename its old name back (`undo::Entry::Rename`, not recorded again).
 - **Subfolders stay off** until the user turns them on (`Ctrl+U`); hidden dirs skipped, dir symlinks not followed, `.originals` never opened as a folder.
 - **No system dialogs** except the folder pickers and Edit elsewhere's program picker / "Open with". Confirmations are in-app cards (`ui/confirm.rs`); bulk rows name their count instead of asking; deleting uses the 5 s countdown. Hints fade, errors stay until `Esc`/click.
 - **Version**: `Cargo.toml` is the only source (help, About, start screen show `CARGO_PKG_VERSION`).
@@ -153,6 +154,7 @@ app/notice.rs        notices and the deletion countdown
 app/filter_aside.rs  `Shift+T`
 app/camera_filter.rs camera box entries, Details' camera button
 app/unsaved.rs       marks not written: count, card, `retry_before`, `exit_step`
+app/rename.rs        renaming (`F2`, `Shift+F2`): the card's data, the job for the worker, `finish_rename`
 app/update.rs        update check from the app's side
 app/video.rs         the playing video: start / pause, keys, bar, volume
 view/                sorting, filtering, series, duplicates, Top N, scenes, sections, nav, cameras (pure, unit-tested)
@@ -176,6 +178,7 @@ ui/modal.rs          card over the dimmed window
 ui/navigator.rs      navigator while zoomed
 ui/confirm.rs        confirmation card
 ui/camera_time.rs    camera time card
+ui/rename.rs         rename card: four patterns, the name field or the *old → new* list
 ui/name_list.rs      file-list card
 ui/keywords.rs       keyword filter card
 ui/unsaved.rs        unsaved-marks card
@@ -187,6 +190,7 @@ i18n/                `Texts` + one full literal per language, date / coordinate 
 pairs.rs             RAW ↔ JPEG pairing (pure)
 camera_time.rs       offsets `±h:mm:ss`, compare alignment (pure)
 name_list.rs         `match_list` (pure)
+rename.rs            rename patterns, name check, `plan`, `rename_one`, `order` (pure)
 keywords.rs          fold, `Vocabulary`, `Pick` (pure)
 library.rs           folder scan, `Format`, natural order, stamps
 loader.rs            prefetch workers + texture cache, full-res tiles, overlay textures, `LoadedImage::focus`
@@ -208,7 +212,7 @@ edit.rs              straighten / crop geometry and re-encode
 jpeg_info.rs         JPEG quality estimate, subsampling, completeness
 originals.rs         `.originals`: keep, set aside, list, restore, follow, migrate
 update.rs            update check (one GET, version parse, `due`)
-transfer.rs          copy / move worker with `Progress`
+transfer.rs          copy / move / rename worker with `Progress`
 deletion.rs          delayed deletion queue
 dlls.rs              delay-loaded DLLs checked before first call
 db/                  SQLite index (files, images, backups, set_aside, faces, camera_offsets, taste, settings); additive `migrate`

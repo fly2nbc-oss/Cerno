@@ -62,6 +62,38 @@ pub static TEXTS: Texts = Texts {
     align_same_camera: "Le due foto vengono dalla stessa fotocamera",
     menu_camera_time: "Ora della fotocamera …",
     camera_time_title: "Ora della fotocamera",
+    cmd_rename: "Rinomina …",
+    cmd_rename_all: |n| format!("Rinomina ({n} foto) …"),
+    rename_title: "Rinomina",
+    rename_all_title: |n| format!("Rinomina {n} foto"),
+    rename_patterns: [
+        "Standard",
+        "Dropbox / OneDrive",
+        "Android / Samsung",
+        "Data, testo, contatore",
+    ],
+    rename_name: "Nuovo nome",
+    rename_text: "Testo",
+    rename_no_time: "Nessuna ora di scatto – scrivi un nome",
+    rename_keeps: "mantiene il nome (nessuna ora di scatto)",
+    rename_unchanged: "ha già questo nome",
+    rename_apply: "Rinomina",
+    rename_keys: "↑ ↓ o Alt+1 – Alt+4 scelgono · Invio rinomina · Esc annulla",
+    rename_empty: "Il nome è vuoto",
+    rename_bad_char: |c| format!("«{c}» non può stare in un nome di file"),
+    rename_reserved: "Windows riserva questo nome",
+    rename_ending: "Niente punto o spazio alla fine",
+    rename_too_long: "Il nome è troppo lungo",
+    rename_taken: "Un altro file ha già questo nome",
+    rename_nothing: "Nessuna foto cambia nome",
+    rename_count: |n, total| format!("{n} foto su {total} cambiano nome"),
+    rename_done: |done, skipped, name, err| {
+        let mut text = format!("{done} rinominate, {skipped} saltate");
+        if !name.is_empty() {
+            text.push_str(&format!(" – {name}: {err}"));
+        }
+        text
+    },
     camera_time_intro: "Se l'orologio di una fotocamera era sbagliato, uno scarto sposta l'ora di scatto di tutte le sue foto in questa cartella, per l'ordinamento per ora di scatto, le serie e la visualizzazione. Solo nell'indice; i file mantengono la loro ora.",
     camera_time_reset: "Reimposta",
     camera_time_invalid: "Scarto come +h:mm:ss o −h:mm:ss, ad es. +1:30:00",
@@ -558,6 +590,7 @@ pub static TEXTS: Texts = Texts {
     busy_editing: "La modifica è ancora aperta – Invio applica, Esc annulla",
     busy_copying: "La foto è in fase di copia – di nuovo possibile tra poco",
     busy_moving: "La foto è in fase di spostamento",
+    busy_renaming: "In fase di rinomina",
     busy_deleted: "Foto eliminata: rimettila prima a posto (Ctrl+Z)",
     edit_needs_index: "La modifica richiede l'indice, che non è stato possibile aprire",
     exiftool_missing: "Stelle, colori e modifiche richiedono ExifTool: Barra dei menu › Impostazioni › Modelli e dati",
@@ -577,6 +610,7 @@ pub static TEXTS: Texts = Texts {
     undo_what_reject: "il rifiuto",
     undo_what_colour: "il colore",
     undo_what_edit: "la modifica",
+    undo_what_rename: "rinomina",
     undo_mark_done: |name, value| format!("Annullato – {name}: {value}"),
     cmd_restore: "Rimetti a posto",
     restored: |n, renamed, name| match (n, renamed) {
@@ -791,6 +825,7 @@ pub static TEXTS: Texts = Texts {
                 ("Ctrl+←, Ctrl+→", "Ruota di 90°"),
                 ("Ctrl+Z", "Annulla"),
                 ("E", "Modifica in un altro programma"),
+                ("F2, Maiusc+F2", "Rinomina questa / tutte"),
             ],
         ),
         (

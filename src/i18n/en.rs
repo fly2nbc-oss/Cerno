@@ -62,6 +62,50 @@ pub static TEXTS: Texts = Texts {
     align_same_camera: "Both photos come from the same camera",
     menu_camera_time: "Camera time …",
     camera_time_title: "Camera time",
+    cmd_rename: "Rename …",
+    cmd_rename_all: |n| {
+        if n == 1 {
+            "Rename (1 photo) …".to_owned()
+        } else {
+            format!("Rename ({n} photos) …")
+        }
+    },
+    rename_title: "Rename",
+    rename_all_title: |n| {
+        if n == 1 {
+            "Rename 1 photo".to_owned()
+        } else {
+            format!("Rename {n} photos")
+        }
+    },
+    rename_patterns: [
+        "Standard",
+        "Dropbox / OneDrive",
+        "Android / Samsung",
+        "Date, text, counter",
+    ],
+    rename_name: "New name",
+    rename_text: "Text",
+    rename_no_time: "No capture time – type a name",
+    rename_keeps: "keeps its name (no capture time)",
+    rename_unchanged: "has this name already",
+    rename_apply: "Rename",
+    rename_keys: "↑ ↓ or Alt+1 – Alt+4 choose · Enter renames · Esc cancels",
+    rename_empty: "The name is empty",
+    rename_bad_char: |c| format!("“{c}” can't be in a file name"),
+    rename_reserved: "Windows keeps this name for itself",
+    rename_ending: "A dot or a space at the end won't do",
+    rename_too_long: "The name is too long",
+    rename_taken: "Another file has this name",
+    rename_nothing: "No photo gets a new name",
+    rename_count: |n, total| format!("{n} of {total} photos get a new name"),
+    rename_done: |done, skipped, name, err| {
+        let mut text = format!("{done} renamed, {skipped} skipped");
+        if !name.is_empty() {
+            text.push_str(&format!(" – {name}: {err}"));
+        }
+        text
+    },
     camera_time_intro: "When a camera's clock was off, an offset moves the capture time of all its photos in this folder – for sorting by capture time, the series and the display. Only in the index; the files keep their time.",
     camera_time_reset: "Reset",
     camera_time_invalid: "Offset as +h:mm:ss or −h:mm:ss, e.g. +1:30:00",
@@ -567,6 +611,7 @@ pub static TEXTS: Texts = Texts {
     busy_editing: "The edit is still open – Enter applies, Esc cancels",
     busy_copying: "This photo is being copied – possible again in a moment",
     busy_moving: "This photo is being moved",
+    busy_renaming: "Being renamed",
     busy_deleted: "Deleted photo – put it back first (Ctrl+Z)",
     edit_needs_index: "Editing needs the index, which could not be opened",
     exiftool_missing: "Stars, colours and editing need ExifTool – Menu bar › Settings › Models & data",
@@ -586,6 +631,7 @@ pub static TEXTS: Texts = Texts {
     undo_what_reject: "rejection",
     undo_what_colour: "colour",
     undo_what_edit: "edit",
+    undo_what_rename: "renaming",
     undo_mark_done: |name, value| format!("Undone – {name}: {value}"),
     cmd_restore: "Put back",
     restored: |n, renamed, name| match (n, renamed) {
@@ -798,6 +844,7 @@ pub static TEXTS: Texts = Texts {
                 ("Ctrl+←, Ctrl+→", "Rotate 90°"),
                 ("Ctrl+Z", "Undo"),
                 ("E", "Edit in another program"),
+                ("F2, Shift+F2", "Rename this / all shown"),
             ],
         ),
         (

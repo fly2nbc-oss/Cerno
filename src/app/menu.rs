@@ -266,6 +266,7 @@ impl CernoApp {
         self.draw_name_list_card(ctx, window);
         self.draw_keywords_card(ctx, window);
         self.draw_camera_time_card(ctx, window);
+        self.draw_rename_card(ctx, window);
         self.draw_unsaved_card(ctx, window);
         if matches!(self.layer, Layer::Models) {
             let out = models::overlay(ctx, window, &self.analyzer.status(), &self.exiftool_row());
@@ -482,6 +483,10 @@ impl CernoApp {
             Item::List(
                 Row::new(Command::EditList, t.menu_external, key("E"))
                     .disabled(self.menu_block(Change::External, current)),
+            ),
+            Item::Row(
+                Row::new(Command::Rename { all: false }, t.cmd_rename, key("F2"))
+                    .disabled(self.rename_block(current)),
             ),
             Item::Row(
                 Row::new(Command::Reveal, t.reveal(), None).disabled(self.reveal_block(current)),
@@ -755,10 +760,28 @@ impl CernoApp {
             )
             .hint(t.delete_rejected_hint)
             .disabled(delete.or((rejected == 0).then_some(t.bar_none_rejected))),
+            Row::new(
+                Command::Rename { all: true },
+                (t.cmd_rename_all)(shown),
+                Some(i18n::with_shift("F2")),
+            )
+            .disabled(
+                self.rename_block(None)
+                    .or((shown == 0).then_some(t.no_match)),
+            ),
             Row::new(Command::RestoreShown, (t.bulk_restore)(deleted), None)
                 .hint(t.bulk_restore_hint)
                 .disabled((deleted == 0).then_some(t.bar_none_deleted)),
         ]
+    }
+
+    /// Why renaming `path` – or, without one, the photos shown – is greyed out.
+    fn rename_block(&self, path: Option<&std::path::Path>) -> Option<&'static str> {
+        if self.transfers.is_busy() {
+            Some(i18n::t().transfer_busy)
+        } else {
+            self.menu_block(Change::Rename, path)
+        }
     }
 }
 

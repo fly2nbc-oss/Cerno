@@ -190,6 +190,10 @@ pub(super) enum Command {
     Keywords,
     /// *Camera time …*: the card with every camera's offset.
     CameraTime,
+    /// `F2` / `Shift+F2`: the rename card for this photo or every photo shown.
+    Rename {
+        all: bool,
+    },
 
     // Bars, cards, settings.
     TogglePanel(Panel),
@@ -433,6 +437,7 @@ impl CernoApp {
             Command::NameList => self.open_name_list(),
             Command::Keywords => self.open_keywords(),
             Command::CameraTime => self.open_camera_time(),
+            Command::Rename { all } => self.open_rename(all),
             Command::TogglePanel(panel) => self.toggle_panel(panel),
             Command::AllPanels => self.toggle_all_panels(),
             Command::DetailsTab(tab) => self.set_details_tab(tab),

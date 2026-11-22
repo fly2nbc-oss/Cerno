@@ -20,6 +20,7 @@ pub mod name_list;
 pub mod navigator;
 pub mod overlays;
 pub mod palette;
+pub mod rename;
 pub mod scenes;
 pub mod side_bar;
 pub mod stars;

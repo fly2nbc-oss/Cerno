@@ -27,6 +27,8 @@ pub(super) enum Change {
     Transfer,
     /// Put a deleted photo back into its folder.
     Restore,
+    /// Give it a new name in its folder (`F2`).
+    Rename,
 }
 
 /// Why a photo can't be changed right now: one action at a time on a photo. Checked against
@@ -41,6 +43,8 @@ pub(super) enum Blocked {
     Copying,
     /// The photo is being moved to another folder.
     Moving,
+    /// The photo is being renamed.
+    Renaming,
     /// The index could not be opened: an edit's kept original would have no row to find it
     /// by (`Ctrl+Z`).
     NoIndex,
@@ -64,6 +68,7 @@ impl Blocked {
             Self::Editing => t.busy_editing,
             Self::Copying => t.busy_copying,
             Self::Moving => t.busy_moving,
+            Self::Renaming => t.busy_renaming,
             Self::NoIndex => t.edit_needs_index,
             Self::NotJpeg => t.edit_not_jpeg,
             Self::Deleted => t.busy_deleted,
@@ -143,9 +148,10 @@ fn blocked(change: Change, now: Activity) -> Option<Blocked> {
     match (change, transfer) {
         // A moved file is gone from here: nothing may queue up for its old path.
         (_, Some(TransferMode::Move)) => return Some(Blocked::Moving),
+        (_, Some(TransferMode::Rename)) => return Some(Blocked::Renaming),
         // Marks may wait: the file lock keeps a rating write and the copy apart.
         (
-            Change::Delete | Change::Edit | Change::Rewrite | Change::External,
+            Change::Delete | Change::Edit | Change::Rewrite | Change::External | Change::Rename,
             Some(TransferMode::Copy),
         ) => {
             return Some(Blocked::Copying);
@@ -154,12 +160,19 @@ fn blocked(change: Change, now: Activity) -> Option<Blocked> {
     }
     match change {
         Change::Mark => None,
-        Change::Delete | Change::Edit | Change::Rewrite | Change::External | Change::Transfer
+        Change::Delete
+        | Change::Edit
+        | Change::Rewrite
+        | Change::External
+        | Change::Transfer
+        | Change::Rename
             if writing =>
         {
             Some(Blocked::Writing)
         }
-        Change::Rewrite | Change::External | Change::Transfer if editing => Some(Blocked::Editing),
+        Change::Rewrite | Change::External | Change::Transfer | Change::Rename if editing => {
+            Some(Blocked::Editing)
+        }
         _ => None,
     }
 }
@@ -218,8 +231,11 @@ impl CernoApp {
     /// *Show in Explorer* changes nothing, so it is no `Change`: only a file being moved away
     /// has no place to be shown.
     pub(super) fn reveal_block(&self, path: Option<&Path>) -> Option<&'static str> {
-        let moving = path.is_some_and(|p| self.transfers.involves(p) == Some(TransferMode::Move));
-        moving.then(|| Blocked::Moving.hint())
+        match path.and_then(|p| self.transfers.involves(p)) {
+            Some(TransferMode::Move) => Some(Blocked::Moving.hint()),
+            Some(TransferMode::Rename) => Some(Blocked::Renaming.hint()),
+            _ => None,
+        }
     }
 }
 
@@ -252,20 +268,28 @@ mod tests {
             ..idle
         };
         // Nothing going on: everything may happen.
-        for change in [Mark, Delete, Edit, Rewrite, External, Transfer] {
+        for change in [Mark, Delete, Edit, Rewrite, External, Transfer, Rename] {
             assert_eq!(blocked(change, idle), None, "{change:?}");
         }
         // A moved photo takes nothing, a copied one still takes marks.
-        for change in [Mark, Delete, Edit, Rewrite, External] {
+        for change in [Mark, Delete, Edit, Rewrite, External, Rename] {
             assert_eq!(blocked(change, moving), Some(Blocked::Moving));
         }
+        // A photo being renamed takes nothing either.
+        let renaming = Activity {
+            transfer: Some(TransferMode::Rename),
+            ..idle
+        };
+        for change in [Mark, Delete, Edit, Rewrite, External, Rename] {
+            assert_eq!(blocked(change, renaming), Some(Blocked::Renaming));
+        }
         assert_eq!(blocked(Mark, copying), None);
-        for change in [Delete, Edit, Rewrite, External] {
+        for change in [Delete, Edit, Rewrite, External, Rename] {
             assert_eq!(blocked(change, copying), Some(Blocked::Copying));
         }
         // An edit being written holds everything but marks.
         assert_eq!(blocked(Mark, writing), None);
-        for change in [Delete, Edit, Rewrite, External, Transfer] {
+        for change in [Delete, Edit, Rewrite, External, Transfer, Rename] {
             assert_eq!(blocked(change, writing), Some(Blocked::Writing));
         }
         // An open session: no quarter turn, no Ctrl+Z, no other program, no copy or move
@@ -273,6 +297,7 @@ mod tests {
         assert_eq!(blocked(Rewrite, editing), Some(Blocked::Editing));
         assert_eq!(blocked(External, editing), Some(Blocked::Editing));
         assert_eq!(blocked(Transfer, editing), Some(Blocked::Editing));
+        assert_eq!(blocked(Rename, editing), Some(Blocked::Editing));
         assert_eq!(blocked(Mark, editing), None);
         assert_eq!(blocked(Edit, editing), None, "S/R switch the session");
         // Without the index file no edit at all – its kept original would be lost track of.
@@ -288,7 +313,7 @@ mod tests {
             deleted: true,
             ..idle
         };
-        for change in [Mark, Delete, Edit, Rewrite, External, Transfer] {
+        for change in [Mark, Delete, Edit, Rewrite, External, Transfer, Rename] {
             assert_eq!(
                 blocked(change, deleted),
                 Some(Blocked::Deleted),
@@ -316,7 +341,7 @@ mod tests {
                 assert_eq!(blocked(change, now), Some(reason), "{change:?}");
                 assert!(reason.needs_exiftool());
             }
-            for change in [Delete, Transfer, Restore] {
+            for change in [Delete, Transfer, Restore, Rename] {
                 assert_eq!(blocked(change, now), None, "{change:?}");
             }
             // A deleted photo says so first: putting it back is what it needs.

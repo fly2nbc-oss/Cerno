@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **Rename photos** – `F2` renames the photo shown, `Shift+F2` every photo the filter shows. The card offers four patterns from the capture time: `2026_08_23__191546`, `2026-08-23 19.15.46` (Dropbox / OneDrive), `20260823_191546` (Android) and `2026-08-23_Roadtrip_001` (day, a text – the folder's name to start with – and a counter in capture order); `↑`/`↓` or `Alt+1`–`Alt+4` choose one. A single photo's name can be typed over; several photos show each old and new name before anything happens. A name already taken gets `_1`, `_2` …, the extension stays, the RAW of a RAW+JPG pair and sidecars take the new name too, and stars, labels, scores and the kept original follow. `Ctrl+Z` gives the old names back. Also in the menu bar (*This photo*, *Visible photos*).
+
 ### Changed
 
 - **Keys reviewed** – the views move to `F5` photo, `F6` grid, `F7` scenes and `F8` faces, still in the order of the view switcher; the filmstrip moves to `F9` (`Alt+4` stays). Full screen is `F11` alone and the faces grid `F8` alone: `F` and `G` are free, like `F3` and `F4`. In the filter mode (`Ctrl+F`) Backspace shows all photos – `Del` now only ever means deleting. The help's tips say what Shift does: with `0`–`9`, `X`, `A` or `D` it marks and moves on, with `C`, `Tab` or `T` it does more.

@@ -37,12 +37,34 @@ pub(super) enum Entry {
     },
     /// Straighten, crop or a quarter turn: undone by putting the first original back.
     Edit { path: PathBuf },
+    /// Photos renamed (`F2`, `Shift+F2`): each as it is now, with the name it had. Never
+    /// empty.
+    Rename { pairs: Vec<(PathBuf, PathBuf)> },
 }
 
 impl Entry {
     pub(super) fn path(&self) -> &Path {
         match self {
             Self::Rating { path, .. } | Self::Label { path, .. } | Self::Edit { path } => path,
+            Self::Rename { pairs } => pairs.first().map_or(Path::new(""), |(now, _)| now),
+        }
+    }
+
+    /// The photo moved or was renamed: the entry follows it.
+    fn follow(&mut self, from: &Path, to: &Path) {
+        match self {
+            Self::Rating { path, .. } | Self::Label { path, .. } | Self::Edit { path } => {
+                if path == from {
+                    *path = to.to_path_buf();
+                }
+            }
+            Self::Rename { pairs } => {
+                for (now, _) in pairs {
+                    if now == from {
+                        *now = to.to_path_buf();
+                    }
+                }
+            }
         }
     }
 
@@ -57,6 +79,7 @@ impl Entry {
             Self::Rating { .. } => t.undo_what_stars,
             Self::Label { .. } => t.undo_what_colour,
             Self::Edit { .. } => t.undo_what_edit,
+            Self::Rename { .. } => t.undo_what_rename,
         }
     }
 
@@ -64,6 +87,7 @@ impl Entry {
     fn change(&self) -> Change {
         match self {
             Self::Edit { .. } => Change::Rewrite,
+            Self::Rename { .. } => Change::Rename,
             _ => Change::Mark,
         }
     }
@@ -103,6 +127,13 @@ impl Journal {
 
     pub(super) fn clear(&mut self) {
         self.entries.clear();
+    }
+
+    /// A photo moved or was renamed: its entries follow it.
+    pub(super) fn follow(&mut self, from: &Path, to: &Path) {
+        for entry in &mut self.entries {
+            entry.follow(from, to);
+        }
     }
 
     /// The first original of `path` is back: the edits recorded for it went with it.
@@ -163,6 +194,8 @@ impl CernoApp {
                 )));
             }
             Entry::Edit { .. } => self.restore_original(path),
+            // Back to the names they had – not recorded again.
+            Entry::Rename { pairs } => self.start_rename(ctx, pairs, false),
         }
     }
 

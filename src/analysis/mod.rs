@@ -201,6 +201,28 @@ impl ScoreBoard {
         }
     }
 
+    /// A photo was renamed (`F2`): what is known about it keeps, under the new path – the
+    /// analysis would otherwise find it again only on its next visit.
+    pub fn rename(&self, from: &Path, to: &Path) {
+        let known = self
+            .entries
+            .write()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(from);
+        if let Some(known) = known {
+            self.entries
+                .write()
+                .unwrap_or_else(|p| p.into_inner())
+                .insert(to.to_path_buf(), known);
+        }
+        let mut keywords = self.keywords.write().unwrap_or_else(|p| p.into_inner());
+        if let Some(words) = keywords.remove(from) {
+            keywords.insert(to.to_path_buf(), words);
+        }
+        drop(keywords);
+        self.bump();
+    }
+
     /// Something derived changed (e.g. the taste model was retrained).
     fn bump(&self) {
         self.version.fetch_add(1, Ordering::Relaxed);

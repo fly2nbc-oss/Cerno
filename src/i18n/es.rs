@@ -62,6 +62,50 @@ pub static TEXTS: Texts = Texts {
     align_same_camera: "Las dos fotos son de la misma cámara",
     menu_camera_time: "Hora de la cámara …",
     camera_time_title: "Hora de la cámara",
+    cmd_rename: "Renombrar …",
+    cmd_rename_all: |n| {
+        if n == 1 {
+            "Renombrar (1 foto) …".to_owned()
+        } else {
+            format!("Renombrar ({n} fotos) …")
+        }
+    },
+    rename_title: "Renombrar",
+    rename_all_title: |n| {
+        if n == 1 {
+            "Renombrar 1 foto".to_owned()
+        } else {
+            format!("Renombrar {n} fotos")
+        }
+    },
+    rename_patterns: [
+        "Estándar",
+        "Dropbox / OneDrive",
+        "Android / Samsung",
+        "Fecha, texto, contador",
+    ],
+    rename_name: "Nombre nuevo",
+    rename_text: "Texto",
+    rename_no_time: "Sin hora de captura – escribe un nombre",
+    rename_keeps: "conserva su nombre (sin hora de captura)",
+    rename_unchanged: "ya tiene este nombre",
+    rename_apply: "Renombrar",
+    rename_keys: "↑ ↓ o Alt+1 – Alt+4 eligen · Intro renombra · Esc cancela",
+    rename_empty: "El nombre está vacío",
+    rename_bad_char: |c| format!("«{c}» no puede ir en un nombre de archivo"),
+    rename_reserved: "Windows reserva este nombre",
+    rename_ending: "No puede terminar en punto o espacio",
+    rename_too_long: "El nombre es demasiado largo",
+    rename_taken: "Otro archivo ya tiene este nombre",
+    rename_nothing: "Ninguna foto cambia de nombre",
+    rename_count: |n, total| format!("{n} de {total} fotos cambian de nombre"),
+    rename_done: |done, skipped, name, err| {
+        let mut text = format!("{done} renombradas, {skipped} omitidas");
+        if !name.is_empty() {
+            text.push_str(&format!(" – {name}: {err}"));
+        }
+        text
+    },
     camera_time_intro: "Si el reloj de una cámara iba mal, un desfase mueve la hora de captura de todas sus fotos en esta carpeta, para ordenar por hora de captura, las series y lo que se muestra. Solo en el índice; los archivos conservan su hora.",
     camera_time_reset: "Restablecer",
     camera_time_invalid: "Desfase como +h:mm:ss o −h:mm:ss, p. ej. +1:30:00",
@@ -576,6 +620,7 @@ pub static TEXTS: Texts = Texts {
     busy_editing: "La edición sigue abierta: Intro aplica, Esc cancela",
     busy_copying: "Esta foto se está copiando; en un momento vuelve a ser posible",
     busy_moving: "Esta foto se está moviendo",
+    busy_renaming: "Se está renombrando",
     busy_deleted: "Foto eliminada: devuélvela primero a su sitio (Ctrl+Z)",
     edit_needs_index: "Editar necesita el índice, que no se pudo abrir",
     exiftool_missing: "Estrellas, colores y edición necesitan ExifTool: Barra de menú › Configuración › Modelos y datos",
@@ -595,6 +640,7 @@ pub static TEXTS: Texts = Texts {
     undo_what_reject: "el rechazo",
     undo_what_colour: "el color",
     undo_what_edit: "la edición",
+    undo_what_rename: "renombrado",
     undo_mark_done: |name, value| format!("Deshecho – {name}: {value}"),
     cmd_restore: "Devolver a su sitio",
     restored: |n, renamed, name| match (n, renamed) {
@@ -810,6 +856,7 @@ pub static TEXTS: Texts = Texts {
                 ("Ctrl+←, Ctrl+→", "Girar 90°"),
                 ("Ctrl+Z", "Deshacer"),
                 ("E", "Editar en otro programa"),
+                ("F2, Mayús+F2", "Renombrar esta / todas"),
             ],
         ),
         (

@@ -64,6 +64,50 @@ pub static TEXTS: Texts = Texts {
     align_same_camera: "Les deux photos viennent du même appareil",
     menu_camera_time: "Heure de l'appareil …",
     camera_time_title: "Heure de l'appareil",
+    cmd_rename: "Renommer …",
+    cmd_rename_all: |n| {
+        if n == 1 {
+            "Renommer (1 photo) …".to_owned()
+        } else {
+            format!("Renommer ({n} photos) …")
+        }
+    },
+    rename_title: "Renommer",
+    rename_all_title: |n| {
+        if n == 1 {
+            "Renommer 1 photo".to_owned()
+        } else {
+            format!("Renommer {n} photos")
+        }
+    },
+    rename_patterns: [
+        "Standard",
+        "Dropbox / OneDrive",
+        "Android / Samsung",
+        "Date, texte, compteur",
+    ],
+    rename_name: "Nouveau nom",
+    rename_text: "Texte",
+    rename_no_time: "Pas d'heure de prise de vue – saisissez un nom",
+    rename_keeps: "garde son nom (pas d'heure de prise de vue)",
+    rename_unchanged: "porte déjà ce nom",
+    rename_apply: "Renommer",
+    rename_keys: "↑ ↓ ou Alt+1 – Alt+4 choisir · Entrée renomme · Échap annule",
+    rename_empty: "Le nom est vide",
+    rename_bad_char: |c| format!("« {c} » est interdit dans un nom de fichier"),
+    rename_reserved: "Windows se réserve ce nom",
+    rename_ending: "Pas de point ni d'espace à la fin",
+    rename_too_long: "Le nom est trop long",
+    rename_taken: "Un autre fichier porte ce nom",
+    rename_nothing: "Aucune photo ne change de nom",
+    rename_count: |n, total| format!("{n} photos sur {total} changent de nom"),
+    rename_done: |done, skipped, name, err| {
+        let mut text = format!("{done} renommées, {skipped} ignorées");
+        if !name.is_empty() {
+            text.push_str(&format!(" – {name}: {err}"));
+        }
+        text
+    },
     camera_time_intro: "Si l'horloge d'un appareil était fausse, un décalage déplace l'heure de prise de vue de toutes ses photos dans ce dossier – pour le tri par date de prise de vue, les séries et l'affichage. Seulement dans l'index ; les fichiers gardent leur heure.",
     camera_time_reset: "Réinitialiser",
     camera_time_invalid: "Décalage au format +h:mm:ss ou −h:mm:ss, p. ex. +1:30:00",
@@ -599,6 +643,7 @@ pub static TEXTS: Texts = Texts {
     busy_editing: "La retouche est encore ouverte – Entrée applique, Échap annule",
     busy_copying: "Cette photo est en cours de copie – possible dans un instant",
     busy_moving: "Cette photo est en cours de déplacement",
+    busy_renaming: "En cours de renommage",
     busy_deleted: "Photo supprimée – remettez-la d'abord en place (Ctrl+Z)",
     edit_needs_index: "La retouche a besoin de l'index, qui n'a pas pu être ouvert",
     exiftool_missing: "Les étoiles, les couleurs et les retouches ont besoin d'ExifTool – Barre de menu › Réglages › Modèles et données",
@@ -618,6 +663,7 @@ pub static TEXTS: Texts = Texts {
     undo_what_reject: "le rejet",
     undo_what_colour: "la couleur",
     undo_what_edit: "la retouche",
+    undo_what_rename: "renommage",
     undo_mark_done: |name, value| format!("Annulé – {name} : {value}"),
     cmd_restore: "Remettre en place",
     restored: |n, renamed, name| match (n, renamed) {
@@ -832,6 +878,7 @@ pub static TEXTS: Texts = Texts {
                 ("Ctrl+←, Ctrl+→", "Pivoter de 90°"),
                 ("Ctrl+Z", "Annuler"),
                 ("E", "Modifier dans un autre programme"),
+                ("F2, Maj+F2", "Renommer celle-ci / toutes"),
             ],
         ),
         (

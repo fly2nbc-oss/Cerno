@@ -124,6 +124,9 @@ struct KeyInput {
     rotate_ccw: bool,
     /// `Ctrl+Z`: the kept original comes back.
     undo: bool,
+    /// `F2`: rename this photo; `Shift+F2` every photo shown.
+    rename: bool,
+    rename_all: bool,
 }
 
 /// A digit key, found by its place on the keyboard: the typed character depends on the layout
@@ -293,6 +296,8 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         rotate_cw: i.modifiers.command && !i.modifiers.shift && i.key_pressed(Key::ArrowRight),
         rotate_ccw: i.modifiers.command && !i.modifiers.shift && i.key_pressed(Key::ArrowLeft),
         undo: i.modifiers.command && !i.modifiers.shift && i.key_pressed(Key::Z),
+        rename: plain && i.key_pressed(Key::F2),
+        rename_all: i.modifiers.shift_only() && i.key_pressed(Key::F2),
     }
 }
 
@@ -387,6 +392,8 @@ impl KeyInput {
         push(self.undo, Command::Undo);
         push(self.open, Command::Open);
         push(self.subfolders, Command::Subfolders);
+        push(self.rename, Command::Rename { all: false });
+        push(self.rename_all, Command::Rename { all: true });
         // Every frame: whether the current photo is a video is looked at here, as the zoom
         // keys' hint needs it.
         push(
@@ -867,6 +874,8 @@ mod tests {
             (Key::D, shift, Command::KeepRight { next: true }),
             (Key::PageDown, plain, Command::PageDown),
             (Key::PageUp, plain, Command::PageUp),
+            (Key::F2, plain, Command::Rename { all: false }),
+            (Key::F2, shift, Command::Rename { all: true }),
         ];
         for (pressed, modifiers, command) in cases {
             // The video's keys go along every frame (`Command::Video`, empty here).
@@ -890,7 +899,14 @@ mod tests {
                 "{pressed:?} with {modifiers:?} is free"
             );
         }
-        // The views take no modifier.
+        // The views take no modifier, renaming only Shift.
+        for modifiers in [alt, ctrl] {
+            assert_eq!(
+                read(vec![key(Key::F2, Key::F2, modifiers)], modifiers),
+                KeyInput::default(),
+                "F2 with {modifiers:?}"
+            );
+        }
         for pressed in [Key::F5, Key::F6, Key::F7, Key::F8] {
             for modifiers in [alt, ctrl, shift] {
                 assert_eq!(

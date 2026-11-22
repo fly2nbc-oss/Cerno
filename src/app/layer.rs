@@ -7,7 +7,7 @@ use crate::ui::help::Page;
 use crate::ui::keywords as keyword_card;
 
 use super::menu::{ConfirmAction, RowList};
-use super::{camera_time, name_list};
+use super::{camera_time, name_list, rename};
 
 #[derive(Default)]
 pub(super) enum Layer {
@@ -31,6 +31,8 @@ pub(super) enum Layer {
     Keywords(keyword_card::Card),
     /// The camera time card (*Visible photos ▸ Camera time …*).
     CameraTime(camera_time::Card),
+    /// The rename card (`F2`, `Shift+F2`).
+    Rename(rename::Card),
     /// The marks that could not be written (the info bar's warning); `exiting`: Cerno is being
     /// closed, and the card offers *Quit anyway*.
     Unsaved { exiting: bool },
@@ -64,6 +66,7 @@ impl Layer {
                 | Self::NameList(_)
                 | Self::Keywords(_)
                 | Self::CameraTime(_)
+                | Self::Rename(_)
                 | Self::Unsaved { .. }
         )
     }

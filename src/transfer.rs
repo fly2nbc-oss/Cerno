@@ -5,6 +5,8 @@
 //! left alone. Each file is held in [`FileLocks`] while it is copied or moved, so a rating
 //! written meanwhile never meets a half-copied file. [`Progress`] tells the UI how far it is.
 //! The RAW of a RAW + JPG pair rides along with its JPEG (`pairs`): both go, or neither.
+//! Renaming (`F2`) runs here too: a list of [`rename::Step`]s in their folder, each photo with
+//! its rider and its sidecar.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -16,11 +18,14 @@ use std::thread::JoinHandle;
 
 use crate::filelock::FileLocks;
 use crate::filetimes;
+use crate::rename::{self, Step};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     Copy,
     Move,
+    /// New names in the same folder (`F2`, `Shift+F2`).
+    Rename,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,6 +36,23 @@ pub struct Outcome {
     pub failed: Vec<(PathBuf, String)>,
     /// The RAWs that went along with a JPEG of `done` – not counted as photos of their own.
     pub riders: Vec<(PathBuf, PathBuf)>,
+}
+
+impl Outcome {
+    fn new(mode: Mode) -> Self {
+        Self {
+            mode,
+            done: Vec::new(),
+            skipped: Vec::new(),
+            failed: Vec::new(),
+            riders: Vec::new(),
+        }
+    }
+
+    /// Files left their paths: a move or a rename.
+    pub fn moves(&self) -> bool {
+        matches!(self.mode, Mode::Move | Mode::Rename)
+    }
 }
 
 /// How far a copy or move is. The worker counts, the UI reads a [`Snapshot`]. Files count
@@ -113,6 +135,24 @@ struct Job {
     /// The RAW riding along with a source JPEG.
     riders: HashMap<PathBuf, PathBuf>,
     dest: PathBuf,
+    /// A rename's steps in their order (`rename::order`); `sources` are its photos.
+    steps: Vec<Step>,
+}
+
+impl Job {
+    fn run(&self, files: &FileLocks, progress: &Progress) -> Outcome {
+        match self.mode {
+            Mode::Rename => run_renames(&self.sources, &self.steps, &self.riders, files, progress),
+            mode => run(
+                mode,
+                &self.sources,
+                &self.riders,
+                &self.dest,
+                files,
+                progress,
+            ),
+        }
+    }
 }
 
 pub struct Queue {
@@ -182,6 +222,32 @@ impl Queue {
             sources,
             riders,
             dest,
+            steps: Vec::new(),
+        });
+        true
+    }
+
+    /// Remembers a rename like [`Self::push`]: each photo of `renames` to its new path, a RAW
+    /// riding along under the same new name.
+    pub fn push_rename(
+        &mut self,
+        renames: Vec<(PathBuf, PathBuf)>,
+        riders: HashMap<PathBuf, PathBuf>,
+    ) -> bool {
+        if self.is_busy() {
+            return false;
+        }
+        let steps = rename::order(&renames);
+        let sources: Vec<PathBuf> = renames.into_iter().map(|(from, _)| from).collect();
+        self.progress = Arc::new(Progress::new(sources.len()));
+        let involved = sources.iter().chain(riders.values()).cloned().collect();
+        self.involved = Some((Mode::Rename, involved));
+        self.pending = Some(Job {
+            mode: Mode::Rename,
+            sources,
+            riders,
+            dest: PathBuf::new(),
+            steps,
         });
         true
     }
@@ -202,14 +268,7 @@ impl Queue {
             std::thread::Builder::new()
                 .name("cerno-transfer".into())
                 .spawn(move || {
-                    let outcome = run(
-                        job.mode,
-                        &job.sources,
-                        &job.riders,
-                        &job.dest,
-                        &files,
-                        &progress,
-                    );
+                    let outcome = job.run(&files, &progress);
                     let _ = tx.send(outcome);
                     on_done();
                 })
@@ -235,14 +294,7 @@ impl Queue {
     pub fn finish_now(&mut self) -> Vec<Outcome> {
         let mut outcomes = Vec::new();
         if let Some(job) = self.pending.take() {
-            outcomes.push(run(
-                job.mode,
-                &job.sources,
-                &job.riders,
-                &job.dest,
-                &self.files,
-                &self.progress,
-            ));
+            outcomes.push(job.run(&self.files, &self.progress));
         }
         for worker in self.workers.drain(..) {
             let _ = worker.join();
@@ -264,13 +316,7 @@ pub fn run(
     files: &FileLocks,
     progress: &Progress,
 ) -> Outcome {
-    let mut outcome = Outcome {
-        mode,
-        done: Vec::new(),
-        skipped: Vec::new(),
-        failed: Vec::new(),
-        riders: Vec::new(),
-    };
+    let mut outcome = Outcome::new(mode);
     let size_of = |path: &Path| fs::metadata(path).map_or(0, |meta| meta.len());
     // A pair counts as one photo with the bytes of both.
     let sizes: Vec<u64> = sources
@@ -290,13 +336,7 @@ pub fn run(
         } else if transfer_one(mode, src, dest_dir, files, &mut outcome).is_some()
             && let Some(raw) = rider
         {
-            let mut along = Outcome {
-                mode,
-                done: Vec::new(),
-                skipped: Vec::new(),
-                failed: Vec::new(),
-                riders: Vec::new(),
-            };
+            let mut along = Outcome::new(mode);
             transfer_one(mode, raw, dest_dir, files, &mut along);
             outcome.riders.extend(along.done);
             outcome.failed.extend(along.failed);
@@ -328,7 +368,7 @@ fn transfer_one(
     // A move makes the file disappear, which counts as a write for everyone else.
     let held = match mode {
         Mode::Copy => files.hold(src),
-        Mode::Move => files.hold_write(src),
+        Mode::Move | Mode::Rename => files.hold_write(src),
     };
     let result = apply(mode, src, &dest);
     drop(held);
@@ -372,14 +412,114 @@ fn verb(mode: Mode) -> &'static str {
     match mode {
         Mode::Copy => "copy",
         Mode::Move => "move",
+        Mode::Rename => "rename",
     }
 }
 
 fn apply(mode: Mode, src: &Path, dest: &Path) -> Result<(), String> {
     match mode {
         Mode::Copy => copy_keeping_times(src, dest),
-        Mode::Move => move_file(src, dest),
+        Mode::Move | Mode::Rename => move_file(src, dest),
     }
+}
+
+/// Renames in the folder, step by step (`rename::order`): each photo with its rider and its
+/// sidecar. A name taken meanwhile skips the photo – a rider's name too (no half pairs); a
+/// photo already stepped aside under a temporary name goes back to its old one.
+fn run_renames(
+    sources: &[PathBuf],
+    steps: &[Step],
+    riders: &HashMap<PathBuf, PathBuf>,
+    files: &FileLocks,
+    progress: &Progress,
+) -> Outcome {
+    let mut outcome = Outcome::new(Mode::Rename);
+    progress.start(sources.len(), 0);
+    // Where each photo and its rider are now, and how many steps are still to come for it.
+    let mut at: Vec<PathBuf> = sources.to_vec();
+    let mut rider_at: Vec<Option<PathBuf>> =
+        sources.iter().map(|src| riders.get(src).cloned()).collect();
+    let mut left = vec![0usize; sources.len()];
+    for step in steps {
+        left[step.origin] += 1;
+    }
+    let mut given_up = vec![false; sources.len()];
+    let taken = |to: &Path, from: &Path| to.exists() && !same_file(from, to);
+    for step in steps {
+        let origin = step.origin;
+        if given_up[origin] {
+            continue;
+        }
+        progress.begin(&step.from, 0);
+        let rider_dest = rider_at[origin]
+            .as_deref()
+            .map(|rider| rename::rider_to(rider, &step.to));
+        let blocked = taken(&step.to, &step.from)
+            || rider_at[origin]
+                .as_deref()
+                .zip(rider_dest.as_deref())
+                .is_some_and(|(from, to)| taken(to, from));
+        let result = if blocked {
+            Err(None)
+        } else {
+            rename_with_sidecar(&step.from, &step.to, files).map_err(Some)
+        };
+        if let Err(err) = result {
+            given_up[origin] = true;
+            // Stepped aside already: back to the old name.
+            if at[origin] != sources[origin] {
+                let _ = rename_with_sidecar(&at[origin], &sources[origin], files);
+                if let (Some(now), Some(old)) = (&rider_at[origin], riders.get(&sources[origin])) {
+                    let _ = rename_with_sidecar(now, old, files);
+                }
+            }
+            match err {
+                None => outcome.skipped.push(sources[origin].clone()),
+                Some(err) => outcome.failed.push((sources[origin].clone(), err)),
+            }
+            progress.finish(0);
+            continue;
+        }
+        if let (Some(from), Some(to)) = (rider_at[origin].clone(), rider_dest) {
+            match rename_with_sidecar(&from, &to, files) {
+                Ok(()) => rider_at[origin] = Some(to),
+                Err(err) => outcome.failed.push((from, err)),
+            }
+        }
+        at[origin] = step.to.clone();
+        left[origin] -= 1;
+        if left[origin] == 0 {
+            outcome
+                .done
+                .push((sources[origin].clone(), at[origin].clone()));
+            if let (Some(from), Some(to)) = (riders.get(&sources[origin]), &rider_at[origin]) {
+                outcome.riders.push((from.clone(), to.clone()));
+            }
+            progress.finish(0);
+        }
+    }
+    outcome
+}
+
+/// One file to its new name in the same folder, its sidecar along.
+fn rename_with_sidecar(from: &Path, to: &Path, files: &FileLocks) -> Result<(), String> {
+    let held = files.hold_write(from);
+    let result = fs::rename(from, to).map_err(|err| err.to_string());
+    drop(held);
+    match &result {
+        Ok(()) => {
+            log::info!("rename {} → {}", from.display(), to.display());
+            carry_sidecar(Mode::Rename, from, to);
+        }
+        Err(err) => log::warn!("could not rename {}: {err}", from.display()),
+    }
+    result
+}
+
+/// The same file under another case (`IMG.jpg` → `img.jpg` on Windows), which `exists`
+/// reports as taken.
+fn same_file(a: &Path, b: &Path) -> bool {
+    a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase()
 }
 
 fn copy_keeping_times(src: &Path, dest: &Path) -> Result<(), String> {
@@ -680,6 +820,62 @@ mod tests {
         };
         assert_eq!(snapshot.fraction(), 0.25);
         assert_eq!(Snapshot::default().fraction(), 0.0);
+    }
+
+    /// Renames run in the folder: a pair takes one new name, the RAW's sidecar along; two
+    /// photos swapping names go through a temporary name; a name taken by another file skips
+    /// the photo and leaves it as it was.
+    #[test]
+    fn renames_keep_pairs_and_swap_names() {
+        let dir = temp_dir("rename");
+        let jpeg = write_old(&dir, "IMG_1.JPG", b"jpeg");
+        let raw = write_old(&dir, "IMG_1.CR3", b"raw");
+        write_old(&dir, "IMG_1.xmp", b"marks");
+        let a = write_old(&dir, "a.jpg", b"a");
+        let b = write_old(&dir, "b.jpg", b"b");
+        let c = write_old(&dir, "c.jpg", b"c");
+        write_old(&dir, "taken.jpg", b"someone else's");
+        let renames = vec![
+            (jpeg.clone(), dir.join("2026_08_23__191546.JPG")),
+            (a.clone(), dir.join("b.jpg")),
+            (b.clone(), dir.join("a.jpg")),
+            (c.clone(), dir.join("taken.jpg")),
+        ];
+        let steps = rename::order(&renames);
+        let sources: Vec<PathBuf> = renames.iter().map(|(from, _)| from.clone()).collect();
+        let riders = HashMap::from([(jpeg.clone(), raw.clone())]);
+        let outcome = run_renames(
+            &sources,
+            &steps,
+            &riders,
+            &FileLocks::default(),
+            &Progress::default(),
+        );
+        assert_eq!(outcome.done.len(), 3);
+        assert_eq!(outcome.skipped, vec![c.clone()]);
+        assert_eq!(
+            outcome.riders,
+            vec![(raw.clone(), dir.join("2026_08_23__191546.CR3"))]
+        );
+        let read = |name: &str| fs::read(dir.join(name)).unwrap();
+        assert_eq!(read("2026_08_23__191546.JPG"), b"jpeg");
+        assert_eq!(read("2026_08_23__191546.CR3"), b"raw");
+        assert_eq!(read("2026_08_23__191546.xmp"), b"marks");
+        assert_eq!(read("a.jpg"), b"b", "swapped");
+        assert_eq!(read("b.jpg"), b"a");
+        assert_eq!(read("c.jpg"), b"c", "left as it was");
+        assert_eq!(read("taken.jpg"), b"someone else's");
+        assert!(!jpeg.exists() && !raw.exists());
+        let names: Vec<String> = fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            names.iter().all(|name| !name.starts_with(".cerno-rename")),
+            "no temporary name left: {names:?}"
+        );
+
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

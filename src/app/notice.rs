@@ -154,7 +154,12 @@ impl CernoApp {
             overlays::delete_countdown(ui, overlays::bottom_slot(area, slot), count, left);
             slot += 1;
         }
-        if let Some((mode, progress)) = self.transfers.progress() {
+        // A rename takes a blink: no bar for it.
+        if let Some((mode, progress)) = self
+            .transfers
+            .progress()
+            .filter(|(mode, _)| *mode != TransferMode::Rename)
+        {
             overlays::transfer_progress(
                 ui,
                 overlays::bottom_slot(area, slot),

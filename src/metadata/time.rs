@@ -69,6 +69,31 @@ pub fn format_millis(ms: i64) -> String {
     )
 }
 
+/// A wall-clock time to the second – what a file name made from the capture time needs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Clock {
+    pub year: i64,
+    pub month: u32,
+    pub day: u32,
+    pub hour: u32,
+    pub minute: u32,
+    pub second: u32,
+}
+
+/// A capture time in milliseconds (with any camera offset already added) as its wall clock.
+pub fn clock_of(ms: i64) -> Clock {
+    let rest = ms.rem_euclid(86_400_000);
+    let (year, month, day) = civil_from_days(ms.div_euclid(86_400_000));
+    Clock {
+        year,
+        month,
+        day,
+        hour: (rest / 3_600_000) as u32,
+        minute: (rest / 60_000 % 60) as u32,
+        second: (rest / 1000 % 60) as u32,
+    }
+}
+
 /// The inverse of `days_from_civil` (days since 1970-01-01 → year, month, day).
 pub(super) fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
