@@ -1132,7 +1132,7 @@ fn the_camera_list_counts_models_and_splits_bodies() {
     assert!(camera_entries([photo(None, None)], |_| None, |_| None).is_empty());
 }
 
-/// `Shift+T` sets the whole filter aside and brings back exactly that one; the sort is no
+/// `Shift+F` sets the whole filter aside and brings back exactly that one; the sort is no
 /// filter and stays as it is now. Every field but the sort is a filter: a field added to
 /// `ViewOptions` must be named in `everything` below (the literal has no `..`, so it won't
 /// compile without it) – and then it counts for `is_filtered`, "Show all" and the aside

@@ -51,9 +51,9 @@ The Windows files are not signed: SmartScreen asks once (*More info* → *Run an
 | `Delete` | Delete – `Esc` within 5 s brings it back |
 | `Z`, `C`, `Alt+C` | 100 % zoom, compare, whole photo and 100 % side by side |
 | `F5` / `F6` / `F7` / `F8` | Photo / grid / scenes / faces |
-| `F10` or `Alt+1` / `Tab` or `Alt+2` / `T` or `Alt+3` / `F9` or `Alt+4` | Menu bar / details / filter bar / filmstrip |
+| `F10` or `Alt+1` / `Tab` or `Alt+2` / `F` or `Alt+3` / `F9` or `Alt+4` | Menu bar / details / filter bar / filmstrip |
 | `Ctrl+Z` | Undo the last mark or edit – on a deleted photo: put it back |
-| `H` | Help: every key, and tips on working with Cerno |
+| `F1`, `H` | Help: every key, and tips on working with Cerno |
 
 ## Privacy
 

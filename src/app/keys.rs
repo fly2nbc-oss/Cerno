@@ -88,9 +88,9 @@ struct KeyInput {
     similar: bool,
     toggle_fullscreen: bool,
     escape: bool,
-    /// `T` or `Alt+3`: the filter bar.
+    /// `F` or `Alt+3`: the filter bar.
     toggle_toolbar: bool,
-    /// `Shift+T`: the whole filter aside – every photo – or back.
+    /// `Shift+F`: the whole filter aside – every photo – or back.
     filter_aside: bool,
     /// `F9` or `Alt+4`: the filmstrip.
     toggle_filmstrip: bool,
@@ -269,17 +269,15 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         // F11 full screen; T (`toggle_toolbar`) is the filter bar.
         toggle_fullscreen: i.key_pressed(Key::F11),
         escape: i.key_pressed(Key::Escape),
-        toggle_toolbar: (plain && i.key_pressed(Key::T)) || alt_digit(&i.events, Key::Num3),
-        filter_aside: i.modifiers.shift_only() && i.key_pressed(Key::T),
+        toggle_toolbar: (plain && i.key_pressed(Key::F)) || alt_digit(&i.events, Key::Num3),
+        filter_aside: i.modifiers.shift_only() && i.key_pressed(Key::F),
         toggle_filmstrip: i.key_pressed(Key::F9) || alt_digit(&i.events, Key::Num4),
         // The views in the order of the info bar's switcher: photo, grid, scenes, faces (`F8`,
         // with `face_grid`). Without modifiers, like every view key.
         show_photo: plain && i.key_pressed(Key::F5),
         toggle_grid: plain && i.key_pressed(Key::F6),
         toggle_scenes: plain && i.key_pressed(Key::F7),
-        help: i.key_pressed(Key::F1)
-            || i.key_pressed(Key::Questionmark)
-            || (plain && i.key_pressed(Key::H)),
+        help: i.key_pressed(Key::F1) || (plain && i.key_pressed(Key::H)),
         language: i.modifiers.command && i.key_pressed(Key::L),
         toggle_side_bar: i.key_pressed(Key::F10) || alt_digit(&i.events, Key::Num1),
         toggle_details: alt_digit(&i.events, Key::Num2),
@@ -876,7 +874,8 @@ mod tests {
             (Key::Num1, alt, Command::TogglePanel(Panel::Left)),
             (Key::Num2, alt, Command::TogglePanel(Panel::Right)),
             (Key::Num3, alt, Command::TogglePanel(Panel::Top)),
-            (Key::T, plain, Command::TogglePanel(Panel::Top)),
+            (Key::F, plain, Command::TogglePanel(Panel::Top)),
+            (Key::F, shift, Command::FilterAside),
             (Key::Num4, alt, Command::TogglePanel(Panel::Bottom)),
             (Key::F9, plain, Command::TogglePanel(Panel::Bottom)),
             (Key::Num0, alt, Command::AllPanels),
@@ -901,8 +900,9 @@ mod tests {
         for (pressed, modifiers) in [
             (Key::F3, plain),
             (Key::F4, plain),
-            (Key::F, plain),
+            (Key::T, plain),
             (Key::G, plain),
+            (Key::Questionmark, shift),
             (Key::Z, shift),
         ] {
             assert_eq!(
@@ -1237,20 +1237,16 @@ mod tests {
         );
     }
 
-    /// `T` is the filter bar, `Shift+T` sets the filter aside (or brings it back); with Ctrl
-    /// neither.
+    /// `F` is the filter bar, `Shift+F` sets the filter aside (or brings it back), `Ctrl+F` is
+    /// the filter mode – every filter key on F since 1.16.
     #[test]
-    fn shift_t_sets_the_filter_aside() {
-        let (plain, shift, ctrl) = (Modifiers::NONE, Modifiers::SHIFT, Modifiers::COMMAND);
-        let aside = read(vec![key(Key::T, Key::T, shift)], shift);
+    fn shift_f_sets_the_filter_aside() {
+        let (plain, shift) = (Modifiers::NONE, Modifiers::SHIFT);
+        let aside = read(vec![key(Key::F, Key::F, shift)], shift);
         assert!(aside.filter_aside && !aside.toggle_toolbar);
         assert_eq!(aside.commands(&[]).last(), Some(&Command::FilterAside));
-        let bar = read(vec![key(Key::T, Key::T, plain)], plain);
-        assert!(bar.toggle_toolbar && !bar.filter_aside);
-        assert_eq!(
-            read(vec![key(Key::T, Key::T, ctrl)], ctrl),
-            KeyInput::default()
-        );
+        let bar = read(vec![key(Key::F, Key::F, plain)], plain);
+        assert!(bar.toggle_toolbar && !bar.filter_aside && !bar.filter_mode);
     }
 
     /// `F8` alone shows every face; `G` (until 1.16) and `Shift+F8` are nothing.
@@ -1316,13 +1312,9 @@ mod tests {
     fn ctrl_f_is_the_filter_mode() {
         let ctrl = Modifiers::COMMAND;
         let keys = read(vec![key(Key::F, Key::F, ctrl)], ctrl);
-        assert!(keys.filter_mode && !keys.toggle_fullscreen);
+        assert!(keys.filter_mode && !keys.toggle_fullscreen && !keys.toggle_toolbar);
         assert!(keys.commands(&[]).contains(&Command::FilterMode));
         let plain = Modifiers::NONE;
-        assert_eq!(
-            read(vec![key(Key::F, Key::F, plain)], plain),
-            KeyInput::default()
-        );
         assert!(read(vec![key(Key::F11, Key::F11, plain)], plain).toggle_fullscreen);
     }
 
@@ -1392,6 +1384,6 @@ mod tests {
         let shift = Modifiers::SHIFT;
         assert!(read_mode(vec![key(Key::Num4, Key::Num4, shift)], shift).is_empty());
         assert!(read_mode(vec![key(Key::ArrowRight, Key::ArrowRight, ctrl)], ctrl).is_empty());
-        assert!(one(Key::T, Key::T).is_empty());
+        assert!(one(Key::F, Key::F).is_empty());
     }
 }

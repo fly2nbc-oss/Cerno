@@ -436,11 +436,11 @@ pub struct Texts {
     pub photos_badge_tooltip: &'static str,
     /// The info bar's position while a filter hides photos and the filter bar is hidden: the photo, how many show, how many there are.
     pub filtered_position: fn(usize, usize, usize) -> String,
-    /// Its tooltip; it names `Shift+T` (the key, named in this language).
+    /// Its tooltip; it names `Shift+F` (the key, named in this language).
     pub filtered_hint: fn(&str) -> String,
-    /// The hint when `Shift+T` sets the filter aside (the key, named in this language).
+    /// The hint when `Shift+F` sets the filter aside (the key, named in this language).
     pub filter_aside_set: fn(&str) -> String,
-    /// The info bar's mark while `Shift+T` has set the filter aside (the key, named in this
+    /// The info bar's mark while `Shift+F` has set the filter aside (the key, named in this
     /// language), its tooltip, and the hint when there is no filter to set aside.
     pub filter_aside_mark: fn(&str) -> String,
     pub filter_aside_hint: fn(&str) -> String,
@@ -912,7 +912,7 @@ pub struct Texts {
     pub setup_line: fn(bool, bool) -> String,
     /// The shortcuts page, by task in reading order: browse, rate and sort out, views, compare,
     /// zoom and check, panels, filter, edit, video, more. Keys of one family share a row
-    /// (`0 – 5`, `F5 – F8`, `T, Alt+3`); `Shift+…` says once what Shift adds.
+    /// (`0 – 5`, `F5 – F8`, `F, Alt+3`); `Shift+…` says once what Shift adds.
     pub help_keys: [KeySection; 10],
 }
 
@@ -1057,7 +1057,7 @@ mod tests {
                 t.filter_aside_set,
                 t.filtered_hint,
             ] {
-                assert!(aside("Shift+T").contains("Shift+T"), "{name}");
+                assert!(aside("Shift+F").contains("Shift+F"), "{name}");
             }
             assert!((t.deleting)(3).contains(".originals"), "{name}");
             let series = (t.series_position)(3, 7);

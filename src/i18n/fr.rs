@@ -808,7 +808,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "La molette sur la pellicule fait défiler les photos ; sur la photo, elle zoome.",
                 "Déposez un dossier sur la fenêtre pour l'ouvrir. Maintenez → pour faire défiler les photos.",
-                "Maj avec 0–9, X, V, A ou D marque et passe à la suivante ; avec C, Tab ou T elle en fait plus : quatre photos, toutes les barres, toutes les photos.",
+                "Maj avec 0–9, X, V, A ou D marque et passe à la suivante ; avec C, Tab ou F elle en fait plus : quatre photos, toutes les barres, toutes les photos.",
                 "Dans la grille (F6), ↑ ↓ changent de ligne, + − la taille, Entrée ouvre la photo.",
                 "Dans les scènes (F7), chaque scène commence une ligne ; Pg préc et Pg suiv sautent de scène en scène.",
                 "Redresser (S) : la molette et les flèches tournent, Maj plus fin. Recadrer (R) : tracez un cadre ou déplacez-le avec les flèches, +/− change sa taille, A le format, X bascule paysage/portrait.",
@@ -884,7 +884,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 ("F10, Alt+1", "Barre de menu"),
                 ("Tab, Alt+2", "Panneau de détails"),
-                ("T, Alt+3", "Barre de filtres"),
+                ("F, Alt+3", "Barre de filtres"),
                 ("F9, Alt+4", "Pellicule"),
                 ("Maj+Tab, Alt+0", "Les quatre panneaux"),
                 ("Ctrl+Tab", "Onglet suivant des détails"),
@@ -894,8 +894,8 @@ pub static TEXTS: Texts = Texts {
             "Filtres",
             &[
                 ("Ctrl+F", "Filtres au clavier"),
-                ("Maj+T", "Filtre coupé un instant / rétabli"),
-                ("M", "Photos semblables seulement"),
+                ("Maj+F", "Filtre coupé un instant / rétabli"),
+                ("M", "Photos semblables (« plus comme ça »)"),
             ],
         ),
         (
@@ -926,7 +926,7 @@ pub static TEXTS: Texts = Texts {
                 ("Ctrl+O", "Ouvrir un dossier"),
                 ("Ctrl+U", "Sous-dossiers oui / non"),
                 ("Ctrl+L", "Langue"),
-                ("H, F1, ?", "Cette aide"),
+                ("F1, H", "Cette aide"),
                 ("Esc", "Revenir en arrière"),
             ],
         ),

@@ -774,7 +774,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "The mouse wheel over the filmstrip steps through the photos; over the photo it zooms.",
                 "Drop a folder onto the window to open it. Hold → to run through the photos.",
-                "Shift with 0–9, X, V, A or D marks and moves on; with C, Tab or T it does more: four photos, every bar, all photos.",
+                "Shift with 0–9, X, V, A or D marks and moves on; with C, Tab or F it does more: four photos, every bar, all photos.",
                 "In the grid (F6) ↑ ↓ move a row, + − change the size, Enter opens the photo.",
                 "In the scenes (F7) every scene starts a new row; PgUp PgDn jump from scene to scene.",
                 "Straighten (S): the wheel and the arrows turn, Shift is finer. Crop (R): draw a frame or move it with the arrows, +/− size it, A changes the ratio, X turns it.",
@@ -850,7 +850,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 ("F10, Alt+1", "Menu bar"),
                 ("Tab, Alt+2", "Details panel"),
-                ("T, Alt+3", "Filter bar"),
+                ("F, Alt+3", "Filter bar"),
                 ("F9, Alt+4", "Filmstrip"),
                 ("Shift+Tab, Alt+0", "All four panels"),
                 ("Ctrl+Tab", "Next tab of the details"),
@@ -860,8 +860,8 @@ pub static TEXTS: Texts = Texts {
             "Filter",
             &[
                 ("Ctrl+F", "Filters with the keyboard"),
-                ("Shift+T", "Filter off for a moment / back"),
-                ("M", "Only similar photos"),
+                ("Shift+F", "Filter off for a moment / back"),
+                ("M", "Similar photos (“more like this”)"),
             ],
         ),
         (
@@ -892,7 +892,7 @@ pub static TEXTS: Texts = Texts {
                 ("Ctrl+O", "Open a folder"),
                 ("Ctrl+U", "Subfolders on / off"),
                 ("Ctrl+L", "Language"),
-                ("H, F1, ?", "This help"),
+                ("F1, H", "This help"),
                 ("Esc", "One step back"),
             ],
         ),

@@ -87,7 +87,7 @@ pub struct InfoBar<'a> {
     /// A filter hides photos while the filter bar is hidden: how many photos there are. The
     /// position then says so (ticket CER-55, U8).
     pub filtered: Option<usize>,
-    /// `Shift+T` has set the filter aside: a muted mark says so – whether the filter bar shows
+    /// `Shift+F` has set the filter aside: a muted mark says so – whether the filter bar shows
     /// or not, it shows nothing ticked meanwhile – and a click brings the filter back (ticket
     /// CER-60).
     pub filter_aside: bool,
@@ -244,7 +244,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
         // be yesterday's: the position says so in the accent, and a click shows the bar.
         Some(total) => {
             let (position, shown) = bar.position;
-            let tooltip = (t.filtered_hint)(&i18n::with_shift("T"));
+            let tooltip = (t.filtered_hint)(&i18n::with_shift("F"));
             let lead = Lead {
                 label: format!(
                     "{}  {}",
@@ -265,7 +265,7 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
             // The filter set aside waits: muted – it hides nothing now –, a click brings it
             // back (CER-60).
             if bar.filter_aside {
-                let key = i18n::with_shift("T");
+                let key = i18n::with_shift("F");
                 let tooltip = (t.filter_aside_hint)(&key);
                 let lead = Lead {
                     label: format!("{}  {}", theme::icon::FILTER, (t.filter_aside_mark)(&key)),
@@ -835,7 +835,7 @@ fn block(rect: Rect) -> Block {
 
 fn help_button(ui: &Ui, area: Rect, out: &mut InfoBarOutput) {
     let t = i18n::t();
-    let tooltip = format!("{} (H)", t.button_help);
+    let tooltip = format!("{} (F1, H)", t.button_help);
     out.help = icon_button(ui, area, &tooltip, false, false, |p, c, color| {
         icons::help(p, c, color);
     });
@@ -890,7 +890,7 @@ fn buttons(ui: &Ui, rect: Rect, panels: Panels, views: Views, out: &mut InfoBarO
             Panel::Top => (
                 panels.toolbar,
                 format!(
-                    "{} (T, Alt+3)
+                    "{} (F, Alt+3)
 {} ({})",
                     t.button_toolbar,
                     t.filter_mode_name,
@@ -1337,7 +1337,7 @@ mod tests {
         assert!(!focused);
     }
 
-    /// While `Shift+T` has set the filter aside, a muted mark leads the facts line – the
+    /// While `Shift+F` has set the filter aside, a muted mark leads the facts line – the
     /// position follows as usual – and a click on it asks for the filter back, once, without
     /// taking the keyboard focus (ticket CER-60).
     #[test]
@@ -1352,7 +1352,7 @@ mod tests {
         let texts = texts_of(&aside, 1400.0);
         let (mark, at) = texts
             .iter()
-            .find(|(text, _)| text.contains("Filter off – Shift+T"))
+            .find(|(text, _)| text.contains("Filter off – Shift+F"))
             .expect("the mark");
         assert!(mark.starts_with(theme::icon::FILTER));
         assert!(

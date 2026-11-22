@@ -102,7 +102,7 @@ pub(super) struct Browse {
     pub(super) videos_in: (Weak<Vec<PathBuf>>, bool),
     /// The folder's cameras for the camera box (`cameras`): board version, list, entries.
     pub(super) cameras: (u64, Weak<Vec<PathBuf>>, Arc<Vec<view::CameraEntry>>),
-    /// The filter `Shift+T` set aside, while every photo shows.
+    /// The filter `Shift+F` set aside, while every photo shows.
     pub(super) filter_aside: Option<super::filter_aside::FilterAside>,
     /// A photo's keywords changed in this session since the view was built: while keywords
     /// filter, *Refresh order* offers to show what they let through now (`order_stale`).
@@ -243,7 +243,7 @@ impl CernoApp {
         self.viewer.pinned = None;
         self.viewer.quad = None;
         self.end_split();
-        // A filter set aside lapses with its folder (`Shift+T`, the user's decision): every
+        // A filter set aside lapses with its folder (`Shift+F`, the user's decision): every
         // photo of the new one shows, and that is what is saved from now on.
         if self.browse.filter_aside.take().is_some() {
             self.save_options();
@@ -470,7 +470,7 @@ impl CernoApp {
     /// New sort or filter: saved, and the view is built again. "Similar photos" switched off
     /// (also by "Show all") forgets the photo it was about; Top N picks again when a filter
     /// changed – another sort only shows the same photos in another order. A filter set while
-    /// one is aside (`Shift+T`) discards that one; another sort keeps it.
+    /// one is aside (`Shift+F`) discards that one; another sort keeps it.
     pub(super) fn options_changed(&mut self, ctx: &egui::Context) {
         if self.options.is_filtered() {
             self.browse.filter_aside = None;

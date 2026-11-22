@@ -17,7 +17,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 
 ### Changed
 
-- **Keys reviewed** – the views move to `F5` photo, `F6` grid, `F7` scenes and `F8` faces, still in the order of the view switcher; the filmstrip moves to `F9` (`Alt+4` stays). Full screen is `F11` alone and the faces grid `F8` alone: `F` and `G` are free, like `F3` and `F4`. In the filter mode (`Ctrl+F`) Backspace shows all photos – `Del` now only ever means deleting. The help's tips say what Shift does: with `0`–`9`, `X`, `A` or `D` it marks and moves on, with `C`, `Tab` or `T` it does more.
+- **Keys reviewed** – the views move to `F5` photo, `F6` grid, `F7` scenes and `F8` faces, still in the order of the view switcher; the filmstrip moves to `F9` (`Alt+4` stays). Full screen is `F11` alone and the faces grid `F8` alone. Every filter key is on F now: `F` shows the filter bar (was `T`), `Shift+F` sets the filter aside (was `Shift+T`), `Ctrl+F` stays the filter mode. Help is `F1` or `H`; `?` is gone. `T`, `G`, `F3` and `F4` are free. In the filter mode (`Ctrl+F`) Backspace shows all photos – `Del` now only ever means deleting. The help's tips say what Shift does: with `0`–`9`, `X`, `A` or `D` it marks and moves on, with `C`, `Tab` or `T` it does more.
 
 ## [1.15.2] – 2026-11-20
 

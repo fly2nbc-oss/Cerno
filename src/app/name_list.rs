@@ -50,7 +50,7 @@ impl NameList {
         self.applied = None;
     }
 
-    /// `Shift+T`: the list goes aside with the filter, and comes back with it.
+    /// `Shift+F`: the list goes aside with the filter, and comes back with it.
     pub(super) fn take_applied(&mut self) -> Option<Matched> {
         self.applied.take()
     }

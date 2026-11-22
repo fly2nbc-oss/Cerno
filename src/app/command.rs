@@ -172,7 +172,7 @@ pub(super) enum Command {
     Similar,
     /// Details › File's camera button: only this camera's photos (`None`: every camera again).
     FilterCamera(Option<crate::view::CameraPick>),
-    /// `Shift+T`, the info bar's mark: the whole filter aside – every photo – or back.
+    /// `Shift+F`, the info bar's mark: the whole filter aside – every photo – or back.
     FilterAside,
     /// The filter bar's *Refresh order*.
     RefreshOrder,

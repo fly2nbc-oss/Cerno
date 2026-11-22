@@ -65,7 +65,7 @@ impl Keywords {
         self.applied = None;
     }
 
-    /// `Shift+T`: the pick goes aside with the filter, and comes back with it.
+    /// `Shift+F`: the pick goes aside with the filter, and comes back with it.
     pub(super) fn take_applied(&mut self) -> Option<Pick> {
         self.applied.take()
     }

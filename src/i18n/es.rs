@@ -783,7 +783,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "La rueda del ratón sobre la tira de miniaturas recorre las fotos; sobre la foto, acerca y aleja.",
                 "Arrastra una carpeta a la ventana para abrirla. Mantén pulsado → para avanzar sin parar.",
-                "Mayús con 0–9, X, V, A o D marca y pasa a la siguiente; con C, Tab o T hace más: cuatro fotos, todas las barras, todas las fotos.",
+                "Mayús con 0–9, X, V, A o D marca y pasa a la siguiente; con C, Tab o F hace más: cuatro fotos, todas las barras, todas las fotos.",
                 "En la cuadrícula (F6), ↑ ↓ cambian de fila, + − el tamaño, Intro abre la foto.",
                 "En las escenas (F7), cada escena empieza una fila; Re Pág y Av Pág saltan de escena en escena.",
                 "Enderezar (S): la rueda y las flechas giran, Mayús más fino. Recorte (R): traza un marco o muévelo con las flechas, +/− cambia su tamaño, A el formato, X cambia horizontal/vertical.",
@@ -862,7 +862,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 ("F10, Alt+1", "Barra de menú"),
                 ("Tab, Alt+2", "Panel de detalles"),
-                ("T, Alt+3", "Barra de filtros"),
+                ("F, Alt+3", "Barra de filtros"),
                 ("F9, Alt+4", "Tira de miniaturas"),
                 ("Mayús+Tab, Alt+0", "Los cuatro paneles"),
                 ("Ctrl+Tab", "Pestaña siguiente de detalles"),
@@ -872,8 +872,8 @@ pub static TEXTS: Texts = Texts {
             "Filtros",
             &[
                 ("Ctrl+F", "Filtros con el teclado"),
-                ("Mayús+T", "Filtro fuera un momento / de vuelta"),
-                ("M", "Solo fotos parecidas"),
+                ("Mayús+F", "Filtro fuera un momento / de vuelta"),
+                ("M", "Fotos parecidas («más como esta»)"),
             ],
         ),
         (
@@ -904,7 +904,7 @@ pub static TEXTS: Texts = Texts {
                 ("Ctrl+O", "Abrir una carpeta"),
                 ("Ctrl+U", "Subcarpetas sí / no"),
                 ("Ctrl+L", "Idioma"),
-                ("H, F1, ?", "Esta ayuda"),
+                ("F1, H", "Esta ayuda"),
                 ("Esc", "Volver atrás"),
             ],
         ),

@@ -755,7 +755,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "La rotellina sopra la striscia di miniature scorre le foto; sopra la foto ingrandisce e riduce.",
                 "Trascina una cartella sulla finestra per aprirla. Tieni premuto → per scorrere le foto.",
-                "Maiusc con 0–9, X, V, A o D segna e passa alla successiva; con C, Tab o T fa di più: quattro foto, tutte le barre, tutte le foto.",
+                "Maiusc con 0–9, X, V, A o D segna e passa alla successiva; con C, Tab o F fa di più: quattro foto, tutte le barre, tutte le foto.",
                 "Nella griglia (F6) ↑ ↓ cambiano riga, + − la dimensione, Invio apre la foto.",
                 "Nelle scene (F7) ogni scena inizia una riga; Pag su e Pag giù saltano da una scena all'altra.",
                 "Raddrizza (S): rotellina e frecce ruotano, Maiusc più fine. Ritaglio (R): traccia una cornice o spostala con le frecce, +/− ne cambia la dimensione, A il formato, X scambia orizzontale/verticale.",
@@ -831,7 +831,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 ("F10, Alt+1", "Barra dei menu"),
                 ("Tab, Alt+2", "Pannello dettagli"),
-                ("T, Alt+3", "Barra dei filtri"),
+                ("F, Alt+3", "Barra dei filtri"),
                 ("F9, Alt+4", "Striscia di miniature"),
                 ("Maiusc+Tab, Alt+0", "Tutti e quattro i pannelli"),
                 ("Ctrl+Tab", "Scheda successiva dei dettagli"),
@@ -841,8 +841,8 @@ pub static TEXTS: Texts = Texts {
             "Filtri",
             &[
                 ("Ctrl+F", "Filtri da tastiera"),
-                ("Maiusc+T", "Filtro via un momento / di nuovo"),
-                ("M", "Solo foto simili"),
+                ("Maiusc+F", "Filtro via un momento / di nuovo"),
+                ("M", "Foto simili («altre così»)"),
             ],
         ),
         (
@@ -873,7 +873,7 @@ pub static TEXTS: Texts = Texts {
                 ("Ctrl+O", "Apri una cartella"),
                 ("Ctrl+U", "Sottocartelle sì / no"),
                 ("Ctrl+L", "Lingua"),
-                ("H, F1, ?", "Questa guida"),
+                ("F1, H", "Questa guida"),
                 ("Esc", "Torna indietro"),
             ],
         ),

@@ -807,7 +807,7 @@ mod tests {
         assert_eq!(h.rating_of(0), Some(Rating::Rejected));
     }
 
-    /// `F10` switches the menu bar like `T`, `Tab` and `F9` the other bars: it stays while
+    /// `F10` switches the menu bar like `F`, `Tab` and `F9` the other bars: it stays while
     /// the photos change, takes no key, and is saved.
     #[test]
     fn f10_switches_the_menu_bar_and_it_stays() {

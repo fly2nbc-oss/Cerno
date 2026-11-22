@@ -177,7 +177,7 @@ impl ViewOptions {
         }
     }
 
-    /// `Shift+T`: the whole filter set aside – every field but the sort, so a filter added
+    /// `Shift+F`: the whole filter set aside – every field but the sort, so a filter added
     /// later goes along – and every filter off. It comes back with [`Self::restore_filters`].
     pub fn set_filters_aside(&mut self) -> ViewOptions {
         let aside = *self;

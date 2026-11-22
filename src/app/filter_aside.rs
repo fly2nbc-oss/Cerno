@@ -1,4 +1,4 @@
-//! `Shift+T`: the whole filter set aside for a moment – every photo of the folder shows – and
+//! `Shift+F`: the whole filter set aside for a moment – every photo of the folder shows – and
 //! back exactly as it was with the same key or a click on the info bar's mark (ticket CER-60,
 //! the user's decisions). Setting a filter meanwhile discards it (`options_changed`), and so
 //! does another folder (`open`, the user's answer of 2026-11-09: it lapses, every photo of
@@ -52,7 +52,7 @@ impl FilterAside {
 }
 
 impl CernoApp {
-    /// `Shift+T` and the info bar's mark: the filter aside, or back. Without a filter only a
+    /// `Shift+F` and the info bar's mark: the filter aside, or back. Without a filter only a
     /// hint says so.
     pub(super) fn toggle_filter_aside(&mut self, ctx: &egui::Context) {
         if self.browse.filter_aside.is_some() {
@@ -78,11 +78,11 @@ impl CernoApp {
             self.sync_library();
             self.rebuild_view(ctx, None);
             self.notice = Some(Notice::hint((i18n::t().filter_aside_set)(
-                &i18n::with_shift("T"),
+                &i18n::with_shift("F"),
             )));
         } else {
             self.notice = Some(Notice::hint((i18n::t().filter_aside_none)(
-                &i18n::with_shift("T"),
+                &i18n::with_shift("F"),
             )));
         }
     }
@@ -147,13 +147,13 @@ mod tests {
         h
     }
 
-    /// `Shift+T` shows every photo with the photo on screen kept, and again brings back exactly
+    /// `Shift+F` shows every photo with the photo on screen kept, and again brings back exactly
     /// that filter; a photo the filter hides gives way to the one shown when it went aside.
     #[test]
     fn shift_t_sets_the_filter_aside_and_brings_it_back() {
         let mut h = four_star_filter();
         let filtered = h.app.options;
-        h.press(Key::T, SHIFT);
+        h.press(Key::F, SHIFT);
         assert_eq!(h.app.view.len(), 4, "every photo");
         assert_eq!(current(&h), "IMG_2.jpg", "the photo stays");
         assert!(!h.app.options.is_filtered());
@@ -161,24 +161,24 @@ mod tests {
         assert!(!h.app.bars.toolbar, "plain T's filter bar stays as it was");
 
         // Back from a photo the filter shows: it stays.
-        h.press(Key::T, SHIFT);
+        h.press(Key::F, SHIFT);
         assert_eq!(h.app.options, filtered);
         assert_eq!(shown(&h), ["IMG_2.jpg"]);
         assert!(h.app.browse.filter_aside.is_none());
 
         // Back from a series neighbour the filter hides: the photo shown when it went aside.
-        h.press(Key::T, SHIFT);
+        h.press(Key::F, SHIFT);
         h.press(Key::ArrowRight, Modifiers::NONE);
         assert_eq!(current(&h), "IMG_3.jpg");
-        h.press(Key::T, SHIFT);
+        h.press(Key::F, SHIFT);
         assert_eq!(current(&h), "IMG_2.jpg");
 
         // A photo the filter shows, chosen while it was aside, stays on screen.
-        h.press(Key::T, SHIFT);
+        h.press(Key::F, SHIFT);
         h.press(Key::ArrowRight, Modifiers::NONE);
         h.press(Key::Num4, Modifiers::NONE);
         assert_eq!(current(&h), "IMG_3.jpg");
-        h.press(Key::T, SHIFT);
+        h.press(Key::F, SHIFT);
         assert_eq!(shown(&h), ["IMG_2.jpg", "IMG_3.jpg"]);
         assert_eq!(current(&h), "IMG_3.jpg");
     }
@@ -200,12 +200,12 @@ mod tests {
         h.app.browse.top_pick = picked.clone();
         h.app.browse.top_pick_for = h.app.options.top_key();
         h.app.rebuild_view(&ctx, None);
-        h.press(Key::T, SHIFT);
+        h.press(Key::F, SHIFT);
         assert_eq!(h.app.view.len(), 4);
         assert!(h.app.browse.top_pick.is_empty());
         // A mark meanwhile would change a new pick.
         h.press(Key::Num5, Modifiers::NONE);
-        h.press(Key::T, SHIFT);
+        h.press(Key::F, SHIFT);
         assert_eq!(h.app.options.top, Some(10));
         assert_eq!(h.app.browse.top_pick, picked);
         assert_eq!(h.app.browse.top_pick_for, h.app.options.top_key());
@@ -220,20 +220,20 @@ mod tests {
         h.app.name_list.put_applied(Some(listed));
         h.app.change_options(&ctx, |o| o.name_list = true);
         assert_eq!(shown(&h), ["IMG_2.jpg", "IMG_3.jpg"]);
-        h.press(Key::T, SHIFT);
+        h.press(Key::F, SHIFT);
         assert_eq!(h.app.view.len(), 4);
         assert!(!h.app.is_listed(&path(1)));
-        h.press(Key::T, SHIFT);
+        h.press(Key::F, SHIFT);
         assert_eq!(shown(&h), ["IMG_2.jpg", "IMG_3.jpg"], "the list is back");
     }
 
     /// A filter set while one is aside discards it – "Show all" then shows everything, and no
-    /// older filter comes back; another sort keeps it. `Shift+T` without a filter only hints.
+    /// older filter comes back; another sort keeps it. `Shift+F` without a filter only hints.
     #[test]
     fn a_new_filter_discards_the_one_aside() {
         let mut h = four_star_filter();
         let ctx = h.ctx.clone();
-        h.press(Key::T, SHIFT);
+        h.press(Key::F, SHIFT);
         h.app.change_options(&ctx, |o| o.sort = SortKey::Rating);
         assert!(h.app.browse.filter_aside.is_some(), "the sort is no filter");
 
@@ -242,7 +242,7 @@ mod tests {
         assert!(h.app.browse.filter_aside.is_none());
         h.app.change_options(&ctx, |o| o.clear_filters());
         h.app.notice = None;
-        h.press(Key::T, SHIFT);
+        h.press(Key::F, SHIFT);
         assert!(!h.app.options.is_filtered(), "nothing comes back");
         assert_eq!(h.app.view.len(), 4);
         assert!(h.app.notice.is_some(), "a hint says why");
@@ -256,7 +256,7 @@ mod tests {
         let ctx = h.ctx.clone();
         let saved = h.app.db.setting("filter");
         assert!(saved.is_some());
-        h.press(Key::T, SHIFT);
+        h.press(Key::F, SHIFT);
         h.app.change_options(&ctx, |o| o.sort = SortKey::Rating);
         assert_eq!(h.app.db.setting("filter"), saved);
         assert_eq!(h.app.db.setting("sort").as_deref(), Some("rating"));
@@ -266,19 +266,19 @@ mod tests {
     #[test]
     fn setting_the_filter_aside_says_so() {
         let mut h = four_star_filter();
-        h.press(Key::T, SHIFT);
+        h.press(Key::F, SHIFT);
         let notice = h.app.notice.as_ref().expect("a hint");
         assert!(notice.text.contains("Filter off"), "{}", notice.text);
         assert!(!notice.error);
     }
 
     /// Another folder: the filter set aside lapses (the user's decision of 2026-11-09) – every
-    /// photo shows, `Shift+T` has nothing to bring back, and no filter is saved any more.
+    /// photo shows, `Shift+F` has nothing to bring back, and no filter is saved any more.
     #[test]
     fn another_folder_lets_the_filter_aside_lapse() {
         let mut h = four_star_filter();
         let ctx = h.ctx.clone();
-        h.press(Key::T, SHIFT);
+        h.press(Key::F, SHIFT);
         let dir = h.app.folder.dir.clone().expect("the folder");
         h.app.open(&ctx, &dir);
         h.settle();
@@ -287,7 +287,7 @@ mod tests {
         assert_eq!(shown(&h).len(), 4);
         let saved = h.app.db.setting("filter").unwrap_or_default();
         assert!(!saved.contains('4'), "no 4★ box saved: {saved:?}");
-        h.press(Key::T, SHIFT);
+        h.press(Key::F, SHIFT);
         assert!(h.app.browse.filter_aside.is_none(), "nothing to bring back");
     }
 }

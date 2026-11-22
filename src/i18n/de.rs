@@ -783,7 +783,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "Das Mausrad über dem Filmstreifen blättert durch die Fotos, über dem Foto zoomt es.",
                 "Einen Ordner aufs Fenster ziehen öffnet ihn. → gedrückt halten läuft durch die Fotos.",
-                "Umschalt mit 0–9, X, V, A oder D markiert und geht weiter; mit C, Tab oder T macht es mehr: vier Fotos, alle Leisten, alle Fotos.",
+                "Umschalt mit 0–9, X, V, A oder D markiert und geht weiter; mit C, Tab oder F macht es mehr: vier Fotos, alle Leisten, alle Fotos.",
                 "Im Raster (F6) rücken ↑ ↓ eine Reihe, + − ändern die Größe, Enter öffnet das Foto.",
                 "In den Szenen (F7) beginnt jede Szene eine neue Reihe; Bild↑ Bild↓ springen von Szene zu Szene.",
                 "Ausrichten (S): Mausrad und Pfeile drehen, Umschalt feiner. Ausschnitt (R): Rahmen aufziehen oder mit den Pfeilen schieben, +/− ändern die Größe, A wechselt das Format, X dreht Quer/Hoch.",
@@ -862,7 +862,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 ("F10, Alt+1", "Menüleiste"),
                 ("Tab, Alt+2", "Detailansicht"),
-                ("T, Alt+3", "Filterleiste"),
+                ("F, Alt+3", "Filterleiste"),
                 ("F9, Alt+4", "Filmstreifen"),
                 ("Umschalt+Tab, Alt+0", "Alle vier Leisten"),
                 ("Strg+Tab", "Nächster Reiter der Details"),
@@ -872,8 +872,8 @@ pub static TEXTS: Texts = Texts {
             "Filter",
             &[
                 ("Strg+F", "Filter per Tastatur"),
-                ("Umschalt+T", "Filter kurz aus / wieder an"),
-                ("M", "Nur ähnliche Fotos"),
+                ("Umschalt+F", "Filter kurz aus / wieder an"),
+                ("M", "Ähnliche Fotos („mehr davon“)"),
             ],
         ),
         (
@@ -904,7 +904,7 @@ pub static TEXTS: Texts = Texts {
                 ("Strg+O", "Ordner öffnen"),
                 ("Strg+U", "Unterordner an / aus"),
                 ("Strg+L", "Sprache"),
-                ("H, F1, ?", "Diese Hilfe"),
+                ("F1, H", "Diese Hilfe"),
                 ("Esc", "Einen Schritt zurück"),
             ],
         ),
