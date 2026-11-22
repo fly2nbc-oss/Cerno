@@ -197,6 +197,8 @@ impl CernoApp {
             }
             self.marks.journal.follow(src, dest);
         }
+        // The index moved the marks made in Cerno along.
+        self.reload_pins();
     }
 
     /// The photos on screen are set aside into `.originals` with the usual countdown – no question, `Esc`
@@ -315,6 +317,8 @@ impl CernoApp {
                     self.add_deleted(path.clone(), aside.clone());
                 }
                 self.analyzer.taste_changed();
+                // The index moved their marks made in Cerno into `.originals` with them.
+                self.reload_pins();
                 self.folder.all = Arc::new(all);
                 self.sync_library();
             }

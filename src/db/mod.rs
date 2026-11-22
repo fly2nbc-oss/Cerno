@@ -19,6 +19,7 @@ mod backups;
 mod camera_offsets;
 mod files;
 mod images;
+mod pins;
 mod settings;
 mod taste;
 
@@ -90,6 +91,11 @@ const SCHEMA: &str = "
         camera    INTEGER NOT NULL,
         offset_ms INTEGER NOT NULL,
         PRIMARY KEY (folder, camera)
+    );
+    -- Photos marked in Cerno alone (`V`, since 1.16, CER-74): never written into a file.
+    CREATE TABLE IF NOT EXISTS pins (
+        path  TEXT PRIMARY KEY,
+        at_ms INTEGER NOT NULL
     );
 ";
 

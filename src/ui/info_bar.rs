@@ -82,6 +82,8 @@ pub struct InfoBar<'a> {
     pub time_offset: Option<i64>,
     /// A RAW + JPG pair: `RAW+JPG`, and the RAW's marks where they differ.
     pub pair: Option<String>,
+    /// Marked in Cerno alone (`V`): the facts line says so, with the pin.
+    pub marked: bool,
     /// A filter hides photos while the filter bar is hidden: how many photos there are. The
     /// position then says so (ticket CER-55, U8).
     pub filtered: Option<usize>,
@@ -341,6 +343,9 @@ pub fn info_bar(ui: &Ui, rect: Rect, bar: &InfoBar<'_>) -> InfoBarOutput {
     }
     if let Some(pair) = &bar.pair {
         facts.push(pair.clone());
+    }
+    if bar.marked {
+        facts.push(format!("{}  {}", theme::icon::PIN, t.pin_fact));
     }
     if bar.auto_advance {
         facts.push(t.auto_advance_on.to_owned());
@@ -1221,6 +1226,7 @@ mod tests {
             similarity: None,
             time_offset: None,
             pair: None,
+            marked: false,
             filtered: None,
             filter_aside: false,
             unsaved: 0,

@@ -49,6 +49,7 @@ ICONS = [
     "panel-right",
     "panel-top",
     "pause",
+    "pin",
     "play",
     "rotate-ccw",
     "rotate-cw",

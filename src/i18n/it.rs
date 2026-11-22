@@ -26,6 +26,22 @@ pub static TEXTS: Texts = Texts {
     filter_no_people: "Senza persone",
     filter_people_tooltip: "Riconosciute dal volto: le persone di spalle o molto piccole nell'immagine non contano.",
     filter_deleted: "Eliminate",
+    filter_pinned: "Segnate",
+    pin_filter_hint: "Salvato solo in Cerno, non nel file",
+    pin_set: "Segnata – solo in Cerno, non nel file",
+    pin_cleared: "Segno tolto",
+    pins_cleared: "Tutti i segni tolti",
+    pin_fact: "Segnata",
+    cmd_pin: "Segna",
+    cmd_clear_pins: |n| format!("Togli i segni ({n})"),
+    pins_none: "Nessuna foto segnata",
+    confirm_clear_pins_title: "Togliere tutti i segni?",
+    confirm_clear_pins_text: |n| {
+        format!(
+            "{n} foto di tutte le cartelle sono segnate. I segni vanno via, le foto e le loro stelle restano."
+        )
+    },
+    btn_clear_pins: "Togli",
     filter_deleted_tooltip: "Foto eliminate in questa cartella. Si trovano nella cartella nascosta .originals: Ctrl+Z ne rimette a posto una.",
     filter_deleted_none: "Nessuna foto eliminata in questa cartella",
     filter_hide_rejected: "Nascondi rifiutate",
@@ -146,7 +162,7 @@ pub static TEXTS: Texts = Texts {
     top_tooltip: "Foto, video o entrambi – oppure solo le foto migliori, secondo le tue stelle (altrimenti la previsione), l'estetica e la nitidezza, prima la migliore di ogni serie. Le foto scartate o sfocate e i duplicati non contano. La scelta resta finché cambia un filtro o scegli «Aggiorna ordine». Nelle foto non cambia nulla.",
     bulk_delete_top: "Non con Top – sono le foto migliori",
     filter_similar: "≈ Simili",
-    filter_mode_hint: "←/→ scegli · Spazio: spunta o apri · 0–9, X spunta · Backspace: mostra tutto · Esc: fine",
+    filter_mode_hint: "←/→ scegli · Spazio: spunta o apri · 0–9, X, V spunta · Backspace: mostra tutto · Esc: fine",
     filter_mode_name: "Filtri da tastiera",
     filter_similar_to: |name| format!("≈ come {name}"),
     menu_similar_to: |name| format!("Simili a {name}"),
@@ -617,6 +633,7 @@ pub static TEXTS: Texts = Texts {
     undo_what_colour: "il colore",
     undo_what_edit: "la modifica",
     undo_what_rename: "rinomina",
+    undo_what_pin: "segno",
     undo_mark_done: |name, value| format!("Annullato – {name}: {value}"),
     cmd_restore: "Rimetti a posto",
     restored: |n, renamed, name| match (n, renamed) {
@@ -734,7 +751,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "La rotellina sopra la striscia di miniature scorre le foto; sopra la foto ingrandisce e riduce.",
                 "Trascina una cartella sulla finestra per aprirla. Tieni premuto → per scorrere le foto.",
-                "Maiusc con 0–9, X, A o D segna e passa alla successiva; con C, Tab o T fa di più: quattro foto, tutte le barre, tutte le foto.",
+                "Maiusc con 0–9, X, V, A o D segna e passa alla successiva; con C, Tab o T fa di più: quattro foto, tutte le barre, tutte le foto.",
                 "Nella griglia (F6) ↑ ↓ cambiano riga, + − la dimensione, Invio apre la foto.",
                 "Nelle scene (F7) ogni scena inizia una riga; Pag su e Pag giù saltano da una scena all'altra.",
                 "Raddrizza (S): rotellina e frecce ruotano, Maiusc più fine. Ritaglio (R): traccia una cornice o spostala con le frecce, +/− ne cambia la dimensione, A il formato, X scambia orizzontale/verticale.",
@@ -774,6 +791,7 @@ pub static TEXTS: Texts = Texts {
                 ("0 – 5", "Stelle (0: nessuna)"),
                 ("6 – 9", "Rosso, giallo, verde, blu"),
                 ("X", "Rifiuta"),
+                ("V", "Segna – solo in Cerno"),
                 ("Maiusc+…", "Idem, poi foto successiva"),
                 ("Canc", "Elimina – Esc la recupera"),
             ],

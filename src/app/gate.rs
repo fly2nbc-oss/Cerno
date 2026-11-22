@@ -29,6 +29,8 @@ pub(super) enum Change {
     Restore,
     /// Give it a new name in its folder (`F2`).
     Rename,
+    /// Mark it in Cerno alone (`V`): only the index changes, so ExifTool isn't needed.
+    Pin,
 }
 
 /// Why a photo can't be changed right now: one action at a time on a photo. Checked against
@@ -268,9 +270,19 @@ mod tests {
             ..idle
         };
         // Nothing going on: everything may happen.
-        for change in [Mark, Delete, Edit, Rewrite, External, Transfer, Rename] {
+        for change in [Mark, Delete, Edit, Rewrite, External, Transfer, Rename, Pin] {
             assert_eq!(blocked(change, idle), None, "{change:?}");
         }
+        // A mark in Cerno alone goes into the index: no ExifTool, no wait for a copy or an
+        // edit – but a photo moved or renamed away has no path to mark.
+        let no_tool = Activity {
+            tool: Tool::Missing,
+            ..idle
+        };
+        for now in [no_tool, copying, writing, editing, no_index] {
+            assert_eq!(blocked(Pin, now), None);
+        }
+        assert_eq!(blocked(Pin, moving), Some(Blocked::Moving));
         // A moved photo takes nothing, a copied one still takes marks.
         for change in [Mark, Delete, Edit, Rewrite, External, Rename] {
             assert_eq!(blocked(change, moving), Some(Blocked::Moving));
@@ -313,7 +325,7 @@ mod tests {
             deleted: true,
             ..idle
         };
-        for change in [Mark, Delete, Edit, Rewrite, External, Transfer, Rename] {
+        for change in [Mark, Delete, Edit, Rewrite, External, Transfer, Rename, Pin] {
             assert_eq!(
                 blocked(change, deleted),
                 Some(Blocked::Deleted),

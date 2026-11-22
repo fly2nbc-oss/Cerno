@@ -242,6 +242,19 @@ pub struct Texts {
     pub filter_people_tooltip: &'static str,
     /// The 🗑 box: photos deleted in Cerno, lying in `.originals`.
     pub filter_deleted: &'static str,
+    /// The filter box of the photos marked in Cerno (`V`, CER-74).
+    pub filter_pinned: &'static str,
+    pub pin_filter_hint: &'static str,
+    pub pin_set: &'static str,
+    pub pin_cleared: &'static str,
+    pub pins_cleared: &'static str,
+    pub pin_fact: &'static str,
+    pub cmd_pin: &'static str,
+    pub cmd_clear_pins: fn(usize) -> String,
+    pub pins_none: &'static str,
+    pub confirm_clear_pins_title: &'static str,
+    pub confirm_clear_pins_text: fn(usize) -> String,
+    pub btn_clear_pins: &'static str,
     pub filter_deleted_tooltip: &'static str,
     pub filter_deleted_none: &'static str,
     /// "without ✕": the rejected photos are hidden (menu row, tooltip title).
@@ -626,6 +639,7 @@ pub struct Texts {
     pub undo_what_colour: &'static str,
     pub undo_what_edit: &'static str,
     pub undo_what_rename: &'static str,
+    pub undo_what_pin: &'static str,
     /// After `Ctrl+Z` took a mark back: the photo's name, what it has now (`3 stars`,
     /// `Unrated`, `No colour`, a colour).
     pub undo_mark_done: fn(&str, &str) -> String,

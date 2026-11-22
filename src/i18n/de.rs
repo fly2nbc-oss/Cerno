@@ -26,6 +26,22 @@ pub static TEXTS: Texts = Texts {
     filter_no_people: "Ohne Personen",
     filter_people_tooltip: "Erkannt an Gesichtern: Personen von hinten oder sehr klein im Bild zählen nicht.",
     filter_deleted: "Gelöschte",
+    filter_pinned: "Vorgemerkt",
+    pin_filter_hint: "Nur in Cerno gespeichert, nicht in der Datei",
+    pin_set: "Vorgemerkt – nur in Cerno, nicht in der Datei",
+    pin_cleared: "Vormerkung aufgehoben",
+    pins_cleared: "Alle Vormerkungen aufgehoben",
+    pin_fact: "Vorgemerkt",
+    cmd_pin: "Vormerken",
+    cmd_clear_pins: |n| format!("Vormerkungen aufheben ({n})"),
+    pins_none: "Kein Foto vorgemerkt",
+    confirm_clear_pins_title: "Alle Vormerkungen aufheben?",
+    confirm_clear_pins_text: |n| {
+        format!(
+            "{n} Fotos aller Ordner sind vorgemerkt. Die Vormerkungen gehen, die Fotos und ihre Sterne bleiben."
+        )
+    },
+    btn_clear_pins: "Aufheben",
     filter_deleted_tooltip: "Gelöschte Fotos dieses Ordners. Sie liegen im versteckten Ordner .originals – Strg+Z legt eins zurück.",
     filter_deleted_none: "Keine gelöschten Fotos in diesem Ordner",
     filter_hide_rejected: "Abgelehnte ausblenden",
@@ -156,7 +172,7 @@ pub static TEXTS: Texts = Texts {
     top_tooltip: "Fotos, Videos oder beides – oder nur die besten Fotos, nach deinen Sternen (sonst die Vorhersage), Ästhetik und Schärfe, aus jeder Serie zuerst das beste. Abgelehnte und unscharfe Fotos und Dubletten zählen nicht. Die Auswahl bleibt, bis sich ein Filter ändert oder du „Reihenfolge aktualisieren“ wählst. An den Fotos wird nichts geändert.",
     bulk_delete_top: "Nicht bei „Top“ – das wären die besten Fotos",
     filter_similar: "≈ Ähnliche",
-    filter_mode_hint: "←/→ wählen · Leertaste: an/aus oder öffnen · 0–9, X anhaken · Rücktaste: alle zeigen · Esc: fertig",
+    filter_mode_hint: "←/→ wählen · Leertaste: an/aus oder öffnen · 0–9, X, V anhaken · Rücktaste: alle zeigen · Esc: fertig",
     filter_mode_name: "Filter per Tastatur",
     filter_similar_to: |name| format!("≈ wie {name}"),
     menu_similar_to: |name| format!("Ähnlich zu {name}"),
@@ -645,6 +661,7 @@ pub static TEXTS: Texts = Texts {
     undo_what_colour: "Farbe",
     undo_what_edit: "Bearbeitung",
     undo_what_rename: "Umbenennung",
+    undo_what_pin: "Vormerkung",
     undo_mark_done: |name, value| format!("Rückgängig – {name}: {value}"),
     cmd_restore: "Zurücklegen",
     restored: |n, renamed, name| match (n, renamed) {
@@ -762,7 +779,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "Das Mausrad über dem Filmstreifen blättert durch die Fotos, über dem Foto zoomt es.",
                 "Einen Ordner aufs Fenster ziehen öffnet ihn. → gedrückt halten läuft durch die Fotos.",
-                "Umschalt mit 0–9, X, A oder D markiert und geht weiter; mit C, Tab oder T macht es mehr: vier Fotos, alle Leisten, alle Fotos.",
+                "Umschalt mit 0–9, X, V, A oder D markiert und geht weiter; mit C, Tab oder T macht es mehr: vier Fotos, alle Leisten, alle Fotos.",
                 "Im Raster (F6) rücken ↑ ↓ eine Reihe, + − ändern die Größe, Enter öffnet das Foto.",
                 "In den Szenen (F7) beginnt jede Szene eine neue Reihe; Bild↑ Bild↓ springen von Szene zu Szene.",
                 "Ausrichten (S): Mausrad und Pfeile drehen, Umschalt feiner. Ausschnitt (R): Rahmen aufziehen oder mit den Pfeilen schieben, +/− ändern die Größe, A wechselt das Format, X dreht Quer/Hoch.",
@@ -802,6 +819,7 @@ pub static TEXTS: Texts = Texts {
                 ("0 – 5", "Sterne (0: keine)"),
                 ("6 – 9", "Rot, Gelb, Grün, Blau"),
                 ("X", "Ablehnen"),
+                ("V", "Vormerken – nur in Cerno"),
                 ("Umschalt+…", "Dasselbe, dann nächstes Foto"),
                 ("Entf", "Löschen – Esc holt es zurück"),
             ],

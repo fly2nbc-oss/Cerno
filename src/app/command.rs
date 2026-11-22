@@ -104,6 +104,10 @@ pub(super) enum Command {
     ToggleReject(Advance),
     ToggleLabel(Label, Advance),
     SetLabel(Option<Label>, Advance),
+    /// `V` / `Shift+V`: mark in Cerno alone (CER-74).
+    Pin(Advance),
+    /// *Visible photos ▸ Clear marks (n)*: asks first.
+    ClearPins,
     AutoAdvance,
 
     // This photo.
@@ -358,6 +362,10 @@ impl CernoApp {
                 self.set_rating(ctx, rating, self.advance(advance));
             }
             Command::ToggleReject(advance) => self.toggle_reject(ctx, self.advance(advance)),
+            Command::Pin(advance) => {
+                self.toggle_pin(ctx, self.advance(advance), advance == Advance::Yes);
+            }
+            Command::ClearPins => self.ask_clear_pins(),
             Command::ToggleLabel(label, advance) => {
                 self.toggle_label(ctx, label, self.advance(advance));
             }

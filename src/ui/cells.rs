@@ -45,6 +45,8 @@ pub struct CellInfo {
     /// A RAW + JPG pair: its note for the tooltip, and whether the RAW's marks differ (the
     /// badge then in the warning colour).
     pub pair: Option<(&'static str, String, bool)>,
+    /// Marked in Cerno alone (`V`): a pin in the top left corner.
+    pub marked: bool,
 }
 
 /// What an empty cell (no thumbnail yet) says about its photo.
@@ -230,6 +232,18 @@ pub fn paint(
             icons::copy(painter, badge.center(), tokens::TEXT);
         }
         tooltip.push((i18n::t().duplicate_of)(original));
+    }
+    if info.marked {
+        // Right of the copy mark or the compare "L" when one is there.
+        let left = if info.pinned || info.duplicate_of.is_some() {
+            26.0
+        } else {
+            4.0
+        };
+        let badge = Rect::from_min_size(cell.min + vec2(left, 4.0), vec2(18.0, 18.0));
+        painter.rect_filled(badge, radius::SM, tokens::SURFACE_RAISED);
+        icons::pin(painter, badge.center(), 0.9, tokens::TEXT);
+        tooltip.push(i18n::t().pin_set.to_owned());
     }
     if tooltip.is_empty() {
         response

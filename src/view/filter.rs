@@ -22,10 +22,12 @@ pub enum FilterKind {
     NoPeople,
     /// Deleted in Cerno, lying in `.originals`; shown only while this box is ticked.
     Deleted,
+    /// Marked in Cerno alone (`V`, CER-74).
+    Pinned,
 }
 
 impl FilterKind {
-    pub const ALL: [FilterKind; 18] = [
+    pub const ALL: [FilterKind; 19] = [
         Self::Stars(1),
         Self::Stars(2),
         Self::Stars(3),
@@ -44,6 +46,7 @@ impl FilterKind {
         Self::NoPeople,
         Self::Deleted,
         Self::Incomplete,
+        Self::Pinned,
     ];
 
     pub fn label(self) -> String {
@@ -59,6 +62,7 @@ impl FilterKind {
             Self::People => t.filter_people.to_owned(),
             Self::NoPeople => t.filter_no_people.to_owned(),
             Self::Deleted => t.filter_deleted.to_owned(),
+            Self::Pinned => t.filter_pinned.to_owned(),
         }
     }
 
@@ -79,6 +83,7 @@ impl FilterKind {
             Self::People => "people",
             Self::NoPeople => "nopeople",
             Self::Deleted => "deleted",
+            Self::Pinned => "pinned",
         }
     }
 
@@ -89,7 +94,8 @@ impl FilterKind {
     /// The filter bar's groups, in its order (the menu follows it). Within a group a photo
     /// needs any ticked box, across groups every group with a ticked box. `ALL` keeps the
     /// order of the stored ids.
-    pub const GROUPS: [&'static [FilterKind]; 4] = [
+    pub const GROUPS: [&'static [FilterKind]; 5] = [
+        &[Self::Pinned],
         &[
             Self::Rejected,
             Self::Deleted,
@@ -141,6 +147,7 @@ pub struct PhotoFilter {
     people: bool,
     no_people: bool,
     deleted: bool,
+    pinned: bool,
 }
 
 impl PhotoFilter {
@@ -155,6 +162,7 @@ impl PhotoFilter {
             && !self.people
             && !self.no_people
             && !self.deleted
+            && !self.pinned
     }
 
     /// Any colour box is ticked, so changing a label can hide the current photo.
@@ -174,6 +182,7 @@ impl PhotoFilter {
             FilterKind::People => self.people,
             FilterKind::NoPeople => self.no_people,
             FilterKind::Deleted => self.deleted,
+            FilterKind::Pinned => self.pinned,
             FilterKind::Stars(_) => false,
         }
     }
@@ -190,6 +199,7 @@ impl PhotoFilter {
             FilterKind::People => self.people = on,
             FilterKind::NoPeople => self.no_people = on,
             FilterKind::Deleted => self.deleted = on,
+            FilterKind::Pinned => self.pinned = on,
             FilterKind::Stars(_) => {}
         }
     }

@@ -164,6 +164,7 @@ impl CernoApp {
             video: library::format_of(path) == Some(library::Format::Video),
             deleted: self.is_deleted(path),
             pair: self.pair_note(path),
+            marked: self.is_pinned(path),
         }
     }
 
@@ -348,6 +349,7 @@ impl CernoApp {
             }),
             time_offset: self.time_offset_of(&path),
             pair: self.pair_note(&path).map(|(_, note, _)| note),
+            marked: self.is_pinned(&path),
             filtered: (!toolbar && self.options.is_filtered()).then(|| self.library_total()),
             filter_aside: self.browse.filter_aside.is_some(),
             unsaved: self.unsaved_count(),

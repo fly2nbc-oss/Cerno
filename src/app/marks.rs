@@ -168,7 +168,7 @@ impl CernoApp {
 
     /// Rebuilds when the mark changes which photos are shown or in which order, then optionally
     /// steps to `next` (the photo that followed this one before the rebuild).
-    fn finish_mark(
+    pub(super) fn finish_mark(
         &mut self,
         ctx: &egui::Context,
         path: &Path,

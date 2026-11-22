@@ -26,6 +26,22 @@ pub static TEXTS: Texts = Texts {
     filter_no_people: "Without people",
     filter_people_tooltip: "Found by their faces: people seen from behind or very small in the picture don't count.",
     filter_deleted: "Deleted",
+    filter_pinned: "Marked",
+    pin_filter_hint: "Kept in Cerno only, not in the file",
+    pin_set: "Marked – in Cerno only, not in the file",
+    pin_cleared: "Mark taken away",
+    pins_cleared: "Every mark taken away",
+    pin_fact: "Marked",
+    cmd_pin: "Mark",
+    cmd_clear_pins: |n| format!("Clear marks ({n})"),
+    pins_none: "No photo marked",
+    confirm_clear_pins_title: "Clear every mark?",
+    confirm_clear_pins_text: |n| {
+        format!(
+            "{n} photos of every folder are marked. The marks go; the photos and their stars stay."
+        )
+    },
+    btn_clear_pins: "Clear",
     filter_deleted_tooltip: "Photos deleted in this folder. They lie in the hidden .originals folder – Ctrl+Z puts one back.",
     filter_deleted_none: "No deleted photos in this folder",
     filter_hide_rejected: "Hide rejected",
@@ -162,7 +178,7 @@ pub static TEXTS: Texts = Texts {
     top_tooltip: "Photos, videos or both – or only the best photos, by your stars (else the prediction), aesthetics and sharpness, the best of each series first. Rejected and blurry photos and duplicates don't count. The choice stays until a filter changes or you choose Refresh order. Nothing in the photos changes.",
     bulk_delete_top: "Not with Top – these are the best photos",
     filter_similar: "≈ Similar",
-    filter_mode_hint: "←/→ choose · Space: tick or open · 0–9, X tick · Backspace: show all · Esc: done",
+    filter_mode_hint: "←/→ choose · Space: tick or open · 0–9, X, V tick · Backspace: show all · Esc: done",
     filter_mode_name: "Filters with the keyboard",
     filter_similar_to: |name| format!("≈ like {name}"),
     menu_similar_to: |name| format!("Similar to {name}"),
@@ -638,6 +654,7 @@ pub static TEXTS: Texts = Texts {
     undo_what_colour: "colour",
     undo_what_edit: "edit",
     undo_what_rename: "renaming",
+    undo_what_pin: "mark",
     undo_mark_done: |name, value| format!("Undone – {name}: {value}"),
     cmd_restore: "Put back",
     restored: |n, renamed, name| match (n, renamed) {
@@ -753,7 +770,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "The mouse wheel over the filmstrip steps through the photos; over the photo it zooms.",
                 "Drop a folder onto the window to open it. Hold → to run through the photos.",
-                "Shift with 0–9, X, A or D marks and moves on; with C, Tab or T it does more: four photos, every bar, all photos.",
+                "Shift with 0–9, X, V, A or D marks and moves on; with C, Tab or T it does more: four photos, every bar, all photos.",
                 "In the grid (F6) ↑ ↓ move a row, + − change the size, Enter opens the photo.",
                 "In the scenes (F7) every scene starts a new row; PgUp PgDn jump from scene to scene.",
                 "Straighten (S): the wheel and the arrows turn, Shift is finer. Crop (R): draw a frame or move it with the arrows, +/− size it, A changes the ratio, X turns it.",
@@ -793,6 +810,7 @@ pub static TEXTS: Texts = Texts {
                 ("0 – 5", "Stars (0: none)"),
                 ("6 – 9", "Red, yellow, green, blue"),
                 ("X", "Reject"),
+                ("V", "Mark – in Cerno only"),
                 ("Shift+…", "Same, then the next photo"),
                 ("Del", "Delete – Esc brings it back"),
             ],

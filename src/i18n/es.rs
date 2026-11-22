@@ -26,6 +26,22 @@ pub static TEXTS: Texts = Texts {
     filter_no_people: "Sin personas",
     filter_people_tooltip: "Detectadas por la cara: las personas de espaldas o muy pequeñas en la imagen no cuentan.",
     filter_deleted: "Eliminadas",
+    filter_pinned: "Marcadas",
+    pin_filter_hint: "Solo se guarda en Cerno, no en el archivo",
+    pin_set: "Marcada – solo en Cerno, no en el archivo",
+    pin_cleared: "Marca quitada",
+    pins_cleared: "Todas las marcas quitadas",
+    pin_fact: "Marcada",
+    cmd_pin: "Marcar",
+    cmd_clear_pins: |n| format!("Quitar las marcas ({n})"),
+    pins_none: "Ninguna foto marcada",
+    confirm_clear_pins_title: "¿Quitar todas las marcas?",
+    confirm_clear_pins_text: |n| {
+        format!(
+            "{n} fotos de todas las carpetas están marcadas. Las marcas se van; las fotos y sus estrellas se quedan."
+        )
+    },
+    btn_clear_pins: "Quitar",
     filter_deleted_tooltip: "Fotos eliminadas de esta carpeta. Están en la carpeta oculta .originals: Ctrl+Z devuelve una a su sitio.",
     filter_deleted_none: "No hay fotos eliminadas en esta carpeta",
     filter_hide_rejected: "Ocultar rechazadas",
@@ -162,7 +178,7 @@ pub static TEXTS: Texts = Texts {
     top_tooltip: "Fotos, vídeos o ambos – o solo las mejores fotos, según tus estrellas (si no, la predicción), la estética y la nitidez, la mejor de cada serie primero. Las fotos rechazadas o borrosas y los duplicados no cuentan. La selección se mantiene hasta que cambie un filtro o elijas «Actualizar orden». En las fotos no cambia nada.",
     bulk_delete_top: "No con Top – son las mejores fotos",
     filter_similar: "≈ Parecidas",
-    filter_mode_hint: "←/→ elegir · Espacio: marcar o abrir · 0–9, X marcar · Retroceso: mostrar todo · Esc: listo",
+    filter_mode_hint: "←/→ elegir · Espacio: marcar o abrir · 0–9, X, V marcar · Retroceso: mostrar todo · Esc: listo",
     filter_mode_name: "Filtros con el teclado",
     filter_similar_to: |name| format!("≈ como {name}"),
     menu_similar_to: |name| format!("Parecidas a {name}"),
@@ -647,6 +663,7 @@ pub static TEXTS: Texts = Texts {
     undo_what_colour: "el color",
     undo_what_edit: "la edición",
     undo_what_rename: "renombrado",
+    undo_what_pin: "marca",
     undo_mark_done: |name, value| format!("Deshecho – {name}: {value}"),
     cmd_restore: "Devolver a su sitio",
     restored: |n, renamed, name| match (n, renamed) {
@@ -762,7 +779,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "La rueda del ratón sobre la tira de miniaturas recorre las fotos; sobre la foto, acerca y aleja.",
                 "Arrastra una carpeta a la ventana para abrirla. Mantén pulsado → para avanzar sin parar.",
-                "Mayús con 0–9, X, A o D marca y pasa a la siguiente; con C, Tab o T hace más: cuatro fotos, todas las barras, todas las fotos.",
+                "Mayús con 0–9, X, V, A o D marca y pasa a la siguiente; con C, Tab o T hace más: cuatro fotos, todas las barras, todas las fotos.",
                 "En la cuadrícula (F6), ↑ ↓ cambian de fila, + − el tamaño, Intro abre la foto.",
                 "En las escenas (F7), cada escena empieza una fila; Re Pág y Av Pág saltan de escena en escena.",
                 "Enderezar (S): la rueda y las flechas giran, Mayús más fino. Recorte (R): traza un marco o muévelo con las flechas, +/− cambia su tamaño, A el formato, X cambia horizontal/vertical.",
@@ -802,6 +819,7 @@ pub static TEXTS: Texts = Texts {
                 ("0 – 5", "Estrellas (0: ninguna)"),
                 ("6 – 9", "Rojo, amarillo, verde, azul"),
                 ("X", "Rechazar"),
+                ("V", "Marcar – solo en Cerno"),
                 ("Mayús+…", "Igual, y pasar a la siguiente"),
                 ("Supr", "Eliminar – Esc la recupera"),
             ],

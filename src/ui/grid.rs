@@ -390,6 +390,7 @@ mod tests {
             video: false,
             deleted: false,
             pair: None,
+            marked: false,
         }
     }
 

@@ -132,6 +132,7 @@ pub mod icon {
     pub const PANEL_RIGHT: char = '\u{E436}';
     pub const PANEL_TOP: char = '\u{E43A}';
     pub const PAUSE: char = '\u{E132}';
+    pub const PIN: char = '\u{E259}';
     pub const PLAY: char = '\u{E140}';
     pub const ROTATE_CCW: char = '\u{E14C}';
     pub const ROTATE_CW: char = '\u{E14D}';
@@ -147,7 +148,7 @@ pub mod icon {
 
     /// Every icon above, for the test that checks the subset holds them.
     #[cfg(test)]
-    pub const ALL: [char; 31] = [
+    pub const ALL: [char; 32] = [
         CHECK,
         CHEVRON_DOWN,
         CHEVRON_LEFT,
@@ -167,6 +168,7 @@ pub mod icon {
         PANEL_RIGHT,
         PANEL_TOP,
         PAUSE,
+        PIN,
         PLAY,
         ROTATE_CCW,
         ROTATE_CW,

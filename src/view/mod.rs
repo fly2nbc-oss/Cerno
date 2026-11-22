@@ -83,6 +83,8 @@ pub struct Facts {
     /// Has a keyword the keyword filter picked (or none, when it picked that), while that
     /// filter is on.
     pub tagged: bool,
+    /// Marked in Cerno alone (`V`): the filter's own group.
+    pub pinned: bool,
 }
 
 /// Where a photo sits in its series (at least two photos). `index` is 1-based, sharpest
@@ -264,6 +266,10 @@ pub fn build(
                 return false;
             }
             if options.keywords && !entry.facts.is_some_and(|f| f.tagged) {
+                return false;
+            }
+            if options.filter.contains(FilterKind::Pinned) && !entry.facts.is_some_and(|f| f.pinned)
+            {
                 return false;
             }
             let quality = Quality {

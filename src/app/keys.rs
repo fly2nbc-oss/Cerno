@@ -53,6 +53,9 @@ struct KeyInput {
     /// `X` (toggles), `Shift+X` rejects and moves on.
     reject: bool,
     reject_and_next: bool,
+    /// `V` marks in Cerno alone (toggles), `Shift+V` marks and moves on.
+    pin: bool,
+    pin_and_next: bool,
     label: Option<Label>,
     /// `Shift+6…9`: set the colour and move on.
     label_and_next: Option<Label>,
@@ -230,6 +233,8 @@ fn read_keys(i: &egui::InputState) -> KeyInput {
         rate_and_next,
         reject: plain && i.key_pressed(Key::X),
         reject_and_next: i.modifiers.shift_only() && i.key_pressed(Key::X),
+        pin: plain && i.key_pressed(Key::V),
+        pin_and_next: i.modifiers.shift_only() && i.key_pressed(Key::V),
         label,
         label_and_next: shifted_label(&i.events),
         delete: plain && i.key_pressed(Key::Delete),
@@ -333,6 +338,9 @@ pub(super) fn read_filter_keys(i: &egui::InputState) -> Vec<Action> {
     if fresh(&i.events, Key::X) {
         out.push(Action::Tick(FilterKind::Rejected));
     }
+    if fresh(&i.events, Key::V) {
+        out.push(Action::Tick(FilterKind::Pinned));
+    }
     // Backspace, not `Del`: `Del` means deleting everywhere else.
     if fresh(&i.events, Key::Backspace) {
         out.push(Action::ShowAll);
@@ -421,6 +429,8 @@ impl KeyInput {
             self.reject_and_next,
             Command::SetRating(Rating::Rejected, Advance::Yes),
         );
+        push(self.pin, Command::Pin(Advance::Setting));
+        push(self.pin_and_next, Command::Pin(Advance::Yes));
         if let Some(label) = self.label {
             push(true, Command::ToggleLabel(label, Advance::Setting));
         }
@@ -876,6 +886,8 @@ mod tests {
             (Key::PageUp, plain, Command::PageUp),
             (Key::F2, plain, Command::Rename { all: false }),
             (Key::F2, shift, Command::Rename { all: true }),
+            (Key::V, plain, Command::Pin(Advance::Setting)),
+            (Key::V, shift, Command::Pin(Advance::Yes)),
         ];
         for (pressed, modifiers, command) in cases {
             // The video's keys go along every frame (`Command::Video`, empty here).
@@ -1355,6 +1367,7 @@ mod tests {
             one(Key::X, Key::X),
             vec![Action::Tick(FilterKind::Rejected)]
         );
+        assert_eq!(one(Key::V, Key::V), vec![Action::Tick(FilterKind::Pinned)]);
         assert_eq!(one(Key::Backspace, Key::Backspace), vec![Action::ShowAll]);
         assert!(one(Key::Delete, Key::Delete).is_empty());
         assert_eq!(one(Key::Space, Key::Space), vec![Action::Activate]);

@@ -579,11 +579,13 @@ impl CernoApp {
         let deleted = self.is_deleted(path);
         let listed = self.is_listed(path);
         let tagged = self.is_tagged(path);
+        let pinned = self.is_pinned(path);
         let Some(known) = self.board.get(path) else {
-            return (deleted || listed || tagged).then(|| Facts {
+            return (deleted || listed || tagged || pinned).then(|| Facts {
                 deleted,
                 listed,
                 tagged,
+                pinned,
                 ..Facts::default()
             });
         };
@@ -602,6 +604,7 @@ impl CernoApp {
             deleted,
             listed,
             tagged,
+            pinned,
         })
     }
 

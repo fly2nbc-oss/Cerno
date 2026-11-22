@@ -1152,4 +1152,35 @@ mod tests {
         assert_eq!(h.app.current, 0, "the photo stays");
         assert_eq!(h.app.filter_mode.cursor, Some(Slot::Camera));
     }
+
+    /// `V` marks in Cerno alone, `Shift+V` marks and moves on (a marked photo is only passed),
+    /// the box shows the marked photos, `Ctrl+Z` takes the newest mark back, and the index
+    /// keeps them all (CER-74).
+    #[test]
+    fn v_marks_in_cerno_alone() {
+        use crate::view::FilterKind;
+        let mut h = Harness::new(3);
+        h.app.marks.auto_advance = false;
+        h.settle();
+        h.press(Key::V, NONE);
+        assert_eq!(h.app.current, 0);
+        assert!(h.app.is_pinned(&h.dir.join("IMG_1.jpg")));
+        h.press(Key::V, Modifiers::SHIFT);
+        assert_eq!(h.app.current, 1, "already marked: only moves on");
+        assert_eq!(h.app.pins.len(), 1);
+        h.press(Key::V, Modifiers::SHIFT);
+        assert_eq!(h.app.current, 2);
+        assert_eq!(h.app.pins.len(), 2);
+        assert_eq!(super::super::pins::load(&h.app.db), h.app.pins);
+        h.app.options.filter.set(FilterKind::Pinned, true);
+        h.app.rebuild_view(&h.ctx, None);
+        assert_eq!(h.app.view.len(), 2);
+        h.press(Key::Z, Modifiers::COMMAND);
+        assert!(!h.app.is_pinned(&h.dir.join("IMG_2.jpg")));
+        assert_eq!(h.app.view.len(), 1, "the box follows at once");
+        assert_eq!(super::super::pins::load(&h.app.db), h.app.pins);
+        // The mark goes off again with `V`.
+        h.press(Key::V, NONE);
+        assert!(h.app.pins.is_empty());
+    }
 }

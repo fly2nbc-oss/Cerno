@@ -26,6 +26,22 @@ pub static TEXTS: Texts = Texts {
     filter_no_people: "Sans personnes",
     filter_people_tooltip: "Repérées à leur visage : les personnes de dos ou toutes petites dans l'image ne comptent pas.",
     filter_deleted: "Supprimées",
+    filter_pinned: "Marquées",
+    pin_filter_hint: "Gardé dans Cerno seulement, pas dans le fichier",
+    pin_set: "Marquée – dans Cerno seulement, pas dans le fichier",
+    pin_cleared: "Marque retirée",
+    pins_cleared: "Toutes les marques retirées",
+    pin_fact: "Marquée",
+    cmd_pin: "Marquer",
+    cmd_clear_pins: |n| format!("Retirer les marques ({n})"),
+    pins_none: "Aucune photo marquée",
+    confirm_clear_pins_title: "Retirer toutes les marques ?",
+    confirm_clear_pins_text: |n| {
+        format!(
+            "{n} photos de tous les dossiers sont marquées. Les marques s'en vont, les photos et leurs étoiles restent."
+        )
+    },
+    btn_clear_pins: "Retirer",
     filter_deleted_tooltip: "Photos supprimées de ce dossier. Elles se trouvent dans le dossier caché .originals – Ctrl+Z en remet une en place.",
     filter_deleted_none: "Aucune photo supprimée dans ce dossier",
     filter_hide_rejected: "Masquer les rejetées",
@@ -168,7 +184,7 @@ pub static TEXTS: Texts = Texts {
     top_tooltip: "Photos, vidéos ou les deux – ou seulement les meilleures photos, selon vos étoiles (sinon la prédiction), l'esthétique et la netteté, la meilleure de chaque série d'abord. Les photos rejetées ou floues et les doublons ne comptent pas. La sélection reste jusqu'à ce qu'un filtre change ou que vous choisissiez « Actualiser l'ordre ». Rien n'est modifié dans les photos.",
     bulk_delete_top: "Pas avec Top – ce sont les meilleures photos",
     filter_similar: "≈ Semblables",
-    filter_mode_hint: "←/→ choisir · Espace : cocher ou ouvrir · 0–9, X cocher · Retour arrière : tout afficher · Esc : terminé",
+    filter_mode_hint: "←/→ choisir · Espace : cocher ou ouvrir · 0–9, X, V cocher · Retour arrière : tout afficher · Esc : terminé",
     filter_mode_name: "Filtres au clavier",
     filter_similar_to: |name| format!("≈ comme {name}"),
     menu_similar_to: |name| format!("Semblables à {name}"),
@@ -670,6 +686,7 @@ pub static TEXTS: Texts = Texts {
     undo_what_colour: "la couleur",
     undo_what_edit: "la retouche",
     undo_what_rename: "renommage",
+    undo_what_pin: "marque",
     undo_mark_done: |name, value| format!("Annulé – {name} : {value}"),
     cmd_restore: "Remettre en place",
     restored: |n, renamed, name| match (n, renamed) {
@@ -787,7 +804,7 @@ pub static TEXTS: Texts = Texts {
             &[
                 "La molette sur la pellicule fait défiler les photos ; sur la photo, elle zoome.",
                 "Déposez un dossier sur la fenêtre pour l'ouvrir. Maintenez → pour faire défiler les photos.",
-                "Maj avec 0–9, X, A ou D marque et passe à la suivante ; avec C, Tab ou T elle en fait plus : quatre photos, toutes les barres, toutes les photos.",
+                "Maj avec 0–9, X, V, A ou D marque et passe à la suivante ; avec C, Tab ou T elle en fait plus : quatre photos, toutes les barres, toutes les photos.",
                 "Dans la grille (F6), ↑ ↓ changent de ligne, + − la taille, Entrée ouvre la photo.",
                 "Dans les scènes (F7), chaque scène commence une ligne ; Pg préc et Pg suiv sautent de scène en scène.",
                 "Redresser (S) : la molette et les flèches tournent, Maj plus fin. Recadrer (R) : tracez un cadre ou déplacez-le avec les flèches, +/− change sa taille, A le format, X bascule paysage/portrait.",
@@ -827,6 +844,7 @@ pub static TEXTS: Texts = Texts {
                 ("0 – 5", "Étoiles (0 : aucune)"),
                 ("6 – 9", "Rouge, jaune, vert, bleu"),
                 ("X", "Rejeter"),
+                ("V", "Marquer – dans Cerno seulement"),
                 ("Maj+…", "Idem, puis photo suivante"),
                 ("Suppr", "Supprimer – Esc la récupère"),
             ],

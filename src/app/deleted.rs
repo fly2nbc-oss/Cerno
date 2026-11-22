@@ -328,6 +328,8 @@ impl CernoApp {
             self.thumbs.invalidate(aside);
             all.push(to.clone());
         }
+        // Marks made in Cerno came back with them (`record_restore`).
+        self.reload_pins();
         // A pair's RAW is back beside its JPEG and rides along again.
         for rider in &restored.riders {
             if let Err(err) = self.db.record_restore(

@@ -40,12 +40,17 @@ pub(super) enum Entry {
     /// Photos renamed (`F2`, `Shift+F2`): each as it is now, with the name it had. Never
     /// empty.
     Rename { pairs: Vec<(PathBuf, PathBuf)> },
+    /// A mark in Cerno alone set or taken away (`V`); `before` is whether it was there.
+    Pin { path: PathBuf, before: bool },
 }
 
 impl Entry {
     pub(super) fn path(&self) -> &Path {
         match self {
-            Self::Rating { path, .. } | Self::Label { path, .. } | Self::Edit { path } => path,
+            Self::Rating { path, .. }
+            | Self::Label { path, .. }
+            | Self::Edit { path }
+            | Self::Pin { path, .. } => path,
             Self::Rename { pairs } => pairs.first().map_or(Path::new(""), |(now, _)| now),
         }
     }
@@ -53,7 +58,10 @@ impl Entry {
     /// The photo moved or was renamed: the entry follows it.
     fn follow(&mut self, from: &Path, to: &Path) {
         match self {
-            Self::Rating { path, .. } | Self::Label { path, .. } | Self::Edit { path } => {
+            Self::Rating { path, .. }
+            | Self::Label { path, .. }
+            | Self::Edit { path }
+            | Self::Pin { path, .. } => {
                 if path == from {
                     *path = to.to_path_buf();
                 }
@@ -80,6 +88,7 @@ impl Entry {
             Self::Label { .. } => t.undo_what_colour,
             Self::Edit { .. } => t.undo_what_edit,
             Self::Rename { .. } => t.undo_what_rename,
+            Self::Pin { .. } => t.undo_what_pin,
         }
     }
 
@@ -88,6 +97,7 @@ impl Entry {
         match self {
             Self::Edit { .. } => Change::Rewrite,
             Self::Rename { .. } => Change::Rename,
+            Self::Pin { .. } => Change::Pin,
             _ => Change::Mark,
         }
     }
@@ -196,6 +206,9 @@ impl CernoApp {
             Entry::Edit { .. } => self.restore_original(path),
             // Back to the names they had – not recorded again.
             Entry::Rename { pairs } => self.start_rename(ctx, pairs, false),
+            Entry::Pin { before, .. } => {
+                self.apply_pin(ctx, path, before, false);
+            }
         }
     }
 

@@ -19,6 +19,10 @@ impl Db {
             "INSERT OR REPLACE INTO set_aside (aside, original, at_ms) VALUES (?1, ?2, ?3)",
             params![aside, path, now_ms()],
         )?;
+        tx.execute(
+            "UPDATE OR REPLACE pins SET path = ?1 WHERE path = ?2",
+            params![aside, path],
+        )?;
         tx.commit()?;
         Ok(())
     }
@@ -59,6 +63,10 @@ impl Db {
                 params![to, original, at],
             )?;
         }
+        tx.execute(
+            "UPDATE OR REPLACE pins SET path = ?1 WHERE path = ?2",
+            params![to, aside],
+        )?;
         tx.execute("DELETE FROM set_aside WHERE aside = ?1", [aside])?;
         tx.commit()?;
         Ok(())

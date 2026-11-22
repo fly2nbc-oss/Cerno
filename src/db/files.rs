@@ -126,9 +126,13 @@ impl Db {
             [from],
             |row| row.get(0),
         )?;
-        // Ctrl+Z still finds the original of a moved photo.
+        // Ctrl+Z still finds the original of a moved photo; a mark made in Cerno follows.
         tx.execute(
             "UPDATE backups SET path = ?1 WHERE path = ?2",
+            params![to, from],
+        )?;
+        tx.execute(
+            "UPDATE OR REPLACE pins SET path = ?1 WHERE path = ?2",
             params![to, from],
         )?;
         if found == 0 {

@@ -172,6 +172,11 @@ pub fn person(painter: &Painter, center: Pos2, color: Color32, crossed: bool) {
 
 /// A waste bin for the deleted photos (which lie in `.originals`, not in the system's
 /// trash); `size` 1.0 beside text.
+/// Marked in Cerno alone (`V`): Lucide's pin.
+pub fn pin(painter: &Painter, center: Pos2, size: f32, color: Color32) {
+    glyph(painter, center, icon::PIN, (INLINE + 1.0) * size, color);
+}
+
 pub fn trash(painter: &Painter, center: Pos2, size: f32, color: Color32) {
     glyph(painter, center, icon::TRASH, (INLINE + 1.0) * size, color);
 }

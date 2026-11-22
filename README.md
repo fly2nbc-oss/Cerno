@@ -47,6 +47,7 @@ The Windows files are not signed: SmartScreen asks once (*More info* → *Run an
 |---|---|
 | `→` / `←`, `Space` | Next / previous photo (`Space` on a video: play / pause) |
 | `1`–`5`, `0`, `X`, `6`–`9` | Stars, no stars, reject, colour label (`Shift` + key: and go on) |
+| `V` | Mark in Cerno alone – not written into the file (`Shift+V`: and go on) |
 | `Delete` | Delete – `Esc` within 5 s brings it back |
 | `Z`, `C`, `Alt+C` | 100 % zoom, compare, whole photo and 100 % side by side |
 | `F5` / `F6` / `F7` / `F8` | Photo / grid / scenes / faces |

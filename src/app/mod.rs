@@ -44,6 +44,7 @@ mod notice;
 mod pairs;
 mod panels;
 mod photos;
+mod pins;
 mod rename;
 mod scenes;
 mod target;
@@ -109,6 +110,8 @@ pub struct CernoApp {
     /// The rename waiting or running is recorded for `Ctrl+Z` (not when it is the taking
     /// back).
     renaming_records: bool,
+    /// Photos marked in Cerno alone (`V`, CER-74), as the index has them.
+    pins: std::collections::HashSet<std::path::PathBuf>,
     /// What is shown, after sorting, filtering and hiding pending deletions.
     view: View,
     current: usize,
@@ -228,6 +231,7 @@ impl CernoApp {
             exiftool,
         } = parts;
         let updates = update::Updates::new(&db);
+        let pins = pins::load(&db);
         let files = Arc::new(FileLocks::default());
         let thumbs = Arc::new(Thumbs::new(ctx.clone(), Arc::clone(&db)));
         let board = Arc::new(ScoreBoard::default());
@@ -288,6 +292,7 @@ impl CernoApp {
             keywords: keywords::Keywords::default(),
             camera_time: camera_time::CameraTime::default(),
             renaming_records: false,
+            pins,
             view: View::default(),
             current: 0,
             options,

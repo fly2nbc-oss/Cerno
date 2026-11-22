@@ -617,6 +617,11 @@ fn filter_box(ui: &mut Ui, kind: FilterKind, on: bool, has_deleted: bool) -> Res
             chip_with(ui, on, Face::Deleted, enabled)
                 .on_hover_text(format!("{}\n{tooltip}", kind.label()))
         }
+        FilterKind::Pinned => chip(ui, on, Face::Pinned).on_hover_text(format!(
+            "{} (V)\n{}",
+            kind.label(),
+            t.pin_filter_hint
+        )),
         FilterKind::Unrated => {
             chip(ui, on, Face::NoStars).on_hover_text(format!("{} (0)", kind.label()))
         }
@@ -670,6 +675,8 @@ enum Face<'a> {
     Deleted,
     /// A torn page: JPEGs that end inside their image data.
     Incomplete,
+    /// A pin: the photos marked in Cerno alone.
+    Pinned,
     /// A word and the reject cross: "without ✕".
     Without(&'a str),
 }
@@ -692,9 +699,12 @@ fn chip_with(ui: &mut Ui, on: bool, face: Face<'_>, enabled: bool) -> Response {
             TextStyle::Button.resolve(ui.style()),
             tokens::TEXT,
         )),
-        Face::Rejected | Face::NoStars | Face::Person { .. } | Face::Deleted | Face::Incomplete => {
-            None
-        }
+        Face::Rejected
+        | Face::NoStars
+        | Face::Person { .. }
+        | Face::Deleted
+        | Face::Incomplete
+        | Face::Pinned => None,
     };
     let mark = if matches!(face, Face::Without(_)) {
         MARK_GAP + MARK
@@ -758,6 +768,10 @@ fn chip_with(ui: &mut Ui, on: bool, face: Face<'_>, enabled: bool) -> Response {
         (Face::Incomplete, _) => {
             let colour = if on { tokens::TEXT } else { tokens::MUTED };
             icons::torn_file(painter, rect.center(), colour);
+        }
+        (Face::Pinned, _) => {
+            let colour = if on { tokens::TEXT } else { tokens::MUTED };
+            icons::pin(painter, rect.center(), 1.0, colour);
         }
         (Face::Text(_) | Face::Without(_), None) => {}
     }
@@ -1483,7 +1497,8 @@ mod tests {
             plain[..3],
             [Slot::Scope, Slot::Camera, Slot::WithoutRejected]
         );
-        assert_eq!(plain[3], Slot::Filter(FilterKind::Rejected));
+        assert_eq!(plain[3], Slot::Filter(FilterKind::Pinned));
+        assert_eq!(plain[4], Slot::Filter(FilterKind::Rejected));
         assert_eq!(plain.len(), 3 + FilterKind::ALL.len() + 2);
         assert_eq!(plain[plain.len() - 2..], [Slot::Similar, Slot::Sort]);
         let all = slots(true, true, true);

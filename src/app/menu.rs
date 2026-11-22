@@ -115,6 +115,8 @@ pub(super) enum ConfirmAction {
     DeleteModels,
     /// The first start's question: may Cerno check for updates once a day?
     UpdateCheck,
+    /// Every mark made in Cerno alone goes (`V`, CER-74).
+    ClearPins,
 }
 
 impl CernoApp {
@@ -126,7 +128,11 @@ impl CernoApp {
         };
     }
 
-    fn confirm_card(action: ConfirmAction, status: &Status) -> confirm::Confirm<'static> {
+    fn confirm_card(
+        action: ConfirmAction,
+        status: &Status,
+        pins: usize,
+    ) -> confirm::Confirm<'static> {
         let t = i18n::t();
         match action {
             ConfirmAction::DownloadModel => {
@@ -172,6 +178,13 @@ impl CernoApp {
                 cancel: t.btn_update_no,
                 danger: false,
             },
+            ConfirmAction::ClearPins => confirm::Confirm {
+                title: t.confirm_clear_pins_title,
+                text: (t.confirm_clear_pins_text)(pins),
+                confirm: t.btn_clear_pins,
+                cancel: t.btn_cancel,
+                danger: false,
+            },
         }
     }
 
@@ -186,6 +199,7 @@ impl CernoApp {
             ConfirmAction::ResetTaste => self.analyzer.reset_taste_learning(),
             ConfirmAction::DeleteModels => self.analyzer.delete_installed_models(),
             ConfirmAction::UpdateCheck => self.answer_update_question(true),
+            ConfirmAction::ClearPins => self.clear_pins(ctx),
         }
     }
 
@@ -291,7 +305,7 @@ impl CernoApp {
             && let Some(yes) = confirm::show(
                 ctx,
                 window,
-                &Self::confirm_card(action, &self.analyzer.status()),
+                &Self::confirm_card(action, &self.analyzer.status(), self.pins.len()),
             )
         {
             self.layer = if back_to_models {
@@ -483,6 +497,12 @@ impl CernoApp {
             Item::List(
                 Row::new(Command::EditList, t.menu_external, key("E"))
                     .disabled(self.menu_block(Change::External, current)),
+            ),
+            Item::Row(
+                Row::new(Command::Pin(Advance::No), t.cmd_pin, key("V"))
+                    .hint(t.pin_filter_hint)
+                    .toggle(current.is_some_and(|path| self.is_pinned(path)))
+                    .disabled(self.menu_block(Change::Pin, current)),
             ),
             Item::Row(
                 Row::new(Command::Rename { all: false }, t.cmd_rename, key("F2"))
@@ -777,6 +797,13 @@ impl CernoApp {
             Row::new(Command::RestoreShown, (t.bulk_restore)(deleted), None)
                 .hint(t.bulk_restore_hint)
                 .disabled((deleted == 0).then_some(t.bar_none_deleted)),
+            Row::new(
+                Command::ClearPins,
+                (t.cmd_clear_pins)(self.pins.len()),
+                None,
+            )
+            .hint(t.pin_filter_hint)
+            .disabled(self.pins.is_empty().then_some(t.pins_none)),
         ]
     }
 
