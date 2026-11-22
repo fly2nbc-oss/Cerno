@@ -10,6 +10,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), version
 ### Added
 
 - **Rename photos** – `F2` renames the photo shown, `Shift+F2` every photo the filter shows. The card offers four patterns from the capture time: `2026_08_23__191546`, `2026-08-23 19.15.46` (Dropbox / OneDrive), `20260823_191546` (Android) and `2026-08-23_Roadtrip_001` (day, a text – the folder's name to start with – and a counter in capture order); `↑`/`↓` or `Alt+1`–`Alt+4` choose one. A single photo's name can be typed over; several photos show each old and new name before anything happens. A name already taken gets `_1`, `_2` …, the extension stays, the RAW of a RAW+JPG pair and sidecars take the new name too, and stars, labels, scores and the kept original follow. `Ctrl+Z` gives the old names back. Also in the menu bar (*This photo*, *Visible photos*).
+- **iPhone Live Photos as one photo** – a HEIC or JPEG and the short `.MOV` of the same name show as one photo with a `LIVE` badge, so a phone folder no longer shows every second item as a clip. Marks go into the picture; copy, move, delete, put back and rename take both. `Enter` plays the motion once – `Space` still moves on. Only clips Apple marked as a Live Photo's, or at most 4 s long, are taken in; real videos stay on their own. *Settings ▸ Live Photos as one photo* switches it off.
+- **Videos take their capture time from their header for renaming** – iPhone videos carry it, so the date patterns work for them too.
 
 ### Changed
 

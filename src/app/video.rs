@@ -103,12 +103,34 @@ impl CernoApp {
             .filter(|p| library::format_of(p) == Some(library::Format::Video))
     }
 
+    /// The clip of the current photo when it is a Live Photo shown alone (CER-73).
+    pub(super) fn current_live(&self) -> Option<PathBuf> {
+        if self.viewer.grid || self.viewer.pinned.is_some() || self.viewer.quad.is_some() {
+            return None;
+        }
+        let path = self.view.get(self.current)?;
+        self.folder.pairs.motion(path).map(Path::to_path_buf)
+    }
+
+    /// `Enter` on a Live Photo: its clip plays once over the picture, which shows again at
+    /// the end. `Space` moves on, as on any photo.
+    pub(super) fn play_live(&mut self, ctx: &egui::Context) {
+        if let Some(clip) = self.current_live() {
+            self.play_path(ctx, clip);
+        }
+    }
+
     /// `Space` or the play button on the current video: start it, or play / pause. A
     /// build without the feature `video` says it plays no videos.
     pub(super) fn toggle_video(&mut self, ctx: &egui::Context) {
         let Some(path) = self.current_video().map(Path::to_path_buf) else {
             return;
         };
+        self.play_path(ctx, path);
+    }
+
+    /// Starts `path`, or plays / pauses it when it is the video playing.
+    fn play_path(&mut self, ctx: &egui::Context, path: PathBuf) {
         if let Some(session) = &self.videos.session
             && session.player.path() == path
         {
@@ -199,14 +221,16 @@ impl CernoApp {
     /// background as soon as a video is shown.
     pub(super) fn update_video(&mut self, ctx: &egui::Context) {
         let current = self.current_video().map(Path::to_path_buf);
-        if current.is_some() {
+        let live = self.current_live();
+        if current.is_some() || live.is_some() {
             playback::warm_up();
         }
-        let keep = self
-            .videos
-            .session
-            .as_ref()
-            .is_some_and(|session| Some(session.player.path()) == current.as_deref());
+        let keep = self.videos.session.as_ref().is_some_and(|session| {
+            let playing = Some(session.player.path());
+            playing == current.as_deref()
+                // A Live Photo's clip plays once: at its end the picture shows again.
+                || (playing == live.as_deref() && !session.player.status().ended)
+        });
         if !keep {
             self.stop_video();
         }

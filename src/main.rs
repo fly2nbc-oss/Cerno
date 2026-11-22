@@ -33,6 +33,7 @@ mod pairs;
 mod paths;
 mod playback;
 mod process;
+mod quicktime;
 mod rating;
 mod raw;
 mod rename;

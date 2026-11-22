@@ -698,6 +698,11 @@ impl CernoApp {
         }
         if is_video && let Some(path) = self.view.get(slot.index).cloned() {
             self.draw_video_slot(ui, slot, &path);
+        } else if slot.index == self.current
+            && let Some(clip) = self.current_live()
+        {
+            // A Live Photo's clip, while it plays (`Enter`).
+            self.draw_video(ui, slot.area, &clip);
         }
         if needs_full && full.is_none() {
             self.loader.request_full(slot.index);

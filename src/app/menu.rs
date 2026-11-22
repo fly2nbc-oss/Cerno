@@ -364,7 +364,7 @@ impl CernoApp {
         });
         let colour = current.and_then(|path| self.label_of(path, image.as_deref()));
         // A pair's edits change the JPEG alone; the rows say so.
-        let paired = current.is_some_and(|path| self.folder.pairs.companion(path).is_some());
+        let paired = current.is_some_and(|path| self.folder.pairs.raw(path).is_some());
         let jpeg_only = |row: Row<Command>| {
             if paired {
                 row.hint(t.pair_edit_jpeg_only)
@@ -586,6 +586,11 @@ impl CernoApp {
                 Row::new(Command::Pairs, t.cmd_pairs, None)
                     .toggle(self.folder.pair_mode)
                     .hint(t.pairs_hint),
+            ),
+            Item::Row(
+                Row::new(Command::LivePairs, t.cmd_live_pairs, None)
+                    .toggle(self.folder.live_mode)
+                    .hint(t.live_pairs_hint),
             ),
             Item::Row(
                 Row::new(Command::UpdateCheck, t.cmd_update_check, None)

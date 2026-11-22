@@ -21,6 +21,7 @@ use super::CernoApp;
 use super::browse::index_of;
 use super::gate::Change;
 use super::notice::Notice;
+use super::pairs::Modes;
 
 /// What a restore worker did: (where it lay, where it came from, where it is now), and what
 /// failed; a pair's RAW with the place its JPEG got.
@@ -82,12 +83,12 @@ impl Deleted {
         self.paths.is_empty()
     }
 
-    fn set(&mut self, found: Vec<originals::Deleted>, pair: bool) {
+    fn set(&mut self, found: Vec<originals::Deleted>, pair: Modes) {
         self.from = found.into_iter().map(|d| (d.aside, d.original)).collect();
         self.arrange(pair);
     }
 
-    fn add(&mut self, aside: PathBuf, original: PathBuf, pair: bool) {
+    fn add(&mut self, aside: PathBuf, original: PathBuf, pair: Modes) {
         self.from.insert(aside, original);
         self.arrange(pair);
     }
@@ -99,17 +100,20 @@ impl Deleted {
     }
 
     /// In the order of their original names; pairs by those names too.
-    fn arrange(&mut self, pair: bool) {
+    fn arrange(&mut self, pair: Modes) {
         let from = &self.from;
         let mut all: Vec<PathBuf> = from.keys().cloned().collect();
         all.sort_by(|a, b| {
             let name = |p: &PathBuf| from.get(p).unwrap_or(p).to_string_lossy().into_owned();
             library::natural_cmp(&name(a), &name(b)).then_with(|| a.cmp(b))
         });
-        (self.paths, self.pairs) = if pair {
-            pairs::pair_up(all, |p| {
-                from.get(p).cloned().unwrap_or_else(|| p.to_path_buf())
-            })
+        let rules = pair.rules();
+        (self.paths, self.pairs) = if rules.any() {
+            pairs::pair_up(
+                all,
+                |p| from.get(p).cloned().unwrap_or_else(|| p.to_path_buf()),
+                &rules,
+            )
         } else {
             (all, Pairs::default())
         };
@@ -178,7 +182,7 @@ impl CernoApp {
 
     /// A deletion was carried out: the photo now lies at `aside`.
     pub(super) fn add_deleted(&mut self, original: PathBuf, aside: PathBuf) {
-        self.deleted.add(aside, original, self.folder.pair_mode);
+        self.deleted.add(aside, original, self.folder.modes());
     }
 
     /// `Ctrl+Z` or the menu on a deleted photo: it goes back into its folder.
@@ -241,7 +245,7 @@ impl CernoApp {
     pub(super) fn poll_deleted(&mut self, ctx: &egui::Context) {
         if let Some(found) = self.deleted.scan.as_ref().and_then(|rx| rx.try_recv().ok()) {
             self.deleted.scan = None;
-            self.deleted.set(found, self.folder.pair_mode);
+            self.deleted.set(found, self.folder.modes());
             if self.options.filter.contains(FilterKind::Deleted) {
                 self.sync_library();
                 self.rebuild_view(ctx, None);
@@ -334,7 +338,14 @@ impl CernoApp {
                 log::warn!("index: {err:#}");
             }
             self.deleted.remove(&rider.aside);
-            if self.folder.pair_mode {
+            // A RAW or a Live Photo's clip, as it rode before.
+            if library::format_of(&rider.to) == Some(library::Format::Video) {
+                if self.folder.live_mode {
+                    self.folder
+                        .pairs
+                        .insert_motion(rider.primary.clone(), rider.to.clone());
+                }
+            } else if self.folder.pair_mode {
                 self.folder
                     .pairs
                     .insert(rider.primary.clone(), rider.to.clone());
@@ -345,8 +356,9 @@ impl CernoApp {
         }
         // A RAW put back alone beside its JPEG pairs with it now; the hint reads the sidecars
         // of the pairs back.
-        if self.folder.pair_mode {
-            let (paired, found) = pairs::pair_up(all, Path::to_path_buf);
+        let rules = self.folder.modes().rules();
+        if rules.any() {
+            let (paired, found) = pairs::pair_up(all, Path::to_path_buf, &rules);
             all = paired;
             self.folder.pairs.extend(found);
         }

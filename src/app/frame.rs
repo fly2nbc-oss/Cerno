@@ -347,7 +347,7 @@ impl CernoApp {
                 crate::raw::small_preview(library::format_of(&path), image.original_size)
             }),
             time_offset: self.time_offset_of(&path),
-            pair: self.pair_note(&path).map(|(note, _)| note),
+            pair: self.pair_note(&path).map(|(_, note, _)| note),
             filtered: (!toolbar && self.options.is_filtered()).then(|| self.library_total()),
             filter_aside: self.browse.filter_aside.is_some(),
             unsaved: self.unsaved_count(),

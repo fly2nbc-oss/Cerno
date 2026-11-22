@@ -94,6 +94,22 @@ pub fn clock_of(ms: i64) -> Clock {
     }
 }
 
+/// A wall clock as Cerno's capture-time milliseconds (what `clock_of` turns back); `None` for
+/// a day that doesn't exist.
+pub fn millis_of(clock: Clock) -> Option<i64> {
+    let year = i32::try_from(clock.year).ok()?;
+    if clock.hour > 23 || clock.minute > 59 || clock.second > 60 {
+        return None;
+    }
+    let days = days_from_civil(year, clock.month, clock.day)?;
+    Some(
+        days * 86_400_000
+            + i64::from(clock.hour) * 3_600_000
+            + i64::from(clock.minute) * 60_000
+            + i64::from(clock.second) * 1000,
+    )
+}
+
 /// The inverse of `days_from_civil` (days since 1970-01-01 → year, month, day).
 pub(super) fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;

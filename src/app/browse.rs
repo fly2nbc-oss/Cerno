@@ -32,7 +32,10 @@ pub(super) struct Folder {
     pub(super) subfolders: bool,
     /// RAW + JPG of one name are one photo (*RAW+JPG as one photo*, on by default).
     pub(super) pair_mode: bool,
-    /// The RAWs riding along with the open folder's JPEGs.
+    /// A Live Photo's picture and clip are one photo (*Live Photos as one photo*, on by
+    /// default).
+    pub(super) live_mode: bool,
+    /// The RAWs and Live Photo clips riding along with the open folder's photos.
     pub(super) pairs: crate::pairs::Pairs,
     /// What the pairs' RAW sidecars say, for the note where they differ.
     pub(super) raw_marks: super::pairs::RawMarks,
@@ -48,6 +51,7 @@ impl Folder {
             all_index: HashMap::new(),
             subfolders: db.setting("subfolders").as_deref() == Some("1"),
             pair_mode: db.setting(super::pairs::SETTING).as_deref() != Some("0"),
+            live_mode: db.setting(super::pairs::LIVE_SETTING).as_deref() != Some("0"),
             pairs: crate::pairs::Pairs::default(),
             raw_marks: super::pairs::RawMarks::default(),
         }
@@ -139,9 +143,11 @@ impl CernoApp {
                 self.offer_models();
             }
         }
-        // RAW + JPG of one name: the RAW rides along with the JPEG (`pairs`).
-        let (paths, pairs) = if self.folder.pair_mode {
-            crate::pairs::pair_up(library.paths.to_vec(), Path::to_path_buf)
+        // RAW + JPG of one name: the RAW rides along with the JPEG; a Live Photo's clip with its
+        // picture (`pairs`).
+        let rules = self.folder.modes().rules();
+        let (paths, pairs) = if rules.any() {
+            crate::pairs::pair_up(library.paths.to_vec(), Path::to_path_buf, &rules)
         } else {
             (library.paths.to_vec(), crate::pairs::Pairs::default())
         };

@@ -208,6 +208,8 @@ pub(super) enum Command {
     Subfolders,
     /// RAW + JPG as one photo.
     Pairs,
+    /// *Live Photos as one photo* on or off.
+    LivePairs,
     /// *Language*: the list of languages beside the row.
     LanguageList,
     Language(Lang),
@@ -337,15 +339,19 @@ impl CernoApp {
             }
             Command::Enter => {
                 // In the grid Enter opens the photo (a video plays with Space only).
-                if self.viewer.grid {
+                let from_grid = self.viewer.grid;
+                if from_grid {
                     self.set_grid(false);
                 }
-                // On the description tab `Enter` puts the cursor into the keyword field.
+                // On the description tab `Enter` puts the cursor into the keyword field; on a
+                // Live Photo it plays the motion.
                 if !self.viewer.grid
                     && self.bars.details != DetailsMode::Off
                     && self.bars.details_tab == DetailsTab::Description
                 {
                     self.drafts.focus_keyword = true;
+                } else if !from_grid {
+                    self.play_live(ctx);
                 }
             }
             Command::SetRating(rating, advance) => {
@@ -450,6 +456,7 @@ impl CernoApp {
             Command::Open => self.pick_folder(ctx),
             Command::Subfolders => self.toggle_subfolders(ctx),
             Command::Pairs => self.toggle_pairs(ctx),
+            Command::LivePairs => self.toggle_live_pairs(ctx),
             Command::Language(lang) => self.set_language(ctx, lang),
             Command::NextLanguage => self.switch_language(ctx),
             Command::UpdateCheck => self.toggle_update_check(),

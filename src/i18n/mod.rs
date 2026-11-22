@@ -330,6 +330,14 @@ pub struct Texts {
     pub pairs_on: &'static str,
     pub pairs_off: &'static str,
     pub pair_badge: &'static str,
+    /// Settings: an iPhone Live Photo's picture and clip as one photo (CER-73).
+    pub cmd_live_pairs: &'static str,
+    pub live_pairs_hint: &'static str,
+    pub live_on: &'static str,
+    pub live_off: &'static str,
+    /// The cell's badge of a Live Photo.
+    pub live_badge: &'static str,
+    pub live_note: &'static str,
     pub pair_edit_jpeg_only: &'static str,
     pub pair_raw_marks: fn(&str) -> String,
     pub filter_clear: &'static str,

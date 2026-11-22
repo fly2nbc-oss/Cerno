@@ -44,7 +44,7 @@ pub struct CellInfo {
     pub deleted: bool,
     /// A RAW + JPG pair: its note for the tooltip, and whether the RAW's marks differ (the
     /// badge then in the warning colour).
-    pub pair: Option<(String, bool)>,
+    pub pair: Option<(&'static str, String, bool)>,
 }
 
 /// What an empty cell (no thumbnail yet) says about its photo.
@@ -206,17 +206,14 @@ pub fn paint(
         painter.rect_filled(stripe, 1.0, crate::theme::label_color(label));
         tooltip.push(i18n::label_name(label).to_owned());
     }
-    if let Some((note, differs)) = &info.pair {
+    if let Some((badge, note, differs)) = &info.pair {
         let colour = if *differs {
             tokens::STATUS_WARN
         } else {
             tokens::MUTED
         };
-        let tag = painter.layout_no_wrap(
-            i18n::t().pair_badge.to_owned(),
-            theme::strong(text::OVERLINE),
-            colour,
-        );
+        let tag =
+            painter.layout_no_wrap((*badge).to_owned(), theme::strong(text::OVERLINE), colour);
         let size = tag.size() + vec2(8.0, 2.0);
         let badge = Rect::from_min_size(
             pos2(cell.right() - 4.0 - size.x, cell.bottom() - 6.0 - size.y),

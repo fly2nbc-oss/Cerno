@@ -11,6 +11,8 @@ use eframe::egui;
 
 use crate::i18n;
 use crate::metadata::{self, Description, Label, Rating};
+use crate::pairs::Rules;
+use crate::quicktime;
 use crate::sidecar;
 
 use super::CernoApp;
@@ -19,6 +21,40 @@ use super::undo;
 
 /// The saved switch; on unless it was turned off.
 pub(super) const SETTING: &str = "raw_jpeg_pairs";
+
+/// *Live Photos as one photo*; on unless it was turned off.
+pub(super) const LIVE_SETTING: &str = "live_photo_pairs";
+
+/// Which pairs the folder makes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Modes {
+    pub(super) raw: bool,
+    pub(super) live: bool,
+}
+
+/// A `.MOV` beside a picture of its name is a Live Photo's clip – Apple's identifier, or a few
+/// seconds long; a few box headers are read, never the video.
+fn live_clip(path: &Path) -> bool {
+    quicktime::read(path).is_ok_and(|movie| movie.is_live_clip())
+}
+
+impl Modes {
+    pub(super) fn rules(self) -> Rules<'static> {
+        Rules {
+            raw: self.raw,
+            motion: self.live.then_some(&live_clip as &dyn Fn(&Path) -> bool),
+        }
+    }
+}
+
+impl super::browse::Folder {
+    pub(super) fn modes(&self) -> Modes {
+        Modes {
+            raw: self.pair_mode,
+            live: self.live_mode,
+        }
+    }
+}
 
 /// What a RAW's sidecar says: its rating and colour.
 type Marks = (Rating, Option<Label>);
@@ -37,7 +73,7 @@ impl CernoApp {
             .folder
             .all
             .iter()
-            .filter_map(|jpeg| self.folder.pairs.companion(jpeg))
+            .filter_map(|jpeg| self.folder.pairs.raw(jpeg))
             .filter(|raw| sidecar::applies(raw))
             .map(Path::to_path_buf)
             .collect();
@@ -79,7 +115,7 @@ impl CernoApp {
     /// The RAW of `path`'s pair holds other marks than the JPEG – which, as a short text
     /// (`RAW: 5 Sterne, Rot`).
     fn raw_marks_differ(&self, path: &Path) -> Option<String> {
-        let raw = self.folder.pairs.companion(path)?;
+        let raw = self.folder.pairs.raw(path)?;
         let (rating, label) = *self.folder.raw_marks.known.get(raw)?;
         let t = i18n::t();
         let mut parts = Vec::new();
@@ -94,27 +130,31 @@ impl CernoApp {
 
     /// What the sidecar of `path`'s RAW says, when `path` is a pair's JPEG and it is known.
     pub(super) fn companion_marks(&self, path: &Path) -> Option<(Rating, Option<Label>)> {
-        let raw = self.folder.pairs.companion(path)?;
+        let raw = self.folder.pairs.raw(path)?;
         self.folder.raw_marks.known.get(raw).copied()
     }
 
-    /// What the info bar and the cell's tooltip say about a pair – `RAW+JPG`, and the RAW's
-    /// marks where they differ – and whether they do.
-    pub(super) fn pair_note(&self, path: &Path) -> Option<(String, bool)> {
+    /// What the cell's badge, the info bar and the tooltip say about a pair – `RAW+JPG` and
+    /// the RAW's marks where they differ, or `LIVE` – and whether they differ.
+    pub(super) fn pair_note(&self, path: &Path) -> Option<(&'static str, String, bool)> {
+        let t = i18n::t();
+        if self.folder.pairs.motion(path).is_some() {
+            return Some((t.live_badge, t.live_note.to_owned(), false));
+        }
         self.folder
             .pairs
             .companion(path)
             .or_else(|| self.deleted.companion(path))?;
-        let badge = i18n::t().pair_badge;
+        let badge = t.pair_badge;
         Some(match self.raw_marks_differ(path) {
-            Some(differ) => (format!("{badge} – {differ}"), true),
-            None => (badge.to_owned(), false),
+            Some(differ) => (badge, format!("{badge} – {differ}"), true),
+            None => (badge, badge.to_owned(), false),
         })
     }
 
     /// Stars the user set on a pair go into its RAW too: from now on both agree on them.
     pub(super) fn rate_companion(&mut self, path: &Path, rating: Rating) {
-        let Some(raw) = self.folder.pairs.companion(path).map(Path::to_path_buf) else {
+        let Some(raw) = self.folder.pairs.raw(path).map(Path::to_path_buf) else {
             return;
         };
         self.writer.set(raw.clone(), rating);
@@ -129,7 +169,7 @@ impl CernoApp {
 
     /// A colour the user set on a pair goes into its RAW too.
     pub(super) fn label_companion(&mut self, path: &Path, label: Option<Label>) {
-        let Some(raw) = self.folder.pairs.companion(path).map(Path::to_path_buf) else {
+        let Some(raw) = self.folder.pairs.raw(path).map(Path::to_path_buf) else {
             return;
         };
         self.writer.set_label(raw.clone(), label);
@@ -144,8 +184,31 @@ impl CernoApp {
 
     /// A comment and keywords the user set on a pair go into its RAW too.
     pub(super) fn describe_companion(&mut self, path: &Path, description: &Description) {
-        if let Some(raw) = self.folder.pairs.companion(path).map(Path::to_path_buf) {
+        if let Some(raw) = self.folder.pairs.raw(path).map(Path::to_path_buf) {
             self.writer.set_description(raw, description.clone());
+        }
+    }
+
+    /// Settings ▸ *Live Photos as one photo* (on by default): the folder opens again.
+    pub(super) fn toggle_live_pairs(&mut self, ctx: &egui::Context) {
+        self.folder.live_mode = !self.folder.live_mode;
+        self.db.put_flag(LIVE_SETTING, self.folder.live_mode);
+        let at = self
+            .view
+            .get(self.current)
+            .filter(|path| !self.is_deleted(path))
+            .cloned()
+            .or_else(|| self.folder.dir.clone());
+        if let Some(at) = at {
+            self.open(ctx, &at);
+        }
+        if self.notice.is_none() {
+            let t = i18n::t();
+            self.notice = Some(Notice::hint(if self.folder.live_mode {
+                t.live_on
+            } else {
+                t.live_off
+            }));
         }
     }
 

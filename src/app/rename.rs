@@ -11,6 +11,7 @@ use eframe::egui::{self, Rect};
 use crate::i18n;
 use crate::library;
 use crate::metadata;
+use crate::quicktime;
 use crate::rename::{self, Invalid, Item, Names, Pattern, Planned};
 use crate::transfer::Outcome as TransferOutcome;
 use crate::ui::rename as card_ui;
@@ -86,7 +87,16 @@ impl CernoApp {
         let mut items: Vec<(Option<i64>, Item)> = paths
             .into_iter()
             .map(|path| {
-                let taken = self.facts(&path).and_then(|facts| facts.taken_ms);
+                // A video has no index row: its capture time comes from its own header.
+                let taken = self
+                    .facts(&path)
+                    .and_then(|facts| facts.taken_ms)
+                    .or_else(|| {
+                        (library::format_of(&path) == Some(library::Format::Video))
+                            .then(|| quicktime::read(&path).ok()?.wall_clock())
+                            .flatten()
+                            .and_then(metadata::millis_of)
+                    });
                 let item = Item {
                     rider: self.folder.pairs.companion(&path).map(Path::to_path_buf),
                     clock: taken.map(metadata::clock_of),
@@ -327,8 +337,7 @@ impl CernoApp {
                 self.marks.descriptions.insert(to.clone(), description);
             }
             if let Some(rider) = self.folder.pairs.companion(from).map(Path::to_path_buf) {
-                self.folder.pairs.forget(from);
-                self.folder.pairs.insert(to.clone(), follow(&rider));
+                self.folder.pairs.rename(from, to.clone(), follow(&rider));
             }
         }
         for (from, to) in outcome.done.iter().chain(&outcome.riders) {
